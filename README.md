@@ -6,7 +6,9 @@ data in Foxglove Data Platform.
 The tool is currently in development and lacks a packaging pipeline. To get
 started, install using go:
 
-    go get github.com/foxglove/foxglove-cli/foxglove
+    git clone git@github.com:foxglove/foxglove-cli.git
+    cd foxglove-cli/foxglove
+    go install
 
 ### Usage
 
