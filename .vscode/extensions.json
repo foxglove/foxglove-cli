@@ -1,0 +1,6 @@
+// -*- jsonc -*-
+{
+    "recommendations": [
+        "golang.go"
+    ]
+}

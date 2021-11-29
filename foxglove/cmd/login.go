@@ -40,7 +40,9 @@ func login(ctx context.Context, client svc.FoxgloveClient, baseurl string, clien
 	if err != nil {
 		return fmt.Errorf("failed to open browser: %w", err)
 	}
-	defer browser.Process.Kill()
+	defer func() {
+		_ = browser.Process.Kill()
+	}()
 
 	// now poll the token endpoint until the token for the device code appears.
 	// When the device code has not yet appeared, the endpoint returns a 403.
