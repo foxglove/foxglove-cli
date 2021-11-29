@@ -215,7 +215,7 @@ func (c *foxgloveClient) Token(deviceCode string) (string, error) {
 	}
 	resp, err := http.Post(c.baseurl+"/v1/auth/token", "application/json", buf)
 	if err != nil {
-		return "", fmt.Errorf("token request failure", err)
+		return "", fmt.Errorf("token request failure: %w", err)
 	}
 	switch {
 	case resp.StatusCode == http.StatusForbidden:
