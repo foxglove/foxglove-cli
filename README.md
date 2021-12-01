@@ -7,8 +7,7 @@ The tool is currently in development and lacks a packaging pipeline. To get
 started, install using go:
 
     git clone git@github.com:foxglove/foxglove-cli.git
-    cd foxglove-cli/foxglove
-    go install
+    make install
 
 ### Usage
 

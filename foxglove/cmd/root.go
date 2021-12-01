@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var runDebug bool
+
 func configfile() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -18,7 +20,10 @@ func configfile() (string, error) {
 	return path.Join(home, ".foxgloverc"), nil
 }
 
-func Execute() {
+func Execute(version string) {
+	if version == "" {
+		version = "dev"
+	}
 	rootCmd := &cobra.Command{
 		Use:   "foxglove",
 		Short: "Command line client for the Foxglove data platform",
@@ -27,29 +32,32 @@ func Execute() {
 
 	var cfgFile, baseURL, clientID string
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.foxglove.yaml)")
-	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", "oSJGEAQm16LNF09FSVTMYJO5aArQzq8o", "foxglove client ID")
-	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
-
+	rootCmd.PersistentFlags().StringVar(&clientID, "client-id", "oSJGEAQm16LNF09FSVTMYJO5aArQzq8o", "foxglove client ID")
+	rootCmd.PersistentFlags().StringVar(&baseURL, "baseurl", "https://api.foxglove.dev", "console API server")
+	rootCmd.PersistentFlags().BoolVar(&runDebug, "debug", false, "print debug messages")
 	var err error
 	if cfgFile == "" {
 		cfgFile, err = configfile()
 		if err != nil {
 			fmt.Println(err)
-			os.Exit(1)
+			return
 		}
 	}
-
-	initConfig(cfgFile)
-
+	err = initConfig(cfgFile)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	rootCmd.AddCommand(newImportCommand(baseURL, clientID))
 	rootCmd.AddCommand(newLoginCommand(baseURL, clientID))
 	rootCmd.AddCommand(newExportCommand(baseURL, clientID))
+	rootCmd.AddCommand(newVersionCommand(version))
 
 	cobra.CheckErr(rootCmd.Execute())
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initConfig(cfgFile string) {
+func initConfig(cfgFile string) error {
 	if cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigType("yaml")
@@ -68,7 +76,6 @@ func initConfig(cfgFile string) {
 	viper.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
-	}
+	_ = viper.ReadInConfig()
+	return nil
 }
