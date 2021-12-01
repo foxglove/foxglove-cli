@@ -32,3 +32,43 @@ jobs:
       - run: git lfs pull
       - name: run tests
         run:  make test
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    strategy:
+      matrix:
+        goosarch:
+          - "darwin/amd64"
+          - "darwin/arm64"
+          - "linux/amd64"
+          - "linux/arm64"
+          - "windows/amd64"
+          - "windows/arm"
+    steps:
+      - uses: actions/checkout@v2
+      - name: install go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Get OS and arch info
+        run: |
+          GOOSARCH=${{matrix.goosarch}}
+          GOOS=${GOOSARCH%/*}
+          GOARCH=${GOOSARCH#*/}
+          BINARY_NAME=foxglove-$GOOS-$GOARCH
+          echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
+          echo "GOOD=$GOOS" >> $GITHUB_ENV
+          echo "GOARCH=$GOARCH" >> $GITHUB_ENV
+      - name: Build
+        run: |
+          cd foxglove
+          go build -o "$BINARY_NAME" -v
+          cd -
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./foxglove/${{env.BINARY_NAME}}
+          draft: true
