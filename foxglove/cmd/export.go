@@ -43,7 +43,7 @@ func executeExport(baseURL, clientID, deviceID, start, end, outputFormat, topicL
 	return nil
 }
 
-func newExportCommand(baseURL, clientID string) *cobra.Command {
+func newExportCommand(baseURL, clientID string) (*cobra.Command, error) {
 	var deviceID string
 	var start string
 	var end string
@@ -69,10 +69,21 @@ func newExportCommand(baseURL, clientID string) *cobra.Command {
 		},
 	}
 	exportCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
-	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start")
-	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end")
+	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (RFC3339 timestamp)")
+	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (RFC3339 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "", "output format")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
-
-	return exportCmd
+	err := exportCmd.MarkPersistentFlagRequired("device-id")
+	if err != nil {
+		return nil, err
+	}
+	err = exportCmd.MarkPersistentFlagRequired("start")
+	if err != nil {
+		return nil, err
+	}
+	err = exportCmd.MarkPersistentFlagRequired("end")
+	if err != nil {
+		return nil, err
+	}
+	return exportCmd, nil
 }

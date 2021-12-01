@@ -19,7 +19,7 @@ func executeImport(baseURL, clientID, deviceID, filename, token string) error {
 	return nil
 }
 
-func newImportCommand(baseURL, clientID string) *cobra.Command {
+func newImportCommand(baseURL, clientID string) (*cobra.Command, error) {
 	var deviceID string
 	var filename string
 	importCmd := &cobra.Command{
@@ -34,5 +34,13 @@ func newImportCommand(baseURL, clientID string) *cobra.Command {
 	}
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	importCmd.PersistentFlags().StringVarP(&filename, "filename", "", "", "filename")
-	return importCmd
+	err := importCmd.MarkPersistentFlagRequired("device-id")
+	if err != nil {
+		return nil, err
+	}
+	err = importCmd.MarkPersistentFlagRequired("filename")
+	if err != nil {
+		return nil, err
+	}
+	return importCmd, nil
 }
