@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	foxgloveClientID = "d51173be08ed4cf7a734aed9ac30afd0"
+)
+
 func configfile() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -29,7 +33,7 @@ func Execute(version string) {
 	var baseURL, clientID, cfgFile string
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
-	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", "oSJGEAQm16LNF09FSVTMYJO5aArQzq8o", "foxglove client ID")
+	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", foxgloveClientID, "foxglove client ID")
 	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
 
 	var err error
