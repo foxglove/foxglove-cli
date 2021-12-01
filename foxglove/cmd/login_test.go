@@ -14,11 +14,10 @@ import (
 func TestLoginCommand(t *testing.T) {
 	ctx := context.Background()
 	svc, port := svc.NewMockServer(ctx)
-	initConfig("./test-config.yaml")
-	err := executeLogin(fmt.Sprintf("http://localhost:%d", port), "client-id")
-	if err != nil {
-		t.Fatal(err)
-	}
+	err := initConfig("./test-config.yaml")
+	assert.Nil(t, err)
+	err = executeLogin(fmt.Sprintf("http://localhost:%d", port), "client-id")
+	assert.Nil(t, err)
 	assert.NotEmpty(t, svc.BearerTokens)
 	m := make(map[string]string)
 	filename := "./test-config.yaml"
