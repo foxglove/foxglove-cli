@@ -48,9 +48,20 @@ func Execute(version string) {
 		fmt.Println(err)
 		return
 	}
-	rootCmd.AddCommand(newImportCommand(baseURL, clientID))
+
+	importCmd, err := newImportCommand(baseURL, clientID)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	exportCmd, err := newExportCommand(baseURL, clientID)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	rootCmd.AddCommand(importCmd)
+	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(newLoginCommand(baseURL, clientID))
-	rootCmd.AddCommand(newExportCommand(baseURL, clientID))
 	rootCmd.AddCommand(newVersionCommand(version))
 
 	cobra.CheckErr(rootCmd.Execute())
