@@ -58,14 +58,6 @@ type DeviceCodeResponse struct {
 	VerificationUriComplete string `json:"verificationUriComplete"`
 }
 
-type FoxgloveClient interface {
-	Stream(StreamRequest) (io.ReadCloser, error)
-	Upload(io.Reader, UploadRequest) error
-	DeviceCode() (*DeviceCodeResponse, error)
-	Token(string) (string, error)
-	SignIn(string) (string, error)
-}
-
 type foxgloveClient struct {
 	baseurl  string
 	clientID string
@@ -80,6 +72,8 @@ type SignInResponse struct {
 	BearerToken string `json:"bearerToken"`
 }
 
+// SignIn accepts a client ID token and uses it to authenticate to foxglove,
+// returning a bearer token for use in subsequent HTTP requests.
 func (c *foxgloveClient) SignIn(token string) (string, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(SignInRequest{
@@ -104,6 +98,8 @@ func (c *foxgloveClient) SignIn(token string) (string, error) {
 	return r.BearerToken, nil
 }
 
+// Stream returns a ReadCloser wrapping a binary output stream in response to
+// the provided request.
 func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(r)
@@ -119,7 +115,12 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get download link: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		break
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return nil, ErrForbidden
+	default:
 		bytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected %d response: %s", resp.StatusCode, string(bytes))
 	}
@@ -136,9 +137,16 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 		bytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected %d from stream service: %s", resp.StatusCode, string(bytes))
 	}
-	return resp.Body, nil
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stream: %w", err)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
+// Upload uploads the contents of a reader for a provided filenamem and device.
+// It manages the indirection through GCS signed upload links for the caller.
 func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(r)
@@ -153,9 +161,14 @@ func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	if err != nil {
 		return fmt.Errorf("import request failure: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusOK:
+		break
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return ErrForbidden
+	default:
 		bytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("import request failure (%d): %s", resp.StatusCode, string(bytes))
+		return fmt.Errorf("unexpected %d response: %s", resp.StatusCode, string(bytes))
 	}
 	link := UploadResponse{}
 	err = json.NewDecoder(resp.Body).Decode(&link)
@@ -180,6 +193,8 @@ func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	return nil
 }
 
+// DeviceCode retrieves a device code, which may be used to correlate a login
+// action with a token through the API.
 func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(DeviceCodeRequest{
@@ -204,6 +219,9 @@ func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	return response, nil
 }
 
+// Token returns a token for the provided device code. If the token for the
+// device code does not exist yet, ErrForbidden is returned. It is up to the
+// caller to give up after sufficient retries.
 func (c *foxgloveClient) Token(deviceCode string) (string, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(TokenRequest{
@@ -244,9 +262,9 @@ func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // NewRemoteFoxgloveClient returns a client implementation backed by the remote
 // cloud service. The "token" parameter will be passed in authorization headers.
-// For unauthenticated usage (token, device code) it may be passed as empty,
-// however authorized requests will fail.
-func NewRemoteFoxgloveClient(baseurl, clientID, token string) FoxgloveClient {
+// For unauthenticated usage (token, device code - the initial signin flow) it
+// may be passed as empty, however authorized requests will fail.
+func NewRemoteFoxgloveClient(baseurl, clientID, token string) *foxgloveClient {
 	httpc := &http.Client{
 		Transport: &customTransport{
 			token:         token,

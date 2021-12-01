@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/spf13/cobra"
@@ -18,59 +16,29 @@ var (
 	ErrRedirectStdout = errors.New("stdout unredirected")
 )
 
-type ExportRequest struct {
-	DeviceID     string   `json:"deviceId"`
-	Start        string   `json:"start"`
-	End          string   `json:"end"`
-	OutputFormat string   `json:"outputFormat"`
-	Topics       []string `json:"topics"`
-}
-
-type ExportResponse struct {
-	Link string `json:"link"`
-}
-
 func stdoutRedirected() bool {
-	if fi, _ := os.Stdout.Stat(); (fi.Mode() & os.ModeCharDevice) != 0 {
+	if fi, _ := os.Stdout.Stat(); (fi.Mode() & os.ModeCharDevice) == os.ModeCharDevice {
 		return false
 	}
 	return true
 }
 
-func export(
-	ctx context.Context,
-	client svc.FoxgloveClient,
-	deviceID string,
-	startstr string,
-	endstr string,
-	topics []string,
-	outputFormat string,
-) error {
-	if !stdoutRedirected() {
-		return ErrRedirectStdout
-	}
-	start, err := time.Parse(time.RFC3339, startstr)
-	if err != nil {
-		return fmt.Errorf("failed to parse start: %w", err)
-	}
-	end, err := time.Parse(time.RFC3339, endstr)
-	if err != nil {
-		return fmt.Errorf("failed to parse start: %w", err)
-	}
-	rc, err := client.Stream(svc.StreamRequest{
-		DeviceID:     deviceID,
-		Start:        start,
-		End:          end,
-		OutputFormat: outputFormat,
-		Topics:       topics,
+func executeExport(baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken string) error {
+	ctx := context.Background()
+	client := svc.NewRemoteFoxgloveClient(
+		baseURL,
+		clientID,
+		bearerToken,
+	)
+	topics := strings.FieldsFunc(topicList, func(c rune) bool {
+		return c == ','
 	})
-	if err != nil {
-		return fmt.Errorf("streaming request failure: %w", err)
+	if !stdoutRedirected() {
+		return fmt.Errorf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
 	}
-	defer rc.Close()
-	_, err = io.Copy(os.Stdout, rc)
+	err := svc.Export(ctx, os.Stdout, client, deviceID, start, end, topics, outputFormat)
 	if err != nil {
-		return fmt.Errorf("copy failure: %w", err)
+		return fmt.Errorf("Export failed: %s", err)
 	}
 	return nil
 }
@@ -85,22 +53,18 @@ func newExportCommand(baseURL, clientID string) *cobra.Command {
 		Use:   "export",
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx := context.Background()
-			client := svc.NewRemoteFoxgloveClient(
+			err := executeExport(
 				baseURL,
 				clientID,
-				viper.GetString("id_token"),
+				deviceID,
+				start,
+				end,
+				outputFormat,
+				topicList,
+				viper.GetString("bearer_token"),
 			)
-			topics := strings.FieldsFunc(topicList, func(c rune) bool {
-				return c == ','
-			})
-			err := export(ctx, client, deviceID, start, end, topics, outputFormat)
 			if err != nil {
-				if errors.Is(err, ErrRedirectStdout) {
-					fmt.Printf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
-					return
-				}
-				fmt.Printf("Export failed: %s", err)
+				fmt.Printf("Export failed: %s\n", err)
 			}
 		},
 	}
