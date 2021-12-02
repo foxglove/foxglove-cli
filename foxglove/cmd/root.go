@@ -10,8 +10,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var runDebug bool
-
 func configfile() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -24,17 +22,16 @@ func Execute(version string) {
 	if version == "" {
 		version = "dev"
 	}
-	rootCmd := &cobra.Command{
+	var rootCmd = &cobra.Command{
 		Use:   "foxglove",
 		Short: "Command line client for the Foxglove data platform",
 	}
+	var baseURL, clientID, cfgFile string
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
+	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", "oSJGEAQm16LNF09FSVTMYJO5aArQzq8o", "foxglove client ID")
+	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
 
-	var cfgFile, baseURL, clientID string
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.foxglove.yaml)")
-	rootCmd.PersistentFlags().StringVar(&clientID, "client-id", "oSJGEAQm16LNF09FSVTMYJO5aArQzq8o", "foxglove client ID")
-	rootCmd.PersistentFlags().StringVar(&baseURL, "baseurl", "https://api.foxglove.dev", "console API server")
-	rootCmd.PersistentFlags().BoolVar(&runDebug, "debug", false, "print debug messages")
 	var err error
 	if cfgFile == "" {
 		cfgFile, err = configfile()
@@ -43,36 +40,35 @@ func Execute(version string) {
 			return
 		}
 	}
-	err = initConfig(cfgFile)
+	err = initConfig(&cfgFile)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-
-	importCmd, err := newImportCommand(baseURL, clientID)
+	importCmd, err := newImportCommand(&baseURL, &clientID)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	exportCmd, err := newExportCommand(baseURL, clientID)
+	exportCmd, err := newExportCommand(&baseURL, &clientID)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	loginCmd := newLoginCommand(&baseURL, &clientID)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(exportCmd)
-	rootCmd.AddCommand(newLoginCommand(baseURL, clientID))
+	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(newVersionCommand(version))
-
 	cobra.CheckErr(rootCmd.Execute())
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initConfig(cfgFile string) error {
-	if cfgFile != "" {
+func initConfig(cfgFile *string) error {
+	if *cfgFile != "" {
 		// Use config file from the flag.
 		viper.SetConfigType("yaml")
-		viper.SetConfigFile(cfgFile)
+		viper.SetConfigFile(*cfgFile)
 	} else {
 		// Find home directory.
 		home, err := os.UserHomeDir()
