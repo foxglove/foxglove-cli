@@ -43,7 +43,7 @@ func executeExport(baseURL, clientID, deviceID, start, end, outputFormat, topicL
 	return nil
 }
 
-func newExportCommand(baseURL, clientID string) (*cobra.Command, error) {
+func newExportCommand(baseURL, clientID *string) (*cobra.Command, error) {
 	var deviceID string
 	var start string
 	var end string
@@ -54,8 +54,8 @@ func newExportCommand(baseURL, clientID string) (*cobra.Command, error) {
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeExport(
-				baseURL,
-				clientID,
+				*baseURL,
+				*clientID,
 				deviceID,
 				start,
 				end,
