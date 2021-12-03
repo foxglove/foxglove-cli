@@ -1,3 +1,5 @@
+BINARY_NAME ?= foxglove
+
 lint:
 	golangci-lint run ./...
 
@@ -10,6 +12,9 @@ version:
 
 build: version
 	go build -ldflags "-X main.Version=$(VERSION)"
+
+build-release: version
+	go build -ldflags "-X main.Version=$(VERSION)" -o $(BINARY_NAME)
 
 install: version
 	go install -ldflags "-X main.Version=$(VERSION)"

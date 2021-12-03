@@ -60,17 +60,16 @@ jobs:
           GOOS=${GOOSARCH%/*}
           GOARCH=${GOOSARCH#*/}
           BINARY_NAME=foxglove-$GOOS-$GOARCH
+          if [[ "$BINARY_NAME" =~ .*windows.* ]]; then
+            BINARY_NAME=$BINARY_NAME.exe
+          fi
           echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
           echo "GOOS=$GOOS" >> $GITHUB_ENV
           echo "GOARCH=$GOARCH" >> $GITHUB_ENV
       - name: Build
         run: |
           cd foxglove
-          make build
-          mv foxglove "$BINARY_NAME"
-          if [[ "$GOOSARCH" =~ ^windows.* ]]; then
-            mv "$BINARY_NAME" "$BINARY_NAME.exe"
-          fi
+          make build-release -e BINARY_NAME="$BINARY_NAME"
           cd -
       - name: Release
         uses: softprops/action-gh-release@v1
