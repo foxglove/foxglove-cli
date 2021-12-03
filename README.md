@@ -30,7 +30,7 @@ foxglove auth login
 2. Import data
 
 ```
-foxglove data import --filename ~/data/bags/gps.bag --device-id dev_flm75pLkfzUBX2DH
+foxglove data import ~/data/bags/gps.bag --device-id dev_flm75pLkfzUBX2DH
 ```
 
 3. Query data
