@@ -16,12 +16,13 @@ import (
 )
 
 type MockFoxgloveServer struct {
-	mtx           *sync.RWMutex
-	Uploads       map[string][]byte // object storage
-	IDTokens      map[string]string // device ID -> ID token
-	BearerTokens  map[string]string // bearer token -> ID token
-	tokenRequests int
-	port          int
+	mtx               *sync.RWMutex
+	Uploads           map[string][]byte // object storage
+	IDTokens          map[string]string // device ID -> ID token
+	BearerTokens      map[string]string // bearer token -> ID token
+	RegisteredDevices map[string]bool
+	tokenRequests     int
+	port              int
 }
 
 func randomString(n int) (string, error) {
@@ -35,6 +36,10 @@ func randomString(n int) (string, error) {
 		bytes[i] = alphanum[b%byte(len(alphanum))]
 	}
 	return string(bytes), nil
+}
+
+func (s *MockFoxgloveServer) BaseURL() string {
+	return fmt.Sprintf("http://localhost:%d", s.port)
 }
 
 func (s *MockFoxgloveServer) signIn(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +89,18 @@ func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	if _, ok := s.RegisteredDevices[req.DeviceID]; !ok {
+		w.WriteHeader(http.StatusNotFound)
+		err := json.NewEncoder(w).Encode(ErrorResponse{
+			Error: "Device not registered with this organization",
+		})
+		if err != nil {
+			log.Println(err)
+		}
+		return
+	}
+
 	err = json.NewEncoder(w).Encode(UploadResponse{
 		Link: fmt.Sprintf("http://localhost:%d/storage/device_id=%s/%s", s.port, req.DeviceID, req.Filename),
 	})
@@ -203,6 +220,9 @@ func mockServer(port int) *MockFoxgloveServer {
 		BearerTokens:  make(map[string]string),
 		tokenRequests: 0,
 		port:          port,
+		RegisteredDevices: map[string]bool{
+			"test-device": true,
+		},
 	}
 }
 
@@ -226,7 +246,7 @@ func randomPort() int {
 
 // NewMockServer returns a new mock server. Canceling the supplied context will
 // terminate the server.
-func NewMockServer(ctx context.Context) (*MockFoxgloveServer, int) {
+func NewMockServer(ctx context.Context) *MockFoxgloveServer {
 	port := randomPort()
 	sv := mockServer(port)
 	routes := makeRoutes(sv)
@@ -248,5 +268,5 @@ func NewMockServer(ctx context.Context) (*MockFoxgloveServer, int) {
 			log.Printf("HTTP server ListenAndServe: %v", err)
 		}
 	}()
-	return sv, port
+	return sv
 }

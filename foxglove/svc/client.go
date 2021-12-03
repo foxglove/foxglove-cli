@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ErrForbidden = errors.New("forbidden")
+	ErrForbidden = errors.New("Forbidden. Have you signed in with `foxglove login`?")
 	ErrNotFound  = errors.New("not found")
 )
 
@@ -73,6 +73,23 @@ type SignInResponse struct {
 	BearerToken string `json:"bearerToken"`
 }
 
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+func unpackErrorResponse(r io.Reader) error {
+	resp := ErrorResponse{}
+	bytes, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("failed to read error response: %w", err)
+	}
+	err = json.Unmarshal(bytes, &resp)
+	if err != nil {
+		return fmt.Errorf(string(bytes))
+	}
+	return fmt.Errorf("%s", resp.Error)
+}
+
 // SignIn accepts a client ID token and uses it to authenticate to foxglove,
 // returning a bearer token for use in subsequent HTTP requests.
 func (c *foxgloveClient) SignIn(token string) (string, error) {
@@ -88,8 +105,7 @@ func (c *foxgloveClient) SignIn(token string) (string, error) {
 		return "", fmt.Errorf("sign in failure: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		bytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("unexpected %d sign in response: %s", resp.StatusCode, string(bytes))
+		return "", unpackErrorResponse(resp.Body)
 	}
 	r := SignInResponse{}
 	err = json.NewDecoder(resp.Body).Decode(&r)
@@ -117,8 +133,7 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 	case http.StatusForbidden, http.StatusUnauthorized:
 		return nil, ErrForbidden
 	default:
-		bytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected %d response: %s", resp.StatusCode, string(bytes))
+		return nil, unpackErrorResponse(resp.Body)
 	}
 	link := StreamResponse{}
 	err = json.NewDecoder(resp.Body).Decode(&link)
@@ -130,8 +145,7 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("failed to fetch download: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		bytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected %d from stream service: %s", resp.StatusCode, string(bytes))
+		return nil, unpackErrorResponse(resp.Body)
 	}
 	return resp.Body, nil
 }
@@ -154,8 +168,7 @@ func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	case http.StatusForbidden, http.StatusUnauthorized:
 		return ErrForbidden
 	default:
-		bytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected %d response: %s", resp.StatusCode, string(bytes))
+		return unpackErrorResponse(resp.Body)
 	}
 	link := UploadResponse{}
 	err = json.NewDecoder(resp.Body).Decode(&link)
@@ -195,8 +208,7 @@ func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 		return nil, fmt.Errorf("failed to fetch device code: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected response: %s", string(body))
+		return nil, unpackErrorResponse(resp.Body)
 	}
 	response := &DeviceCodeResponse{}
 	err = json.NewDecoder(resp.Body).Decode(response)
