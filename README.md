@@ -24,19 +24,19 @@ See `foxglove -h` for complete usage documentation.
 
 1. Authenticate to Foxglove
 ```
-foxglove login
+foxglove auth login
 ```
 
 2. Import data
 
 ```
-foxglove import --filename ~/data/bags/gps.bag --device-id dev_flm75pLkfzUBX2DH
+foxglove data import --filename ~/data/bags/gps.bag --device-id dev_flm75pLkfzUBX2DH
 ```
 
 3. Query data
 
 ```
-$ foxglove export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
+$ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
 
 $ rosbag reindex output.bag
 
