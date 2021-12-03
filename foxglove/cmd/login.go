@@ -10,9 +10,9 @@ import (
 	"github.com/spf13/viper"
 )
 
-func executeLogin(baseURL, clientID string) error {
+func executeLogin(baseURL, clientID, userAgent string) error {
 	ctx := context.Background()
-	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, viper.GetString("bearer_token"))
+	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, viper.GetString("bearer_token"), userAgent)
 	bearerToken, err := svc.Login(ctx, client)
 	if err != nil {
 		return err
@@ -25,12 +25,12 @@ func executeLogin(baseURL, clientID string) error {
 	return nil
 }
 
-func newLoginCommand(baseURL, clientID *string) *cobra.Command {
+func newLoginCommand(params *baseParams) *cobra.Command {
 	loginCmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in to the foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := executeLogin(*baseURL, *clientID)
+			err := executeLogin(*params.baseURL, *params.clientID, params.userAgent)
 			if err != nil {
 				fmt.Printf("Login failed: %s\n", err)
 			}

@@ -17,7 +17,7 @@ func TestLoginCommand(t *testing.T) {
 	configfile := "./test-config.yaml"
 	err := initConfig(&configfile)
 	assert.Nil(t, err)
-	err = executeLogin(fmt.Sprintf("http://localhost:%d", port), "client-id")
+	err = executeLogin(fmt.Sprintf("http://localhost:%d", port), "client-id", "test-app")
 	assert.Nil(t, err)
 	assert.NotEmpty(t, svc.BearerTokens)
 	m := make(map[string]string)

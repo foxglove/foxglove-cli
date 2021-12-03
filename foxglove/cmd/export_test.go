@@ -51,6 +51,7 @@ func TestExportCommand(t *testing.T) {
 			"mcap",
 			"/diagnostics",
 			"",
+			"user-agent",
 		)
 		assert.Equal(t, "Export failed: streaming request failure: forbidden", err.Error())
 	})
@@ -60,7 +61,7 @@ func TestExportCommand(t *testing.T) {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			_, port := svc.NewMockServer(ctx)
-			client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "")
+			client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "", "test-app")
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
 			err = executeExport(
@@ -73,6 +74,7 @@ func TestExportCommand(t *testing.T) {
 				"mcap",
 				"/diagnostics",
 				token,
+				"user-agent",
 			)
 			assert.Nil(t, err)
 		})
@@ -84,7 +86,7 @@ func TestExportCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		_, port := svc.NewMockServer(ctx)
-		client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "")
+		client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)
 		baseurl := fmt.Sprintf("http://localhost:%d", port)
@@ -96,6 +98,7 @@ func TestExportCommand(t *testing.T) {
 			deviceID,
 			"../svc/testdata/gps.bag",
 			token,
+			"user-agent",
 		)
 		assert.Nil(t, err)
 		err = withStdoutRedirected(buf, func() {
@@ -109,6 +112,7 @@ func TestExportCommand(t *testing.T) {
 				"bag1",
 				"/diagnostics",
 				token,
+				"user-agent",
 			)
 			assert.Nil(t, err)
 		})
