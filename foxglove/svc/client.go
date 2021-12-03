@@ -61,7 +61,8 @@ type DeviceCodeResponse struct {
 type foxgloveClient struct {
 	baseurl  string
 	clientID string
-	httpc    *http.Client
+	authed   *http.Client
+	unauthed *http.Client
 }
 
 type SignInRequest struct {
@@ -82,7 +83,7 @@ func (c *foxgloveClient) SignIn(token string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to encode request: %w", err)
 	}
-	resp, err := http.Post(c.baseurl+"/v1/signin", "application/json", buf)
+	resp, err := c.unauthed.Post(c.baseurl+"/v1/signin", "application/json", buf)
 	if err != nil {
 		return "", fmt.Errorf("sign in failure: %w", err)
 	}
@@ -106,12 +107,7 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize request: %w", err)
 	}
-
-	req, err := http.NewRequest("POST", c.baseurl+"/v1/data/stream", buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build streaming request: %w", err)
-	}
-	resp, err := c.httpc.Do(req)
+	resp, err := c.authed.Post(c.baseurl+"/v1/data/stream", "application/json", buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get download link: %w", err)
 	}
@@ -148,11 +144,7 @@ func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode import request: %w", err)
 	}
-	req, err := http.NewRequest("POST", c.baseurl+"/v1/data/upload", buf)
-	if err != nil {
-		return fmt.Errorf("failed to build upload request: %w", err)
-	}
-	resp, err := c.httpc.Do(req)
+	resp, err := c.authed.Post(c.baseurl+"/v1/data/upload", "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("import request failure: %w", err)
 	}
@@ -171,7 +163,7 @@ func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 		return fmt.Errorf("failed to decode import response: %w", err)
 	}
 	client := &http.Client{}
-	req, err = http.NewRequest("PUT", link.Link, reader)
+	req, err := http.NewRequest("PUT", link.Link, reader)
 	if err != nil {
 		return fmt.Errorf("failed to build upload request: %w", err)
 	}
@@ -198,7 +190,7 @@ func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize device code request: %w", err)
 	}
-	resp, err := http.Post(c.baseurl+"/v1/auth/device-code", "application/json", buf)
+	resp, err := c.unauthed.Post(c.baseurl+"/v1/auth/device-code", "application/json", buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch device code: %w", err)
 	}
@@ -226,7 +218,7 @@ func (c *foxgloveClient) Token(deviceCode string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to encode token request: %w", err)
 	}
-	resp, err := http.Post(c.baseurl+"/v1/auth/token", "application/json", buf)
+	resp, err := c.unauthed.Post(c.baseurl+"/v1/auth/token", "application/json", buf)
 	if err != nil {
 		return "", fmt.Errorf("token request failure: %w", err)
 	}
@@ -247,28 +239,34 @@ func (c *foxgloveClient) Token(deviceCode string) (string, error) {
 type customTransport struct {
 	baseTransport http.RoundTripper
 	token         string
+	userAgent     string
 }
 
 func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", t.token))
-	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("User-Agent", t.userAgent)
 	return t.baseTransport.RoundTrip(req)
+}
+
+func makeClient(userAgent, token string) *http.Client {
+	return &http.Client{
+		Transport: &customTransport{
+			userAgent:     userAgent,
+			token:         token,
+			baseTransport: http.DefaultTransport,
+		},
+	}
 }
 
 // NewRemoteFoxgloveClient returns a client implementation backed by the remote
 // cloud service. The "token" parameter will be passed in authorization headers.
 // For unauthenticated usage (token, device code - the initial signin flow) it
 // may be passed as empty, however authorized requests will fail.
-func NewRemoteFoxgloveClient(baseurl, clientID, token string) *foxgloveClient {
-	httpc := &http.Client{
-		Transport: &customTransport{
-			token:         token,
-			baseTransport: http.DefaultTransport,
-		},
-	}
+func NewRemoteFoxgloveClient(baseurl, clientID, token, userAgent string) *foxgloveClient {
 	return &foxgloveClient{
 		baseurl:  baseurl,
 		clientID: clientID,
-		httpc:    httpc,
+		authed:   makeClient(userAgent, token),
+		unauthed: makeClient(userAgent, ""),
 	}
 }

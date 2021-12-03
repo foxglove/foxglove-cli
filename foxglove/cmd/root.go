@@ -12,6 +12,7 @@ import (
 
 const (
 	foxgloveClientID = "d51173be08ed4cf7a734aed9ac30afd0"
+	appname          = "foxglove-cli"
 )
 
 func configfile() (string, error) {
@@ -20,6 +21,13 @@ func configfile() (string, error) {
 		return "", err
 	}
 	return path.Join(home, ".foxgloverc"), nil
+}
+
+type baseParams struct {
+	clientID  *string
+	cfgFile   *string
+	baseURL   *string
+	userAgent string
 }
 
 func Execute(version string) {
@@ -36,6 +44,14 @@ func Execute(version string) {
 	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", foxgloveClientID, "foxglove client ID")
 	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
 
+	useragent := fmt.Sprintf("%s/%s", appname, version)
+	params := &baseParams{
+		userAgent: useragent,
+		cfgFile:   &cfgFile,
+		baseURL:   &baseURL,
+		clientID:  &clientID,
+	}
+
 	var err error
 	if cfgFile == "" {
 		cfgFile, err = configfile()
@@ -49,17 +65,17 @@ func Execute(version string) {
 		fmt.Println(err)
 		return
 	}
-	importCmd, err := newImportCommand(&baseURL, &clientID)
+	importCmd, err := newImportCommand(params)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	exportCmd, err := newExportCommand(&baseURL, &clientID)
+	exportCmd, err := newExportCommand(params)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	loginCmd := newLoginCommand(&baseURL, &clientID)
+	loginCmd := newLoginCommand(params)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(loginCmd)

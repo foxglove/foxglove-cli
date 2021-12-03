@@ -24,12 +24,13 @@ func stdoutRedirected() bool {
 	return true
 }
 
-func executeExport(w io.Writer, baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken string) error {
+func executeExport(w io.Writer, baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken, userAgent string) error {
 	ctx := context.Background()
 	client := svc.NewRemoteFoxgloveClient(
 		baseURL,
 		clientID,
 		bearerToken,
+		userAgent,
 	)
 	topics := strings.FieldsFunc(topicList, func(c rune) bool {
 		return c == ','
@@ -44,7 +45,7 @@ func executeExport(w io.Writer, baseURL, clientID, deviceID, start, end, outputF
 	return nil
 }
 
-func newExportCommand(baseURL, clientID *string) (*cobra.Command, error) {
+func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var deviceID string
 	var start string
 	var end string
@@ -56,14 +57,15 @@ func newExportCommand(baseURL, clientID *string) (*cobra.Command, error) {
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeExport(
 				os.Stdout,
-				*baseURL,
-				*clientID,
+				*params.baseURL,
+				*params.clientID,
 				deviceID,
 				start,
 				end,
 				outputFormat,
 				topicList,
 				viper.GetString("bearer_token"),
+				params.userAgent,
 			)
 			if err != nil {
 				fmt.Printf("Export failed: %s\n", err)
