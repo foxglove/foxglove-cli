@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/stretchr/testify/assert"
@@ -11,10 +12,11 @@ import (
 func TestImportCommand(t *testing.T) {
 	ctx := context.Background()
 	t.Run("returns forbidden if not authenticated", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv := svc.NewMockServer(ctx)
-		err := executeImport(
+		sv, err := svc.NewMockServer(ctx)
+		assert.Nil(t, err)
+		err = executeImport(
 			sv.BaseURL(),
 			"abc",
 			"test-device",
@@ -25,9 +27,10 @@ func TestImportCommand(t *testing.T) {
 		assert.Equal(t, "Forbidden. Have you signed in with `foxglove login`?", err.Error())
 	})
 	t.Run("returns friendly message when device is not registered", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv := svc.NewMockServer(ctx)
+		sv, err := svc.NewMockServer(ctx)
+		assert.Nil(t, err)
 		client := svc.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)

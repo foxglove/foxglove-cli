@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/stretchr/testify/assert"
@@ -36,11 +37,12 @@ func withStdoutRedirected(output io.Writer, f func()) error {
 func TestExportCommand(t *testing.T) {
 	ctx := context.Background()
 	t.Run("returns forbidden if not authenticated", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		buf := &bytes.Buffer{}
-		sv := svc.NewMockServer(ctx)
-		err := executeExport(
+		sv, err := svc.NewMockServer(ctx)
+		assert.Nil(t, err)
+		err = executeExport(
 			buf,
 			sv.BaseURL(),
 			"abc",
@@ -57,9 +59,10 @@ func TestExportCommand(t *testing.T) {
 	t.Run("returns empty data when requesting data that does not exist", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		err := withStdoutRedirected(buf, func() {
-			ctx, cancel := context.WithCancel(ctx)
+			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
-			sv := svc.NewMockServer(ctx)
+			sv, err := svc.NewMockServer(ctx)
+			assert.Nil(t, err)
 			client := svc.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
@@ -82,9 +85,10 @@ func TestExportCommand(t *testing.T) {
 	})
 	t.Run("returns valid bytes when target data exists", func(t *testing.T) {
 		buf := &bytes.Buffer{}
-		ctx, cancel := context.WithCancel(ctx)
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv := svc.NewMockServer(ctx)
+		sv, err := svc.NewMockServer(ctx)
+		assert.Nil(t, err)
 		client := svc.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)

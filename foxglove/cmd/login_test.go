@@ -12,9 +12,10 @@ import (
 
 func TestLoginCommand(t *testing.T) {
 	ctx := context.Background()
-	sv := svc.NewMockServer(ctx)
+	sv, err := svc.NewMockServer(ctx)
+	assert.Nil(t, err)
 	configfile := "./test-config.yaml"
-	err := initConfig(&configfile)
+	err = initConfig(&configfile)
 	assert.Nil(t, err)
 	err = executeLogin(sv.BaseURL(), "client-id", "test-app")
 	assert.Nil(t, err)
