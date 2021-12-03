@@ -37,8 +37,12 @@ func withStdoutRedirected(output io.Writer, f func()) error {
 func TestExportCommand(t *testing.T) {
 	ctx := context.Background()
 	t.Run("returns forbidden if not authenticated", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		buf := &bytes.Buffer{}
 		_, port := svc.NewMockServer(ctx)
 		err := executeExport(
+			buf,
 			fmt.Sprintf("http://localhost:%d", port),
 			"abc",
 			"test-device",
@@ -53,11 +57,14 @@ func TestExportCommand(t *testing.T) {
 	t.Run("returns empty data when requesting data that does not exist", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		err := withStdoutRedirected(buf, func() {
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			_, port := svc.NewMockServer(ctx)
 			client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "")
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
 			err = executeExport(
+				buf,
 				fmt.Sprintf("http://localhost:%d", port),
 				"abc",
 				"test-device",
@@ -68,42 +75,44 @@ func TestExportCommand(t *testing.T) {
 				token,
 			)
 			assert.Nil(t, err)
-			assert.Nil(t, err)
 		})
 		assert.Nil(t, err)
 		assert.Equal(t, 0, buf.Len())
 	})
-	//t.Run("returns valid bytes when target data exists", func(t *testing.T) {
-	//	buf := &bytes.Buffer{}
-	//	_, port := svc.NewMockServer(ctx)
-	//	client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "")
-	//	token, err := client.SignIn("client-id")
-	//	assert.Nil(t, err)
-	//	baseurl := fmt.Sprintf("http://localhost:%d", port)
-	//	clientID := "client-id"
-	//	deviceID := "test-device"
-	//	err = executeImport(
-	//		baseurl,
-	//		clientID,
-	//		deviceID,
-	//		"../svc/testdata/gps.bag",
-	//		token,
-	//	)
-	//	assert.Nil(t, err)
-	//	err = withStdoutRedirected(buf, func() {
-	//		err := executeExport(
-	//			fmt.Sprintf("http://localhost:%d", port),
-	//			clientID,
-	//			deviceID,
-	//			"2001-01-01T00:00:00Z",
-	//			"2021-01-01T00:00:00Z",
-	//			"bag1",
-	//			"/diagnostics",
-	//			token,
-	//		)
-	//		assert.Nil(t, err)
-	//	})
-	//	assert.Nil(t, err)
-	//	assert.Equal(t, 0, buf.Len())
-	//})
+	t.Run("returns valid bytes when target data exists", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		_, port := svc.NewMockServer(ctx)
+		client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "")
+		token, err := client.SignIn("client-id")
+		assert.Nil(t, err)
+		baseurl := fmt.Sprintf("http://localhost:%d", port)
+		clientID := "client-id"
+		deviceID := "test-device"
+		err = executeImport(
+			baseurl,
+			clientID,
+			deviceID,
+			"../svc/testdata/gps.bag",
+			token,
+		)
+		assert.Nil(t, err)
+		err = withStdoutRedirected(buf, func() {
+			err := executeExport(
+				buf,
+				fmt.Sprintf("http://localhost:%d", port),
+				clientID,
+				deviceID,
+				"2001-01-01T00:00:00Z",
+				"2021-01-01T00:00:00Z",
+				"bag1",
+				"/diagnostics",
+				token,
+			)
+			assert.Nil(t, err)
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, 5324051, buf.Len())
+	})
 }

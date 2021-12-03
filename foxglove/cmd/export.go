@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -23,7 +24,7 @@ func stdoutRedirected() bool {
 	return true
 }
 
-func executeExport(baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken string) error {
+func executeExport(w io.Writer, baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken string) error {
 	ctx := context.Background()
 	client := svc.NewRemoteFoxgloveClient(
 		baseURL,
@@ -36,7 +37,7 @@ func executeExport(baseURL, clientID, deviceID, start, end, outputFormat, topicL
 	if !stdoutRedirected() {
 		return fmt.Errorf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
 	}
-	err := svc.Export(ctx, os.Stdout, client, deviceID, start, end, topics, outputFormat)
+	err := svc.Export(ctx, w, client, deviceID, start, end, topics, outputFormat)
 	if err != nil {
 		return fmt.Errorf("Export failed: %s", err)
 	}
@@ -54,6 +55,7 @@ func newExportCommand(baseURL, clientID *string) (*cobra.Command, error) {
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeExport(
+				os.Stdout,
 				*baseURL,
 				*clientID,
 				deviceID,
