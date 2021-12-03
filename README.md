@@ -6,8 +6,22 @@ data in Foxglove Data Platform.
 ### Installation
 
 #### Install a release
-See the [releases page](https://github.com/foxglove/foxglove-cli/releases) to
-obtain a specific release.
+
+To download the latest release, use one of the following commands according to
+your OS and architecture:
+
+| OS/Arch     |                                                                                                            | 
+|--------|------------------------------------------------------------------------------------------------------------|
+| linux/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-amd64 -o foxglove |
+| darwin/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-darwin-amd64 -o foxglove |
+| windows/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-amd64.exe -o foxglove.exe |
+| linux/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-arm64 -o foxglove |
+| darwin/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-darwin-arm64 -o foxglove |
+| windows/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe |
+
+
+To install a specific release, see the [releases
+page](https://github.com/foxglove/foxglove-cli/releases).
 
 #### Install from source
 Installation from source requires the following:
