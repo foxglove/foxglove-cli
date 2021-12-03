@@ -34,10 +34,19 @@ func Execute(version string) {
 	if version == "" {
 		version = "dev"
 	}
-	var rootCmd = &cobra.Command{
+	rootCmd := &cobra.Command{
 		Use:   "foxglove",
 		Short: "Command line client for the Foxglove data platform",
 	}
+	authCmd := &cobra.Command{
+		Use:   "auth",
+		Short: "Manage authentication",
+	}
+	dataCmd := &cobra.Command{
+		Use:   "data",
+		Short: "Data access and management",
+	}
+
 	var baseURL, clientID, cfgFile string
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -76,10 +85,9 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
-	rootCmd.AddCommand(importCmd)
-	rootCmd.AddCommand(exportCmd)
-	rootCmd.AddCommand(loginCmd)
-	rootCmd.AddCommand(newVersionCommand(version))
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version))
+	authCmd.AddCommand(loginCmd)
+	dataCmd.AddCommand(importCmd, exportCmd)
 	cobra.CheckErr(rootCmd.Execute())
 }
 
