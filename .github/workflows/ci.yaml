@@ -66,7 +66,8 @@ jobs:
       - name: Build
         run: |
           cd foxglove
-          go build -o "$BINARY_NAME" -v
+          make build
+          mv foxglove "$BINARY_NAME"
           cd -
       - name: Release
         uses: softprops/action-gh-release@v1
