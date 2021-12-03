@@ -226,6 +226,10 @@ func mockServer(port int) *MockFoxgloveServer {
 	}
 }
 
+func (sv *MockFoxgloveServer) liveness(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
 func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/signin", sv.signIn).Methods("POST")
@@ -235,6 +239,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")
 	r.HandleFunc("/storage/{key:.*}", sv.upload).Methods("PUT")
 	r.HandleFunc("/storage/{key:.*}", sv.getStream).Methods("GET")
+	r.HandleFunc("/liveness", sv.liveness).Methods("GET")
 	return r
 }
 
@@ -246,7 +251,7 @@ func randomPort() int {
 
 // NewMockServer returns a new mock server. Canceling the supplied context will
 // terminate the server.
-func NewMockServer(ctx context.Context) *MockFoxgloveServer {
+func NewMockServer(ctx context.Context) (*MockFoxgloveServer, error) {
 	port := randomPort()
 	sv := mockServer(port)
 	routes := makeRoutes(sv)
@@ -268,5 +273,21 @@ func NewMockServer(ctx context.Context) *MockFoxgloveServer {
 			log.Printf("HTTP server ListenAndServe: %v", err)
 		}
 	}()
-	return sv
+
+	// poll liveness endpoint until server is up
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("startup timeout")
+		default:
+		}
+		resp, err := http.Get(sv.BaseURL() + "/liveness")
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			break
+		}
+	}
+	return sv, nil
 }
