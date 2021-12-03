@@ -137,12 +137,7 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 		bytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected %d from stream service: %s", resp.StatusCode, string(bytes))
 	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read stream: %w", err)
-	}
-	return io.NopCloser(bytes.NewReader(data)), nil
+	return resp.Body, nil
 }
 
 // Upload uploads the contents of a reader for a provided filenamem and device.

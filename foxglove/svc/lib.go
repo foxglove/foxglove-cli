@@ -47,6 +47,7 @@ func Export(
 		return fmt.Errorf("streaming request failure: %w", err)
 	}
 	defer rc.Close()
+
 	_, err = io.Copy(w, rc)
 	if err != nil {
 		return fmt.Errorf("copy failure: %w", err)
