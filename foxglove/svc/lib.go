@@ -44,13 +44,13 @@ func Export(
 		Topics:       topics,
 	})
 	if err != nil {
-		return fmt.Errorf("streaming request failure: %w", err)
+		return err
 	}
 	defer rc.Close()
 
 	_, err = io.Copy(w, rc)
 	if err != nil {
-		return fmt.Errorf("copy failure: %w", err)
+		return err
 	}
 	return nil
 }
@@ -79,7 +79,7 @@ func Import(
 		DeviceID: deviceID,
 	})
 	if err != nil {
-		return fmt.Errorf("upload failure: %w", err)
+		return err
 	}
 	return nil
 }

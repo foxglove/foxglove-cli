@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 
@@ -13,13 +12,13 @@ import (
 
 func TestLoginCommand(t *testing.T) {
 	ctx := context.Background()
-	svc, port := svc.NewMockServer(ctx)
+	sv := svc.NewMockServer(ctx)
 	configfile := "./test-config.yaml"
 	err := initConfig(&configfile)
 	assert.Nil(t, err)
-	err = executeLogin(fmt.Sprintf("http://localhost:%d", port), "client-id", "test-app")
+	err = executeLogin(sv.BaseURL(), "client-id", "test-app")
 	assert.Nil(t, err)
-	assert.NotEmpty(t, svc.BearerTokens)
+	assert.NotEmpty(t, sv.BearerTokens)
 	m := make(map[string]string)
 	f, err := os.Open(configfile)
 	assert.Nil(t, err)

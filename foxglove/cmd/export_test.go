@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -40,10 +39,10 @@ func TestExportCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		buf := &bytes.Buffer{}
-		_, port := svc.NewMockServer(ctx)
+		sv := svc.NewMockServer(ctx)
 		err := executeExport(
 			buf,
-			fmt.Sprintf("http://localhost:%d", port),
+			sv.BaseURL(),
 			"abc",
 			"test-device",
 			"2020-01-01T00:00:00Z",
@@ -53,20 +52,20 @@ func TestExportCommand(t *testing.T) {
 			"",
 			"user-agent",
 		)
-		assert.Equal(t, "Export failed: streaming request failure: forbidden", err.Error())
+		assert.Equal(t, "Forbidden. Have you signed in with `foxglove login`?", err.Error())
 	})
 	t.Run("returns empty data when requesting data that does not exist", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		err := withStdoutRedirected(buf, func() {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
-			_, port := svc.NewMockServer(ctx)
-			client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "", "test-app")
+			sv := svc.NewMockServer(ctx)
+			client := svc.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
 			err = executeExport(
 				buf,
-				fmt.Sprintf("http://localhost:%d", port),
+				sv.BaseURL(),
 				"abc",
 				"test-device",
 				"2020-01-01T00:00:00Z",
@@ -85,18 +84,17 @@ func TestExportCommand(t *testing.T) {
 		buf := &bytes.Buffer{}
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		_, port := svc.NewMockServer(ctx)
-		client := svc.NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", port), "client-id", "", "test-app")
+		sv := svc.NewMockServer(ctx)
+		client := svc.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)
-		baseurl := fmt.Sprintf("http://localhost:%d", port)
 		clientID := "client-id"
 		deviceID := "test-device"
 		err = executeImport(
-			baseurl,
+			sv.BaseURL(),
 			clientID,
 			deviceID,
-			"../svc/testdata/gps.bag",
+			"../testdata/gps.bag",
 			token,
 			"user-agent",
 		)
@@ -104,7 +102,7 @@ func TestExportCommand(t *testing.T) {
 		err = withStdoutRedirected(buf, func() {
 			err := executeExport(
 				buf,
-				fmt.Sprintf("http://localhost:%d", port),
+				sv.BaseURL(),
 				clientID,
 				deviceID,
 				"2001-01-01T00:00:00Z",

@@ -40,7 +40,7 @@ func executeExport(w io.Writer, baseURL, clientID, deviceID, start, end, outputF
 	}
 	err := svc.Export(ctx, w, client, deviceID, start, end, topics, outputFormat)
 	if err != nil {
-		return fmt.Errorf("Export failed: %s", err)
+		return err
 	}
 	return nil
 }
