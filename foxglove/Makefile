@@ -4,12 +4,12 @@ lint:
 test:
 	go test ./... -cover
 
-gitcommit: $(eval GIT_COMMIT=$(shell git log -1 --pretty=format:"%H"))
-gitcommit:
-	@echo GIT_COMMIT=$(GIT_COMMIT)
+version: $(eval VERSION=$(shell git describe --tags))
+version:
+	@echo VERSION=$(VERSION)
 
-build: gitcommit
-	go build -ldflags "-X main.GitCommit=$(GIT_COMMIT)"
+build: version
+	go build -ldflags "-X main.Version=$(VERSION)"
 
-install: gitcommit
-	go install -ldflags "-X main.GitCommit=$(GIT_COMMIT)"
+install: version
+	go install -ldflags "-X main.Version=$(VERSION)"

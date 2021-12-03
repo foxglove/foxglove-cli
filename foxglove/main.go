@@ -4,9 +4,9 @@ import "github.com/foxglove/foxglove-cli/foxglove/cmd"
 
 // build variables
 var (
-	GitCommit string
+	Version string
 )
 
 func main() {
-	cmd.Execute(GitCommit)
+	cmd.Execute(Version)
 }
