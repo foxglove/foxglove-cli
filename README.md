@@ -1,15 +1,26 @@
 ## Foxglove CLI
 
-The `foxglove` CLI tool enables command line interaction with remotely stored
+The Foxglove CLI tool enables command line interaction with remotely stored
 data in Foxglove Data Platform.
 
-The tool is currently in development and lacks a packaging pipeline. To get
-started, install using go:
+### Installation
+
+#### Install a release
+See the [releases page](https://github.com/foxglove/foxglove-cli/releases) to
+obtain a specific release.
+
+#### Install from source
+Installation from source requires the following:
+* Go >= 1.17
+
+To install from source, run
 
     git clone git@github.com:foxglove/foxglove-cli.git
     make install
 
 ### Usage
+
+See `foxglove -h` for complete usage documentation.
 
 1. Authenticate to Foxglove
 ```
@@ -45,5 +56,3 @@ $ rosbag info output.bag
   topics:       /gps/fix            3364 msgs    : sensor_msgs/NavSatFix
                 /gps/fix_velocity   3364 msgs    : geometry_msgs/TwistWithCovarianceStamped
 ```
-
-See `foxglove -h` for additional usage details.
