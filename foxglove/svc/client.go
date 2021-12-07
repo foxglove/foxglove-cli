@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ErrForbidden = errors.New("Forbidden. Have you signed in with `foxglove login`?")
+	ErrForbidden = errors.New("Forbidden. Have you signed in with `foxglove auth login`?")
 	ErrNotFound  = errors.New("not found")
 )
 

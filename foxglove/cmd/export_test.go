@@ -54,7 +54,7 @@ func TestExportCommand(t *testing.T) {
 			"",
 			"user-agent",
 		)
-		assert.Equal(t, "Forbidden. Have you signed in with `foxglove login`?", err.Error())
+		assert.ErrorIs(t, err, svc.ErrForbidden)
 	})
 	t.Run("returns empty data when requesting data that does not exist", func(t *testing.T) {
 		buf := &bytes.Buffer{}
