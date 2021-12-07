@@ -24,7 +24,7 @@ func TestImportCommand(t *testing.T) {
 			"",
 			"user-agent",
 		)
-		assert.Equal(t, "Forbidden. Have you signed in with `foxglove login`?", err.Error())
+		assert.ErrorIs(t, err, svc.ErrForbidden)
 	})
 	t.Run("returns friendly message when device is not registered", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
