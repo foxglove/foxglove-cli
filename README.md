@@ -41,13 +41,25 @@ See `foxglove -h` for complete usage documentation.
 foxglove auth login
 ```
 
-2. Import data
+1. Import data
 
 ```
 foxglove data import ~/data/bags/gps.bag --device-id dev_flm75pLkfzUBX2DH
 ```
 
-3. Query data
+1. List available devices for querying
+
+```
+foxglove devices list
+|          ID          |        NAME        |      CREATED AT      |      UPDATED AT      |
+|----------------------|--------------------|----------------------|----------------------|
+| dev_mHH1Cp4gPybCPR8y | Adrian's Robot     | 2021-10-28T17:20:55Z | 2021-10-28T17:20:55Z |
+| dev_WEJUVEOVApoIpe1M | GPS                | 2021-11-01T17:38:55Z | 2021-11-01T17:38:55Z |
+| dev_flm75pLkfzUBX2DH | updog              | 2021-11-25T02:22:45Z | 2021-11-25T02:22:45Z |
+| dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
+```
+
+1. Query imported data
 
 ```
 $ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag

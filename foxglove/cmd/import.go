@@ -6,7 +6,6 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func executeImport(baseURL, clientID, deviceID, filename, token, userAgent string) error {
@@ -27,7 +26,7 @@ func newImportCommand(params *baseParams) (*cobra.Command, error) {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
-			err := executeImport(*params.baseURL, *params.clientID, deviceID, filename, viper.GetString("bearer_token"), params.userAgent)
+			err := executeImport(*params.baseURL, *params.clientID, deviceID, filename, params.token, params.userAgent)
 			if err != nil {
 				fmt.Printf("Import failed: %s\n", err)
 			}

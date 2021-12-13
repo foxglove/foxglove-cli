@@ -43,6 +43,7 @@ func TestExportCommand(t *testing.T) {
 		sv, err := svc.NewMockServer(ctx)
 		assert.Nil(t, err)
 		err = executeExport(
+			context.TODO(),
 			buf,
 			sv.BaseURL(),
 			"abc",
@@ -67,6 +68,7 @@ func TestExportCommand(t *testing.T) {
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
 			err = executeExport(
+				context.TODO(),
 				buf,
 				sv.BaseURL(),
 				"abc",
@@ -105,6 +107,7 @@ func TestExportCommand(t *testing.T) {
 		assert.Nil(t, err)
 		err = withStdoutRedirected(buf, func() {
 			err := executeExport(
+				context.TODO(),
 				buf,
 				sv.BaseURL(),
 				clientID,

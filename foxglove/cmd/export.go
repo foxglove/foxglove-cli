@@ -10,7 +10,6 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -24,8 +23,11 @@ func stdoutRedirected() bool {
 	return true
 }
 
-func executeExport(w io.Writer, baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken, userAgent string) error {
-	ctx := context.Background()
+func executeExport(
+	ctx context.Context,
+	w io.Writer,
+	baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken, userAgent string,
+) error {
 	client := svc.NewRemoteFoxgloveClient(
 		baseURL,
 		clientID,
@@ -56,6 +58,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeExport(
+				cmd.Context(),
 				os.Stdout,
 				*params.baseURL,
 				*params.clientID,
@@ -64,7 +67,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				end,
 				outputFormat,
 				topicList,
-				viper.GetString("bearer_token"),
+				params.token,
 				params.userAgent,
 			)
 			if err != nil {
