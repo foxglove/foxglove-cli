@@ -10,6 +10,7 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -67,7 +68,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				end,
 				outputFormat,
 				topicList,
-				params.token,
+				viper.GetString("bearer_token"),
 				params.userAgent,
 			)
 			if err != nil {
@@ -81,6 +82,18 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "", "output format")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
 	err := exportCmd.MarkPersistentFlagRequired("device-id")
+	if err != nil {
+		return nil, err
+	}
+	err = exportCmd.RegisterFlagCompletionFunc(
+		"device-id",
+		listDevicesAutocompletionFunc(
+			*params.baseURL,
+			*params.clientID,
+			viper.GetString("bearer_token"),
+			params.userAgent,
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
