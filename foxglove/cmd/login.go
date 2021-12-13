@@ -12,7 +12,7 @@ import (
 
 func executeLogin(baseURL, clientID, userAgent string) error {
 	ctx := context.Background()
-	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, viper.GetString("bearer_token"), userAgent)
+	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, "", userAgent)
 	bearerToken, err := svc.Login(ctx, client)
 	if err != nil {
 		return err

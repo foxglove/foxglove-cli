@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -20,7 +21,7 @@ type MockFoxgloveServer struct {
 	Uploads           map[string][]byte // object storage
 	IDTokens          map[string]string // device ID -> ID token
 	BearerTokens      map[string]string // bearer token -> ID token
-	RegisteredDevices map[string]bool
+	registeredDevices []DeviceResponse
 	tokenRequests     int
 	port              int
 }
@@ -82,6 +83,15 @@ func (s *MockFoxgloveServer) stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *MockFoxgloveServer) hasDevice(id string) bool {
+	for _, device := range s.registeredDevices {
+		if device.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Request) {
 	req := UploadRequest{}
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -90,7 +100,7 @@ func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if _, ok := s.RegisteredDevices[req.DeviceID]; !ok {
+	if !s.hasDevice(req.DeviceID) {
 		w.WriteHeader(http.StatusNotFound)
 		err := json.NewEncoder(w).Encode(ErrorResponse{
 			Error: "Device not registered with this organization",
@@ -118,6 +128,16 @@ func (s *MockFoxgloveServer) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	key := mux.Vars(r)["key"]
 	s.Uploads[key] = bytes
+}
+
+func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	err := json.NewEncoder(w).Encode(s.registeredDevices)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func (s *MockFoxgloveServer) deviceCode(w http.ResponseWriter, r *http.Request) {
@@ -220,8 +240,13 @@ func mockServer(port int) *MockFoxgloveServer {
 		BearerTokens:  make(map[string]string),
 		tokenRequests: 0,
 		port:          port,
-		RegisteredDevices: map[string]bool{
-			"test-device": true,
+		registeredDevices: []DeviceResponse{
+			{
+				ID:        "test-device",
+				Name:      "my test device",
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
 		},
 	}
 }
@@ -237,6 +262,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/data/upload", sv.withAuthz(sv.uploadRedirect)).Methods("POST")
 	r.HandleFunc("/v1/auth/device-code", sv.deviceCode).Methods("POST")
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")
+	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
 	r.HandleFunc("/storage/{key:.*}", sv.upload).Methods("PUT")
 	r.HandleFunc("/storage/{key:.*}", sv.getStream).Methods("GET")
 	r.HandleFunc("/liveness", sv.liveness).Methods("GET")

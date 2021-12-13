@@ -28,6 +28,7 @@ type baseParams struct {
 	cfgFile   *string
 	baseURL   *string
 	userAgent string
+	token     string
 }
 
 func Execute(version string) {
@@ -46,6 +47,10 @@ func Execute(version string) {
 		Use:   "data",
 		Short: "Data access and management",
 	}
+	devicesCmd := &cobra.Command{
+		Use:   "devices",
+		Short: "List and manage devices",
+	}
 
 	var baseURL, clientID, cfgFile string
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
@@ -59,6 +64,7 @@ func Execute(version string) {
 		cfgFile:   &cfgFile,
 		baseURL:   &baseURL,
 		clientID:  &clientID,
+		token:     viper.GetString("bearer_token"),
 	}
 
 	var err error
@@ -85,9 +91,10 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version))
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd)
 	authCmd.AddCommand(loginCmd)
 	dataCmd.AddCommand(importCmd, exportCmd)
+	devicesCmd.AddCommand(newListDevicesCommand(params))
 	cobra.CheckErr(rootCmd.Execute())
 }
 

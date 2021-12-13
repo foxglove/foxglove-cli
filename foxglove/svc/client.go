@@ -58,6 +58,13 @@ type DeviceCodeResponse struct {
 	VerificationUriComplete string `json:"verificationUriComplete"`
 }
 
+type DeviceResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type foxgloveClient struct {
 	baseurl  string
 	clientID string
@@ -212,6 +219,27 @@ func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	}
 	response := &DeviceCodeResponse{}
 	err = json.NewDecoder(resp.Body).Decode(response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return response, nil
+}
+
+func (c *foxgloveClient) Devices() ([]DeviceResponse, error) {
+	resp, err := c.authed.Get(c.baseurl + "/v1/devices")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch devices: %w", err)
+	}
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return nil, ErrForbidden
+	case http.StatusOK:
+		break
+	default:
+		return nil, unpackErrorResponse(resp.Body)
+	}
+	response := []DeviceResponse{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
