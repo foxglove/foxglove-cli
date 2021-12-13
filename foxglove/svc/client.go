@@ -65,7 +65,7 @@ type DeviceResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-type foxgloveClient struct {
+type FoxgloveClient struct {
 	baseurl  string
 	clientID string
 	authed   *http.Client
@@ -99,7 +99,7 @@ func unpackErrorResponse(r io.Reader) error {
 
 // SignIn accepts a client ID token and uses it to authenticate to foxglove,
 // returning a bearer token for use in subsequent HTTP requests.
-func (c *foxgloveClient) SignIn(token string) (string, error) {
+func (c *FoxgloveClient) SignIn(token string) (string, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(SignInRequest{
 		Token: token,
@@ -124,7 +124,7 @@ func (c *foxgloveClient) SignIn(token string) (string, error) {
 
 // Stream returns a ReadCloser wrapping a binary output stream in response to
 // the provided request.
-func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
+func (c *FoxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(r)
 	if err != nil {
@@ -159,7 +159,7 @@ func (c *foxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 
 // Upload uploads the contents of a reader for a provided filenamem and device.
 // It manages the indirection through GCS signed upload links for the caller.
-func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
+func (c *FoxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(r)
 	if err != nil {
@@ -202,7 +202,7 @@ func (c *foxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 
 // DeviceCode retrieves a device code, which may be used to correlate a login
 // action with a token through the API.
-func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
+func (c *FoxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(DeviceCodeRequest{
 		ClientID: c.clientID,
@@ -225,7 +225,7 @@ func (c *foxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	return response, nil
 }
 
-func (c *foxgloveClient) Devices() ([]DeviceResponse, error) {
+func (c *FoxgloveClient) Devices() ([]DeviceResponse, error) {
 	resp, err := c.authed.Get(c.baseurl + "/v1/devices")
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch devices: %w", err)
@@ -249,7 +249,7 @@ func (c *foxgloveClient) Devices() ([]DeviceResponse, error) {
 // Token returns a token for the provided device code. If the token for the
 // device code does not exist yet, ErrForbidden is returned. It is up to the
 // caller to give up after sufficient retries.
-func (c *foxgloveClient) Token(deviceCode string) (string, error) {
+func (c *FoxgloveClient) Token(deviceCode string) (string, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(TokenRequest{
 		DeviceCode: deviceCode,
@@ -302,8 +302,8 @@ func makeClient(userAgent, token string) *http.Client {
 // cloud service. The "token" parameter will be passed in authorization headers.
 // For unauthenticated usage (token, device code - the initial signin flow) it
 // may be passed as empty, however authorized requests will fail.
-func NewRemoteFoxgloveClient(baseurl, clientID, token, userAgent string) *foxgloveClient {
-	return &foxgloveClient{
+func NewRemoteFoxgloveClient(baseurl, clientID, token, userAgent string) *FoxgloveClient {
+	return &FoxgloveClient{
 		baseurl:  baseurl,
 		clientID: clientID,
 		authed:   makeClient(userAgent, token),

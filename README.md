@@ -82,3 +82,10 @@ $ rosbag info output.bag
   topics:       /gps/fix            3364 msgs    : sensor_msgs/NavSatFix
                 /gps/fix_velocity   3364 msgs    : geometry_msgs/TwistWithCovarianceStamped
 ```
+
+### Shell autocompletion
+
+The foxglove tool supports shell autocompletion for subcommands and some kinds
+of parameters (such as device IDs). To enable this, consult the instructions
+for your shell under `foxglove completion <shell> -h`. Supported shells are
+bash, zsh, fish, and PowerShell.

@@ -21,7 +21,7 @@ const (
 func Export(
 	ctx context.Context,
 	w io.Writer,
-	client *foxgloveClient,
+	client *FoxgloveClient,
 	deviceID string,
 	startstr string,
 	endstr string,
@@ -57,7 +57,7 @@ func Export(
 
 func Import(
 	ctx context.Context,
-	client *foxgloveClient,
+	client *FoxgloveClient,
 	deviceID string,
 	filename string,
 ) error {
@@ -85,7 +85,7 @@ func Import(
 }
 
 // Login initializes a browser-based login flow for foxglove studio.
-func Login(ctx context.Context, client *foxgloveClient) (string, error) {
+func Login(ctx context.Context, client *FoxgloveClient) (string, error) {
 	info, err := client.DeviceCode()
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch device code: %w", err)

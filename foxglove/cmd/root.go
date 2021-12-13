@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/foxglove/foxglove-cli/foxglove/svc"
 	"github.com/spf13/cobra"
 
 	"github.com/spf13/viper"
@@ -31,6 +32,26 @@ type baseParams struct {
 	token     string
 }
 
+func listDevicesAutocompletionFunc(
+	baseURL string,
+	clientID string,
+	token string,
+	userAgent string,
+) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		client := svc.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+		devices, err := client.Devices()
+		if err != nil {
+			return []string{}, cobra.ShellCompDirectiveDefault
+		}
+		var candidates []string
+		for _, device := range devices {
+			candidates = append(candidates, fmt.Sprintf("%s\t%s", device.ID, device.Name))
+		}
+		return candidates, cobra.ShellCompDirectiveDefault
+	}
+}
+
 func Execute(version string) {
 	if version == "" {
 		version = "dev"
@@ -53,7 +74,6 @@ func Execute(version string) {
 	}
 
 	var baseURL, clientID, cfgFile string
-	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", foxgloveClientID, "foxglove client ID")
 	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
