@@ -68,6 +68,10 @@ func Execute(version string) {
 		Use:   "data",
 		Short: "Data access and management",
 	}
+	importsCmd := &cobra.Command{
+		Use:   "imports",
+		Short: "Query and modify data imports",
+	}
 	devicesCmd := &cobra.Command{
 		Use:   "devices",
 		Short: "List and manage devices",
@@ -113,7 +117,8 @@ func Execute(version string) {
 	loginCmd := newLoginCommand(params)
 	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd)
 	authCmd.AddCommand(loginCmd)
-	dataCmd.AddCommand(importCmd, exportCmd)
+	importsCmd.AddCommand(newListImportsCommand(params))
+	dataCmd.AddCommand(importCmd, exportCmd, importsCmd)
 	devicesCmd.AddCommand(newListDevicesCommand(params))
 	cobra.CheckErr(rootCmd.Execute())
 }

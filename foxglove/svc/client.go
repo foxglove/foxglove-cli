@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/ajg/form"
 )
 
 var (
@@ -65,11 +67,34 @@ type DeviceResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+type ImportsRequest struct {
+	DeviceID       string `json:"deviceId" form:"deviceId"`
+	Start          string `json:"start" form:"start"`
+	End            string `json:"end" form:"end"`
+	DataStart      string `json:"dataStart" form:"dataStart"`
+	DataEnd        string `json:"dataEnd" form:"dataEnd"`
+	IncludeDeleted bool   `json:"includeDeleted" form:"includeDeleted"`
+}
+
+type ImportsResponse struct {
+	ImportID        string    `json:"importId"`
+	DeviceID        string    `json:"deviceId"`
+	Filename        string    `json:"filename"`
+	ImportTime      time.Time `json:"importTime"`
+	Start           time.Time `json:"start"`
+	End             time.Time `json:"end"`
+	InputType       string    `json:"inputType"`
+	OutputType      string    `json:"outputType"`
+	InputSize       int64     `json:"inputSize"`
+	TotalOutputSize int64     `json:"totalOutputSize"`
+}
+
 type FoxgloveClient struct {
-	baseurl  string
-	clientID string
-	authed   *http.Client
-	unauthed *http.Client
+	baseurl   string
+	clientID  string
+	userAgent string
+	authed    *http.Client
+	unauthed  *http.Client
 }
 
 type SignInRequest struct {
@@ -119,6 +144,7 @@ func (c *FoxgloveClient) SignIn(token string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to decode sign in response: %w", err)
 	}
+	c.authed = makeClient(c.userAgent, r.BearerToken)
 	return r.BearerToken, nil
 }
 
@@ -246,6 +272,32 @@ func (c *FoxgloveClient) Devices() ([]DeviceResponse, error) {
 	return response, nil
 }
 
+func (c *FoxgloveClient) Imports(req *ImportsRequest) ([]ImportsResponse, error) {
+	querystring, err := form.EncodeToString(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+	resp, err := c.authed.Get(c.baseurl + "/v1/data/imports?" + querystring)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch imports: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return nil, ErrForbidden
+	case http.StatusOK:
+		break
+	default:
+		return nil, unpackErrorResponse(resp.Body)
+	}
+	response := []ImportsResponse{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode imports response: %w", err)
+	}
+	return response, nil
+}
+
 // Token returns a token for the provided device code. If the token for the
 // device code does not exist yet, ErrForbidden is returned. It is up to the
 // caller to give up after sufficient retries.
@@ -304,9 +356,10 @@ func makeClient(userAgent, token string) *http.Client {
 // may be passed as empty, however authorized requests will fail.
 func NewRemoteFoxgloveClient(baseurl, clientID, token, userAgent string) *FoxgloveClient {
 	return &FoxgloveClient{
-		baseurl:  baseurl,
-		clientID: clientID,
-		authed:   makeClient(userAgent, token),
-		unauthed: makeClient(userAgent, ""),
+		baseurl:   baseurl,
+		clientID:  clientID,
+		userAgent: userAgent,
+		authed:    makeClient(userAgent, token),
+		unauthed:  makeClient(userAgent, ""),
 	}
 }
