@@ -65,6 +65,28 @@ type DeviceResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+type ImportsRequest struct {
+	DeviceID       string    `json:"deviceId"`
+	Start          time.Time `json:"start"`
+	End            time.Time `json:"end"`
+	DataStart      time.Time `json:"dataStart"`
+	DataEnd        time.Time `json:"dataEnd"`
+	IncludeDeleted bool      `json:"includeDeleted"`
+}
+
+type ImportsResponse struct {
+	ImportID        string    `json:"importId"`
+	DeviceID        string    `json:"deviceId"`
+	Filename        string    `json:"filename"`
+	ImportTime      time.Time `json:"importTime"`
+	Start           time.Time `json:"start"`
+	End             time.Time `json:"end"`
+	InputType       string    `json:"inputType"`
+	OutputType      string    `json:"outputType"`
+	InputSize       int64     `json:"inputSize"`
+	TotalOutputSize int64     `json:"totalOutputSize"`
+}
+
 type FoxgloveClient struct {
 	baseurl  string
 	clientID string
@@ -242,6 +264,28 @@ func (c *FoxgloveClient) Devices() ([]DeviceResponse, error) {
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return response, nil
+}
+
+func (c *FoxgloveClient) Imports(req *ImportsRequest) ([]ImportsResponse, error) {
+	resp, err := c.authed.Get(c.baseurl + "/v1/data/imports")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch imports: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return nil, ErrForbidden
+	case http.StatusOK:
+		break
+	default:
+		return nil, unpackErrorResponse(resp.Body)
+	}
+	response := []ImportsResponse{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode imports response: %w", err)
 	}
 	return response, nil
 }
