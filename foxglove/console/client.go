@@ -1,4 +1,4 @@
-package svc
+package console
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/ajg/form"
 )
@@ -17,96 +16,12 @@ var (
 	ErrNotFound  = errors.New("not found")
 )
 
-type TokenRequest struct {
-	ClientID   string `json:"clientId"`
-	DeviceCode string `json:"deviceCode"`
-}
-
-type TokenResponse struct {
-	IDToken string `json:"idToken"`
-}
-
-type UploadRequest struct {
-	Filename string `json:"filename"`
-	DeviceID string `json:"deviceId"`
-}
-
-type UploadResponse struct {
-	Link string `json:"link"`
-}
-
-type StreamRequest struct {
-	DeviceID     string    `json:"deviceId"`
-	Start        time.Time `json:"start"`
-	End          time.Time `json:"end"`
-	OutputFormat string    `json:"outputFormat"`
-	Topics       []string  `json:"topics"`
-}
-
-type StreamResponse struct {
-	Link string `json:"link"`
-}
-
-type DeviceCodeRequest struct {
-	ClientID string `json:"clientId"`
-}
-
-type DeviceCodeResponse struct {
-	DeviceCode              string `json:"deviceCode"`
-	UserCode                string `json:"userCode"`
-	ExpiresIn               int    `json:"expiresIn"`
-	Interval                int    `json:"interval"`
-	VerificationUri         string `json:"verificationUri"`
-	VerificationUriComplete string `json:"verificationUriComplete"`
-}
-
-type DeviceResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-type ImportsRequest struct {
-	DeviceID       string `json:"deviceId" form:"deviceId"`
-	Start          string `json:"start" form:"start"`
-	End            string `json:"end" form:"end"`
-	DataStart      string `json:"dataStart" form:"dataStart"`
-	DataEnd        string `json:"dataEnd" form:"dataEnd"`
-	IncludeDeleted bool   `json:"includeDeleted" form:"includeDeleted"`
-}
-
-type ImportsResponse struct {
-	ImportID        string    `json:"importId"`
-	DeviceID        string    `json:"deviceId"`
-	Filename        string    `json:"filename"`
-	ImportTime      time.Time `json:"importTime"`
-	Start           time.Time `json:"start"`
-	End             time.Time `json:"end"`
-	InputType       string    `json:"inputType"`
-	OutputType      string    `json:"outputType"`
-	InputSize       int64     `json:"inputSize"`
-	TotalOutputSize int64     `json:"totalOutputSize"`
-}
-
 type FoxgloveClient struct {
 	baseurl   string
 	clientID  string
 	userAgent string
 	authed    *http.Client
 	unauthed  *http.Client
-}
-
-type SignInRequest struct {
-	Token string `json:"idToken"`
-}
-
-type SignInResponse struct {
-	BearerToken string `json:"bearerToken"`
-}
-
-type ErrorResponse struct {
-	Error string `json:"error"`
 }
 
 func unpackErrorResponse(r io.Reader) error {
@@ -251,51 +166,87 @@ func (c *FoxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	return response, nil
 }
 
-func (c *FoxgloveClient) Devices() ([]DeviceResponse, error) {
-	resp, err := c.authed.Get(c.baseurl + "/v1/devices")
+func (c *FoxgloveClient) post(
+	endpoint string,
+	req any,
+	target any,
+) error {
+	buf := bytes.Buffer{}
+	err := json.NewEncoder(&buf).Encode(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch devices: %w", err)
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+	resp, err := c.authed.Post(c.baseurl+endpoint, "application/json", &buf)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
 	}
 	switch resp.StatusCode {
 	case http.StatusForbidden:
-		return nil, ErrForbidden
+		return ErrForbidden
 	case http.StatusOK:
 		break
 	default:
-		return nil, unpackErrorResponse(resp.Body)
+		return unpackErrorResponse(resp.Body)
 	}
-	response := []DeviceResponse{}
-	err = json.NewDecoder(resp.Body).Decode(&response)
+	err = json.NewDecoder(resp.Body).Decode(target)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return fmt.Errorf("failed to decode response: %w", err)
 	}
-	return response, nil
+	return nil
 }
 
-func (c *FoxgloveClient) Imports(req *ImportsRequest) ([]ImportsResponse, error) {
+func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDeviceResponse, err error) {
+	err = c.post("/v1/devices", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventResponse, err error) {
+	err = c.post("/beta/device-events", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 	querystring, err := form.EncodeToString(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode request: %w", err)
+		return fmt.Errorf("failed to encode request: %w", err)
 	}
-	resp, err := c.authed.Get(c.baseurl + "/v1/data/imports?" + querystring)
+	resp, err := c.authed.Get(c.baseurl + endpoint + "?" + querystring)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch imports: %w", err)
+		return fmt.Errorf("failed to fetch records: %w", err)
 	}
-	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusForbidden:
-		return nil, ErrForbidden
+		return ErrForbidden
 	case http.StatusOK:
 		break
 	default:
-		return nil, unpackErrorResponse(resp.Body)
+		return unpackErrorResponse(resp.Body)
 	}
-	response := []ImportsResponse{}
-	err = json.NewDecoder(resp.Body).Decode(&response)
+	err = json.NewDecoder(resp.Body).Decode(target)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode imports response: %w", err)
+		return fmt.Errorf("failed to decode response: %w", err)
 	}
-	return response, nil
+	return nil
+}
+
+func (c *FoxgloveClient) Devices(req DevicesRequest) (resp []DevicesResponse, err error) {
+	err = c.get("/v1/devices", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventsResponse, err error) {
+	err = c.get("/beta/device-events", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, err error) {
+	err = c.get("/v1/data/imports", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) Coverage(req *CoverageRequest) (resp []CoverageResponse, err error) {
+	err = c.get("/v1/data/coverage", *req, &resp)
+	return resp, err
 }
 
 // Token returns a token for the provided device code. If the token for the

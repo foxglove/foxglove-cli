@@ -4,25 +4,25 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 func executeImport(baseURL, clientID, deviceID, filename, token, userAgent string) error {
 	ctx := context.Background()
-	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	err := svc.Import(ctx, client, deviceID, filename)
+	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+	err := console.Import(ctx, client, deviceID, filename)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func newImportCommand(params *baseParams) (*cobra.Command, error) {
+func newImportCommand(params *baseParams, commandName string) (*cobra.Command, error) {
 	var deviceID string
 	importCmd := &cobra.Command{
-		Use:   "import [FILE]",
+		Use:   fmt.Sprintf("%s [FILE]", commandName),
 		Short: "Import a data file to the foxglove data platform",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
