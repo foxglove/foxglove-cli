@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,13 +20,13 @@ func renderImportsTable(w io.Writer, imports []svc.ImportsResponse) {
 		"Import ID",
 		"Device ID",
 		"Filename",
-		"ImportTime",
+		"Import Time",
 		"Start",
 		"End",
-		"InputType",
-		"OutputType",
-		"InputSize",
-		"TotalOutputSize",
+		"Input Type",
+		"Output Type",
+		"Input Size",
+		"Total Output Size",
 	})
 	table.SetBorders(tablewriter.Border{
 		Left:   true,
@@ -54,6 +55,44 @@ func renderImportsTable(w io.Writer, imports []svc.ImportsResponse) {
 	table.Render()
 }
 
+func renderImportsCSV(w io.Writer, imports []svc.ImportsResponse) error {
+	writer := csv.NewWriter(w)
+	err := writer.Write([]string{
+		"importId",
+		"deviceId",
+		"filename",
+		"importTime",
+		"start",
+		"end",
+		"inputType",
+		"outputType",
+		"inputSize",
+		"totalOutputSize",
+	})
+	if err != nil {
+		return err
+	}
+	for _, imp := range imports {
+		err := writer.Write([]string{
+			imp.ImportID,
+			imp.DeviceID,
+			imp.Filename,
+			imp.ImportTime.Format(time.RFC3339),
+			imp.Start.Format(time.RFC3339),
+			imp.End.Format(time.RFC3339),
+			imp.InputType,
+			imp.OutputType,
+			fmt.Sprintf("%d", imp.InputSize),
+			fmt.Sprintf("%d", imp.TotalOutputSize),
+		})
+		if err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
 func renderImportsJSON(w io.Writer, imports []svc.ImportsResponse) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "    ")
@@ -77,6 +116,11 @@ func listImports(
 		renderImportsTable(w, imports)
 	case "json":
 		err := renderImportsJSON(w, imports)
+		if err != nil {
+			return err
+		}
+	case "csv":
+		err := renderImportsCSV(w, imports)
 		if err != nil {
 			return err
 		}
