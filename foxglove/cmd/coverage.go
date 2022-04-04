@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func newListCoveragCommand(params *baseParams) *cobra.Command {
+func newListCoverageCommand(params *baseParams) *cobra.Command {
 	var format string
 	var start string
 	var end string

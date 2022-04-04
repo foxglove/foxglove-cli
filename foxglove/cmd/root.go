@@ -80,6 +80,10 @@ func Execute(version string) {
 		Use:   "events",
 		Short: "List and manage events",
 	}
+	coverageCmd := &cobra.Command{
+		Use:   "coverage",
+		Short: "List coverage ranges",
+	}
 
 	var baseURL, clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -122,7 +126,13 @@ func Execute(version string) {
 	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, eventsCmd)
 	authCmd.AddCommand(loginCmd)
 	importsCmd.AddCommand(newListImportsCommand(params))
-	dataCmd.AddCommand(importCmd, exportCmd, importsCmd)
+	coverageCmd.AddCommand(newListCoverageCommand(params))
+	dataCmd.AddCommand(
+		importCmd,
+		exportCmd,
+		importsCmd,
+		coverageCmd,
+	)
 	devicesCmd.AddCommand(newListDevicesCommand(params))
 	eventsCmd.AddCommand(newListEventsCommand(params))
 	cobra.CheckErr(rootCmd.Execute())

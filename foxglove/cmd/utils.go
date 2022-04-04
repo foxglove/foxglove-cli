@@ -35,6 +35,9 @@ func renderList[RequestType svc.Request, ResponseType svc.Record](
 
 func renderTable[RecordType svc.Record](w io.Writer, records []RecordType) {
 	table := tablewriter.NewWriter(w)
+	if len(records) == 0 {
+		return
+	}
 	headers := records[0].Headers()
 	table.SetHeader(headers)
 	table.SetBorders(tablewriter.Border{

@@ -393,9 +393,9 @@ func list[
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
-	resp, err := c.authed.Get(c.baseurl + "/v1/data/imports?" + querystring)
+	resp, err := c.authed.Get(c.baseurl + endpoint + "?" + querystring)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch imports: %w", err)
+		return nil, fmt.Errorf("failed to fetch records: %w", err)
 	}
 	switch resp.StatusCode {
 	case http.StatusForbidden:
