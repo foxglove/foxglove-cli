@@ -76,6 +76,10 @@ func Execute(version string) {
 		Use:   "devices",
 		Short: "List and manage devices",
 	}
+	eventsCmd := &cobra.Command{
+		Use:   "events",
+		Short: "List and manage events",
+	}
 
 	var baseURL, clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -115,11 +119,12 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd)
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, eventsCmd)
 	authCmd.AddCommand(loginCmd)
 	importsCmd.AddCommand(newListImportsCommand(params))
 	dataCmd.AddCommand(importCmd, exportCmd, importsCmd)
 	devicesCmd.AddCommand(newListDevicesCommand(params))
+	eventsCmd.AddCommand(newListEventsCommand(params))
 	cobra.CheckErr(rootCmd.Execute())
 }
 

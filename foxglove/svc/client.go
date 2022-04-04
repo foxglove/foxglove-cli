@@ -68,12 +68,12 @@ type DeviceResponse struct {
 }
 
 type ImportsRequest struct {
-	DeviceID       string `json:"deviceId" form:"deviceId"`
-	Start          string `json:"start" form:"start"`
-	End            string `json:"end" form:"end"`
-	DataStart      string `json:"dataStart" form:"dataStart"`
-	DataEnd        string `json:"dataEnd" form:"dataEnd"`
-	IncludeDeleted bool   `json:"includeDeleted" form:"includeDeleted"`
+	DeviceID       string `json:"deviceId" form:"deviceId,omitempty"`
+	Start          string `json:"start" form:"start,omitempty"`
+	End            string `json:"end" form:"end,omitempty"`
+	DataStart      string `json:"dataStart" form:"dataStart,omitempty"`
+	DataEnd        string `json:"dataEnd" form:"dataEnd,omitempty"`
+	IncludeDeleted bool   `json:"includeDeleted" form:"includeDeleted,omitempty"`
 }
 
 type ImportsResponse struct {
@@ -87,6 +87,28 @@ type ImportsResponse struct {
 	OutputType      string    `json:"outputType"`
 	InputSize       int64     `json:"inputSize"`
 	TotalOutputSize int64     `json:"totalOutputSize"`
+}
+
+type EventsRequest struct {
+	DeviceID   string `json:"deviceId" form:"deviceId,omitempty"`
+	DeviceName string `json:"deviceName" form:"deviceName,omitempty"`
+	SortBy     string `json:"sortBy" form:"sortBy,omitempty"`
+	SortOrder  string `json:"sortOrder" form:"sortOrder,omitempty"`
+	Limit      int    `json:"limit" form:"limit,omitempty"`
+	Offset     int    `json:"offset" form:"offset,omitempty"`
+	Start      string `json:"start" form:"start,omitempty"`
+	End        string `json:"end" form:"end,omitempty"`
+	Key        string `json:"key" form:"key,omitempty"`
+	Value      string `json:"value" form:"value,omitempty"`
+}
+type EventsResponse struct {
+	ID             string            `json:"id"`
+	DeviceID       string            `json:"deviceId"`
+	TimestampNanos string            `json:"timestampNanos"`
+	DurationNanos  string            `json:"durationNanos"`
+	Metadata       map[string]string `json:"metadata"`
+	CreatedAt      string            `json:"createdAt"`
+	UpdatedAt      string            `json:"updatedAt"`
 }
 
 type FoxgloveClient struct {
@@ -268,6 +290,32 @@ func (c *FoxgloveClient) Devices() ([]DeviceResponse, error) {
 	err = json.NewDecoder(resp.Body).Decode(&response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return response, nil
+}
+
+func (c *FoxgloveClient) Events(req *EventsRequest) ([]EventsResponse, error) {
+	querystring, err := form.EncodeToString(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode request: %w", err)
+	}
+	resp, err := c.authed.Get(c.baseurl + "/beta/device-events?" + querystring)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch events: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return nil, ErrForbidden
+	case http.StatusOK:
+		break
+	default:
+		return nil, unpackErrorResponse(resp.Body)
+	}
+	response := []EventsResponse{}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode events response: %w", err)
 	}
 	return response, nil
 }
