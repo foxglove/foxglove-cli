@@ -24,9 +24,15 @@ func renderList[RequestType svc.Request, ResponseType svc.Record](
 	case "table":
 		renderTable(w, records)
 	case "json":
-		renderJSON(w, records)
+		err := renderJSON(w, records)
+		if err != nil {
+			return fmt.Errorf("failed to render JSON: %w", err)
+		}
 	case "csv":
-		renderCSV(w, records)
+		err := renderCSV(w, records)
+		if err != nil {
+			return fmt.Errorf("failed to render CSV: %w", err)
+		}
 	default:
 		return fmt.Errorf("unsupported format %s", format)
 	}
