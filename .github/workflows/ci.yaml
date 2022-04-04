@@ -15,19 +15,16 @@ jobs:
       - name: install go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17.x
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
-        with:
-          version: v1.43
-          working-directory: ./foxglove
+          go-version: 1.18.x
+      - name: install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.44.2
   test:
     runs-on: ubuntu-latest
     steps:
       - name: install go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17.x
+          go-version: 1.18.x
       - name: Checkout code
         uses: actions/checkout@v2
       - run: git lfs pull
@@ -53,7 +50,7 @@ jobs:
       - name: install go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.17.x
+          go-version: 1.18.x
       - name: Get OS and arch info
         run: |
           GOOSARCH=${{matrix.goosarch}}
