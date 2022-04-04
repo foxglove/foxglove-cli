@@ -140,6 +140,22 @@ func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *MockFoxgloveServer) imports(w http.ResponseWriter, r *http.Request) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	imports := []ImportsResponse{}
+	for key := range s.Uploads {
+		imports = append(imports, ImportsResponse{
+			ImportID: key,
+		})
+	}
+	err := json.NewEncoder(w).Encode(imports)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func (s *MockFoxgloveServer) deviceCode(w http.ResponseWriter, r *http.Request) {
 	req := DeviceCodeRequest{}
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -259,6 +275,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/signin", sv.signIn).Methods("POST")
 	r.HandleFunc("/v1/data/stream", sv.withAuthz(sv.stream)).Methods("POST")
+	r.HandleFunc("/v1/data/imports", sv.withAuthz(sv.imports)).Methods("GET")
 	r.HandleFunc("/v1/data/upload", sv.withAuthz(sv.uploadRedirect)).Methods("POST")
 	r.HandleFunc("/v1/auth/device-code", sv.deviceCode).Methods("POST")
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")

@@ -1,8 +1,9 @@
 module github.com/foxglove/foxglove-cli/foxglove
 
-go 1.17
+go 1.18
 
 require (
+	github.com/ajg/form v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/schollz/progressbar/v3 v3.8.3
