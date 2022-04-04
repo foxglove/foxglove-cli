@@ -1,133 +1,13 @@
 package cmd
 
 import (
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/svc"
-	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
-
-func renderEventsJSON(w io.Writer, events []svc.EventsResponse) error {
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "    ")
-	return encoder.Encode(events)
-}
-
-func renderEventsCSV(w io.Writer, events []svc.EventsResponse) error {
-	writer := csv.NewWriter(w)
-	err := writer.Write([]string{
-		"id",
-		"deviceId",
-		"timestamp",
-		"duration",
-		"createdAt",
-		"updatedAt",
-		"metadata",
-	})
-	if err != nil {
-		return err
-	}
-	for _, event := range events {
-		metadata, err := json.Marshal(event.Metadata)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %s", err)
-		}
-		err = writer.Write([]string{
-			event.ID,
-			event.DeviceID,
-			event.TimestampNanos,
-			event.DurationNanos,
-			event.CreatedAt,
-			event.UpdatedAt,
-			string(metadata),
-		})
-		if err != nil {
-			return err
-		}
-	}
-	writer.Flush()
-	return writer.Error()
-}
-
-func renderEventsTable(w io.Writer, events []svc.EventsResponse) error {
-	table := tablewriter.NewWriter(w)
-	table.SetHeader([]string{
-		"ID",
-		"Device ID",
-		"Timestamp",
-		"Duration",
-		"Created At",
-		"Updated At",
-		"Metadata",
-	})
-	table.SetBorders(tablewriter.Border{
-		Left:   true,
-		Top:    false,
-		Right:  true,
-		Bottom: false,
-	})
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("|")
-	data := [][]string{}
-	for _, event := range events {
-		metadata, err := json.Marshal(event.Metadata)
-		if err != nil {
-			return fmt.Errorf("failed to marshal metadata: %s", err)
-		}
-		data = append(data, []string{
-			event.ID,
-			event.DeviceID,
-			event.TimestampNanos,
-			event.DurationNanos,
-			event.CreatedAt,
-			event.UpdatedAt,
-			string(metadata),
-		})
-	}
-	table.AppendBulk(data)
-	table.Render()
-	return nil
-}
-
-func listEvents(
-	w io.Writer,
-	baseURL string,
-	clientID,
-	format, token, userAgent string,
-	req *svc.EventsRequest,
-) error {
-	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	events, err := client.Events(req)
-	if err != nil {
-		return err
-	}
-	switch format {
-	case "table":
-		err := renderEventsTable(w, events)
-		if err != nil {
-			return err
-		}
-	case "json":
-		err := renderEventsJSON(w, events)
-		if err != nil {
-			return err
-		}
-	case "csv":
-		err := renderEventsCSV(w, events)
-		if err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported format %s", format)
-	}
-	return nil
-}
 
 func newListEventsCommand(params *baseParams) *cobra.Command {
 	var format string
@@ -145,13 +25,13 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List events",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := listEvents(
-				os.Stdout,
-				*params.baseURL,
-				*params.clientID,
-				format,
+			client := svc.NewRemoteFoxgloveClient(
+				*params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
 				params.userAgent,
+			)
+			err := renderList(
+				os.Stdout,
 				&svc.EventsRequest{
 					DeviceID:   deviceID,
 					DeviceName: deviceName,
@@ -164,6 +44,8 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 					Key:        key,
 					Value:      value,
 				},
+				client.Events,
+				format,
 			)
 			if err != nil {
 				fmt.Printf("Failed to list events: %s\n", err)

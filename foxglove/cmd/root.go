@@ -40,7 +40,7 @@ func listDevicesAutocompletionFunc(
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		client := svc.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-		devices, err := client.Devices()
+		devices, err := client.Devices(svc.DevicesRequest{})
 		if err != nil {
 			return []string{}, cobra.ShellCompDirectiveDefault
 		}

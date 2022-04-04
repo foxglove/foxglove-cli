@@ -21,7 +21,7 @@ type MockFoxgloveServer struct {
 	Uploads           map[string][]byte // object storage
 	IDTokens          map[string]string // device ID -> ID token
 	BearerTokens      map[string]string // bearer token -> ID token
-	registeredDevices []DeviceResponse
+	registeredDevices []DevicesResponse
 	tokenRequests     int
 	port              int
 }
@@ -256,7 +256,7 @@ func mockServer(port int) *MockFoxgloveServer {
 		BearerTokens:  make(map[string]string),
 		tokenRequests: 0,
 		port:          port,
-		registeredDevices: []DeviceResponse{
+		registeredDevices: []DevicesResponse{
 			{
 				ID:        "test-device",
 				Name:      "my test device",
