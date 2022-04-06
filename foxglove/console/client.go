@@ -202,6 +202,10 @@ func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (CreateDeviceResp
 	return post[CreateDeviceRequest, CreateDeviceResponse](c, "/v1/devices", req)
 }
 
+func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (CreateEventResponse, error) {
+	return post[CreateEventRequest, CreateEventResponse](c, "/beta/device-events", req)
+}
+
 func list[
 	RequestType any, ResponseType any,
 ](

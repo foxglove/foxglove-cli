@@ -230,3 +230,21 @@ type CreateDeviceResponse struct {
 	Name         string  `json:"name"`
 	SerialNumber *string `json:"serialNumber"`
 }
+
+type CreateEventRequest struct {
+	DeviceID      string            `json:"deviceId"`
+	DeviceName    string            `json:"deviceName"`
+	Timestamp     string            `json:"timestamp"`
+	DurationNanos string            `json:"durationNanos"`
+	Metadata      map[string]string `json:"metadata"`
+}
+
+type CreateEventResponse struct {
+	ID             string            `json:"id"`
+	DeviceID       string            `json:"deviceId"`
+	TimestampNanos string            `json:"timestampNanos"`
+	DurationNanos  string            `json:"durationNanos"`
+	Metadata       map[string]string `json:"metadata"`
+	CreatedAt      string            `json:"createdAt"`
+	UpdatedAt      string            `json:"updatedAt"`
+}

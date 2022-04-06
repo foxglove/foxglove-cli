@@ -3,11 +3,58 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+func newAddEventCommand(params *baseParams) *cobra.Command {
+	var deviceID string
+	var deviceName string
+	var timestamp string
+	var durationNanos string
+	var keyvals []string
+	addEventCmd := &cobra.Command{
+		Use:   "add",
+		Short: "Add an event",
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(
+				*params.baseURL, *params.clientID,
+				viper.GetString("bearer_token"),
+				params.userAgent,
+			)
+
+			metadata := make(map[string]string)
+			for _, kv := range keyvals {
+				parts := strings.FieldsFunc(kv, func(c rune) bool { return c == ':' })
+				if len(parts) != 2 {
+					fmt.Printf("Invalid key/value pair: %s\n", kv)
+					os.Exit(1)
+				}
+				metadata[parts[0]] = parts[1]
+			}
+			response, err := client.CreateEvent(console.CreateEventRequest{
+				DeviceID:      deviceID,
+				DeviceName:    deviceName,
+				Timestamp:     timestamp,
+				DurationNanos: durationNanos,
+				Metadata:      metadata,
+			})
+			if err != nil {
+				fmt.Printf("Failed to add event: %s\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Created event: %s\n", response.ID)
+		},
+	}
+	addEventCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
+	addEventCmd.PersistentFlags().StringVarP(&timestamp, "timestamp", "", "", "Timestamp of event (RFC3339 format)")
+	addEventCmd.PersistentFlags().StringVarP(&durationNanos, "duration-nanos", "", "", "Duration of event in nanoseconds")
+	addEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
+	return addEventCmd
+}
 
 func newListEventsCommand(params *baseParams) *cobra.Command {
 	var format string
