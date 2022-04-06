@@ -185,15 +185,24 @@ func executeExport(
 			return fmt.Errorf("failed to create pipe: %w", err)
 		}
 
+		closed := make(chan bool)
 		go func() {
 			err := mcap2JSON(w, pipeReader)
 			if err != nil {
 				log.Println("error converting to JSON: %w", err)
 			}
+			closed <- true
 		}()
+
 		err = svc.Export(ctx, pipeWriter, client, deviceID, start, end, topics, "mcap0")
 		if err != nil {
 			return err
+		}
+
+		err = pipeReader.Close()
+		<-closed
+		if err != nil {
+			return fmt.Errorf("failed to close pipe: %w", err)
 		}
 		return pipeWriter.Close()
 	} else {
@@ -227,6 +236,8 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if err != nil {
 				fmt.Printf("Export failed: %s\n", err)
 			}
+			os.Stdout.Write([]byte{'\n'})
+			os.Stdout.Close()
 		},
 	}
 	exportCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
