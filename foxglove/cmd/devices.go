@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -15,14 +15,14 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List devices registered to your organization",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := svc.NewRemoteFoxgloveClient(
+			client := console.NewRemoteFoxgloveClient(
 				*params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
 				params.userAgent,
 			)
 			err := renderList(
 				os.Stdout,
-				svc.DevicesRequest{},
+				console.DevicesRequest{},
 				client.Devices,
 				format,
 			)

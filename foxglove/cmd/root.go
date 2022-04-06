@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
 
 	"github.com/spf13/viper"
@@ -39,8 +39,8 @@ func listDevicesAutocompletionFunc(
 	userAgent string,
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		client := svc.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-		devices, err := client.Devices(svc.DevicesRequest{})
+		client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+		devices, err := client.Devices(console.DevicesRequest{})
 		if err != nil {
 			return []string{}, cobra.ShellCompDirectiveDefault
 		}

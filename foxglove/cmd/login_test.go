@@ -5,14 +5,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
 func TestLoginCommand(t *testing.T) {
 	ctx := context.Background()
-	sv, err := svc.NewMockServer(ctx)
+	sv, err := console.NewMockServer(ctx)
 	assert.Nil(t, err)
 	configfile := "./test-config.yaml"
 	err = initConfig(&configfile)

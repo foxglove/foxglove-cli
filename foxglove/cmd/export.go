@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/foxglove/mcap/go/cli/mcap/utils/ros"
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/spf13/cobra"
@@ -167,7 +167,7 @@ func executeExport(
 	w io.Writer,
 	baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken, userAgent string,
 ) error {
-	client := svc.NewRemoteFoxgloveClient(
+	client := console.NewRemoteFoxgloveClient(
 		baseURL,
 		clientID,
 		bearerToken,
@@ -194,7 +194,7 @@ func executeExport(
 			closed <- true
 		}()
 
-		err = svc.Export(ctx, pipeWriter, client, deviceID, start, end, topics, "mcap0")
+		err = console.Export(ctx, pipeWriter, client, deviceID, start, end, topics, "mcap0")
 		if err != nil {
 			return err
 		}
@@ -206,7 +206,7 @@ func executeExport(
 		}
 		return pipeWriter.Close()
 	} else {
-		return svc.Export(ctx, w, client, deviceID, start, end, topics, outputFormat)
+		return console.Export(ctx, w, client, deviceID, start, end, topics, outputFormat)
 	}
 }
 

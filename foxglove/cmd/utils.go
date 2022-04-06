@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/olekukonko/tablewriter"
 )
 
-func renderList[RequestType svc.Request, ResponseType svc.Record](
+func renderList[RequestType console.Request, ResponseType console.Record](
 	w io.Writer,
 	req RequestType,
 	fn func(RequestType) ([]ResponseType, error),
@@ -39,7 +39,7 @@ func renderList[RequestType svc.Request, ResponseType svc.Record](
 	return nil
 }
 
-func renderTable[RecordType svc.Record](w io.Writer, records []RecordType) {
+func renderTable[RecordType console.Record](w io.Writer, records []RecordType) {
 	table := tablewriter.NewWriter(w)
 	if len(records) == 0 {
 		return
@@ -62,13 +62,13 @@ func renderTable[RecordType svc.Record](w io.Writer, records []RecordType) {
 	table.Render()
 }
 
-func renderJSON[RecordType svc.Record](w io.Writer, records []RecordType) error {
+func renderJSON[RecordType console.Record](w io.Writer, records []RecordType) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "    ")
 	return encoder.Encode(records)
 }
 
-func renderCSV[RecordType svc.Record](w io.Writer, records []RecordType) error {
+func renderCSV[RecordType console.Record](w io.Writer, records []RecordType) error {
 	writer := csv.NewWriter(w)
 	err := writer.Write(records[0].Headers())
 	if err != nil {
