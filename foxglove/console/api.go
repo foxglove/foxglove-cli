@@ -220,3 +220,13 @@ type SignInResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+type CreateDeviceRequest struct {
+	Name         string `json:"name"`
+	SerialNumber string `json:"serialNumber,omitempty"`
+}
+type CreateDeviceResponse struct {
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	SerialNumber *string `json:"serialNumber"`
+}

@@ -41,3 +41,32 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 	)
 	return deviceListCmd
 }
+
+func newAddDeviceCommand(params *baseParams) *cobra.Command {
+	var name string
+	var serialNumber string
+	addDeviceCmd := &cobra.Command{
+		Use:   "add",
+		Short: "Add a device for your organization",
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(
+				*params.baseURL, *params.clientID,
+				viper.GetString("bearer_token"),
+				params.userAgent,
+			)
+			resp, err := client.CreateDevice(console.CreateDeviceRequest{
+				Name:         name,
+				SerialNumber: serialNumber,
+			})
+			if err != nil {
+				fmt.Printf("Failed to create device: %s\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Device created: %s\n", resp.ID)
+		},
+	}
+	addDeviceCmd.InheritedFlags()
+	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "name of the device")
+	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "device serial number")
+	return addDeviceCmd
+}

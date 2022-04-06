@@ -133,7 +133,7 @@ func Execute(version string) {
 		importsCmd,
 		coverageCmd,
 	)
-	devicesCmd.AddCommand(newListDevicesCommand(params))
+	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params))
 	eventsCmd.AddCommand(newListEventsCommand(params))
 	cobra.CheckErr(rootCmd.Execute())
 }

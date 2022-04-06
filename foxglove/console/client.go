@@ -166,6 +166,42 @@ func (c *FoxgloveClient) DeviceCode() (*DeviceCodeResponse, error) {
 	return response, nil
 }
 
+func post[
+	RequestType any, ResponseType any,
+](
+	c *FoxgloveClient,
+	endpoint string,
+	req RequestType,
+) (ResponseType, error) {
+	buf := bytes.Buffer{}
+	var response ResponseType
+	err := json.NewEncoder(&buf).Encode(req)
+	if err != nil {
+		return response, fmt.Errorf("failed to encode request: %w", err)
+	}
+	resp, err := c.authed.Post(c.baseurl+endpoint, "application/json", &buf)
+	if err != nil {
+		return response, fmt.Errorf("request failed: %w", err)
+	}
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return response, ErrForbidden
+	case http.StatusOK:
+		break
+	default:
+		return response, unpackErrorResponse(resp.Body)
+	}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	if err != nil {
+		return response, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return response, nil
+}
+
+func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (CreateDeviceResponse, error) {
+	return post[CreateDeviceRequest, CreateDeviceResponse](c, "/v1/devices", req)
+}
+
 func list[
 	RequestType any, ResponseType any,
 ](
