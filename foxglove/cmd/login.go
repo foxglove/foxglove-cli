@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -12,8 +12,8 @@ import (
 
 func executeLogin(baseURL, clientID, userAgent string) error {
 	ctx := context.Background()
-	client := svc.NewRemoteFoxgloveClient(baseURL, clientID, "", userAgent)
-	bearerToken, err := svc.Login(ctx, client)
+	client := console.NewRemoteFoxgloveClient(baseURL, clientID, "", userAgent)
+	bearerToken, err := console.Login(ctx, client)
 	if err != nil {
 		return err
 	}

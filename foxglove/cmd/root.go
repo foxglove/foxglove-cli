@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/foxglove/foxglove-cli/foxglove/svc"
+	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
 
 	"github.com/spf13/viper"
@@ -39,8 +39,8 @@ func listDevicesAutocompletionFunc(
 	userAgent string,
 ) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		client := svc.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-		devices, err := client.Devices()
+		client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+		devices, err := client.Devices(console.DevicesRequest{})
 		if err != nil {
 			return []string{}, cobra.ShellCompDirectiveDefault
 		}
@@ -68,6 +68,10 @@ func Execute(version string) {
 		Use:   "data",
 		Short: "Data access and management",
 	}
+	betaCmd := &cobra.Command{
+		Use:   "beta",
+		Short: "Experimental features",
+	}
 	importsCmd := &cobra.Command{
 		Use:   "imports",
 		Short: "Query and modify data imports",
@@ -75,6 +79,14 @@ func Execute(version string) {
 	devicesCmd := &cobra.Command{
 		Use:   "devices",
 		Short: "List and manage devices",
+	}
+	eventsCmd := &cobra.Command{
+		Use:   "events",
+		Short: "List and manage events",
+	}
+	coverageCmd := &cobra.Command{
+		Use:   "coverage",
+		Short: "List coverage ranges",
 	}
 
 	var baseURL, clientID, cfgFile string
@@ -104,7 +116,12 @@ func Execute(version string) {
 		fmt.Println(err)
 		return
 	}
-	importCmd, err := newImportCommand(params)
+	addImportCmd, err := newImportCommand(params, "add")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	importShortcut, err := newImportCommand(params, "import")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -115,11 +132,19 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd)
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd)
 	authCmd.AddCommand(loginCmd)
-	importsCmd.AddCommand(newListImportsCommand(params))
-	dataCmd.AddCommand(importCmd, exportCmd, importsCmd)
-	devicesCmd.AddCommand(newListDevicesCommand(params))
+	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
+	coverageCmd.AddCommand(newListCoverageCommand(params))
+	betaCmd.AddCommand(eventsCmd)
+	dataCmd.AddCommand(
+		exportCmd,
+		importsCmd,
+		coverageCmd,
+		importShortcut,
+	)
+	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params))
+	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
 	cobra.CheckErr(rootCmd.Execute())
 }
 

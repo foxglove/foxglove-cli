@@ -1,4 +1,4 @@
-package svc
+package console
 
 import (
 	"context"
@@ -21,7 +21,7 @@ type MockFoxgloveServer struct {
 	Uploads           map[string][]byte // object storage
 	IDTokens          map[string]string // device ID -> ID token
 	BearerTokens      map[string]string // bearer token -> ID token
-	registeredDevices []DeviceResponse
+	registeredDevices []DevicesResponse
 	tokenRequests     int
 	port              int
 }
@@ -74,8 +74,16 @@ func (s *MockFoxgloveServer) stream(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
+	var path string
+	for k := range s.Uploads {
+		if strings.HasPrefix(k, fmt.Sprintf("device_id=%s/", req.DeviceID)) {
+			path = k
+			break
+		}
+	}
 	err = json.NewEncoder(w).Encode(StreamResponse{
-		Link: fmt.Sprintf("http://localhost:%d/storage/device_id=%s/gps.bag", s.port, req.DeviceID),
+		Link: fmt.Sprintf("http://localhost:%d/storage/%s", s.port, path),
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -99,7 +107,6 @@ func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
 	if !s.hasDevice(req.DeviceID) {
 		w.WriteHeader(http.StatusNotFound)
 		err := json.NewEncoder(w).Encode(ErrorResponse{
@@ -110,7 +117,6 @@ func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Reque
 		}
 		return
 	}
-
 	err = json.NewEncoder(w).Encode(UploadResponse{
 		Link: fmt.Sprintf("http://localhost:%d/storage/device_id=%s/%s", s.port, req.DeviceID, req.Filename),
 	})
@@ -135,7 +141,6 @@ func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
 	defer s.mtx.RUnlock()
 	err := json.NewEncoder(w).Encode(s.registeredDevices)
 	if err != nil {
-		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
@@ -151,7 +156,6 @@ func (s *MockFoxgloveServer) imports(w http.ResponseWriter, r *http.Request) {
 	}
 	err := json.NewEncoder(w).Encode(imports)
 	if err != nil {
-		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
@@ -256,7 +260,7 @@ func mockServer(port int) *MockFoxgloveServer {
 		BearerTokens:  make(map[string]string),
 		tokenRequests: 0,
 		port:          port,
-		registeredDevices: []DeviceResponse{
+		registeredDevices: []DevicesResponse{
 			{
 				ID:        "test-device",
 				Name:      "my test device",

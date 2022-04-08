@@ -1,1 +1,2 @@
 foxglove/testdata/gps.bag filter=lfs diff=lfs merge=lfs -text
+foxglove/testdata/gps.mcap filter=lfs diff=lfs merge=lfs -text
