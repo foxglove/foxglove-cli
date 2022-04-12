@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
@@ -32,8 +31,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 				format,
 			)
 			if err != nil {
-				fmt.Printf("Failed to list coverage: %s\n", err)
-				os.Exit(1)
+				fatalf("Failed to list coverage: %s\n", err)
 			}
 		},
 	}

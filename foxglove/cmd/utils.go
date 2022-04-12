@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/olekukonko/tablewriter"
@@ -82,4 +83,9 @@ func renderCSV[RecordType console.Record](w io.Writer, records []RecordType) err
 	}
 	writer.Flush()
 	return writer.Error()
+}
+
+func fatalf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...)
+	os.Exit(1)
 }

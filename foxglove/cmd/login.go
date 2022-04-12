@@ -32,7 +32,7 @@ func newLoginCommand(params *baseParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeLogin(*params.baseURL, *params.clientID, params.userAgent)
 			if err != nil {
-				fmt.Printf("Login failed: %s\n", err)
+				fatalf("Login failed: %s\n", err)
 			}
 		},
 	}

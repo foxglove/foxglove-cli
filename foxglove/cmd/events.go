@@ -95,8 +95,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 				format,
 			)
 			if err != nil {
-				fmt.Printf("Failed to list events: %s\n", err)
-				os.Exit(1)
+				fatalf("Failed to list events: %s\n", err)
 			}
 		},
 	}
