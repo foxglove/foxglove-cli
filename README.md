@@ -124,6 +124,18 @@ $ foxglove beta events list
 
 For adding events, see `foxglove beta events add -h`.
 
+#### Coverage
+The tool supports listing coverage ranges:
+
+```
+(main) $ foxglove data coverage list --start '2016-01-01T00:00:00Z' --end '2018-02-01T00:00:00Z'
+|      DEVICE ID       |             START              |              END               |
+|----------------------|--------------------------------|--------------------------------|
+| dev_flm75pLkfzUBX2DH | 2017-03-22T02:26:20.103843113Z | 2017-03-22T02:26:27.884601618Z |
+| dev_JOgi4YiCRgaoszKw | 2016-11-18T23:46:10.29593596Z  | 2016-11-18T23:51:25.906093435Z |
+| dev_mHH1Cp4gPybCPR8y | 2017-03-22T02:26:20.103843113Z | 2017-03-22T02:26:27.884601618Z |
+```
+
 #### Querying data
 ```
 $ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap

@@ -184,9 +184,12 @@ func (r EventsResponse) Headers() []string {
 }
 
 type CoverageRequest struct {
-	Start string `json:"start" form:"start,omitempty"`
-	End   string `json:"end" form:"end,omitempty"`
+	Start     string `json:"start" form:"start,omitempty"`
+	End       string `json:"end" form:"end,omitempty"`
+	Tolerance int    `json:"tolerance" form:"tolerance,omitempty"`
+	DeviceID  string `json:"deviceId" form:"deviceId,omitempty"`
 }
+
 type CoverageResponse struct {
 	DeviceID string `json:"deviceId"`
 	Start    string `json:"start"`
