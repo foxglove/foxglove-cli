@@ -36,7 +36,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 				params.userAgent,
 			)
 			if err != nil {
-				fmt.Printf("Import failed: %s\n", err)
+				fatalf("Import failed: %s\n", err)
 			}
 		},
 	}

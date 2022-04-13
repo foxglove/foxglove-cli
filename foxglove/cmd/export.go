@@ -234,6 +234,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		Use:   "export",
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
+			defer os.Stdout.Close()
 			err := executeExport(
 				cmd.Context(),
 				os.Stdout,
@@ -248,9 +249,8 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				params.userAgent,
 			)
 			if err != nil {
-				fmt.Printf("Export failed: %s\n", err)
+				fatalf("Export failed: %s\n", err)
 			}
-			os.Stdout.Close()
 		},
 	}
 	exportCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")

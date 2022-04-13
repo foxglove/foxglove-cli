@@ -59,8 +59,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 				SerialNumber: serialNumber,
 			})
 			if err != nil {
-				fmt.Printf("Failed to create device: %s\n", err)
-				os.Exit(1)
+				fatalf("Failed to create device: %s\n", err)
 			}
 			fmt.Printf("Device created: %s\n", resp.ID)
 		},
