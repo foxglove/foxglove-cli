@@ -248,3 +248,21 @@ type CreateEventResponse struct {
 	CreatedAt      string            `json:"createdAt"`
 	UpdatedAt      string            `json:"updatedAt"`
 }
+
+type ExtensionUploadResponse struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Publisher     string  `json:"publisher"`
+	DisplayName   *string `json:"displayName"`
+	Description   *string `json:"description"`
+	ActiveVersion *string `json:"activeVersion"`
+	Sha256Sum     *string `json:"sha256Sum"`
+}
+
+func (e ExtensionUploadResponse) String() string {
+	version := e.ActiveVersion
+	if version == nil {
+		return fmt.Sprintf("%s.%s", e.Publisher, e.Name)
+	}
+	return fmt.Sprintf("%s.%s-%s", e.Publisher, e.Name, *version)
+}

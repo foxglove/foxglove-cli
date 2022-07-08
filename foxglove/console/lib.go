@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -103,6 +104,39 @@ func Import(
 		return err
 	}
 	return nil
+}
+
+func UploadExtensionFile(
+	ctx context.Context,
+	client *FoxgloveClient,
+	filename string,
+) (resp *ExtensionUploadResponse, err error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat input: %w", err)
+	}
+
+	if filepath.Ext(stat.Name()) != ".foxe" {
+		return nil, fmt.Errorf("file should have a '.foxe' extension")
+	}
+
+	if stat.Size() > 10*1024*1024 {
+		return nil, fmt.Errorf("file size may not exceed 10mb")
+	}
+
+	bar := progressbar.DefaultBytes(stat.Size(), "uploading")
+	defer bar.Close()
+
+	if err != nil {
+		return nil, fmt.Errorf("cannot upload extension: %w", err)
+	}
+	reader := progressbar.NewReader(f, bar)
+	return client.UploadExtension(&reader)
 }
 
 // Login initializes a browser-based login flow for foxglove studio.
