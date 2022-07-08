@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -337,4 +339,13 @@ func NewMockServer(ctx context.Context) (*MockFoxgloveServer, error) {
 		}
 	}
 	return sv, nil
+}
+
+// provides a no-op implementation of `openBrowser`
+type MockAuthDelegate struct{}
+
+func (del *MockAuthDelegate) openBrowser(url string) (*exec.Cmd, error) {
+	return &exec.Cmd{
+		Process: &os.Process{},
+	}, nil
 }
