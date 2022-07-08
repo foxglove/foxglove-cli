@@ -141,7 +141,7 @@ func mcap2JSON(
 				messageDescriptor = descriptor.(protoreflect.MessageDescriptor)
 				descriptors[channel.SchemaID] = messageDescriptor
 			}
-			protoMsg := dynamicpb.NewMessage(messageDescriptor.(protoreflect.MessageDescriptor))
+			protoMsg := dynamicpb.NewMessage(messageDescriptor)
 			if err := proto.Unmarshal(message.Data, protoMsg); err != nil {
 				return fmt.Errorf("failed to parse message: %w", err)
 			}
