@@ -18,6 +18,27 @@ const (
 	tokenRetryInterval = 500 * time.Millisecond
 )
 
+type AuthDelegate interface {
+	openBrowser(url string) (*exec.Cmd, error)
+}
+
+type PlatformAuthDelegate struct{}
+
+func (_ *PlatformAuthDelegate) openBrowser(url string) (*exec.Cmd, error) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		return nil, fmt.Errorf("unsupported platform")
+	}
+	return cmd, cmd.Start()
+}
+
 func Export(
 	ctx context.Context,
 	w io.Writer,
@@ -85,13 +106,13 @@ func Import(
 }
 
 // Login initializes a browser-based login flow for foxglove studio.
-func Login(ctx context.Context, client *FoxgloveClient) (string, error) {
+func Login(ctx context.Context, client *FoxgloveClient, authDelegate AuthDelegate) (string, error) {
 	info, err := client.DeviceCode()
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch device code: %w", err)
 	}
 	fmt.Println("Enter this code in your browser: ", info.UserCode)
-	browser, err := openBrowser(info.VerificationUriComplete)
+	browser, err := authDelegate.openBrowser(info.VerificationUriComplete)
 	if err != nil {
 		return "", fmt.Errorf("failed to open browser: %w", err)
 	}
@@ -125,19 +146,4 @@ func Login(ctx context.Context, client *FoxgloveClient) (string, error) {
 		return "", fmt.Errorf("failed to sign in: %w", err)
 	}
 	return bearerToken, nil
-}
-
-func openBrowser(url string) (*exec.Cmd, error) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	case "darwin":
-		cmd = exec.Command("open", url)
-	default:
-		return nil, fmt.Errorf("unsupported platform")
-	}
-	return cmd, cmd.Start()
 }

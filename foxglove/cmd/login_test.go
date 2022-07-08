@@ -17,7 +17,7 @@ func TestLoginCommand(t *testing.T) {
 	configfile := "./test-config.yaml"
 	err = initConfig(&configfile)
 	assert.Nil(t, err)
-	err = executeLogin(sv.BaseURL(), "client-id", "test-app")
+	err = executeLogin(sv.BaseURL(), "client-id", "test-app", &console.MockAuthDelegate{})
 	assert.Nil(t, err)
 	assert.NotEmpty(t, sv.BearerTokens)
 	m := make(map[string]string)

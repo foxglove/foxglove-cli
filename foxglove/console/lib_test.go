@@ -12,7 +12,7 @@ import (
 
 func login(ctx context.Context, sv *MockFoxgloveServer) (string, error) {
 	client := NewRemoteFoxgloveClient(fmt.Sprintf("http://localhost:%d", sv.port), "abc", "", "test-app")
-	return Login(ctx, client)
+	return Login(ctx, client, &MockAuthDelegate{})
 }
 
 func TestImport(t *testing.T) {
@@ -90,7 +90,7 @@ func TestLogin(t *testing.T) {
 		sv, err := NewMockServer(ctx)
 		assert.Nil(t, err)
 		client := NewRemoteFoxgloveClient(sv.BaseURL(), "abc", "", "test-app")
-		bearerToken, err := Login(ctx, client)
+		bearerToken, err := Login(ctx, client, &MockAuthDelegate{})
 		assert.Nil(t, err)
 		assert.NotEmpty(t, bearerToken)
 	})
@@ -100,7 +100,7 @@ func TestLogin(t *testing.T) {
 		sv, err := NewMockServer(ctx)
 		assert.Nil(t, err)
 		client := NewRemoteFoxgloveClient(sv.BaseURL(), "abc", "", "test-app")
-		bearerToken, err := Login(ctx, client)
+		bearerToken, err := Login(ctx, client, &MockAuthDelegate{})
 		assert.ErrorIs(t, context.Canceled, err)
 		assert.Empty(t, bearerToken)
 	})
