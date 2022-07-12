@@ -69,12 +69,6 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	listCmd.InheritedFlags()
-	listCmd.PersistentFlags().StringVarP(
-		&format,
-		"format",
-		"",
-		"table",
-		"render output in specified format (table, json, csv)",
-	)
+	AddFormatFlag(listCmd, &format)
 	return listCmd
 }
