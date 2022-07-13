@@ -90,7 +90,7 @@ func Execute(version string) {
 	}
 	extensionsCmd := &cobra.Command{
 		Use:   "extensions",
-		Short: "Upload Studio extensions",
+		Short: "Publish Studio extensions",
 	}
 
 	var baseURL, clientID, cfgFile string
@@ -148,7 +148,7 @@ func Execute(version string) {
 	)
 	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params))
 	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
-	extensionsCmd.AddCommand(newUploadExtensionCommand(params))
+	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 
 	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd)
 

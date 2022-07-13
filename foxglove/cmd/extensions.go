@@ -20,10 +20,10 @@ func executeExtensionUpload(baseURL, clientID, token, filename, userAgent string
 	return console.UploadExtensionFile(ctx, client, filename)
 }
 
-func newUploadExtensionCommand(params *baseParams) *cobra.Command {
+func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 	uploadCmd := &cobra.Command{
-		Use:   "upload [FILE]",
-		Short: "Upload a Studio extension (.foxe) to your organization",
+		Use:   "publish [FILE]",
+		Short: "Publish a Studio extension (.foxe) to your organization",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
