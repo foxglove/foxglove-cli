@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func executeExtensionUpload(baseURL, clientID, token, filename, userAgent string) (resp *console.ExtensionUploadResponse, err error) {
+func executeExtensionUpload(baseURL, clientID, token, filename, userAgent string) error {
 	ctx := context.Background()
 	client := console.NewRemoteFoxgloveClient(
 		baseURL,
@@ -27,7 +27,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
-			resp, err := executeExtensionUpload(
+			err := executeExtensionUpload(
 				*params.baseURL,
 				*params.clientID,
 				viper.GetString("bearer_token"),
@@ -37,7 +37,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				fatalf("Extension upload failed: %s\n", err)
 			}
-			fmt.Printf("Extension uploaded: %s\n", *resp)
+			fmt.Printf("Extension published\n")
 		},
 	}
 	uploadCmd.InheritedFlags()

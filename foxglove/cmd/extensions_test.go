@@ -16,7 +16,7 @@ func TestUploadExtensionCommand(t *testing.T) {
 		defer cancel()
 		sv, err := console.NewMockServer(ctx)
 		assert.Nil(t, err)
-		_, err = executeExtensionUpload(
+		err = executeExtensionUpload(
 			sv.BaseURL(),
 			"client",
 			"token",
@@ -30,7 +30,7 @@ func TestUploadExtensionCommand(t *testing.T) {
 		defer cancel()
 		sv, err := console.NewMockServer(ctx)
 		assert.Nil(t, err)
-		_, err = executeExtensionUpload(
+		err = executeExtensionUpload(
 			sv.BaseURL(),
 			"client",
 			"token",

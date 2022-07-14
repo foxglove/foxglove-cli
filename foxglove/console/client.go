@@ -209,34 +209,27 @@ func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventRe
 // This endpoint  can be used to create an extension, or update with a new version.
 // Extension & version information is parsed from the extension's package.json.
 // The content should be a valid .foxe file.
-func (c *FoxgloveClient) UploadExtension(reader io.Reader) (resp *ExtensionUploadResponse, err error) {
+func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 	req, err := http.NewRequest("POST", c.baseurl+"/v1/extension-upload", reader)
 	fmt.Println("url", c.baseurl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build upload extension request: %w", err)
+		return fmt.Errorf("failed to build upload extension request: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/octet-stream")
 	res, err := c.authed.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("extension upload failure: %w", err)
+		return fmt.Errorf("extension upload failure: %w", err)
 	}
 	defer res.Body.Close()
 
 	switch res.StatusCode {
 	case http.StatusOK:
-		break
+		return nil
 	case http.StatusForbidden, http.StatusUnauthorized:
-		fmt.Println(res.StatusCode)
-		return nil, ErrForbidden
+		return ErrForbidden
 	default:
-		return nil, unpackErrorResponse(res.Body)
+		return unpackErrorResponse(res.Body)
 	}
-	body := ExtensionUploadResponse{}
-	err = json.NewDecoder(res.Body).Decode(&body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode extension upload response: %w", err)
-	}
-	return &body, nil
 }
 
 func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
