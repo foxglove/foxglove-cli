@@ -248,3 +248,55 @@ type CreateEventResponse struct {
 	CreatedAt      string            `json:"createdAt"`
 	UpdatedAt      string            `json:"updatedAt"`
 }
+
+type ExtensionsRequest struct{}
+
+type ExtensionResponse struct {
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Publisher     string  `json:"publisher"`
+	DisplayName   *string `json:"displayName"`
+	Description   *string `json:"description"`
+	ActiveVersion *string `json:"activeVersion"`
+	Sha256Sum     *string `json:"sha256Sum"`
+}
+
+func (r ExtensionResponse) Fields() []string {
+	return []string{
+		r.ID,
+		r.Name,
+		r.Publisher,
+		requiredVal(r.DisplayName),
+		requiredVal(r.Description),
+		requiredVal(r.ActiveVersion),
+		requiredVal(r.Sha256Sum),
+	}
+}
+
+func (r ExtensionResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Name",
+		"Publisher",
+		"Display Name",
+		"Description",
+		"Active Version",
+		"SHA-256 Sum",
+	}
+}
+
+func (e ExtensionResponse) String() string {
+	version := e.ActiveVersion
+	if version == nil {
+		return fmt.Sprintf("%s.%s", e.Publisher, e.Name)
+	}
+	return fmt.Sprintf("%s.%s-%s", e.Publisher, e.Name, *version)
+}
+
+func requiredVal(val *string) string {
+	if val != nil {
+		return *val
+	} else {
+		return ""
+	}
+}

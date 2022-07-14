@@ -275,6 +275,11 @@ func (c *FoxgloveClient) Coverage(req *CoverageRequest) (resp []CoverageResponse
 	return resp, err
 }
 
+func (c *FoxgloveClient) Extensions(req ExtensionsRequest) (resp []ExtensionResponse, err error) {
+	err = c.get("/v1/extensions", req, &resp)
+	return resp, err
+}
+
 // Token returns a token for the provided device code. If the token for the
 // device code does not exist yet, ErrForbidden is returned. It is up to the
 // caller to give up after sufficient retries.
