@@ -255,7 +255,7 @@ type ExtensionResponse struct {
 	ID            string  `json:"id"`
 	Name          string  `json:"name"`
 	Publisher     string  `json:"publisher"`
-	DisplayName   *string `json:"displayName"`
+	DisplayName   string  `json:"displayName"`
 	Description   *string `json:"description"`
 	ActiveVersion *string `json:"activeVersion"`
 	Sha256Sum     *string `json:"sha256Sum"`
@@ -266,7 +266,7 @@ func (r ExtensionResponse) Fields() []string {
 		r.ID,
 		r.Name,
 		r.Publisher,
-		requiredVal(r.DisplayName),
+		r.DisplayName,
 		requiredVal(r.Description),
 		requiredVal(r.ActiveVersion),
 		requiredVal(r.Sha256Sum),
