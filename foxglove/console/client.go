@@ -226,7 +226,7 @@ func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusForbidden, http.StatusUnauthorized:
-		return ErrForbidden
+		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
 	default:
 		return unpackErrorResponse(res.Body)
 	}
