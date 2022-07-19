@@ -98,7 +98,7 @@ func (c *FoxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-// Upload uploads the contents of a reader for a provided filenamem and device.
+// Upload uploads the contents of a reader for a provided filename and device.
 // It manages the indirection through GCS signed upload links for the caller.
 func (c *FoxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	buf := &bytes.Buffer{}
@@ -203,6 +203,32 @@ func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDevic
 func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventResponse, err error) {
 	err = c.post("/beta/device-events", req, &resp)
 	return resp, err
+}
+
+// UploadExtension sends the contents of a reader to the extension-upload endpoint.
+// This endpoint  can be used to create an extension, or update with a new version.
+// Extension & version information is parsed from the extension's package.json.
+// The content should be a valid .foxe file.
+func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
+	req, err := http.NewRequest("POST", c.baseurl+"/v1/extension-upload", reader)
+	if err != nil {
+		return fmt.Errorf("failed to build upload extension request: %w", err)
+	}
+	req.Header.Add("Content-Type", "application/octet-stream")
+	res, err := c.authed.Do(req)
+	if err != nil {
+		return fmt.Errorf("extension upload failure: %w", err)
+	}
+	defer res.Body.Close()
+
+	switch res.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
+	default:
+		return unpackErrorResponse(res.Body)
+	}
 }
 
 func (c *FoxgloveClient) get(endpoint string, req any, target any) error {

@@ -176,6 +176,18 @@ $ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00
 {"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
 ```
 
+#### Studio extensions
+
+With a paid foxglove account, you can upload [Studio extensions](https://foxglove.dev/docs/studio/extensions/getting-started) to share with your organization.
+
+Extensions are created and packaged with the [foxglove-extension](https://github.com/foxglove/create-foxglove-extension/) tool. The latest version of each uploaded extension will be installed in Studio for all organization members.
+
+To publish a new extension, or update one with a newer version:
+
+```
+foxglove extensions upload ./my-extension.1.0.0.foxe
+```
+
 ### Shell autocompletion
 
 The foxglove tool supports shell autocompletion for subcommands and some kinds

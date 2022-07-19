@@ -236,6 +236,14 @@ func (s *MockFoxgloveServer) getStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *MockFoxgloveServer) uploadExtension(w http.ResponseWriter, r *http.Request) {
+	_, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
 func (s *MockFoxgloveServer) withAuthz(next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(r.Header.Get("Authorization"), " ")
@@ -286,6 +294,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/auth/device-code", sv.deviceCode).Methods("POST")
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
+	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/storage/{key:.*}", sv.upload).Methods("PUT")
 	r.HandleFunc("/storage/{key:.*}", sv.getStream).Methods("GET")
 	r.HandleFunc("/liveness", sv.liveness).Methods("GET")

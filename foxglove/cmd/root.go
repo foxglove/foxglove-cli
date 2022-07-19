@@ -88,6 +88,10 @@ func Execute(version string) {
 		Use:   "coverage",
 		Short: "List coverage ranges",
 	}
+	extensionsCmd := &cobra.Command{
+		Use:   "extensions",
+		Short: "Publish Studio extensions",
+	}
 
 	var baseURL, clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -132,7 +136,6 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd)
 	authCmd.AddCommand(loginCmd)
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	coverageCmd.AddCommand(newListCoverageCommand(params))
@@ -145,6 +148,10 @@ func Execute(version string) {
 	)
 	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params))
 	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
+	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
+
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd)
+
 	cobra.CheckErr(rootCmd.Execute())
 }
 
