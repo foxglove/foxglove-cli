@@ -211,7 +211,6 @@ func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventRe
 // The content should be a valid .foxe file.
 func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 	req, err := http.NewRequest("POST", c.baseurl+"/v1/extension-upload", reader)
-	fmt.Println("url", c.baseurl)
 	if err != nil {
 		return fmt.Errorf("failed to build upload extension request: %w", err)
 	}

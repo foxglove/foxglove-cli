@@ -37,7 +37,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				fatalf("Extension upload failed: %s\n", err)
 			}
-			fmt.Printf("Extension published\n")
+			fmt.Println("Extension published")
 		},
 	}
 	uploadCmd.InheritedFlags()
