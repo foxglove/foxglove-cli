@@ -108,12 +108,6 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset")
 	eventsListCmd.PersistentFlags().StringVarP(&key, "key", "", "", "return events with matching metadata keys")
 	eventsListCmd.PersistentFlags().StringVarP(&value, "value", "", "", "return events with matching metadata values")
-	eventsListCmd.PersistentFlags().StringVarP(
-		&format,
-		"format",
-		"",
-		"table",
-		"render output in specified format (table, json, csv)",
-	)
+	AddFormatFlag(eventsListCmd, &format)
 	return eventsListCmd
 }

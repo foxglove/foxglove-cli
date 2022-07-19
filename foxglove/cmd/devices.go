@@ -32,13 +32,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	deviceListCmd.InheritedFlags()
-	deviceListCmd.PersistentFlags().StringVarP(
-		&format,
-		"format",
-		"",
-		"table",
-		"render output in specified format (table, json, csv)",
-	)
+	AddFormatFlag(deviceListCmd, &format)
 	return deviceListCmd
 }
 

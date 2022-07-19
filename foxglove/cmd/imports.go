@@ -52,12 +52,6 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 	importsListCmd.PersistentFlags().StringVarP(&dataStart, "data-start", "", "", "start of data time range")
 	importsListCmd.PersistentFlags().StringVarP(&dataEnd, "data-end", "", "", "end of data time range")
 	importsListCmd.PersistentFlags().BoolVarP(&includeDeleted, "include-deleted", "", false, "end of data time range")
-	importsListCmd.PersistentFlags().StringVarP(
-		&format,
-		"format",
-		"",
-		"table",
-		"render output in specified format (table, json, csv)",
-	)
+	AddFormatFlag(importsListCmd, &format)
 	return importsListCmd
 }

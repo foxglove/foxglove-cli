@@ -9,6 +9,7 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/olekukonko/tablewriter"
+	"github.com/spf13/cobra"
 )
 
 func renderList[RequestType console.Request, ResponseType console.Record](
@@ -88,4 +89,15 @@ func renderCSV[RecordType console.Record](w io.Writer, records []RecordType) err
 func fatalf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 	os.Exit(1)
+}
+
+// Define a `format` flag on a command for one of the formats above
+func AddFormatFlag(cmd *cobra.Command, format *string) {
+	cmd.PersistentFlags().StringVarP(
+		format,
+		"format",
+		"",
+		"table",
+		"render output in specified format (table, json, csv)",
+	)
 }

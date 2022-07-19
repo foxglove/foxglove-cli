@@ -38,12 +38,6 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 	coverageListCmd.InheritedFlags()
 	coverageListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of coverage time range")
 	coverageListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of coverage time range")
-	coverageListCmd.PersistentFlags().StringVarP(
-		&format,
-		"format",
-		"",
-		"table",
-		"render output in specified format (table, json, csv)",
-	)
+	AddFormatFlag(coverageListCmd, &format)
 	return coverageListCmd
 }

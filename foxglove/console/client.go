@@ -236,19 +236,19 @@ func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode request: %w", err)
 	}
-	resp, err := c.authed.Get(c.baseurl + endpoint + "?" + querystring)
+	res, err := c.authed.Get(c.baseurl + endpoint + "?" + querystring)
 	if err != nil {
 		return fmt.Errorf("failed to fetch records: %w", err)
 	}
-	switch resp.StatusCode {
-	case http.StatusForbidden:
-		return ErrForbidden
+	switch res.StatusCode {
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
 	case http.StatusOK:
 		break
 	default:
-		return unpackErrorResponse(resp.Body)
+		return unpackErrorResponse(res.Body)
 	}
-	err = json.NewDecoder(resp.Body).Decode(target)
+	err = json.NewDecoder(res.Body).Decode(target)
 	if err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -272,6 +272,11 @@ func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, e
 
 func (c *FoxgloveClient) Coverage(req *CoverageRequest) (resp []CoverageResponse, err error) {
 	err = c.get("/v1/data/coverage", *req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) Extensions(req ExtensionsRequest) (resp []ExtensionResponse, err error) {
+	err = c.get("/v1/extensions", req, &resp)
 	return resp, err
 }
 

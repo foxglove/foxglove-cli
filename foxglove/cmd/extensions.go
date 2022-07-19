@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
@@ -42,4 +43,32 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 	}
 	uploadCmd.InheritedFlags()
 	return uploadCmd
+}
+
+func newListExtensionsCommand(params *baseParams) *cobra.Command {
+	var format string
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Studio extensions created for your organization",
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(
+				*params.baseURL, *params.clientID,
+				viper.GetString("bearer_token"),
+				params.userAgent,
+			)
+			err := renderList(
+				os.Stdout,
+				console.ExtensionsRequest{},
+				client.Extensions,
+				format,
+			)
+
+			if err != nil {
+				fatalf("Failed to list extensions: %s\n", err)
+			}
+		},
+	}
+	listCmd.InheritedFlags()
+	AddFormatFlag(listCmd, &format)
+	return listCmd
 }
