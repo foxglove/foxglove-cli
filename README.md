@@ -188,6 +188,12 @@ To publish a new extension, or update one with a newer version:
 foxglove extensions upload ./my-extension.1.0.0.foxe
 ```
 
+To list your extensions:
+
+```
+foxglove extensions list
+```
+
 ### Shell autocompletion
 
 The foxglove tool supports shell autocompletion for subcommands and some kinds
