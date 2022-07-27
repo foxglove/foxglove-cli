@@ -194,6 +194,14 @@ To list your extensions:
 foxglove extensions list
 ```
 
+You can use the global `--format` flag to change the output type.
+
+To unpublish an extension, use the ID listed from the above command. This will **delete** your extension files and cause the extension to be uninstalled from Studio for all organization members.
+
+```
+foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
+```
+
 ### Shell autocompletion
 
 The foxglove tool supports shell autocompletion for subcommands and some kinds

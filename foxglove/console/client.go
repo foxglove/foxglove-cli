@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/ajg/form"
 )
@@ -195,6 +196,31 @@ func (c *FoxgloveClient) post(
 	return nil
 }
 
+func (c *FoxgloveClient) delete(endpoint string) error {
+	req, err := http.NewRequest(http.MethodDelete, c.baseurl+endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.authed.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return ErrForbidden
+	case http.StatusNotFound:
+		// Warn the user, but proceed as successful
+		fmt.Fprintf(os.Stderr, "Not found. The resource may have already been deleted.")
+	case http.StatusOK:
+		break
+	default:
+		return unpackErrorResponse(resp.Body)
+	}
+	return nil
+}
+
 func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDeviceResponse, err error) {
 	err = c.post("/v1/devices", req, &resp)
 	return resp, err
@@ -229,6 +255,10 @@ func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 	default:
 		return unpackErrorResponse(res.Body)
 	}
+}
+
+func (c *FoxgloveClient) DeleteExtension(id string) error {
+	return c.delete("/v1/extensions/" + id)
 }
 
 func (c *FoxgloveClient) get(endpoint string, req any, target any) error {

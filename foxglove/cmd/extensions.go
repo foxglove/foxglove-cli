@@ -21,6 +21,10 @@ func executeExtensionUpload(baseURL, clientID, token, filename, userAgent string
 	return console.UploadExtensionFile(ctx, client, filename)
 }
 
+func executeExtensionDelete(client *console.FoxgloveClient, extensionId string) error {
+	return client.DeleteExtension(extensionId)
+}
+
 func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 	uploadCmd := &cobra.Command{
 		Use:   "publish [FILE]",
@@ -71,4 +75,25 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 	listCmd.InheritedFlags()
 	AddFormatFlag(listCmd, &format)
 	return listCmd
+}
+
+func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
+	deleteCmd := &cobra.Command{
+		Use:   "unpublish [ID]",
+		Short: "Unpublish and delete a Studio extension from your organization",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(
+				*params.baseURL, *params.clientID,
+				viper.GetString("bearer_token"),
+				params.userAgent,
+			)
+			err := executeExtensionDelete(client, args[0])
+			if err != nil {
+				fatalf("Failed to unpublish extension: %s\n", err)
+			}
+		},
+	}
+	deleteCmd.InheritedFlags()
+	return deleteCmd
 }
