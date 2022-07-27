@@ -178,9 +178,14 @@ $ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00
 
 #### Studio extensions
 
-With a paid foxglove account, you can upload [Studio extensions](https://foxglove.dev/docs/studio/extensions/getting-started) to share with your organization.
+With a paid foxglove account, you can upload
+[Studio extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
+to share with your organization.
 
-Extensions are created and packaged with the [foxglove-extension](https://github.com/foxglove/create-foxglove-extension/) tool. The latest version of each uploaded extension will be installed in Studio for all organization members.
+Extensions are created and packaged with the
+[foxglove-extension](https://github.com/foxglove/create-foxglove-extension/)
+tool. The latest version of each uploaded extension will be installed in Studio
+for all organization members.
 
 To publish a new extension, or update one with a newer version:
 
@@ -196,7 +201,9 @@ foxglove extensions list
 
 You can use the global `--format` flag to change the output type.
 
-To unpublish an extension, use the ID listed from the above command. This will **delete** your extension files and cause the extension to be uninstalled from Studio for all organization members.
+To unpublish an extension, use the ID listed from the above command. This will
+**delete** your extension files and cause the extension to be uninstalled from
+Studio for all organization members.
 
 ```
 foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
