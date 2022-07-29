@@ -39,7 +39,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				fatalf("Extension upload failed: %s\n", err)
 			}
-			fmt.Println("Extension published")
+			fmt.Fprintln(os.Stderr, "Extension published")
 		},
 	}
 	uploadCmd.InheritedFlags()
@@ -89,7 +89,7 @@ func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				fatalf("Failed to delete extension: %s\n", err)
 			}
-			fmt.Println("Extension deleted")
+			fmt.Fprintln(os.Stderr, "Extension deleted")
 		},
 	}
 	deleteCmd.InheritedFlags()

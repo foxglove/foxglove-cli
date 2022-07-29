@@ -30,7 +30,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 			for _, kv := range keyvals {
 				parts := strings.FieldsFunc(kv, func(c rune) bool { return c == ':' })
 				if len(parts) != 2 {
-					fmt.Printf("Invalid key/value pair: %s\n", kv)
+					fmt.Fprintf(os.Stderr, "Invalid key/value pair: %s\n", kv)
 					os.Exit(1)
 				}
 				metadata[parts[0]] = parts[1]
@@ -43,10 +43,10 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				Metadata:      metadata,
 			})
 			if err != nil {
-				fmt.Printf("Failed to add event: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Failed to add event: %s\n", err)
 				os.Exit(1)
 			}
-			fmt.Printf("Created event: %s\n", response.ID)
+			fmt.Fprintf(os.Stderr, "Created event: %s\n", response.ID)
 		},
 	}
 	addEventCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")

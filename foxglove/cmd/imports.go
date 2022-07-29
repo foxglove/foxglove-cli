@@ -40,7 +40,7 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 				format,
 			)
 			if err != nil {
-				fmt.Printf("Failed to list imports: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Failed to list imports: %s\n", err)
 				os.Exit(1)
 			}
 		},

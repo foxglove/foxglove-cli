@@ -27,7 +27,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 				format,
 			)
 			if err != nil {
-				fmt.Printf("Failed to list devices: %s\n", err)
+				fmt.Fprintf(os.Stderr, "Failed to list devices: %s\n", err)
 			}
 		},
 	}
@@ -55,7 +55,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				fatalf("Failed to create device: %s\n", err)
 			}
-			fmt.Printf("Device created: %s\n", resp.ID)
+			fmt.Fprintf(os.Stderr, "Device created: %s\n", resp.ID)
 		},
 	}
 	addDeviceCmd.InheritedFlags()
