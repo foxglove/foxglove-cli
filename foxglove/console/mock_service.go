@@ -244,6 +244,27 @@ func (s *MockFoxgloveServer) uploadExtension(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+func (s *MockFoxgloveServer) listExtensions(w http.ResponseWriter, r *http.Request) {
+	extensions := make([]ExtensionResponse, 0)
+	err := json.NewEncoder(w).Encode(extensions)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
+// Returns 200 if the `id` matches the mock extension name
+func (s *MockFoxgloveServer) deleteExtension(w http.ResponseWriter, r *http.Request) {
+	if mux.Vars(r)["id"] == s.ValidExtensionId() {
+		return
+	}
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func (s *MockFoxgloveServer) ValidExtensionId() string {
+	return "ext_mock_extension_id"
+}
+
 func (s *MockFoxgloveServer) withAuthz(next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(r.Header.Get("Authorization"), " ")
@@ -295,6 +316,8 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
+	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")
+	r.HandleFunc("/v1/extensions/{id}", sv.withAuthz(sv.deleteExtension)).Methods("DELETE")
 	r.HandleFunc("/storage/{key:.*}", sv.upload).Methods("PUT")
 	r.HandleFunc("/storage/{key:.*}", sv.getStream).Methods("GET")
 	r.HandleFunc("/liveness", sv.liveness).Methods("GET")

@@ -150,6 +150,7 @@ func Execute(version string) {
 	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
 	extensionsCmd.AddCommand(newListExtensionsCommand(params))
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
+	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 
 	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd)
 

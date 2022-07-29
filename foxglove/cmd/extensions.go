@@ -10,15 +10,13 @@ import (
 	"github.com/spf13/viper"
 )
 
-func executeExtensionUpload(baseURL, clientID, token, filename, userAgent string) error {
+func executeExtensionUpload(client *console.FoxgloveClient, filename string) error {
 	ctx := context.Background()
-	client := console.NewRemoteFoxgloveClient(
-		baseURL,
-		clientID,
-		token,
-		userAgent,
-	)
 	return console.UploadExtensionFile(ctx, client, filename)
+}
+
+func executeExtensionDelete(client *console.FoxgloveClient, extensionId string) error {
+	return client.DeleteExtension(extensionId)
 }
 
 func newPublishExtensionCommand(params *baseParams) *cobra.Command {
@@ -28,12 +26,15 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
-			err := executeExtensionUpload(
+			client := console.NewRemoteFoxgloveClient(
 				*params.baseURL,
 				*params.clientID,
 				viper.GetString("bearer_token"),
-				filename,
 				params.userAgent,
+			)
+			err := executeExtensionUpload(
+				client,
+				filename,
 			)
 			if err != nil {
 				fatalf("Extension upload failed: %s\n", err)
@@ -71,4 +72,26 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 	listCmd.InheritedFlags()
 	AddFormatFlag(listCmd, &format)
 	return listCmd
+}
+
+func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
+	deleteCmd := &cobra.Command{
+		Use:   "unpublish [ID]",
+		Short: "Delete and unpublish a Studio extension from your organization",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(
+				*params.baseURL, *params.clientID,
+				viper.GetString("bearer_token"),
+				params.userAgent,
+			)
+			err := executeExtensionDelete(client, args[0])
+			if err != nil {
+				fatalf("Failed to delete extension: %s\n", err)
+			}
+			fmt.Println("Extension deleted")
+		},
+	}
+	deleteCmd.InheritedFlags()
+	return deleteCmd
 }

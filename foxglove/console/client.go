@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/ajg/form"
 )
@@ -180,6 +181,8 @@ func (c *FoxgloveClient) post(
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
+
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		return ErrForbidden
@@ -191,6 +194,32 @@ func (c *FoxgloveClient) post(
 	err = json.NewDecoder(resp.Body).Decode(target)
 	if err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
+	}
+	return nil
+}
+
+func (c *FoxgloveClient) delete(endpoint string) error {
+	req, err := http.NewRequest(http.MethodDelete, c.baseurl+endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.authed.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return ErrForbidden
+	case http.StatusNotFound:
+		// Warn the user, but proceed as successful
+		fmt.Fprintln(os.Stderr, "Not found. The resource may have already been deleted.")
+	case http.StatusOK:
+		break
+	default:
+		return unpackErrorResponse(resp.Body)
 	}
 	return nil
 }
@@ -215,20 +244,24 @@ func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 		return fmt.Errorf("failed to build upload extension request: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/octet-stream")
-	res, err := c.authed.Do(req)
+	resp, err := c.authed.Do(req)
 	if err != nil {
 		return fmt.Errorf("extension upload failure: %w", err)
 	}
-	defer res.Body.Close()
+	defer resp.Body.Close()
 
-	switch res.StatusCode {
+	switch resp.StatusCode {
 	case http.StatusOK:
 		return nil
 	case http.StatusForbidden, http.StatusUnauthorized:
-		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
+		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(resp.Body))
 	default:
-		return unpackErrorResponse(res.Body)
+		return unpackErrorResponse(resp.Body)
 	}
+}
+
+func (c *FoxgloveClient) DeleteExtension(id string) error {
+	return c.delete("/v1/extensions/" + id)
 }
 
 func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
