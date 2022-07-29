@@ -181,6 +181,8 @@ func (c *FoxgloveClient) post(
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
+
 	switch resp.StatusCode {
 	case http.StatusForbidden:
 		return ErrForbidden
@@ -206,6 +208,7 @@ func (c *FoxgloveClient) delete(endpoint string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusForbidden:
@@ -241,19 +244,19 @@ func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 		return fmt.Errorf("failed to build upload extension request: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/octet-stream")
-	res, err := c.authed.Do(req)
+	resp, err := c.authed.Do(req)
 	if err != nil {
 		return fmt.Errorf("extension upload failure: %w", err)
 	}
-	defer res.Body.Close()
+	defer resp.Body.Close()
 
-	switch res.StatusCode {
+	switch resp.StatusCode {
 	case http.StatusOK:
 		return nil
 	case http.StatusForbidden, http.StatusUnauthorized:
-		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
+		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(resp.Body))
 	default:
-		return unpackErrorResponse(res.Body)
+		return unpackErrorResponse(resp.Body)
 	}
 }
 
