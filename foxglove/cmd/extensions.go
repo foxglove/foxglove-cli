@@ -77,7 +77,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
 	deleteCmd := &cobra.Command{
 		Use:   "unpublish [ID]",
-		Short: "Unpublish and delete a Studio extension from your organization",
+		Short: "Delete and unpublish a Studio extension from your organization",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
@@ -87,8 +87,9 @@ func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
 			)
 			err := executeExtensionDelete(client, args[0])
 			if err != nil {
-				fatalf("Failed to unpublish extension: %s\n", err)
+				fatalf("Failed to delete extension: %s\n", err)
 			}
+			fmt.Println("Extension deleted")
 		},
 	}
 	deleteCmd.InheritedFlags()

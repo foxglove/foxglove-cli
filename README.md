@@ -199,6 +199,22 @@ To list your extensions:
 foxglove extensions list
 ```
 
+Example JSON output:
+
+```json
+[
+    {
+        "id": "ext_BsGXKGsZ9c4WQF1",
+        "name": "my_new_panel",
+        "publisher": "panel-publisher",
+        "displayName": "My New Panel",
+        "description": "Creates a panel",
+        "activeVersion": "1.0.0",
+        "sha256Sum": "395c3af8745ab104cd902d937366719a402bda4677ed3671cb38522c1ba13cbe"
+    }
+]
+```
+
 You can use the global `--format` flag to change the output type.
 
 To unpublish an extension, use the ID listed from the above command. This will

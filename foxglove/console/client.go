@@ -212,7 +212,7 @@ func (c *FoxgloveClient) delete(endpoint string) error {
 		return ErrForbidden
 	case http.StatusNotFound:
 		// Warn the user, but proceed as successful
-		fmt.Fprintf(os.Stderr, "Not found. The resource may have already been deleted.")
+		fmt.Fprintln(os.Stderr, "Not found. The resource may have already been deleted.")
 	case http.StatusOK:
 		break
 	default:
