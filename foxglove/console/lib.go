@@ -145,14 +145,21 @@ func Login(ctx context.Context, client *FoxgloveClient, authDelegate AuthDelegat
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch device code: %w", err)
 	}
-	fmt.Println("Enter this code in your browser: ", info.UserCode)
 	browser, err := authDelegate.openBrowser(info.VerificationUriComplete)
-	if err != nil {
-		return "", fmt.Errorf("failed to open browser: %w", err)
+	// There's no way to tell for sure whether the browser actually opened the link, even if the
+	// openBrowser command succeeds.
+	if err == nil {
+		defer func() {
+			_ = browser.Process.Kill()
+		}()
+		fmt.Println("If no window opens, copy/paste the following link into your browser:")
+	} else {
+		fmt.Println("copy/paste the following link into your browser:")
 	}
-	defer func() {
-		_ = browser.Process.Kill()
-	}()
+	fmt.Println("")
+	fmt.Println(info.VerificationUriComplete)
+	fmt.Println("")
+	fmt.Println("Verify this code and click 'Authorize' to complete login: ", info.UserCode)
 
 	// now poll the token endpoint until the token for the device code appears.
 	// When the device code has not yet appeared, the endpoint returns a 403.
