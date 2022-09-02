@@ -28,6 +28,7 @@ import (
 
 var (
 	ErrRedirectStdout = errors.New("stdout unredirected")
+	ErrInvalidFormat  = errors.New("invalid format: supply mcap0, bag1, or json")
 )
 
 type DecimalTime uint64
@@ -176,11 +177,22 @@ func stdoutRedirected() bool {
 	return true
 }
 
+func validOutputFormat(format string) bool {
+	return map[string]bool{
+		"mcap0": true,
+		"bag1":  true,
+		"json":  true,
+	}[format]
+}
+
 func executeExport(
 	ctx context.Context,
 	w io.Writer,
 	baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken, userAgent string,
 ) error {
+	if !validOutputFormat(outputFormat) {
+		return ErrInvalidFormat
+	}
 	client := console.NewRemoteFoxgloveClient(
 		baseURL,
 		clientID,
@@ -256,7 +268,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (RFC3339 timestamp)")
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (RFC3339 timestamp")
-	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "", "output format")
+	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
 	err := exportCmd.MarkPersistentFlagRequired("device-id")
 	if err != nil {

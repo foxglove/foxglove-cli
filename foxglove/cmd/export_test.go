@@ -52,12 +52,33 @@ func TestExportCommand(t *testing.T) {
 			"test-device",
 			"2020-01-01T00:00:00Z",
 			"2021-01-01T00:00:00Z",
-			"mcap",
+			"mcap0",
 			"/diagnostics",
 			"",
 			"user-agent",
 		)
 		assert.ErrorIs(t, err, console.ErrForbidden)
+	})
+	t.Run("returns error on invalid format", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		buf := &bytes.Buffer{}
+		sv, err := console.NewMockServer(ctx)
+		assert.Nil(t, err)
+		err = executeExport(
+			ctx,
+			buf,
+			sv.BaseURL(),
+			"abc",
+			"test-device",
+			"2020-01-01T00:00:00Z",
+			"2021-01-01T00:00:00Z",
+			"mcap",
+			"/diagnostics",
+			"",
+			"user-agent",
+		)
+		assert.ErrorIs(t, err, ErrInvalidFormat)
 	})
 	t.Run("returns empty data when requesting data that does not exist", func(t *testing.T) {
 		buf := &bytes.Buffer{}
@@ -77,7 +98,7 @@ func TestExportCommand(t *testing.T) {
 				"test-device",
 				"2020-01-01T00:00:00Z",
 				"2021-01-01T00:00:00Z",
-				"mcap",
+				"mcap0",
 				"/diagnostics",
 				token,
 				"user-agent",
