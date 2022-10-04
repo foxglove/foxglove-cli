@@ -25,12 +25,14 @@ page](https://github.com/foxglove/foxglove-cli/releases).
 
 #### Install from source
 Installation from source requires the following:
-* Go >= 1.17
+* Go >= 1.18
 
 To install from source, run
 
     git clone git@github.com:foxglove/foxglove-cli.git
     make install
+
+This will install `foxglove` to `$GOPATH/bin`.
 
 ### Usage
 
