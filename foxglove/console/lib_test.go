@@ -110,6 +110,7 @@ func TestExport(t *testing.T) {
 			OutputFormat: "mcap",
 		},
 		)
+		assert.Nil(t, err)
 		assert.NotEmpty(t, buf.Bytes())
 	})
 }
