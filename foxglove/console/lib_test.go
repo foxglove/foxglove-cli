@@ -49,7 +49,18 @@ func TestExport(t *testing.T) {
 		assert.Nil(t, err)
 		client := NewRemoteFoxgloveClient(sv.BaseURL(), "abc", "", "test-app")
 		buf := &bytes.Buffer{}
-		err = Export(ctx, buf, client, "test-device", "2020-01-01T00:00:00Z", "2021-01-01T00:00:00Z", []string{}, "mcap")
+		start, err := time.Parse(time.RFC3339, "2020-01-01T00:00:00Z")
+		assert.Nil(t, err)
+		end, err := time.Parse(time.RFC3339, "2021-01-01T00:00:00Z")
+		assert.Nil(t, err)
+		err = Export(ctx, buf, client, &StreamRequest{
+			DeviceID:     "test-device",
+			Start:        &start,
+			End:          &end,
+			Topics:       []string{},
+			OutputFormat: "mcap",
+		},
+		)
 		assert.ErrorIs(t, err, ErrForbidden)
 	})
 	t.Run("returns empty data when nothing matches", func(t *testing.T) {
@@ -61,7 +72,18 @@ func TestExport(t *testing.T) {
 		assert.Nil(t, err)
 		client := NewRemoteFoxgloveClient(sv.BaseURL(), "abc", token, "test-app")
 		buf := &bytes.Buffer{}
-		err = Export(ctx, buf, client, "test-device", "2020-01-01T00:00:00Z", "2021-01-01T00:00:00Z", []string{}, "mcap")
+		start, err := time.Parse(time.RFC3339, "2020-01-01T00:00:00Z")
+		assert.Nil(t, err)
+		end, err := time.Parse(time.RFC3339, "2021-01-01T00:00:00Z")
+		assert.Nil(t, err)
+		err = Export(ctx, buf, client, &StreamRequest{
+			DeviceID:     "test-device",
+			Start:        &start,
+			End:          &end,
+			Topics:       []string{},
+			OutputFormat: "mcap",
+		},
+		)
 		assert.Nil(t, err)
 		assert.Empty(t, buf.Bytes())
 	})
@@ -76,8 +98,18 @@ func TestExport(t *testing.T) {
 		buf := &bytes.Buffer{}
 		err = Import(ctx, client, "test-device", "../testdata/gps.bag")
 		assert.Nil(t, err)
-		err = Export(ctx, buf, client, "test-device", "2020-01-01T00:00:00Z", "2021-01-01T00:00:00Z", []string{}, "mcap")
+		start, err := time.Parse(time.RFC3339, "2020-01-01T00:00:00Z")
 		assert.Nil(t, err)
+		end, err := time.Parse(time.RFC3339, "2021-01-01T00:00:00Z")
+		assert.Nil(t, err)
+		err = Export(ctx, buf, client, &StreamRequest{
+			DeviceID:     "test-device",
+			Start:        &start,
+			End:          &end,
+			Topics:       []string{},
+			OutputFormat: "mcap",
+		},
+		)
 		assert.NotEmpty(t, buf.Bytes())
 	})
 }

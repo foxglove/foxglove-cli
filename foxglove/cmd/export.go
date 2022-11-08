@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/foxglove/mcap/go/cli/mcap/utils/ros"
@@ -188,9 +189,13 @@ func validOutputFormat(format string) bool {
 func executeExport(
 	ctx context.Context,
 	w io.Writer,
-	baseURL, clientID, deviceID, start, end, outputFormat, topicList, bearerToken, userAgent string,
+	baseURL string,
+	clientID string,
+	bearerToken string,
+	userAgent string,
+	request *console.StreamRequest,
 ) error {
-	if !validOutputFormat(outputFormat) {
+	if !validOutputFormat(request.OutputFormat) {
 		return ErrInvalidFormat
 	}
 	client := console.NewRemoteFoxgloveClient(
@@ -199,13 +204,11 @@ func executeExport(
 		bearerToken,
 		userAgent,
 	)
-	topics := strings.FieldsFunc(topicList, func(c rune) bool {
-		return c == ','
-	})
-	if !stdoutRedirected() && outputFormat != "json" {
+	if !stdoutRedirected() && request.OutputFormat != "json" {
 		return fmt.Errorf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
 	}
-	if outputFormat == "json" {
+	if request.OutputFormat == "json" {
+		request.OutputFormat = "mcap0"
 		pipeReader, pipeWriter, err := os.Pipe()
 		if err != nil {
 			return fmt.Errorf("failed to create pipe: %w", err)
@@ -213,7 +216,7 @@ func executeExport(
 		errs := make(chan error, 1)
 		done := make(chan bool, 1)
 		go func() {
-			err = console.Export(ctx, pipeWriter, client, deviceID, start, end, topics, "mcap0")
+			err = console.Export(ctx, pipeWriter, client, request)
 			if err != nil {
 				errs <- err
 				return
@@ -232,11 +235,54 @@ func executeExport(
 			return err
 		}
 	} else {
-		return console.Export(ctx, w, client, deviceID, start, end, topics, outputFormat)
+		return console.Export(ctx, w, client, request)
 	}
 }
 
+func createStreamRequest(
+	importID string,
+	deviceID string,
+	start string,
+	end string,
+	outputFormat string,
+	topicList string,
+) (*console.StreamRequest, error) {
+	var startTime, endTime *time.Time
+	if start != "" {
+		start, err := time.Parse(time.RFC3339, start)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse start time: %w", err)
+		}
+		startTime = &start
+	}
+
+	if end != "" {
+		end, err := time.Parse(time.RFC3339, end)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse end time: %w", err)
+		}
+		endTime = &end
+	}
+
+	topics := strings.FieldsFunc(topicList, func(c rune) bool { return c == ',' })
+
+	request := &console.StreamRequest{
+		ImportID:     importID,
+		DeviceID:     deviceID,
+		Start:        startTime,
+		End:          endTime,
+		OutputFormat: outputFormat,
+		Topics:       topics,
+	}
+	if err := request.Validate(); err != nil {
+		return nil, err
+	}
+
+	return request, nil
+}
+
 func newExportCommand(params *baseParams) (*cobra.Command, error) {
+	var importID string
 	var deviceID string
 	var start string
 	var end string
@@ -247,18 +293,20 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
 			defer os.Stdout.Close()
-			err := executeExport(
+
+			request, err := createStreamRequest(importID, deviceID, start, end, outputFormat, topicList)
+			if err != nil {
+				fatalf("Failed to build request: %s\n", err)
+			}
+
+			err = executeExport(
 				cmd.Context(),
 				os.Stdout,
 				*params.baseURL,
 				*params.clientID,
-				deviceID,
-				start,
-				end,
-				outputFormat,
-				topicList,
 				viper.GetString("bearer_token"),
 				params.userAgent,
+				request,
 			)
 			if err != nil {
 				fatalf("Export failed: %s\n", err)
@@ -266,15 +314,12 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		},
 	}
 	exportCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
+	exportCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "import ID")
 	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (RFC3339 timestamp)")
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (RFC3339 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
-	err := exportCmd.MarkPersistentFlagRequired("device-id")
-	if err != nil {
-		return nil, err
-	}
-	err = exportCmd.RegisterFlagCompletionFunc(
+	err := exportCmd.RegisterFlagCompletionFunc(
 		"device-id",
 		listDevicesAutocompletionFunc(
 			*params.baseURL,
@@ -283,14 +328,6 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			params.userAgent,
 		),
 	)
-	if err != nil {
-		return nil, err
-	}
-	err = exportCmd.MarkPersistentFlagRequired("start")
-	if err != nil {
-		return nil, err
-	}
-	err = exportCmd.MarkPersistentFlagRequired("end")
 	if err != nil {
 		return nil, err
 	}

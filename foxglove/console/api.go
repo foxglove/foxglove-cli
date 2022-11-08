@@ -32,11 +32,22 @@ type UploadResponse struct {
 }
 
 type StreamRequest struct {
-	DeviceID     string    `json:"deviceId"`
-	Start        time.Time `json:"start"`
-	End          time.Time `json:"end"`
-	OutputFormat string    `json:"outputFormat"`
-	Topics       []string  `json:"topics"`
+	ImportID     string     `json:"importId"`
+	DeviceID     string     `json:"deviceId"`
+	Start        *time.Time `json:"start,omitempty"`
+	End          *time.Time `json:"end,omitempty"`
+	OutputFormat string     `json:"outputFormat"`
+	Topics       []string   `json:"topics"`
+}
+
+func (req *StreamRequest) Validate() error {
+	if req.ImportID == "" && req.DeviceID == "" {
+		return fmt.Errorf("device-id or import-id is required")
+	}
+	if req.DeviceID != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
+		return fmt.Errorf("start/end are required if device-id is supplied")
+	}
+	return nil
 }
 
 type StreamResponse struct {
@@ -93,6 +104,7 @@ type ImportsRequest struct {
 }
 
 type ImportsResponse struct {
+	ID              string    `json:"id"`
 	ImportID        string    `json:"importId"`
 	DeviceID        string    `json:"deviceId"`
 	Filename        string    `json:"filename"`
@@ -107,6 +119,7 @@ type ImportsResponse struct {
 
 func (r ImportsResponse) Fields() []string {
 	return []string{
+		r.ID,
 		r.ImportID,
 		r.DeviceID,
 		r.Filename,
@@ -122,6 +135,7 @@ func (r ImportsResponse) Fields() []string {
 
 func (r ImportsResponse) Headers() []string {
 	return []string{
+		"ID",
 		"Import ID",
 		"Device ID",
 		"Filename",
