@@ -136,7 +136,9 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
+	configureAPIKey := newConfigureAPIKeyCommand()
 	authCmd.AddCommand(loginCmd)
+	authCmd.AddCommand(configureAPIKey)
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	coverageCmd.AddCommand(newListCoverageCommand(params))
 	betaCmd.AddCommand(eventsCmd)
