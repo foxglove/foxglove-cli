@@ -105,7 +105,6 @@ type ImportsRequest struct {
 
 type ImportsResponse struct {
 	ID              string    `json:"id"`
-	ImportID        string    `json:"importId"`
 	DeviceID        string    `json:"deviceId"`
 	Filename        string    `json:"filename"`
 	ImportTime      time.Time `json:"importTime"`
@@ -120,7 +119,6 @@ type ImportsResponse struct {
 func (r ImportsResponse) Fields() []string {
 	return []string{
 		r.ID,
-		r.ImportID,
 		r.DeviceID,
 		r.Filename,
 		r.ImportTime.Format(time.RFC3339),
@@ -135,7 +133,6 @@ func (r ImportsResponse) Fields() []string {
 
 func (r ImportsResponse) Headers() []string {
 	return []string{
-		"ID",
 		"Import ID",
 		"Device ID",
 		"Filename",
