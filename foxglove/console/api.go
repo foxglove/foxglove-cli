@@ -42,10 +42,13 @@ type StreamRequest struct {
 
 func (req *StreamRequest) Validate() error {
 	if req.ImportID == "" && req.DeviceID == "" {
-		return fmt.Errorf("device-id or import-id is required")
+		return fmt.Errorf("either import-id or device-id, start, and end are required")
 	}
 	if req.DeviceID != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
 		return fmt.Errorf("start/end are required if device-id is supplied")
+	}
+	if req.Start != nil && req.End != nil && req.End.Before(*req.Start) {
+		return fmt.Errorf("end must be after or equal to start")
 	}
 	return nil
 }
