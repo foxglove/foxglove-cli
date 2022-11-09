@@ -38,6 +38,10 @@ func withStdoutRedirected(output io.Writer, f func()) error {
 
 func TestExportCommand(t *testing.T) {
 	ctx := context.Background()
+	start, err := time.Parse(time.RFC3339, "2020-01-01T00:00:00Z")
+	assert.Nil(t, err)
+	end, err := time.Parse(time.RFC3339, "2021-01-01T00:00:00Z")
+	assert.Nil(t, err)
 	t.Run("returns forbidden if not authenticated", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
@@ -45,17 +49,19 @@ func TestExportCommand(t *testing.T) {
 		sv, err := console.NewMockServer(ctx)
 		assert.Nil(t, err)
 		err = executeExport(
-			context.TODO(),
+			ctx,
 			buf,
 			sv.BaseURL(),
-			"abc",
-			"test-device",
-			"2020-01-01T00:00:00Z",
-			"2021-01-01T00:00:00Z",
-			"mcap0",
-			"/diagnostics",
 			"",
+			"abc",
 			"user-agent",
+			&console.StreamRequest{
+				DeviceID:     "test-device",
+				Start:        &start,
+				End:          &end,
+				OutputFormat: "mcap0",
+				Topics:       []string{"/diagnostics"},
+			},
 		)
 		assert.ErrorIs(t, err, console.ErrForbidden)
 	})
@@ -69,14 +75,16 @@ func TestExportCommand(t *testing.T) {
 			ctx,
 			buf,
 			sv.BaseURL(),
-			"abc",
-			"test-device",
-			"2020-01-01T00:00:00Z",
-			"2021-01-01T00:00:00Z",
-			"mcap",
-			"/diagnostics",
 			"",
+			"abc",
 			"user-agent",
+			&console.StreamRequest{
+				DeviceID:     "test-device",
+				Start:        &start,
+				End:          &end,
+				OutputFormat: "mcap",
+				Topics:       []string{"/diagnostics"},
+			},
 		)
 		assert.ErrorIs(t, err, ErrInvalidFormat)
 	})
@@ -91,17 +99,19 @@ func TestExportCommand(t *testing.T) {
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
 			err = executeExport(
-				context.TODO(),
+				ctx,
 				buf,
 				sv.BaseURL(),
 				"abc",
-				"test-device",
-				"2020-01-01T00:00:00Z",
-				"2021-01-01T00:00:00Z",
-				"mcap0",
-				"/diagnostics",
 				token,
 				"user-agent",
+				&console.StreamRequest{
+					DeviceID:     "test-device",
+					Start:        &start,
+					End:          &end,
+					OutputFormat: "mcap0",
+					Topics:       []string{"/diagnostics"},
+				},
 			)
 			assert.Nil(t, err)
 		})
@@ -128,19 +138,23 @@ func TestExportCommand(t *testing.T) {
 			"user-agent",
 		)
 		assert.Nil(t, err)
+		start, err := time.Parse(time.RFC3339, "2001-01-01T00:00:00Z")
+		assert.Nil(t, err)
 		err = withStdoutRedirected(buf, func() {
 			err := executeExport(
-				context.TODO(),
+				ctx,
 				buf,
 				sv.BaseURL(),
-				clientID,
-				deviceID,
-				"2001-01-01T00:00:00Z",
-				"2021-01-01T00:00:00Z",
-				"bag1",
-				"/diagnostics",
+				"abc",
 				token,
 				"user-agent",
+				&console.StreamRequest{
+					DeviceID:     "test-device",
+					Start:        &start,
+					End:          &end,
+					OutputFormat: "bag1",
+					Topics:       []string{"/diagnostics"},
+				},
 			)
 			assert.Nil(t, err)
 		})
@@ -167,19 +181,23 @@ func TestExportCommand(t *testing.T) {
 			"user-agent",
 		)
 		assert.Nil(t, err)
+		start, err := time.Parse(time.RFC3339, "2001-01-01T00:00:00Z")
+		assert.Nil(t, err)
 		err = withStdoutRedirected(buf, func() {
 			err := executeExport(
-				context.TODO(),
+				ctx,
 				buf,
 				sv.BaseURL(),
-				clientID,
-				deviceID,
-				"2001-01-01T00:00:00Z",
-				"2021-01-01T00:00:00Z",
-				"json",
-				"/diagnostics",
+				"abc",
 				token,
 				"user-agent",
+				&console.StreamRequest{
+					DeviceID:     "test-device",
+					Start:        &start,
+					End:          &end,
+					OutputFormat: "json",
+					Topics:       []string{"/diagnostics"},
+				},
 			)
 			assert.Nil(t, err)
 		})

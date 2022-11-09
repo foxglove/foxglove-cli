@@ -32,11 +32,25 @@ type UploadResponse struct {
 }
 
 type StreamRequest struct {
-	DeviceID     string    `json:"deviceId"`
-	Start        time.Time `json:"start"`
-	End          time.Time `json:"end"`
-	OutputFormat string    `json:"outputFormat"`
-	Topics       []string  `json:"topics"`
+	ImportID     string     `json:"importId"`
+	DeviceID     string     `json:"deviceId"`
+	Start        *time.Time `json:"start,omitempty"`
+	End          *time.Time `json:"end,omitempty"`
+	OutputFormat string     `json:"outputFormat"`
+	Topics       []string   `json:"topics"`
+}
+
+func (req *StreamRequest) Validate() error {
+	if req.ImportID == "" && req.DeviceID == "" {
+		return fmt.Errorf("either import-id or device-id, start, and end are required")
+	}
+	if req.DeviceID != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
+		return fmt.Errorf("start/end are required if device-id is supplied")
+	}
+	if req.Start != nil && req.End != nil && req.End.Before(*req.Start) {
+		return fmt.Errorf("end must be after or equal to start")
+	}
+	return nil
 }
 
 type StreamResponse struct {
@@ -93,7 +107,7 @@ type ImportsRequest struct {
 }
 
 type ImportsResponse struct {
-	ImportID        string    `json:"importId"`
+	ID              string    `json:"id"`
 	DeviceID        string    `json:"deviceId"`
 	Filename        string    `json:"filename"`
 	ImportTime      time.Time `json:"importTime"`
@@ -107,7 +121,7 @@ type ImportsResponse struct {
 
 func (r ImportsResponse) Fields() []string {
 	return []string{
-		r.ImportID,
+		r.ID,
 		r.DeviceID,
 		r.Filename,
 		r.ImportTime.Format(time.RFC3339),

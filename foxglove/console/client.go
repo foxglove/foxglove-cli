@@ -66,7 +66,7 @@ func (c *FoxgloveClient) SignIn(token string) (string, error) {
 
 // Stream returns a ReadCloser wrapping a binary output stream in response to
 // the provided request.
-func (c *FoxgloveClient) Stream(r StreamRequest) (io.ReadCloser, error) {
+func (c *FoxgloveClient) Stream(r *StreamRequest) (io.ReadCloser, error) {
 	buf := &bytes.Buffer{}
 	err := json.NewEncoder(buf).Encode(r)
 	if err != nil {

@@ -44,27 +44,9 @@ func Export(
 	ctx context.Context,
 	w io.Writer,
 	client *FoxgloveClient,
-	deviceID string,
-	startstr string,
-	endstr string,
-	topics []string,
-	outputFormat string,
+	request *StreamRequest,
 ) error {
-	start, err := time.Parse(time.RFC3339, startstr)
-	if err != nil {
-		return fmt.Errorf("failed to parse start: %w", err)
-	}
-	end, err := time.Parse(time.RFC3339, endstr)
-	if err != nil {
-		return fmt.Errorf("failed to parse start: %w", err)
-	}
-	rc, err := client.Stream(StreamRequest{
-		DeviceID:     deviceID,
-		Start:        start,
-		End:          end,
-		OutputFormat: outputFormat,
-		Topics:       topics,
-	})
+	rc, err := client.Stream(request)
 	if err != nil {
 		return err
 	}

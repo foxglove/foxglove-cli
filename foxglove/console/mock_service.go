@@ -151,9 +151,9 @@ func (s *MockFoxgloveServer) imports(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	imports := []ImportsResponse{}
-	for key := range s.Uploads {
+	for importID := range s.Uploads {
 		imports = append(imports, ImportsResponse{
-			ImportID: key,
+			ID: importID,
 		})
 	}
 	err := json.NewEncoder(w).Encode(imports)
