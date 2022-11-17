@@ -101,3 +101,10 @@ func AddFormatFlag(cmd *cobra.Command, format *string) {
 		"render output in specified format (table, json, csv)",
 	)
 }
+
+func promptForInput(prompt string) string {
+	fmt.Printf(prompt)
+	var value string
+	fmt.Scanln(&value)
+	return value
+}
