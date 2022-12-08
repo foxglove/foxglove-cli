@@ -46,6 +46,20 @@ Before interacting with the data platform it is necessary to authenticate:
 foxglove auth login
 ```
 
+#### Configuration with an API key
+
+As an alternative to interactive login, the tool can be configured to use a
+foxglove API key:
+
+```
+foxglove auth configure-api-key
+```
+
+This will overwrite any previously set credential. The API key should be
+configured in the Foxglove console with whatever capabilities you intend to
+use, for instance `data.upload` (for importing data) or `data.stream` (for
+exporting).
+
 #### Importing data
 
 Before importing data it is necessary to add a device:
