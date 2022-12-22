@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
@@ -11,8 +12,17 @@ import (
 
 func executeImport(baseURL, clientID, deviceID, filename, token, userAgent string) error {
 	ctx := context.Background()
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = validateImportLooksLegal(f)
+	if err != nil {
+		return err
+	}
 	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	err := console.Import(ctx, client, deviceID, filename)
+	err = console.Import(ctx, client, deviceID, filename)
 	if err != nil {
 		return err
 	}
@@ -36,7 +46,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 				params.userAgent,
 			)
 			if err != nil {
-				fatalf("Import failed: %s\n", err)
+				fatalf("Failed to import %s: %s\n", filename, err)
 			}
 		},
 	}

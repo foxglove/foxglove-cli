@@ -1,16 +1,81 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
+
+var ErrTruncatedMCAP = errors.New("truncated mcap file")
+var ErrInvalidInput = errors.New("magic bytes do not match bag or mcap format")
+
+func fileLooksLikeMCAP(r io.ReadSeeker) (bool, error) {
+	buf := make([]byte, len(mcap.Magic))
+	_, err := r.Read(buf)
+	if err != nil {
+		return false, fmt.Errorf("failed to read magic bytes: %w", err)
+	}
+	if !bytes.Equal(buf, mcap.Magic) {
+		return false, nil
+	}
+	// if the header bytes equal mcap magic, check the footer bytes
+	_, err = r.Seek(-int64(len(mcap.Magic)), io.SeekEnd)
+	if err != nil {
+		return false, fmt.Errorf("failed to seek to file end: %w", err)
+	}
+	_, err = r.Read(buf)
+	if err != nil {
+		return false, fmt.Errorf("failed to read trailing mcap magic bytes: %w", err)
+	}
+	if !bytes.Equal(buf, mcap.Magic) {
+		return false, ErrTruncatedMCAP
+	}
+	return true, nil
+}
+
+func fileLooksLikeBag(r io.ReadSeeker) (bool, error) {
+	bagMagic := []byte("#ROSBAG V2.0\n")
+	buf := make([]byte, len(bagMagic))
+	_, err := r.Read(buf)
+	if err != nil {
+		return false, fmt.Errorf("failed to read magic bytes: %w", err)
+	}
+	if !bytes.Equal(buf, bagMagic) {
+		return false, nil
+	}
+	return true, nil
+}
+
+func validateImportLooksLegal(r io.ReadSeeker) error {
+	looksLikeMCAP, err := fileLooksLikeMCAP(r)
+	if err != nil {
+		return err
+	}
+	if looksLikeMCAP {
+		return nil
+	}
+	_, err = r.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	looksLikeBag, err := fileLooksLikeBag(r)
+	if err != nil {
+		return err
+	}
+	if looksLikeBag {
+		return nil
+	}
+	return ErrInvalidInput
+}
 
 func renderList[RequestType console.Request, ResponseType console.Record](
 	w io.Writer,
@@ -103,7 +168,7 @@ func AddFormatFlag(cmd *cobra.Command, format *string) {
 }
 
 func promptForInput(prompt string) string {
-	fmt.Printf(prompt)
+	fmt.Print(prompt)
 	var value string
 	fmt.Scanln(&value)
 	return value
