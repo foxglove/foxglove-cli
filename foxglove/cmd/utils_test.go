@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,6 +20,33 @@ func (r TestRecord) Fields() []string {
 
 func (r TestRecord) Headers() []string {
 	return []string{"a", "b"}
+}
+
+func TestValidateImportLooksLegal(t *testing.T) {
+	t.Run("accepts a valid mcap file", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		w, err := mcap.NewWriter(buf, &mcap.WriterOptions{})
+		assert.Nil(t, err)
+		assert.Nil(t, w.Close())
+		reader := bytes.NewReader(buf.Bytes())
+		assert.Nil(t, validateImportLooksLegal(reader))
+	})
+	t.Run("rejects a truncated mcap file", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		w, err := mcap.NewWriter(buf, &mcap.WriterOptions{})
+		assert.Nil(t, err)
+		assert.Nil(t, w.Close())
+		reader := bytes.NewReader(buf.Bytes()[:len(mcap.Magic)+1])
+		assert.ErrorIs(t, validateImportLooksLegal(reader), ErrTruncatedMCAP)
+	})
+	t.Run("accepts a bag file", func(t *testing.T) {
+		reader := bytes.NewReader([]byte("#ROSBAG V2.0\n"))
+		assert.Nil(t, validateImportLooksLegal(reader))
+	})
+	t.Run("rejects a file that is neither bag nor mcap", func(t *testing.T) {
+		reader := bytes.NewReader(make([]byte, 10))
+		assert.ErrorIs(t, validateImportLooksLegal(reader), ErrInvalidInput)
+	})
 }
 
 func TestRenderCSV(t *testing.T) {
