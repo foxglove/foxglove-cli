@@ -107,8 +107,8 @@ func UploadExtensionFile(
 		return fmt.Errorf("file should have a '.foxe' extension")
 	}
 
-	if stat.Size() > 10*1024*1024 {
-		return fmt.Errorf("file size may not exceed 10mb")
+	if stat.Size() > 30*1024*1024 {
+		return fmt.Errorf("file size may not exceed 30mb")
 	}
 
 	bar := progressbar.DefaultBytes(stat.Size(), "uploading")
