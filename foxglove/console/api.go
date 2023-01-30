@@ -32,8 +32,8 @@ type UploadResponse struct {
 }
 
 type StreamRequest struct {
-	ImportID     string     `json:"importId"`
-	DeviceID     string     `json:"deviceId"`
+	ImportID     string     `json:"importId,omitempty"`
+	DeviceID     string     `json:"deviceId,omitempty"`
 	Start        *time.Time `json:"start,omitempty"`
 	End          *time.Time `json:"end,omitempty"`
 	OutputFormat string     `json:"outputFormat"`
