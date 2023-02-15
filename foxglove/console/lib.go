@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -46,15 +47,96 @@ func Export(
 	client *FoxgloveClient,
 	request *StreamRequest,
 ) error {
-	rc, err := client.Stream(request)
+	writer, err := mcap.NewWriter(w, &mcap.WriterOptions{
+		IncludeCRC:  true,
+		Chunked:     true,
+		Compression: mcap.CompressionZSTD,
+		ChunkSize:   4 * 1024 * 1024,
+	})
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
 
-	_, err = io.Copy(w, rc)
-	if err != nil {
-		return err
+	buf := make([]byte, 0)
+	lastMessageTimestamp := uint64(0)
+	bufferedMessages := []*mcap.Message{}
+Top:
+	for {
+		rc, err := client.Stream(request)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		lexer, err := mcap.NewLexer(rc, &mcap.LexerOptions{})
+		if err != nil {
+			return err
+		}
+
+		for {
+			tokenType, token, err := lexer.Next(buf)
+			if err != nil {
+				request = &StreamRequest{
+					ImportID:     request.ImportID,
+					DeviceID:     request.DeviceID,
+					Start:        &time.Time{}, // start at the last serialized
+					End:          request.End,
+					OutputFormat: request.OutputFormat,
+					Topics:       request.Topics,
+				}
+				return err
+			}
+			if len(buf) < len(token) {
+				buf = token
+			}
+			switch tokenType {
+			case mcap.TokenChannel:
+				channel, err := mcap.ParseChannel(token)
+				if err != nil {
+					return err
+				}
+				err = writer.WriteChannel(channel)
+				if err != nil {
+					return err
+				}
+			case mcap.TokenMessage:
+				message, err := mcap.ParseMessage(token)
+				if err != nil {
+					return err
+				}
+
+				if message.LogTime == lastMessageTimestamp {
+					bufferedMessages = append(bufferedMessages, message)
+				}
+
+				err = writer.WriteMessage(message)
+				if err != nil {
+					return err
+				}
+			case mcap.TokenSchema:
+				schema, err := mcap.ParseSchema(token)
+				if err != nil {
+					return err
+				}
+				err = writer.WriteSchema(schema)
+				if err != nil {
+					return err
+				}
+			case mcap.TokenMetadata:
+				metadata, err := mcap.ParseMetadata(token)
+				if err != nil {
+					return err
+				}
+				err = writer.WriteMetadata(metadata)
+				if err != nil {
+					return err
+				}
+			case mcap.TokenDataEnd:
+				break Top
+			default:
+				continue
+			}
+		}
 	}
 	return nil
 }
