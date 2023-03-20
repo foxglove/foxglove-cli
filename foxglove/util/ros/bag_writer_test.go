@@ -27,7 +27,7 @@ func TestProduceSimpleOutputBag(t *testing.T) {
 			defer f.Close()
 			writer, err := NewBagWriter(f)
 			assert.Nil(t, err)
-			assert.Nil(t, writer.WriteConnection(Connection{
+			assert.Nil(t, writer.WriteConnection(&Connection{
 				Conn:  0,
 				Topic: "/foo",
 				Data: ConnectionData{
@@ -38,7 +38,7 @@ func TestProduceSimpleOutputBag(t *testing.T) {
 				},
 			}))
 			for i := 0; i < 400000; i++ {
-				assert.Nil(t, writer.WriteMessage(Message{
+				assert.Nil(t, writer.WriteMessage(&Message{
 					Conn: 0,
 					Time: uint64(i),
 					Data: []byte{0x01, 0x02, 0x03},
@@ -84,15 +84,15 @@ func TestBagWriter(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			writer, err := NewBagWriter(buf)
+			writer, err := NewBagWriter(buf, WithChunksize(2048))
 			if err != nil {
 				t.Error(err)
 			}
 			for _, connection := range c.inputConnections {
-				assert.Nil(t, writer.WriteConnection(connection))
+				assert.Nil(t, writer.WriteConnection(&connection))
 			}
 			for _, message := range c.inputMessages {
-				assert.Nil(t, writer.WriteMessage(message))
+				assert.Nil(t, writer.WriteMessage(&message))
 			}
 			writer.Close()
 
@@ -101,7 +101,7 @@ func TestBagWriter(t *testing.T) {
 
 			opcodes := []OpCode{}
 			for {
-				opcode, _, _, err := lexer.Next()
+				opcode, _, err := lexer.Next()
 				if err != nil {
 					if errors.Is(err, io.EOF) {
 						break
@@ -126,7 +126,7 @@ func TestBagWriterHashesDeterministically(t *testing.T) {
 		assert.Nil(t, err)
 
 		for connID := uint32(0); connID < 5; connID++ {
-			assert.Nil(t, writer.WriteConnection(Connection{
+			assert.Nil(t, writer.WriteConnection(&Connection{
 				Conn:  connID,
 				Topic: fmt.Sprintf("/foo-%d", connID),
 				Data: ConnectionData{
@@ -139,7 +139,7 @@ func TestBagWriterHashesDeterministically(t *testing.T) {
 		}
 
 		for j := uint32(0); j < 1000; j++ {
-			assert.Nil(t, writer.WriteMessage(Message{
+			assert.Nil(t, writer.WriteMessage(&Message{
 				Conn: j % 5,
 				Time: uint64(j),
 				Data: []byte{0x01, 0x02, 0x03},
@@ -162,7 +162,7 @@ func BenchmarkBagWriter(b *testing.B) {
 		assert.Nil(b, err)
 		writer, err := NewBagWriter(f)
 		assert.Nil(b, err)
-		assert.Nil(b, writer.WriteConnection(Connection{
+		assert.Nil(b, writer.WriteConnection(&Connection{
 			Conn:  0,
 			Topic: "/foo",
 			Data: ConnectionData{
@@ -175,7 +175,7 @@ func BenchmarkBagWriter(b *testing.B) {
 
 		data := make([]byte, 1000)
 		for i := 0; i < 100000; i++ {
-			assert.Nil(b, writer.WriteMessage(Message{
+			assert.Nil(b, writer.WriteMessage(&Message{
 				Conn: 0,
 				Time: 1000,
 				Data: data,

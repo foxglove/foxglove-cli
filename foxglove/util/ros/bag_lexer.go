@@ -63,7 +63,7 @@ func NewBagLexer(r io.Reader, opts ...ReaderOption) (*BagLexer, error) {
 }
 
 // Next gets the next token from the bag reader.
-func (b *BagLexer) Next() (OpCode, []byte, []byte, error) {
+func (b *BagLexer) Next() (OpCode, []byte, error) {
 	for {
 		headerLen, err := b.readUint32()
 		if err != nil {
@@ -74,7 +74,7 @@ func (b *BagLexer) Next() (OpCode, []byte, []byte, error) {
 				b.activeReader = b.baseReader
 				continue
 			}
-			return OpError, nil, nil, err
+			return OpError, nil, err
 		}
 
 		if uint32(len(b.header)) < headerLen {
@@ -83,19 +83,19 @@ func (b *BagLexer) Next() (OpCode, []byte, []byte, error) {
 
 		_, err = io.ReadFull(b.activeReader, b.header[:headerLen])
 		if err != nil {
-			return OpError, nil, nil, err
+			return OpError, nil, err
 		}
 
 		opcodeValue, err := getHeaderValue("op", b.header)
 		if err != nil {
-			return OpError, nil, nil, err
+			return OpError, nil, err
 		}
 
 		opcode := OpCode(opcodeValue[0])
 		if opcode == OpChunk {
 			err = b.loadChunk(b.header[:headerLen])
 			if err != nil {
-				return OpError, nil, nil, err
+				return OpError, nil, err
 			}
 			continue
 		}
@@ -103,16 +103,24 @@ func (b *BagLexer) Next() (OpCode, []byte, []byte, error) {
 		// otherwise, read the data
 		dataLen, err := b.readUint32()
 		if err != nil {
-			return OpError, nil, nil, err
+			return OpError, nil, err
 		}
 		if uint32(len(b.data)) < dataLen {
 			b.data = make([]byte, dataLen)
 		}
 		_, err = io.ReadFull(b.activeReader, b.data[:dataLen])
 		if err != nil {
-			return OpError, nil, nil, err
+			return OpError, nil, err
 		}
-		return opcode, b.header, b.data, nil
+
+		record := make([]byte, 4+headerLen+4+dataLen)
+		binary.LittleEndian.PutUint32(record, headerLen)
+		offset := 4
+		offset += copy(record[4:], b.header[:headerLen])
+		binary.LittleEndian.PutUint32(record[offset:], dataLen)
+		offset += 4
+		copy(record[offset:], b.data[:dataLen])
+		return opcode, record, nil
 	}
 }
 

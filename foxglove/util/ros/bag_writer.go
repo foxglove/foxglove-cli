@@ -40,7 +40,7 @@ type currentChunkStats struct {
 
 type outputStats struct {
 	chunkInfo   []ChunkInfo
-	connections []Connection
+	connections []*Connection
 }
 
 // NewBagWriter constructs a new bag writer. The bag writer implements the ROS
@@ -109,7 +109,7 @@ func NewBagWriter(w io.Writer, opts ...BagWriterOption) (*BagWriter, error) {
 // enforced by the library, in order to support writing messages to an existing
 // partial file. See http://wiki.ros.org/Bags/Format/2.0#Connection for
 // additional detail.
-func (b *BagWriter) WriteConnection(connection Connection) error {
+func (b *BagWriter) WriteConnection(connection *Connection) error {
 	n, err := b.writeConnection(b.chunkWriter, connection)
 	if err != nil {
 		return err
@@ -121,7 +121,7 @@ func (b *BagWriter) WriteConnection(connection Connection) error {
 
 // WriteMessage writes a message data record to the bag file. See
 // http://wiki.ros.org/Bags/Format/2.0#Message_data for additional detail.
-func (b *BagWriter) WriteMessage(message Message) error {
+func (b *BagWriter) WriteMessage(message *Message) error {
 	// if the current chunk exceeds the requested chunk size, flush it to the
 	// output and start a new chunk.
 	if b.currentChunk.decompressedSize > uint32(b.config.chunksize) {
@@ -158,11 +158,9 @@ func (b *BagWriter) WriteMessage(message Message) error {
 	// increment the message count for this connection, within the current chunk
 	indexData.Count++
 
-	// load the message time into the temporary buffer
-	binary.LittleEndian.PutUint64(b.buf8, message.Time)
-
 	// write the message time to the index data entry's data section.
-	_, err := indexData.Data.Write(b.buf8[:8])
+	// TODO: we could reuse this rostime buffer
+	_, err := indexData.Data.Write(rostime(message.Time))
 	if err != nil {
 		return err
 	}
@@ -290,22 +288,16 @@ func (b *BagWriter) writeIndexData(indexData IndexData) error {
 func (b *BagWriter) writeChunkInfo(chunkInfo ChunkInfo) error {
 	ver := make([]byte, 4)
 	chunkPos := make([]byte, 8)
-	startTime := make([]byte, 8)
-	endTime := make([]byte, 8)
 	count := make([]byte, 4)
-
 	binary.LittleEndian.PutUint32(ver, 1) // version 1 is assumed
 	binary.LittleEndian.PutUint64(chunkPos, chunkInfo.ChunkPos)
-	binary.LittleEndian.PutUint64(startTime, chunkInfo.StartTime)
-	binary.LittleEndian.PutUint64(endTime, chunkInfo.EndTime)
 	binary.LittleEndian.PutUint32(count, uint32(len(chunkInfo.Data)))
-
 	header := b.buildHeader(&b.header,
 		[]byte("op"), []byte{byte(OpChunkInfo)},
 		[]byte("ver"), ver,
 		[]byte("chunk_pos"), chunkPos,
-		[]byte("start_time"), startTime,
-		[]byte("end_time"), endTime,
+		[]byte("start_time"), rostime(chunkInfo.StartTime),
+		[]byte("end_time"), rostime(chunkInfo.EndTime),
 		[]byte("count"), count,
 	)
 
@@ -558,7 +550,7 @@ func (b *BagWriter) resetActiveChunkState() {
 
 // writeConnection writes a connection record to the output. See
 // http://wiki.ros.org/Bags/Format/2.0#Connection for details.
-func (b *BagWriter) writeConnection(w io.Writer, connection Connection) (int, error) {
+func (b *BagWriter) writeConnection(w io.Writer, connection *Connection) (int, error) {
 	binary.LittleEndian.PutUint32(b.buf8, connection.Conn)
 	binary.LittleEndian.PutUint32(b.buf8, connection.Conn)
 	header := b.buildHeader(&b.header,
