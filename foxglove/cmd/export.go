@@ -17,6 +17,7 @@ import (
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/foxglove/mcap/go/cli/mcap/utils/ros"
 	"github.com/foxglove/mcap/go/mcap"
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -207,6 +208,8 @@ func executeExport(
 	if !stdoutRedirected() && request.OutputFormat != "json" {
 		return fmt.Errorf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
 	}
+	progressWriter := progressbar.DefaultBytes(-1, "exporting")
+	writer := io.MultiWriter(w, progressWriter)
 	if request.OutputFormat == "json" {
 		request.OutputFormat = "mcap0"
 		pipeReader, pipeWriter, err := os.Pipe()
@@ -224,7 +227,7 @@ func executeExport(
 			done <- true
 			pipeWriter.Close()
 		}()
-		err = mcap2JSON(w, pipeReader)
+		err = mcap2JSON(writer, pipeReader)
 		if err != nil {
 			return fmt.Errorf("JSON conversion error: %w", err)
 		}
@@ -235,7 +238,7 @@ func executeExport(
 			return err
 		}
 	} else {
-		return console.Export(ctx, w, client, request)
+		return console.Export(ctx, writer, client, request)
 	}
 }
 
