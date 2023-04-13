@@ -150,47 +150,45 @@ func (r ImportsResponse) Headers() []string {
 }
 
 type EventsRequest struct {
-	DeviceID   string `json:"deviceId" form:"deviceId,omitempty"`
-	DeviceName string `json:"deviceName" form:"deviceName,omitempty"`
-	SortBy     string `json:"sortBy" form:"sortBy,omitempty"`
-	SortOrder  string `json:"sortOrder" form:"sortOrder,omitempty"`
-	Limit      int    `json:"limit" form:"limit,omitempty"`
-	Offset     int    `json:"offset" form:"offset,omitempty"`
-	Start      string `json:"start" form:"start,omitempty"`
-	End        string `json:"end" form:"end,omitempty"`
-	Key        string `json:"key" form:"key,omitempty"`
-	Value      string `json:"value" form:"value,omitempty"`
+	DeviceID  string `json:"deviceId" form:"deviceId,omitempty"`
+	SortBy    string `json:"sortBy" form:"sortBy,omitempty"`
+	SortOrder string `json:"sortOrder" form:"sortOrder,omitempty"`
+	Limit     int    `json:"limit" form:"limit,omitempty"`
+	Offset    int    `json:"offset" form:"offset,omitempty"`
+	Start     string `json:"start" form:"start,omitempty"`
+	End       string `json:"end" form:"end,omitempty"`
+	Query     string `json:"key" form:"query,omitempty"`
 }
 
-type EventsResponse struct {
-	ID             string            `json:"id"`
-	DeviceID       string            `json:"deviceId"`
-	TimestampNanos string            `json:"timestampNanos"`
-	DurationNanos  string            `json:"durationNanos"`
-	Metadata       map[string]string `json:"metadata"`
-	CreatedAt      string            `json:"createdAt"`
-	UpdatedAt      string            `json:"updatedAt"`
+type EventResponseItem struct {
+	ID        string            `json:"id"`
+	DeviceID  string            `json:"deviceId"`
+	Start     string            `json:"start"`
+	End       string            `json:"end"`
+	Metadata  map[string]string `json:"metadata"`
+	CreatedAt string            `json:"createdAt"`
+	UpdatedAt string            `json:"updatedAt"`
 }
 
-func (r EventsResponse) Fields() []string {
+func (r EventResponseItem) Fields() []string {
 	metadata, _ := json.Marshal(r.Metadata)
 	return []string{
 		r.ID,
 		r.DeviceID,
-		r.TimestampNanos,
-		r.DurationNanos,
+		r.Start,
+		r.End,
 		r.CreatedAt,
 		r.UpdatedAt,
 		string(metadata),
 	}
 }
 
-func (r EventsResponse) Headers() []string {
+func (r EventResponseItem) Headers() []string {
 	return []string{
 		"ID",
 		"Device ID",
-		"Timestamp",
-		"Duration",
+		"Start",
+		"End",
 		"Created At",
 		"Updated At",
 		"Metadata",
@@ -246,22 +244,13 @@ type CreateDeviceResponse struct {
 }
 
 type CreateEventRequest struct {
-	DeviceID      string            `json:"deviceId"`
-	DeviceName    string            `json:"deviceName"`
-	Timestamp     string            `json:"timestamp"`
-	DurationNanos string            `json:"durationNanos"`
-	Metadata      map[string]string `json:"metadata"`
+	DeviceID string            `json:"deviceId"`
+	Start    string            `json:"start"`
+	End      string            `json:"end"`
+	Metadata map[string]string `json:"metadata"`
 }
 
-type CreateEventResponse struct {
-	ID             string            `json:"id"`
-	DeviceID       string            `json:"deviceId"`
-	TimestampNanos string            `json:"timestampNanos"`
-	DurationNanos  string            `json:"durationNanos"`
-	Metadata       map[string]string `json:"metadata"`
-	CreatedAt      string            `json:"createdAt"`
-	UpdatedAt      string            `json:"updatedAt"`
-}
+type CreateEventResponse = EventResponseItem
 
 type ExtensionsRequest struct{}
 

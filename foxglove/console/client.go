@@ -230,7 +230,7 @@ func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDevic
 }
 
 func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventResponse, err error) {
-	err = c.post("/beta/device-events", req, &resp)
+	err = c.post("/v1/events", req, &resp)
 	return resp, err
 }
 
@@ -293,8 +293,8 @@ func (c *FoxgloveClient) Devices(req DevicesRequest) (resp []DevicesResponse, er
 	return resp, err
 }
 
-func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventsResponse, err error) {
-	err = c.get("/beta/device-events", req, &resp)
+func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, err error) {
+	err = c.get("/v1/events", req, &resp)
 	return resp, err
 }
 

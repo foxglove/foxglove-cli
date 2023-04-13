@@ -68,10 +68,6 @@ func Execute(version string) {
 		Use:   "data",
 		Short: "Data access and management",
 	}
-	betaCmd := &cobra.Command{
-		Use:   "beta",
-		Short: "Experimental features",
-	}
 	importsCmd := &cobra.Command{
 		Use:   "imports",
 		Short: "Query and modify data imports",
@@ -141,7 +137,6 @@ func Execute(version string) {
 	authCmd.AddCommand(configureAPIKey)
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	coverageCmd.AddCommand(newListCoverageCommand(params))
-	betaCmd.AddCommand(eventsCmd)
 	dataCmd.AddCommand(
 		exportCmd,
 		importsCmd,
@@ -154,7 +149,7 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd)
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, eventsCmd, extensionsCmd)
 
 	cobra.CheckErr(rootCmd.Execute())
 }
