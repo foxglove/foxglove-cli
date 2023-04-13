@@ -20,6 +20,7 @@ func newBetaAddEventCommand(params *baseParams) *cobra.Command {
 		Use:   "add",
 		Short: "Add an event",
 		Run: func(cmd *cobra.Command, args []string) {
+			printDeprecation()
 			client := console.NewRemoteFoxgloveClient(
 				*params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
@@ -72,6 +73,7 @@ func newBetaListEventsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List events",
 		Run: func(cmd *cobra.Command, args []string) {
+			printDeprecation()
 			client := console.NewRemoteFoxgloveClient(
 				*params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
@@ -110,4 +112,8 @@ func newBetaListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().StringVarP(&value, "value", "", "", "return events with matching metadata values")
 	AddFormatFlag(eventsListCmd, &format)
 	return eventsListCmd
+}
+
+func printDeprecation() {
+	fmt.Fprintln(os.Stderr, "[Warning] this command is deprecated and will be removed in a future version. Use `foxglove events`.")
 }
