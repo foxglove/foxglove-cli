@@ -36,6 +36,7 @@ func newBetaAddEventCommand(params *baseParams) *cobra.Command {
 				}
 				metadata[parts[0]] = parts[1]
 			}
+			//nolint:staticcheck
 			response, err := client.BetaCreateEvent(console.BetaCreateEventRequest{
 				DeviceID:      deviceID,
 				DeviceName:    deviceName,
@@ -93,6 +94,7 @@ func newBetaListEventsCommand(params *baseParams) *cobra.Command {
 					Key:        key,
 					Value:      value,
 				},
+				//nolint:staticcheck
 				client.BetaEvents,
 				format,
 			)
