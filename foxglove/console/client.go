@@ -315,6 +315,11 @@ func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, e
 	return resp, err
 }
 
+func (c *FoxgloveClient) Attachments(req *AttachmentsRequest) (resp []AttachmentsResponse, err error) {
+	err = c.get("/v1/recording-attachments", req, &resp)
+	return resp, err
+}
+
 func (c *FoxgloveClient) Coverage(req *CoverageRequest) (resp []CoverageResponse, err error) {
 	err = c.get("/v1/data/coverage", *req, &resp)
 	return resp, err
@@ -323,6 +328,14 @@ func (c *FoxgloveClient) Coverage(req *CoverageRequest) (resp []CoverageResponse
 func (c *FoxgloveClient) Extensions(req ExtensionsRequest) (resp []ExtensionResponse, err error) {
 	err = c.get("/v1/extensions", req, &resp)
 	return resp, err
+}
+
+func (c *FoxgloveClient) Attachment(id string) (io.ReadCloser, error) {
+	res, err := c.authed.Get(c.baseurl + "/v1/recording-attachments/" + id + "/download")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch records: %w", err)
+	}
+	return res.Body, nil
 }
 
 // Token returns a token for the provided device code. If the token for the
