@@ -45,10 +45,10 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 	return attachmentsListCmd
 }
 
-func newGetAttachmentCmd(params *baseParams) *cobra.Command {
-	attachmentsGetCmd := &cobra.Command{
-		Use:   "get",
-		Short: "Get an MCAP attachment by ID",
+func newDownloadAttachmentCmd(params *baseParams) *cobra.Command {
+	attachmentsDownloadCmd := &cobra.Command{
+		Use:   "download",
+		Short: "Download an MCAP attachment by ID",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			attachmentID := args[0]
@@ -70,6 +70,6 @@ func newGetAttachmentCmd(params *baseParams) *cobra.Command {
 			}
 		},
 	}
-	attachmentsGetCmd.InheritedFlags()
-	return attachmentsGetCmd
+	attachmentsDownloadCmd.InheritedFlags()
+	return attachmentsDownloadCmd
 }

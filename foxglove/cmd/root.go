@@ -145,7 +145,7 @@ func Execute(version string) {
 	authCmd.AddCommand(configureAPIKey)
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	attachmentsCmd.AddCommand(newListAttachmentsCommand(params))
-	attachmentsCmd.AddCommand(newGetAttachmentCmd(params))
+	attachmentsCmd.AddCommand(newDownloadAttachmentCmd(params))
 	coverageCmd.AddCommand(newListCoverageCommand(params))
 	betaCmd.AddCommand(eventsCmd)
 	dataCmd.AddCommand(
