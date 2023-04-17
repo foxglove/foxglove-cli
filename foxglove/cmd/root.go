@@ -76,6 +76,10 @@ func Execute(version string) {
 		Use:   "imports",
 		Short: "Query and modify data imports",
 	}
+	attachmentsCmd := &cobra.Command{
+		Use:   "attachments",
+		Short: "Query and modify data attachments",
+	}
 	devicesCmd := &cobra.Command{
 		Use:   "devices",
 		Short: "List and manage devices",
@@ -140,6 +144,8 @@ func Execute(version string) {
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(configureAPIKey)
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
+	attachmentsCmd.AddCommand(newListAttachmentsCommand(params))
+	attachmentsCmd.AddCommand(newGetAttachmentCmd(params))
 	coverageCmd.AddCommand(newListCoverageCommand(params))
 	betaCmd.AddCommand(eventsCmd)
 	dataCmd.AddCommand(
@@ -154,7 +160,7 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd)
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd, attachmentsCmd)
 
 	cobra.CheckErr(rootCmd.Execute())
 }

@@ -97,6 +97,54 @@ func (r DevicesResponse) Headers() []string {
 	}
 }
 
+type AttachmentsRequest struct {
+	ImportID    string `form:"importId,omitempty"`
+	RecordingID string `form:"recordingId,omitempty"`
+}
+
+type AttachmentsResponse struct {
+	ID          string `json:"id"`
+	RecordingID string `json:"recordingId"`
+	SiteID      string `json:"siteId"`
+	Name        string `json:"name"`
+	MediaType   string `json:"mediaType"`
+	LogTime     string `json:"logTime"`
+	CreateTime  string `json:"createTime"`
+	CRC         uint32 `json:"crc"`
+	Size        int    `json:"size"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+func (r AttachmentsResponse) Fields() []string {
+	return []string{
+		r.ID,
+		r.RecordingID,
+		r.SiteID,
+		r.Name,
+		r.MediaType,
+		r.LogTime,
+		r.CreateTime,
+		fmt.Sprintf("%d", r.CRC),
+		fmt.Sprintf("%d", r.Size),
+		r.Fingerprint,
+	}
+}
+
+func (r AttachmentsResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Recording ID",
+		"Site ID",
+		"Name",
+		"Media Type",
+		"Log Time",
+		"Create Time",
+		"CRC",
+		"Size",
+		"Fingerprint",
+	}
+}
+
 type ImportsRequest struct {
 	DeviceID       string `json:"deviceId" form:"deviceId,omitempty"`
 	Start          string `json:"start" form:"start,omitempty"`
