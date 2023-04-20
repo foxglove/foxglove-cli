@@ -121,24 +121,14 @@ Device created: dev_drpLqjBZYUzus3gv
 The tool supports creating and searching events:
 
 ```
-$ foxglove beta events list
-|          ID          |      DEVICE ID       |      TIMESTAMP      |  DURATION   |        CREATED AT        |        UPDATED AT        |                                 METADATA                                 |
-|----------------------|----------------------|---------------------|-------------|--------------------------|--------------------------|--------------------------------------------------------------------------|
-| evt_PbkdOL8geyyXLIOr | dev_JtSXCGiM0RC2YHDO | 1532402927000000000 | 0           | 2022-02-24T15:22:25.154Z | 2022-02-24T15:22:25.154Z | {"position":"start"}                                                     |
-| evt_U0TCTtRbDb631tmI | dev_mHH1Cp4gPybCPR8y | 1532402927000000000 | 2000000000  | 2022-02-09T21:11:52.637Z | 2022-02-09T21:11:52.637Z | {"nuscene":"0061","startup":"yes"}                                       |
-| evt_9akLLRJRqp8jg1zq | dev_mHH1Cp4gPybCPR8y | 1532402927000000000 | 19000000000 | 2022-02-09T21:08:46.936Z | 2022-02-09T21:08:46.936Z | {"location":"singapore","nuscene":"0061","weather-laguna":"really-nice"} |
-| evt_0A1LUzWBKkLeDoIa | dev_mHH1Cp4gPybCPR8y | 1532402937000000000 | 0           | 2022-02-09T21:19:18.488Z | 2022-02-09T21:19:18.488Z | {"nuscene":"0061","random":"yes"}                                        |
-| evt_Nx6Nx9WoEMPhDeRb | dev_mHH1Cp4gPybCPR8y | 1532402937000000000 | 0           | 2022-02-09T22:08:51.249Z | 2022-02-09T22:08:51.249Z | {"location":"🇸🇬"}                                                         |
-| evt_zZ8s6al5F3CUYVtJ | dev_mHH1Cp4gPybCPR8y | 1532402937000000000 | 0           | 2022-02-09T22:09:49.412Z | 2022-02-09T22:09:49.412Z | {"weather":"🌧"}                                                          |
-| evt_zEVu8NABeHZdABML | dev_mHH1Cp4gPybCPR8y | 1644443695000000000 | 0           | 2022-02-09T21:57:29.064Z | 2022-02-09T21:57:29.064Z | {}                                                                       |
-| evt_QJtL4x6701tFhKia | dev_mHH1Cp4gPybCPR8y | 1645047149000000000 | 0           | 2022-02-16T21:35:07.352Z | 2022-02-16T21:35:07.352Z | {"happy":"valley"}                                                       |
-| evt_kRIWfP2GgjCbLejp | dev_Wm1gvryKJmREqnVT | 1645483936331000000 | 17000000000 | 2022-02-21T23:19:10.521Z | 2022-02-21T23:19:10.521Z | {"calibration":"camera"}                                                 |
-| evt_J69qtmDyKtWmYZTb | dev_mHH1Cp4gPybCPR8y | 1645554501000000000 | 0           | 2022-02-23T18:28:50.228Z | 2022-02-23T18:28:50.228Z | {"color":"green","user":"adrian"}                                        |
-| evt_N6doUtPYh8i7iZxf | dev_jCuXYeFwCkZowpHs | 1646147056000000000 | 23000000000 | 2022-03-04T15:04:31.546Z | 2022-03-04T15:04:31.546Z | {"a":"13"}                                                               |
-| evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 1646248453000000000 | 60          | 2022-03-02T19:14:39.117Z | 2022-03-02T19:14:39.117Z | {"requires-labeling":"true"}                                             |
+$ foxglove events list
+|          ID          |      DEVICE ID       |            START            |             END             |        CREATED AT        |        UPDATED AT        |           METADATA           |
+|----------------------|----------------------|-----------------------------|-----------------------------|--------------------------|--------------------------|------------------------------|
+| evt_N6doUtPYh8i7iZxf | dev_jCuXYeFwCkZowpHs | 2023-04-19T13:22:44.194041Z | 2023-04-19T13:22:44.194041Z | 2023-04-19T13:22:44.263Z | 2023-04-19T13:22:44.263Z | {}                           |
+| evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
-For adding events, see `foxglove beta events add -h`.
+For adding events, see `foxglove events add -h`.
 
 #### Querying data
 ```
