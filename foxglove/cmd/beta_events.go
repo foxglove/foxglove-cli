@@ -10,15 +10,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-func newAddEventCommand(params *baseParams) *cobra.Command {
+func newBetaAddEventCommand(params *baseParams) *cobra.Command {
 	var deviceID string
-	var start string
-	var end string
+	var deviceName string
+	var timestamp string
+	var durationNanos string
 	var keyvals []string
 	addEventCmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add an event",
 		Run: func(cmd *cobra.Command, args []string) {
+			printDeprecation()
 			client := console.NewRemoteFoxgloveClient(
 				*params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
@@ -34,11 +36,13 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				}
 				metadata[parts[0]] = parts[1]
 			}
-			response, err := client.CreateEvent(console.CreateEventRequest{
-				DeviceID: deviceID,
-				Start:    start,
-				End:      end,
-				Metadata: metadata,
+			//nolint:staticcheck
+			response, err := client.BetaCreateEvent(console.BetaCreateEventRequest{
+				DeviceID:      deviceID,
+				DeviceName:    deviceName,
+				Timestamp:     timestamp,
+				DurationNanos: durationNanos,
+				Metadata:      metadata,
 			})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to add event: %s\n", err)
@@ -48,26 +52,29 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	addEventCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
-	addEventCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Start of event, RFC 3339 date-time format")
-	addEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "End of event (inclusive), RFC 3339 date-time format")
+	addEventCmd.PersistentFlags().StringVarP(&timestamp, "timestamp", "", "", "Timestamp of event (RFC3339 format)")
+	addEventCmd.PersistentFlags().StringVarP(&durationNanos, "duration-nanos", "", "", "Duration of event in nanoseconds")
 	addEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
 	return addEventCmd
 }
 
-func newListEventsCommand(params *baseParams) *cobra.Command {
+func newBetaListEventsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var deviceID string
+	var deviceName string
 	var sortBy string
 	var sortOrder string
 	var limit int
 	var offset int
 	var start string
 	var end string
-	var query string
+	var key string
+	var value string
 	eventsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List events",
 		Run: func(cmd *cobra.Command, args []string) {
+			printDeprecation()
 			client := console.NewRemoteFoxgloveClient(
 				*params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
@@ -75,17 +82,20 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 			)
 			err := renderList(
 				os.Stdout,
-				&console.EventsRequest{
-					DeviceID:  deviceID,
-					SortBy:    sortBy,
-					SortOrder: sortOrder,
-					Limit:     limit,
-					Offset:    offset,
-					Start:     start,
-					End:       end,
-					Query:     query,
+				&console.BetaEventsRequest{
+					DeviceID:   deviceID,
+					DeviceName: deviceName,
+					SortBy:     sortBy,
+					SortOrder:  sortOrder,
+					Limit:      limit,
+					Offset:     offset,
+					Start:      start,
+					End:        end,
+					Key:        key,
+					Value:      value,
 				},
-				client.Events,
+				//nolint:staticcheck
+				client.BetaEvents,
 				format,
 			)
 			if err != nil {
@@ -95,11 +105,17 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	}
 	eventsListCmd.InheritedFlags()
 	eventsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
+	eventsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "name of device")
 	eventsListCmd.PersistentFlags().StringVarP(&sortBy, "sort-by", "", "", "name of sort column")
 	eventsListCmd.PersistentFlags().StringVarP(&sortOrder, "sort-order", "", "asc", "sort order")
 	eventsListCmd.PersistentFlags().IntVarP(&limit, "limit", "", 100, "limit")
 	eventsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset")
-	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by metadata with keyword or \"$key:$value\"")
+	eventsListCmd.PersistentFlags().StringVarP(&key, "key", "", "", "return events with matching metadata keys")
+	eventsListCmd.PersistentFlags().StringVarP(&value, "value", "", "", "return events with matching metadata values")
 	AddFormatFlag(eventsListCmd, &format)
 	return eventsListCmd
+}
+
+func printDeprecation() {
+	fmt.Fprintln(os.Stderr, "[Warning] this command is deprecated and will be removed in a future version. Use `foxglove events`.")
 }

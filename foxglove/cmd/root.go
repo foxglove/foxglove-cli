@@ -88,6 +88,10 @@ func Execute(version string) {
 		Use:   "events",
 		Short: "List and manage events",
 	}
+	betaEventsCmd := &cobra.Command{
+		Use:   "events",
+		Short: "List and manage events (deprecated; use `foxglove events`)",
+	}
 	coverageCmd := &cobra.Command{
 		Use:   "coverage",
 		Short: "List coverage ranges",
@@ -147,7 +151,6 @@ func Execute(version string) {
 	attachmentsCmd.AddCommand(newListAttachmentsCommand(params))
 	attachmentsCmd.AddCommand(newDownloadAttachmentCmd(params))
 	coverageCmd.AddCommand(newListCoverageCommand(params))
-	betaCmd.AddCommand(eventsCmd)
 	dataCmd.AddCommand(
 		exportCmd,
 		importsCmd,
@@ -160,7 +163,11 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd, attachmentsCmd)
+	betaEventsCmd.AddCommand(newBetaAddEventCommand(params))
+	betaEventsCmd.AddCommand(newBetaListEventsCommand(params))
+	betaCmd.AddCommand(betaEventsCmd)
+
+	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, betaCmd, extensionsCmd, attachmentsCmd, eventsCmd)
 
 	cobra.CheckErr(rootCmd.Execute())
 }

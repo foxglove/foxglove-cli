@@ -230,6 +230,12 @@ func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDevic
 }
 
 func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventResponse, err error) {
+	err = c.post("/v1/events", req, &resp)
+	return resp, err
+}
+
+// Deprecated: use CreateEvent
+func (c *FoxgloveClient) BetaCreateEvent(req BetaCreateEventRequest) (resp BetaCreateEventResponse, err error) {
 	err = c.post("/beta/device-events", req, &resp)
 	return resp, err
 }
@@ -293,7 +299,13 @@ func (c *FoxgloveClient) Devices(req DevicesRequest) (resp []DevicesResponse, er
 	return resp, err
 }
 
-func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventsResponse, err error) {
+func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, err error) {
+	err = c.get("/v1/events", req, &resp)
+	return resp, err
+}
+
+// Deprecated: use Events
+func (c *FoxgloveClient) BetaEvents(req *BetaEventsRequest) (resp []BetaEventsResponse, err error) {
 	err = c.get("/beta/device-events", req, &resp)
 	return resp, err
 }
