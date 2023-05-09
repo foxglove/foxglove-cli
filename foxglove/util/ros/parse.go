@@ -97,7 +97,7 @@ func ParseMessage(record []byte) (*Message, error) {
 	return &Message{
 		Conn: binary.LittleEndian.Uint32(header["conn"]),
 		Time: parseROSTime(header["time"]),
-		Data: record[offset:],
+		Data: record[offset+4:], // skip the 4-byte length prefix
 	}, nil
 }
 

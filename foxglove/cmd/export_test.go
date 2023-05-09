@@ -93,7 +93,8 @@ func TestCombineMCAPTmpFiles(t *testing.T) {
 			rs:   bytes.NewReader(part.Bytes()),
 			name: fmt.Sprintf("foo-%d", i),
 			info: &fileInfo{
-				maxTime: uint64(1000 * (i + 1)),
+				maxTime:      uint64(1000 * (i + 1)),
+				messageCount: 1000,
 			},
 		})
 	}

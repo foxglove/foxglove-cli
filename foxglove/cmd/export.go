@@ -461,18 +461,17 @@ func doExport(
 		if err != nil {
 			return err
 		}
+		defer tmpfile.Close()
 		debugf("exporting to %s", tmpfile.Name())
 		err = executeExport(ctx, tmpfile, baseURL, clientID, bearerToken, userAgent, request)
 		if err != nil {
 			fmt.Println("error executing export: ", err)
 		}
-		defer tmpfile.Close()
-
 		didReindex, info, err := reindex(tmpdir, tmpfile.Name(), request.OutputFormat)
 		if err != nil {
 			return fmt.Errorf("failed to reindex tmpfile %s: %w", tmpfile.Name(), err)
 		}
-		debugf("output %s was complete: %t", tmpfile.Name(), !didReindex)
+		debugf("output %s was complete: %t. Message count %d. Max time %d", tmpfile.Name(), !didReindex, info.messageCount, info.maxTime)
 
 		// add tmpfile name to structure, with the biggest timestamp to scan _through_
 		tmpfiles = append(tmpfiles, partialFile{tmpfile.Name(), tmpfile, info})
@@ -583,6 +582,7 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 	var connIDIncrement, maxObservedConn uint32
 	for i, tmpfile := range tmpfiles {
 		if tmpfile.info.messageCount == 0 {
+			debugf("omitting empty partial file %s", tmpfile.name)
 			continue
 		}
 		_, err := tmpfile.rs.Seek(0, 0)
@@ -599,7 +599,8 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 		} else {
 			scanThrough = tmpfile.info.maxTime - 1
 		}
-		connIDIncrement = maxObservedConn
+		connIDIncrement = maxObservedConn + 1
+		debugf("combining %s with connID increment %d and maxObservedConn %d", tmpfile.name, connIDIncrement, maxObservedConn)
 	Top:
 		for {
 			tokenType, token, err := lexer.Next()
@@ -632,7 +633,12 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 				if conn.Conn > maxObservedConn {
 					maxObservedConn = conn.Conn
 				}
-				// deduplicate the written-out connections, so we don't rewrite the ones at EOF
+
+				// deduplicate the written-out connections, so we don't rewrite
+				// the ones at EOF. These will be written by the writer close.
+				// Since bag format doesn't indicate the end of the "data
+				// section" we have no other way to recognize these than if they
+				// had already been written out.
 				if !connectionsWritten[conn.Conn] {
 					err = writer.WriteConnection(conn)
 					if err != nil {
@@ -650,7 +656,7 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 func combineMCAPTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 	writer, err := mcap.NewWriter(w, &mcap.WriterOptions{
 		Chunked:     true,
-		ChunkSize:   1024 * 1024,
+		ChunkSize:   4 * 1024 * 1024,
 		Compression: mcap.CompressionLZ4,
 	})
 	if err != nil {
@@ -663,6 +669,10 @@ func combineMCAPTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 
 	var schemaIDIncrement, channelIDIncrement, maxObservedSchema, maxObservedChannel uint16
 	for i, tmpfile := range tmpfiles {
+		if tmpfile.info.messageCount == 0 {
+			debugf("omitting empty partial file %s", tmpfile.name)
+			continue
+		}
 		_, err := tmpfile.rs.Seek(0, 0)
 		if err != nil {
 			return err

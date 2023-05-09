@@ -135,9 +135,9 @@ func (b *BagWriter) WriteMessage(message *Message) error {
 	binary.LittleEndian.PutUint32(b.buf8, message.Conn)
 	logTime := rostime(message.Time)
 	header := b.buildHeader(&b.header,
+		[]byte("op"), []byte{byte(OpMessageData)},
 		[]byte("conn"), b.buf8[:4],
 		[]byte("time"), logTime,
-		[]byte("op"), []byte{byte(OpMessageData)},
 	)
 
 	// if this is the first message on the connection, create an index data
@@ -152,14 +152,12 @@ func (b *BagWriter) WriteMessage(message *Message) error {
 			Count: 0,
 		}
 		b.currentChunk.indexData[message.Conn] = indexData
-		indexData = b.currentChunk.indexData[message.Conn]
 	}
 
 	// increment the message count for this connection, within the current chunk
 	indexData.Count++
 
 	// write the message time to the index data entry's data section.
-	// TODO: we could reuse this rostime buffer
 	_, err := indexData.Data.Write(rostime(message.Time))
 	if err != nil {
 		return err
@@ -402,7 +400,8 @@ func (b *BagWriter) writeRecord(w io.Writer, header, data []byte) (int, error) {
 }
 
 // buildHeader builds a header from a list of key-value pairs. See
-// http://wiki.ros.org/Bags/Format/2.0#Headers for details.
+// http://wiki.ros.org/Bags/Format/2.0#Headers for details. For optimal read
+// performance the first header key should be "op".
 func (b *BagWriter) buildHeader(buf *[]byte, keyvals ...[]byte) []byte {
 	if buf == nil {
 		b := make([]byte, 1)
@@ -446,7 +445,7 @@ func (b *BagWriter) flushActiveChunk() error {
 	}
 
 	// flush any uncompressed bytes to the chunk buffer.
-	err := b.chunkWriter.Flush()
+	err := b.chunkWriter.Close()
 	if err != nil {
 		return err
 	}
@@ -488,11 +487,11 @@ func (b *BagWriter) flushActiveChunk() error {
 		return err
 	}
 
-	// A chunk record is followed by one ChunkInfo record per populated
-	// connection. Here we sort these records by ID to ensure deterministic
-	// outputs from the writer for identical inputs - note that map iteration in
-	// Go is otherwise random. From the spec POV the ordering does not make a
-	// difference, but the cost is low.
+	// A chunk record is followed by one IndexData record per connection. Here
+	// we sort these records by ID to ensure deterministic outputs from the
+	// writer for identical inputs - note that map iteration in Go is otherwise
+	// random. From the spec POV the ordering does not make a difference, but
+	// the cost is low.
 	chunkInfoData := make(map[uint32]uint32)
 	for connID, chunkIndex := range b.currentChunk.indexData {
 		chunkInfoData[connID] = chunkIndex.Count
@@ -507,11 +506,9 @@ func (b *BagWriter) flushActiveChunk() error {
 
 	for _, key := range keys {
 		indexData := b.currentChunk.indexData[uint32(key)]
-		if indexData.Count > 0 {
-			err = b.writeIndexData(*indexData)
-			if err != nil {
-				return err
-			}
+		err = b.writeIndexData(*indexData)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -541,10 +538,8 @@ func (b *BagWriter) resetActiveChunkState() {
 	b.currentChunk.endTime = 0
 	b.currentChunk.messageCount = 0
 
-	for _, indexData := range b.currentChunk.indexData {
-		// zero out all the index data attributes, but keep the underlying space
-		indexData.Data.Reset()
-		indexData.Count = 0
+	for k := range b.currentChunk.indexData {
+		delete(b.currentChunk.indexData, k)
 	}
 }
 

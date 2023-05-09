@@ -116,7 +116,7 @@ func (b *BagLexer) Next() (OpCode, []byte, error) {
 		record := make([]byte, 4+headerLen+4+dataLen)
 		binary.LittleEndian.PutUint32(record, headerLen)
 		offset := 4
-		offset += copy(record[4:], b.header[:headerLen])
+		offset += copy(record[offset:], b.header[:headerLen])
 		binary.LittleEndian.PutUint32(record[offset:], dataLen)
 		offset += 4
 		copy(record[offset:], b.data[:dataLen])
