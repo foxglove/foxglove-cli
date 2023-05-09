@@ -597,6 +597,9 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 		if i == len(tmpfiles)-1 {
 			scanThrough = tmpfile.info.maxTime
 		} else {
+			if tmpfile.info.maxTime == 0 {
+				continue
+			}
 			scanThrough = tmpfile.info.maxTime - 1
 		}
 		connIDIncrement = maxObservedConn + 1
@@ -696,6 +699,9 @@ func combineMCAPTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 		if i == len(tmpfiles)-1 {
 			scanThrough = tmpfile.info.maxTime
 		} else {
+			if tmpfile.info.maxTime == 0 {
+				continue
+			}
 			scanThrough = tmpfile.info.maxTime - 1
 		}
 		schemaIDIncrement = maxObservedSchema
