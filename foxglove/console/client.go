@@ -86,10 +86,7 @@ func (c *FoxgloveClient) Stream(r *StreamRequest) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to build request: %w", err)
 	}
-
-	req.Close = true
 	req.Header.Add("Content-Type", "application/json")
-
 	resp, err := c.authed.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get download link: %w", err)
