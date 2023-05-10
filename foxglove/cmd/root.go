@@ -24,6 +24,12 @@ func configfile() (string, error) {
 	return path.Join(home, ".foxgloverc"), nil
 }
 
+var logDebug bool
+
+func debugMode() bool {
+	return logDebug
+}
+
 type baseParams struct {
 	clientID  *string
 	cfgFile   *string
@@ -104,6 +110,7 @@ func Execute(version string) {
 	var baseURL, clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", foxgloveClientID, "foxglove client ID")
+	rootCmd.PersistentFlags().BoolVarP(&logDebug, "debug", "", false, "enable debug logging")
 	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
 
 	useragent := fmt.Sprintf("%s/%s", appname, version)

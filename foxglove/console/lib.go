@@ -51,7 +51,6 @@ func Export(
 		return err
 	}
 	defer rc.Close()
-
 	_, err = io.Copy(w, rc)
 	if err != nil {
 		return err

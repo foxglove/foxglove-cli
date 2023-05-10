@@ -151,6 +151,12 @@ func renderCSV[RecordType console.Record](w io.Writer, records []RecordType) err
 	return writer.Error()
 }
 
+func debugf(format string, args ...any) {
+	if debugMode() {
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	}
+}
+
 func fatalf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 	os.Exit(1)

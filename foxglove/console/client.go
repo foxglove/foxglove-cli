@@ -25,6 +25,15 @@ type FoxgloveClient struct {
 	unauthed  *http.Client
 }
 
+func coalesce(strings ...string) string {
+	for _, s := range strings {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 func unpackErrorResponse(r io.Reader) error {
 	resp := ErrorResponse{}
 	bytes, err := io.ReadAll(r)
@@ -35,7 +44,7 @@ func unpackErrorResponse(r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf(string(bytes))
 	}
-	return fmt.Errorf("%s", resp.Error)
+	return fmt.Errorf("%s", coalesce(resp.Error, resp.Message))
 }
 
 // SignIn accepts a client ID token and uses it to authenticate to foxglove,
@@ -72,7 +81,13 @@ func (c *FoxgloveClient) Stream(r *StreamRequest) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize request: %w", err)
 	}
-	resp, err := c.authed.Post(c.baseurl+"/v1/data/stream", "application/json", buf)
+
+	req, err := http.NewRequest("POST", c.baseurl+"/v1/data/stream", buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request: %w", err)
+	}
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := c.authed.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get download link: %w", err)
 	}
