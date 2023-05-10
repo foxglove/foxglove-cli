@@ -193,6 +193,9 @@ type fileInfo struct {
 	messageCount uint64
 }
 
+// reindexBagFile rewrites a bag file to a new output location, and properly
+// closes it. If the input is corrupt, we simply close the output with what was
+// successfully read.
 func reindexBagFile(w io.Writer, r io.Reader) error {
 	writer, err := roslib.NewBagWriter(w)
 	if err != nil {
@@ -236,6 +239,9 @@ func reindexBagFile(w io.Writer, r io.Reader) error {
 	}
 }
 
+// reindexMCAPFile rewrites an MCAP file to a new output location, and properly
+// closes it. If the input is corrupt, we simply close the output with what was
+// successfully read.
 func reindexMCAPFile(w io.Writer, r io.Reader) error {
 	writer, err := mcap.NewWriter(w, &mcap.WriterOptions{
 		Chunked:     true,
@@ -315,6 +321,8 @@ func reindexMCAPFile(w io.Writer, r io.Reader) error {
 	}
 }
 
+// reindex a file, staging the reindexed output in tmpdir prior to moving it to
+// the final location (same as the input location) atomically.
 func reindex(tmpdir string, filename string, format string) (bool, *fileInfo, error) {
 	f, err := os.Open(filename)
 	if err != nil {
