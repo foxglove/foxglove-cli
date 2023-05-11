@@ -66,31 +66,31 @@ jobs:
             image: windows-latest
             arch: arm64
             env: {}
-        name: Build (${{ matrix.os }}/${{ matrix.arch }})
-        runs-on: ${{ matrix.image }}
-        env: ${{ matrix.env }}
+    name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ${{ matrix.image }}
+    env: ${{ matrix.env }}
 
-        steps:
-          - uses: actions/checkout@v3
-            with:
-              fetch-depth: "0"
-          - run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
-          - uses: actions/setup-go@v3
-            with:
-              go-version: 1.18.x
-          - name: Setup environment
-            run: ${{ matrix.setup }}
-          - name: Build binary
-            run: make -C foxglove build-release
-            env:
-              GOARCH: ${{ matrix.arch }}
-              BINARY_NAME: foxglove-${{ matrix.os }}-${{ matrix.arch }}
-          - name: Generate release notes
-            run: |
-              git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
-          - name: Releaase
-            uses: softprops/action-gh-release@v1
-            with:
-              files: foxglove/bin/*
-              body_path: ${{ github.workspace }}-CHANGELOG.txt
-              draft: false
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: "0"
+      - run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+      - uses: actions/setup-go@v3
+        with:
+          go-version: 1.18.x
+      - name: Setup environment
+        run: ${{ matrix.setup }}
+      - name: Build binary
+        run: make -C foxglove build-release
+        env:
+          GOARCH: ${{ matrix.arch }}
+          BINARY_NAME: foxglove-${{ matrix.os }}-${{ matrix.arch }}
+      - name: Generate release notes
+        run: |
+          git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
+      - name: Releaase
+        uses: softprops/action-gh-release@v1
+        with:
+          files: foxglove/bin/*
+          body_path: ${{ github.workspace }}-CHANGELOG.txt
+          draft: false
