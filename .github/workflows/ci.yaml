@@ -33,7 +33,6 @@ jobs:
       - name: run tests
         run:  make test
   release:
-    runs-on: ubuntu-latest
     permissions:
       contents: write
     needs:
@@ -42,42 +41,55 @@ jobs:
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     strategy:
       matrix:
-        goosarch:
-          - "darwin/amd64"
-          - "darwin/arm64"
-          - "linux/amd64"
-          - "linux/arm64"
-          - "windows/amd64"
-          - "windows/arm"
-    steps:
-      - uses: actions/checkout@v3
-      - name: install go
-        uses: actions/setup-go@v3
-        with:
-          go-version: 1.18.x
-      - name: Get OS and arch info
-        run: |
-          GOOSARCH=${{matrix.goosarch}}
-          GOOS=${GOOSARCH%/*}
-          GOARCH=${GOOSARCH#*/}
-          BINARY_NAME=foxglove-$GOOS-$GOARCH
-          if [[ "$BINARY_NAME" =~ .*windows.* ]]; then
-            BINARY_NAME=$BINARY_NAME.exe
-          fi
-          echo "BINARY_NAME=$BINARY_NAME" >> $GITHUB_ENV
-          echo "GOOS=$GOOS" >> $GITHUB_ENV
-          echo "GOARCH=$GOARCH" >> $GITHUB_ENV
-      - name: Build
-        run: |
-          cd foxglove
-          make build-release -e BINARY_NAME="$BINARY_NAME"
-          cd -
-      - name: Generate release notes
-        run: |
-          git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ./foxglove/bin/*
-          body_path: ${{ github.workspace }}-CHANGELOG.txt
-          draft: false
+        include:
+          - os: linux
+            image: ubuntu-latest
+            arch: amd64
+            env: {}
+          - os: linux
+            image: ubuntu-latest
+            arch: arm64
+            env: {}
+          - os: macos
+            image: macos-latest
+            arch: amd64
+            env: {}
+          - os: macos
+            image: macos-latest
+            arch: arm64
+            env: {}
+          - os: windows
+            image: windows-latest
+            arch: amd64
+            env: {}
+          - os: windows
+            image: windows-latest
+            arch: arm64
+            env: {}
+        name: Build (${{ matrix.os }}/${{ matrix.arch }})
+        runs-on: ${{ matrix.image }}
+        env: ${{ matrix.env }}
+
+        steps:
+          - uses: actions/checkout@v3
+            with: fetch-depth: "0"
+          - run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
+          - uses: actions/setup-go@v3
+            with:
+              go-version: 1.18.x
+          - name: Setup environment
+            run: ${{ matrix.setup }}
+          - name: Build binary
+            run: make -C foxglove build-release
+            env:
+              GOARCH: ${{ matrix.arch }}
+              BINARY_NAME: foxglove-${{ matrix.os }}-${{ matrix.arch }}
+          - name: Generate release notes
+            run: |
+              git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
+          - name: Releaase
+            uses: softprops/action-gh-release@v1
+            with:
+              files: foxglove/bin/*
+              body_path: ${{ github.workspace }}-CHANGELOG.txt
+              draft: false
