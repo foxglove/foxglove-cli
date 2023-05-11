@@ -72,7 +72,8 @@ jobs:
 
         steps:
           - uses: actions/checkout@v3
-            with: fetch-depth: "0"
+            with:
+              fetch-depth: "0"
           - run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
           - uses: actions/setup-go@v3
             with:
