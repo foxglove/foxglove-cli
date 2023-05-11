@@ -1,5 +1,9 @@
 BINARY_NAME ?= foxglove
 
+ifeq ($(GOOS), windows)
+	BINARY_NAME := $(addsuffix .exe, $(BINARY_NAME))
+endif
+
 lint:
 	golangci-lint run ./...
 
