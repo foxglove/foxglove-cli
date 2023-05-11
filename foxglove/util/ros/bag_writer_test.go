@@ -20,6 +20,11 @@ func TestProduceSimpleOutputBag(t *testing.T) {
 			"basic bag",
 		},
 	}
+
+	t.Cleanup(func() {
+		os.Remove("test.bag")
+	})
+
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			f, err := os.Create("test.bag")

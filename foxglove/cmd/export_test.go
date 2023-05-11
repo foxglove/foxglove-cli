@@ -197,6 +197,11 @@ func TestDoExport(t *testing.T) {
 			"user-agent",
 		)
 		assert.Nil(t, err)
+
+		t.Cleanup(func() {
+			os.Remove("output.mcap")
+		})
+
 		err = doExport(
 			ctx,
 			"output.mcap",
