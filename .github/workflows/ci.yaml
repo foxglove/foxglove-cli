@@ -72,8 +72,12 @@ jobs:
           cd foxglove
           make build-release -e BINARY_NAME="$BINARY_NAME"
           cd -
+      - name: Generate release notes
+        run: |
+          git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ./foxglove/${{env.BINARY_NAME}}
-          draft: true
+          files: ./foxglove/bin/*
+          body_path: ${{ github.workspace }}-CHANGELOG.txt
+          draft: false
