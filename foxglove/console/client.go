@@ -282,7 +282,7 @@ func (c *FoxgloveClient) DeleteExtension(id string) error {
 func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 	buf := &bytes.Buffer{}
 	encoder := form.NewEncoder(buf)
-	encoder.DelimitWith('/')
+	encoder.DelimitWith('/') // required to support dotted fields in query strings
 	err := encoder.Encode(req)
 	if err != nil {
 		return fmt.Errorf("failed to encode request: %w", err)

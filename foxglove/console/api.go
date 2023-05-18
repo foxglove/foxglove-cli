@@ -150,8 +150,8 @@ type RecordingsRequest struct {
 	Start        string `json:"start" form:"start,omitempty"`
 	End          string `json:"end" form:"end,omitempty"`
 	Path         string `json:"path" form:"path,omitempty"`
-	SiteID       string `json:"siteId" form:"siteId,omitempty"`
-	EdgeSiteID   string `json:"edgeSiteId" form:"edgeSiteId,omitempty"`
+	SiteID       string `json:"site.id" form:"site.id,omitempty"`
+	EdgeSiteID   string `json:"edgeSite.id" form:"edgeSite.id,omitempty"`
 	ImportStatus string `json:"importStatus" form:"importStatus,omitempty"`
 }
 
@@ -212,8 +212,8 @@ func (r RecordingsResponse) Fields() []string {
 	return []string{
 		r.ID,
 		r.Path,
-		fmt.Sprintf("%d", r.Size),
-		fmt.Sprintf("%d", r.MessageCount),
+		humanReadableBytes(r.Size),
+		fmt.Sprint(r.MessageCount),
 		r.CreatedAt,
 		r.ImportedAt,
 		r.Start,
@@ -435,4 +435,17 @@ func requiredVal(val *string) string {
 	} else {
 		return ""
 	}
+}
+
+func humanReadableBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
