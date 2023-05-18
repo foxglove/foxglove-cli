@@ -145,6 +145,90 @@ func (r AttachmentsResponse) Headers() []string {
 	}
 }
 
+type RecordingsRequest struct {
+	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
+	Start        string `json:"start" form:"start,omitempty"`
+	End          string `json:"end" form:"end,omitempty"`
+	Path         string `json:"path" form:"path,omitempty"`
+	SiteID       string `json:"siteId" form:"siteId,omitempty"`
+	EdgeSiteID   string `json:"edgeSiteId" form:"edgeSiteId,omitempty"`
+	ImportStatus string `json:"importStatus" form:"importStatus,omitempty"`
+}
+
+type SiteSummary struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}
+
+type DeviceSummary struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}
+
+type MetadataRecord struct {
+	Name     string            `json:"name"`
+	Metadata map[string]string `json:"metadata"`
+}
+
+type RecordingsResponse struct {
+	ID           string           `json:"id"`
+	Path         string           `json:"path"`
+	Size         int64            `json:"size"`
+	MessageCount int64            `json:"messageCount"`
+	CreatedAt    string           `json:"createdAt"`
+	ImportedAt   string           `json:"importedAt"`
+	Start        string           `json:"start"`
+	End          string           `json:"end"`
+	ImportStatus string           `json:"importStatus"`
+	Site         SiteSummary      `json:"site"`
+	EdgeSite     SiteSummary      `json:"edgeSite"`
+	Device       DeviceSummary    `json:"device"`
+	Metadata     []MetadataRecord `json:"metadata"`
+}
+
+func (r RecordingsResponse) Headers() []string {
+	return []string{
+		"Recording ID",
+		"Path",
+		"Size",
+		"Message Count",
+		"Created At",
+		"Imported At",
+		"Start",
+		"End",
+		"Import Status",
+		"Site ID",
+		"Site Name",
+		"Edge Site ID",
+		"Edge Site Name",
+		"Device ID",
+		"Device Name",
+		"Metadata",
+	}
+}
+
+func (r RecordingsResponse) Fields() []string {
+	metadata, _ := json.Marshal(r.Metadata)
+	return []string{
+		r.ID,
+		r.Path,
+		fmt.Sprintf("%d", r.Size),
+		fmt.Sprintf("%d", r.MessageCount),
+		r.CreatedAt,
+		r.ImportedAt,
+		r.Start,
+		r.End,
+		r.ImportStatus,
+		r.Site.ID,
+		r.Site.Name,
+		r.EdgeSite.ID,
+		r.EdgeSite.Name,
+		r.Device.ID,
+		r.Device.Name,
+		string(metadata),
+	}
+}
+
 type ImportsRequest struct {
 	DeviceID       string `json:"deviceId" form:"deviceId,omitempty"`
 	Start          string `json:"start" form:"start,omitempty"`
