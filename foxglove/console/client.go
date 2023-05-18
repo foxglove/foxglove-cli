@@ -287,8 +287,7 @@ func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode request: %w", err)
 	}
-	querystring := string(buf.Bytes())
-	res, err := c.authed.Get(c.baseurl + endpoint + "?" + querystring)
+	res, err := c.authed.Get(c.baseurl + endpoint + "?" + buf.String())
 	if err != nil {
 		return fmt.Errorf("failed to fetch records: %w", err)
 	}
