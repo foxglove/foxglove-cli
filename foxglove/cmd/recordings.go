@@ -67,9 +67,9 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	recordingsListCmd.InheritedFlags()
-	recordingsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
-	recordingsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of data range")
-	recordingsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of data range")
+	recordingsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
+	recordingsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of data range (ISO8601 format)")
+	recordingsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of data range (ISO8601 format)")
 	recordingsListCmd.PersistentFlags().StringVarP(&path, "path", "", "", "recording file path")
 	recordingsListCmd.PersistentFlags().StringVarP(&primarySiteID, "site-id", "", "", "primary site ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&edgeSiteID, "edge-site-id", "", "", "edge site ID")
