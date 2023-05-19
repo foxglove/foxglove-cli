@@ -280,11 +280,14 @@ func (c *FoxgloveClient) DeleteExtension(id string) error {
 }
 
 func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
-	querystring, err := form.EncodeToString(req)
+	buf := &bytes.Buffer{}
+	encoder := form.NewEncoder(buf)
+	encoder.DelimitWith('/') // required to support dotted fields in query strings
+	err := encoder.Encode(req)
 	if err != nil {
 		return fmt.Errorf("failed to encode request: %w", err)
 	}
-	res, err := c.authed.Get(c.baseurl + endpoint + "?" + querystring)
+	res, err := c.authed.Get(c.baseurl + endpoint + "?" + buf.String())
 	if err != nil {
 		return fmt.Errorf("failed to fetch records: %w", err)
 	}
@@ -315,6 +318,11 @@ func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, e
 
 func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, err error) {
 	err = c.get("/v1/data/imports", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) Recordings(req *RecordingsRequest) (resp []RecordingsResponse, err error) {
+	err = c.get("/v1/recordings", req, &resp)
 	return resp, err
 }
 

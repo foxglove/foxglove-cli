@@ -30,6 +30,11 @@ func debugMode() bool {
 	return logDebug
 }
 
+func dief(s string, args ...any) {
+	fmt.Fprintf(os.Stderr, s+"\n", args...)
+	os.Exit(1)
+}
+
 type baseParams struct {
 	clientID  *string
 	cfgFile   *string
@@ -81,6 +86,10 @@ func Execute(version string) {
 	attachmentsCmd := &cobra.Command{
 		Use:   "attachments",
 		Short: "Query and modify data attachments",
+	}
+	recordingsCmd := &cobra.Command{
+		Use:   "recordings",
+		Short: "Query recordings",
 	}
 	devicesCmd := &cobra.Command{
 		Use:   "devices",
@@ -146,6 +155,7 @@ func Execute(version string) {
 	configureAPIKey := newConfigureAPIKeyCommand()
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(configureAPIKey)
+	recordingsCmd.AddCommand(newListRecordingsCommand(params))
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	attachmentsCmd.AddCommand(newListAttachmentsCommand(params))
 	attachmentsCmd.AddCommand(newDownloadAttachmentCmd(params))
@@ -162,7 +172,16 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 
-	rootCmd.AddCommand(authCmd, dataCmd, newVersionCommand(version), devicesCmd, extensionsCmd, attachmentsCmd, eventsCmd)
+	rootCmd.AddCommand(
+		authCmd,
+		dataCmd,
+		newVersionCommand(version),
+		devicesCmd,
+		extensionsCmd,
+		attachmentsCmd,
+		recordingsCmd,
+		eventsCmd,
+	)
 
 	cobra.CheckErr(rootCmd.Execute())
 }

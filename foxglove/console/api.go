@@ -145,6 +145,90 @@ func (r AttachmentsResponse) Headers() []string {
 	}
 }
 
+type RecordingsRequest struct {
+	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
+	Start        string `json:"start" form:"start,omitempty"`
+	End          string `json:"end" form:"end,omitempty"`
+	Path         string `json:"path" form:"path,omitempty"`
+	SiteID       string `json:"site.id" form:"site.id,omitempty"`
+	EdgeSiteID   string `json:"edgeSite.id" form:"edgeSite.id,omitempty"`
+	ImportStatus string `json:"importStatus" form:"importStatus,omitempty"`
+}
+
+type SiteSummary struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}
+
+type DeviceSummary struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+}
+
+type MetadataRecord struct {
+	Name     string            `json:"name"`
+	Metadata map[string]string `json:"metadata"`
+}
+
+type RecordingsResponse struct {
+	ID           string           `json:"id"`
+	Path         string           `json:"path"`
+	Size         int64            `json:"size"`
+	MessageCount int64            `json:"messageCount"`
+	CreatedAt    string           `json:"createdAt"`
+	ImportedAt   string           `json:"importedAt"`
+	Start        string           `json:"start"`
+	End          string           `json:"end"`
+	ImportStatus string           `json:"importStatus"`
+	Site         SiteSummary      `json:"site"`
+	EdgeSite     SiteSummary      `json:"edgeSite"`
+	Device       DeviceSummary    `json:"device"`
+	Metadata     []MetadataRecord `json:"metadata"`
+}
+
+func (r RecordingsResponse) Headers() []string {
+	return []string{
+		"Recording ID",
+		"Path",
+		"Size",
+		"Message Count",
+		"Created At",
+		"Imported At",
+		"Start",
+		"End",
+		"Import Status",
+		"Site ID",
+		"Site Name",
+		"Edge Site ID",
+		"Edge Site Name",
+		"Device ID",
+		"Device Name",
+		"Metadata",
+	}
+}
+
+func (r RecordingsResponse) Fields() []string {
+	metadata, _ := json.Marshal(r.Metadata)
+	return []string{
+		r.ID,
+		r.Path,
+		humanReadableBytes(r.Size),
+		fmt.Sprint(r.MessageCount),
+		r.CreatedAt,
+		r.ImportedAt,
+		r.Start,
+		r.End,
+		r.ImportStatus,
+		r.Site.ID,
+		r.Site.Name,
+		r.EdgeSite.ID,
+		r.EdgeSite.Name,
+		r.Device.ID,
+		r.Device.Name,
+		string(metadata),
+	}
+}
+
 type ImportsRequest struct {
 	DeviceID       string `json:"deviceId" form:"deviceId,omitempty"`
 	Start          string `json:"start" form:"start,omitempty"`
@@ -351,4 +435,17 @@ func requiredVal(val *string) string {
 	} else {
 		return ""
 	}
+}
+
+func humanReadableBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
