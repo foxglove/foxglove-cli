@@ -33,7 +33,8 @@ type UploadResponse struct {
 
 type StreamRequest struct {
 	ImportID     string     `json:"importId,omitempty"`
-	DeviceID     string     `json:"deviceId,omitempty"`
+	DeviceID     string     `json:"device.id,omitempty"`
+	DeviceName   string     `json:"device.name,omitempty"`
 	Start        *time.Time `json:"start,omitempty"`
 	End          *time.Time `json:"end,omitempty"`
 	OutputFormat string     `json:"outputFormat"`
@@ -41,11 +42,11 @@ type StreamRequest struct {
 }
 
 func (req *StreamRequest) Validate() error {
-	if req.ImportID == "" && req.DeviceID == "" {
-		return fmt.Errorf("either import-id or device-id, start, and end are required")
+	if req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" {
+		return fmt.Errorf("either import-id or device-id/device-name, start, and end are required")
 	}
-	if req.DeviceID != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
-		return fmt.Errorf("start/end are required if device-id is supplied")
+	if req.DeviceID != "" && req.DeviceName != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
+		return fmt.Errorf("start/end are required if device is supplied")
 	}
 	if req.Start != nil && req.End != nil && req.End.Before(*req.Start) {
 		return fmt.Errorf("end must be after or equal to start")

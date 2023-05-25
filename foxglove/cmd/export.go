@@ -834,6 +834,7 @@ func executeExport(
 func createStreamRequest(
 	importID string,
 	deviceID string,
+	deviceName string,
 	start string,
 	end string,
 	outputFormat string,
@@ -860,6 +861,7 @@ func createStreamRequest(
 
 	request := &console.StreamRequest{
 		ImportID:     importID,
+		DeviceName:   deviceName,
 		DeviceID:     deviceID,
 		Start:        startTime,
 		End:          endTime,
@@ -876,6 +878,7 @@ func createStreamRequest(
 func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var importID string
 	var deviceID string
+	var deviceName string
 	var start string
 	var end string
 	var outputFormat string
@@ -885,7 +888,15 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		Use:   "export",
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
-			request, err := createStreamRequest(importID, deviceID, start, end, outputFormat, topicList)
+			request, err := createStreamRequest(
+				importID,
+				deviceID,
+				deviceName,
+				start,
+				end,
+				outputFormat,
+				topicList,
+			)
 			if err != nil {
 				fatalf("Failed to build request: %s\n", err)
 			}
@@ -925,6 +936,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		},
 	}
 	exportCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
+	exportCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	exportCmd.PersistentFlags().StringVarP(&outputFile, "output-file", "o", "", "output file")
 	exportCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "import ID")
 	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (RFC3339 timestamp)")
