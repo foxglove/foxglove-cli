@@ -329,28 +329,39 @@ func (r EventResponseItem) Headers() []string {
 }
 
 type CoverageRequest struct {
-	Start string `json:"start" form:"start,omitempty"`
-	End   string `json:"end" form:"end,omitempty"`
+	Tolerance             int    `json:"tolerance" form:"tolerance,omitempty"`
+	RecordingID           string `json:"recordingId" form:"recordingId,omitempty"`
+	IncludeEdgeRecordings bool   `json:"includeEdgeRecordings" form:"includeEdgeRecordings,omitempty"`
+	DeviceID              string `json:"device.id" form:"device.id,omitempty"`
+	DeviceName            string `json:"device.name" form:"device.name,omitempty"`
+	Start                 string `json:"start" form:"start,omitempty"`
+	End                   string `json:"end" form:"end,omitempty"`
 }
 type CoverageResponse struct {
-	DeviceID string `json:"deviceId"`
-	Start    string `json:"start"`
-	End      string `json:"end"`
+	DeviceID string        `json:"deviceId"`
+	Device   DeviceSummary `json:"device"`
+	Start    string        `json:"start"`
+	End      string        `json:"end"`
+	Status   string        `json:"status"`
 }
 
 func (r CoverageResponse) Headers() []string {
 	return []string{
 		"Device ID",
+		"Device Name",
 		"Start",
 		"End",
+		"Status",
 	}
 }
 
 func (r CoverageResponse) Fields() []string {
 	return []string{
-		r.DeviceID,
+		r.Device.ID,
+		r.Device.Name,
 		r.Start,
 		r.End,
+		r.Status,
 	}
 }
 
