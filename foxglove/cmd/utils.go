@@ -13,6 +13,7 @@ import (
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var ErrTruncatedMCAP = errors.New("truncated mcap file")
@@ -171,6 +172,33 @@ func AddFormatFlag(cmd *cobra.Command, format *string) {
 		"table",
 		"render output in specified format (table, json, csv)",
 	)
+}
+
+// AddDeviceAutocompletion adds autocompletion for device-name and device-id
+// parameters to the command.
+func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
+	if err := cmd.RegisterFlagCompletionFunc(
+		"device-id",
+		listDevicesAutocompletionFunc(
+			*params.baseURL,
+			*params.clientID,
+			viper.GetString("bearer_token"),
+			params.userAgent,
+		),
+	); err != nil {
+		dief("failed to register device-id autocompletion: %v", err)
+	}
+	if err := cmd.RegisterFlagCompletionFunc(
+		"device-name",
+		listDevicesByNameAutocompletionFunc(
+			*params.baseURL,
+			*params.clientID,
+			viper.GetString("bearer_token"),
+			params.userAgent,
+		),
+	); err != nil {
+		dief("failed to register device-name autocompletion: %v", err)
+	}
 }
 
 func promptForInput(prompt string) string {

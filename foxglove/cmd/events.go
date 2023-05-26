@@ -103,6 +103,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().IntVarP(&limit, "limit", "", 100, "limit")
 	eventsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset")
 	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by metadata with keyword or \"$key:$value\"")
+	AddDeviceAutocompletion(eventsListCmd, params)
 	AddFormatFlag(eventsListCmd, &format)
 	return eventsListCmd
 }

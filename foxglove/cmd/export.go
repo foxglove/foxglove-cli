@@ -943,17 +943,6 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (RFC3339 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
-	err := exportCmd.RegisterFlagCompletionFunc(
-		"device-id",
-		listDevicesAutocompletionFunc(
-			*params.baseURL,
-			*params.clientID,
-			viper.GetString("bearer_token"),
-			params.userAgent,
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
+	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }

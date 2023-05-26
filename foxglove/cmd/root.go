@@ -63,6 +63,26 @@ func listDevicesAutocompletionFunc(
 	}
 }
 
+func listDevicesByNameAutocompletionFunc(
+	baseURL string,
+	clientID string,
+	token string,
+	userAgent string,
+) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+		devices, err := client.Devices(console.DevicesRequest{})
+		if err != nil {
+			return []string{}, cobra.ShellCompDirectiveDefault
+		}
+		var candidates []string
+		for _, device := range devices {
+			candidates = append(candidates, device.Name)
+		}
+		return candidates, cobra.ShellCompDirectiveDefault
+	}
+}
+
 func Execute(version string) {
 	if version == "" {
 		version = "dev"

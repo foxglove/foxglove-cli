@@ -76,5 +76,6 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 	coverageListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of coverage time range (ISO8601)")
 	coverageListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of coverage time range (ISO8601)")
 	AddFormatFlag(coverageListCmd, &format)
+	AddDeviceAutocompletion(coverageListCmd, params)
 	return coverageListCmd
 }

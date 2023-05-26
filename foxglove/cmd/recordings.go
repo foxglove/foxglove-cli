@@ -78,5 +78,6 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	recordingsListCmd.PersistentFlags().StringVarP(&edgeSiteID, "edge-site-id", "", "", "edge site ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&importStatus, "import-status", "", "", "import status")
 	AddFormatFlag(recordingsListCmd, &format)
+	AddDeviceAutocompletion(recordingsListCmd, params)
 	return recordingsListCmd
 }
