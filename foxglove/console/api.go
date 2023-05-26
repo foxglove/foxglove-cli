@@ -285,19 +285,20 @@ func (r ImportsResponse) Headers() []string {
 }
 
 type EventsRequest struct {
-	DeviceID  string `json:"deviceId" form:"deviceId,omitempty"`
-	SortBy    string `json:"sortBy" form:"sortBy,omitempty"`
-	SortOrder string `json:"sortOrder" form:"sortOrder,omitempty"`
-	Limit     int    `json:"limit" form:"limit,omitempty"`
-	Offset    int    `json:"offset" form:"offset,omitempty"`
-	Start     string `json:"start" form:"start,omitempty"`
-	End       string `json:"end" form:"end,omitempty"`
-	Query     string `json:"key" form:"query,omitempty"`
+	DeviceID   string `json:"device.id" form:"device.id,omitempty"`
+	DeviceName string `json:"device.name" form:"device.name,omitempty"`
+	SortBy     string `json:"sortBy" form:"sortBy,omitempty"`
+	SortOrder  string `json:"sortOrder" form:"sortOrder,omitempty"`
+	Limit      int    `json:"limit" form:"limit,omitempty"`
+	Offset     int    `json:"offset" form:"offset,omitempty"`
+	Start      string `json:"start" form:"start,omitempty"`
+	End        string `json:"end" form:"end,omitempty"`
+	Query      string `json:"key" form:"query,omitempty"`
 }
 
 type EventResponseItem struct {
 	ID        string            `json:"id"`
-	DeviceID  string            `json:"deviceId"`
+	Device    DeviceSummary     `json:"device"`
 	Start     string            `json:"start"`
 	End       string            `json:"end"`
 	Metadata  map[string]string `json:"metadata"`
@@ -309,7 +310,8 @@ func (r EventResponseItem) Fields() []string {
 	metadata, _ := json.Marshal(r.Metadata)
 	return []string{
 		r.ID,
-		r.DeviceID,
+		r.Device.ID,
+		r.Device.Name,
 		r.Start,
 		r.End,
 		r.CreatedAt,
@@ -322,6 +324,7 @@ func (r EventResponseItem) Headers() []string {
 	return []string{
 		"ID",
 		"Device ID",
+		"Device Name",
 		"Start",
 		"End",
 		"Created At",

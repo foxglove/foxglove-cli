@@ -57,6 +57,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 func newListEventsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var deviceID string
+	var deviceName string
 	var sortBy string
 	var sortOrder string
 	var limit int
@@ -76,14 +77,15 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 			err := renderList(
 				os.Stdout,
 				&console.EventsRequest{
-					DeviceID:  deviceID,
-					SortBy:    sortBy,
-					SortOrder: sortOrder,
-					Limit:     limit,
-					Offset:    offset,
-					Start:     start,
-					End:       end,
-					Query:     query,
+					DeviceID:   deviceID,
+					DeviceName: deviceName,
+					SortBy:     sortBy,
+					SortOrder:  sortOrder,
+					Limit:      limit,
+					Offset:     offset,
+					Start:      start,
+					End:        end,
+					Query:      query,
 				},
 				client.Events,
 				format,
@@ -95,6 +97,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	}
 	eventsListCmd.InheritedFlags()
 	eventsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
+	eventsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	eventsListCmd.PersistentFlags().StringVarP(&sortBy, "sort-by", "", "", "name of sort column")
 	eventsListCmd.PersistentFlags().StringVarP(&sortOrder, "sort-order", "", "asc", "sort order")
 	eventsListCmd.PersistentFlags().IntVarP(&limit, "limit", "", 100, "limit")
