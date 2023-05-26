@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func executeImport(baseURL, clientID, deviceID, filename, token, userAgent string) error {
+func executeImport(baseURL, clientID, deviceID, deviceName, filename, token, userAgent string) error {
 	ctx := context.Background()
 	f, err := os.Open(filename)
 	if err != nil {
@@ -22,7 +22,7 @@ func executeImport(baseURL, clientID, deviceID, filename, token, userAgent strin
 		return err
 	}
 	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	err = console.Import(ctx, client, deviceID, filename)
+	err = console.Import(ctx, client, deviceID, deviceName, filename)
 	if err != nil {
 		return err
 	}
@@ -31,16 +31,21 @@ func executeImport(baseURL, clientID, deviceID, filename, token, userAgent strin
 
 func newImportCommand(params *baseParams, commandName string) (*cobra.Command, error) {
 	var deviceID string
+	var deviceName string
 	importCmd := &cobra.Command{
 		Use:   fmt.Sprintf("%s [FILE]", commandName),
 		Short: "Import a data file to the foxglove data platform",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
+			if deviceName == "" && deviceID == "" {
+				dief("Must specify either --device-id or --device-name")
+			}
 			err := executeImport(
 				*params.baseURL,
 				*params.clientID,
 				deviceID,
+				deviceName,
 				filename,
 				viper.GetString("bearer_token"),
 				params.userAgent,
@@ -52,11 +57,8 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 	}
 	importCmd.InheritedFlags()
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
-	err := importCmd.MarkPersistentFlagRequired("device-id")
-	if err != nil {
-		return nil, err
-	}
-	err = importCmd.RegisterFlagCompletionFunc(
+	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
+	err := importCmd.RegisterFlagCompletionFunc(
 		"device-id",
 		listDevicesAutocompletionFunc(
 			*params.baseURL,

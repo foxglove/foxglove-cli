@@ -93,13 +93,13 @@ func (s *MockFoxgloveServer) stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *MockFoxgloveServer) hasDevice(id string) bool {
+func (s *MockFoxgloveServer) lookupDevice(id, name string) *DevicesResponse {
 	for _, device := range s.registeredDevices {
-		if device.ID == id {
-			return true
+		if device.ID == id || device.Name == name {
+			return &device
 		}
 	}
-	return false
+	return nil
 }
 
 func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +109,9 @@ func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if !s.hasDevice(req.DeviceID) {
+
+	device := s.lookupDevice(req.DeviceID, req.DeviceName)
+	if device == nil {
 		w.WriteHeader(http.StatusNotFound)
 		err := json.NewEncoder(w).Encode(ErrorResponse{
 			Error: "Device not registered with this organization",
@@ -120,7 +122,7 @@ func (s *MockFoxgloveServer) uploadRedirect(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	err = json.NewEncoder(w).Encode(UploadResponse{
-		Link: fmt.Sprintf("http://localhost:%d/storage/device_id=%s/%s", s.port, req.DeviceID, req.Filename),
+		Link: fmt.Sprintf("http://localhost:%d/storage/device_id=%s/%s", s.port, device.ID, req.Filename),
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
