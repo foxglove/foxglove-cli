@@ -28,6 +28,8 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 				viper.GetString("bearer_token"),
 				params.userAgent,
 			)
+			// We accept ISO8601, which is a little more lenient than the API. Here
+			// we convert to RFC3339.
 			var startTime, endTime string
 			if start != "" {
 				parsed, err := iso8601.ParseString(start)
@@ -47,11 +49,13 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 			err := renderList(
 				os.Stdout,
 				&console.CoverageRequest{
-					DeviceID:    deviceID,
-					DeviceName:  deviceName,
-					Start:       startTime,
-					End:         endTime,
-					RecordingID: recordingID,
+					DeviceID:              deviceID,
+					DeviceName:            deviceName,
+					Start:                 startTime,
+					End:                   endTime,
+					RecordingID:           recordingID,
+					Tolerance:             tolerance,
+					IncludeEdgeRecordings: includeEdgeRecordings,
 				},
 				client.Coverage,
 				format,
@@ -69,8 +73,8 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 		"Number of seconds by which ranges must be separated to be considered distinct")
 
 	coverageListCmd.PersistentFlags().BoolVarP(&includeEdgeRecordings, "include-edge-recordings", "", false, "Include edge recordings")
-	coverageListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of coverage time range")
-	coverageListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of coverage time range")
+	coverageListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of coverage time range (ISO8601)")
+	coverageListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of coverage time range (ISO8601)")
 	AddFormatFlag(coverageListCmd, &format)
 	return coverageListCmd
 }
