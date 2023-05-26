@@ -14,6 +14,7 @@ import (
 func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var deviceID string
+	var deviceName string
 	var primarySiteID string
 	var edgeSiteID string
 	var path string
@@ -50,6 +51,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 				os.Stdout,
 				&console.RecordingsRequest{
 					DeviceID:     deviceID,
+					DeviceName:   deviceName,
 					Start:        startTime,
 					End:          endTime,
 					Path:         path,
@@ -68,6 +70,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	}
 	recordingsListCmd.InheritedFlags()
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
+	recordingsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	recordingsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of data range (ISO8601 format)")
 	recordingsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of data range (ISO8601 format)")
 	recordingsListCmd.PersistentFlags().StringVarP(&path, "path", "", "", "recording file path")

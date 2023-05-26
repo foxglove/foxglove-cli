@@ -148,6 +148,7 @@ func (r AttachmentsResponse) Headers() []string {
 
 type RecordingsRequest struct {
 	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
+	DeviceName   string `json:"device.name" form:"device.name,omitempty"`
 	Start        string `json:"start" form:"start,omitempty"`
 	End          string `json:"end" form:"end,omitempty"`
 	Path         string `json:"path" form:"path,omitempty"`
