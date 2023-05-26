@@ -23,8 +23,9 @@ type TokenResponse struct {
 }
 
 type UploadRequest struct {
-	Filename string `json:"filename"`
-	DeviceID string `json:"deviceId"`
+	Filename   string `json:"filename"`
+	DeviceID   string `json:"device.id,omitempty"`
+	DeviceName string `json:"device.name,omitempty"`
 }
 
 type UploadResponse struct {
