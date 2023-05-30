@@ -7,7 +7,6 @@ import (
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func newListCoverageCommand(params *baseParams) *cobra.Command {
@@ -24,8 +23,8 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 		Short: "List coverage ranges",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
-				viper.GetString("bearer_token"),
+				params.baseURL, *params.clientID,
+				params.token,
 				params.userAgent,
 			)
 			// We accept ISO8601, which is a little more lenient than the API. Here

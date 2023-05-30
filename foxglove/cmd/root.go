@@ -14,6 +14,7 @@ import (
 const (
 	foxgloveClientID = "d51173be08ed4cf7a734aed9ac30afd0"
 	appname          = "foxglove-cli"
+	defaultBaseURL   = "https://api.foxglove.dev"
 )
 
 func configfile() (string, error) {
@@ -22,6 +23,16 @@ func configfile() (string, error) {
 		return "", err
 	}
 	return path.Join(home, ".foxgloverc"), nil
+}
+
+func configureAuth(token, baseURL string) error {
+	viper.Set("bearer_token", token)
+	viper.Set("base_url", baseURL)
+	err := viper.WriteConfigAs(viper.ConfigFileUsed())
+	if err != nil {
+		return fmt.Errorf("Failed to write config: %w", err)
+	}
+	return nil
 }
 
 var logDebug bool
@@ -38,7 +49,7 @@ func dief(s string, args ...any) {
 type baseParams struct {
 	clientID  *string
 	cfgFile   *string
-	baseURL   *string
+	baseURL   string
 	userAgent string
 	token     string
 }
@@ -81,6 +92,13 @@ func listDevicesByNameAutocompletionFunc(
 		}
 		return candidates, cobra.ShellCompDirectiveDefault
 	}
+}
+
+func defaultString(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 func Execute(version string) {
@@ -128,20 +146,10 @@ func Execute(version string) {
 		Short: "List and publish Studio extensions",
 	}
 
-	var baseURL, clientID, cfgFile string
+	var clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&clientID, "client-id", "", foxgloveClientID, "foxglove client ID")
 	rootCmd.PersistentFlags().BoolVarP(&logDebug, "debug", "", false, "enable debug logging")
-	rootCmd.PersistentFlags().StringVarP(&baseURL, "baseurl", "", "https://api.foxglove.dev", "console API server")
-
-	useragent := fmt.Sprintf("%s/%s", appname, version)
-	params := &baseParams{
-		userAgent: useragent,
-		cfgFile:   &cfgFile,
-		baseURL:   &baseURL,
-		clientID:  &clientID,
-		token:     viper.GetString("bearer_token"),
-	}
 
 	var err error
 	if cfgFile == "" {
@@ -156,6 +164,16 @@ func Execute(version string) {
 		fmt.Println(err)
 		return
 	}
+
+	useragent := fmt.Sprintf("%s/%s", appname, version)
+	params := &baseParams{
+		userAgent: useragent,
+		cfgFile:   &cfgFile,
+		clientID:  &clientID,
+		token:     viper.GetString("bearer_token"),
+		baseURL:   defaultString(viper.GetString("base_url"), defaultBaseURL),
+	}
+
 	addImportCmd, err := newImportCommand(params, "add")
 	if err != nil {
 		fmt.Println(err)

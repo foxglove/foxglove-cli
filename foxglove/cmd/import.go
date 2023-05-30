@@ -42,7 +42,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 				dief("Must specify either --device-id or --device-name")
 			}
 			err := executeImport(
-				*params.baseURL,
+				params.baseURL,
 				*params.clientID,
 				deviceID,
 				deviceName,

@@ -19,7 +19,7 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 		Short: "List MCAP attachments",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
+				params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
 				params.userAgent,
 			)
@@ -53,7 +53,7 @@ func newDownloadAttachmentCmd(params *baseParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			attachmentID := args[0]
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
+				params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
 				params.userAgent,
 			)

@@ -13,7 +13,6 @@ import (
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var ErrTruncatedMCAP = errors.New("truncated mcap file")
@@ -180,9 +179,9 @@ func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
 	if err := cmd.RegisterFlagCompletionFunc(
 		"device-id",
 		listDevicesAutocompletionFunc(
-			*params.baseURL,
+			params.baseURL,
 			*params.clientID,
-			viper.GetString("bearer_token"),
+			params.token,
 			params.userAgent,
 		),
 	); err != nil {
@@ -191,9 +190,9 @@ func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
 	if err := cmd.RegisterFlagCompletionFunc(
 		"device-name",
 		listDevicesByNameAutocompletionFunc(
-			*params.baseURL,
+			params.baseURL,
 			*params.clientID,
-			viper.GetString("bearer_token"),
+			params.token,
 			params.userAgent,
 		),
 	); err != nil {

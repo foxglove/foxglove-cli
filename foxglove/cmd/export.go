@@ -20,7 +20,6 @@ import (
 	"github.com/foxglove/mcap/go/mcap/readopts"
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -900,14 +899,13 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if err != nil {
 				fatalf("Failed to build request: %s\n", err)
 			}
-			bearerToken := viper.GetString("bearer_token")
 			if outputFile != "" && outputFormat != "json" {
 				err = doExport(
 					cmd.Context(),
 					outputFile,
-					*params.baseURL,
+					params.baseURL,
 					*params.clientID,
-					bearerToken,
+					params.token,
 					params.userAgent,
 					request,
 				)
@@ -924,9 +922,9 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			err = executeExport(
 				cmd.Context(),
 				os.Stdout,
-				*params.baseURL,
+				params.baseURL,
 				*params.clientID,
-				bearerToken,
+				params.token,
 				params.userAgent,
 				request,
 			)
