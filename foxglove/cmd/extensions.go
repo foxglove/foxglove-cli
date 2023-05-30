@@ -7,7 +7,6 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func executeExtensionUpload(client *console.FoxgloveClient, filename string) error {
@@ -27,9 +26,9 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL,
+				params.baseURL,
 				*params.clientID,
-				viper.GetString("bearer_token"),
+				params.token,
 				params.userAgent,
 			)
 			err := executeExtensionUpload(
@@ -53,8 +52,8 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 		Short: "List Studio extensions created for your organization",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
-				viper.GetString("bearer_token"),
+				params.baseURL, *params.clientID,
+				params.token,
 				params.userAgent,
 			)
 			err := renderList(
@@ -81,8 +80,8 @@ func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
-				viper.GetString("bearer_token"),
+				params.baseURL, *params.clientID,
+				params.token,
 				params.userAgent,
 			)
 			err := executeExtensionDelete(client, args[0])

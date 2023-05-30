@@ -42,7 +42,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 				dief("Must specify either --device-id or --device-name")
 			}
 			err := executeImport(
-				*params.baseURL,
+				params.baseURL,
 				*params.clientID,
 				deviceID,
 				deviceName,
@@ -58,17 +58,6 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 	importCmd.InheritedFlags()
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
-	err := importCmd.RegisterFlagCompletionFunc(
-		"device-id",
-		listDevicesAutocompletionFunc(
-			*params.baseURL,
-			*params.clientID,
-			viper.GetString("bearer_token"),
-			params.userAgent,
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
+	AddDeviceAutocompletion(importCmd, params)
 	return importCmd, nil
 }

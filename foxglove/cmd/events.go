@@ -7,7 +7,6 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func newAddEventCommand(params *baseParams) *cobra.Command {
@@ -20,8 +19,8 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 		Short: "Add an event",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
-				viper.GetString("bearer_token"),
+				params.baseURL, *params.clientID,
+				params.token,
 				params.userAgent,
 			)
 
@@ -70,8 +69,8 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 		Short: "List events",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
-				viper.GetString("bearer_token"),
+				params.baseURL, *params.clientID,
+				params.token,
 				params.userAgent,
 			)
 			err := renderList(
@@ -103,6 +102,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().IntVarP(&limit, "limit", "", 100, "limit")
 	eventsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset")
 	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by metadata with keyword or \"$key:$value\"")
+	AddDeviceAutocompletion(eventsListCmd, params)
 	AddFormatFlag(eventsListCmd, &format)
 	return eventsListCmd
 }

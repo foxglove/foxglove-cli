@@ -6,7 +6,6 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func newListImportsCommand(params *baseParams) *cobra.Command {
@@ -22,8 +21,8 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 		Short: "List imports for a device",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
-				*params.baseURL, *params.clientID,
-				viper.GetString("bearer_token"),
+				params.baseURL, *params.clientID,
+				params.token,
 				params.userAgent,
 			)
 			err := renderList(

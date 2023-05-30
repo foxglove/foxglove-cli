@@ -173,6 +173,33 @@ func AddFormatFlag(cmd *cobra.Command, format *string) {
 	)
 }
 
+// AddDeviceAutocompletion adds autocompletion for device-name and device-id
+// parameters to the command.
+func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
+	if err := cmd.RegisterFlagCompletionFunc(
+		"device-id",
+		listDevicesAutocompletionFunc(
+			params.baseURL,
+			*params.clientID,
+			params.token,
+			params.userAgent,
+		),
+	); err != nil {
+		dief("failed to register device-id autocompletion: %v", err)
+	}
+	if err := cmd.RegisterFlagCompletionFunc(
+		"device-name",
+		listDevicesByNameAutocompletionFunc(
+			params.baseURL,
+			*params.clientID,
+			params.token,
+			params.userAgent,
+		),
+	); err != nil {
+		dief("failed to register device-name autocompletion: %v", err)
+	}
+}
+
 func promptForInput(prompt string) string {
 	fmt.Print(prompt)
 	var value string
