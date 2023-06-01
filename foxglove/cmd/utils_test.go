@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/foxglove/mcap/go/mcap"
+	"github.com/relvacode/iso8601"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -110,6 +111,50 @@ func TestRenderList(t *testing.T) {
 			buf := &bytes.Buffer{}
 			err := renderList(buf, nil, func(any) ([]TestRecord, error) { return records, nil }, c.format)
 			assert.Nil(t, err)
+		})
+	}
+}
+
+func TestMaybeConvertToRFC3339(t *testing.T) {
+	cases := []struct {
+		assertion string
+		input     string
+		output    string
+		err       error
+	}{
+		{
+			"accepts RFC3339",
+			"2021-01-01T00:00:00Z",
+			"2021-01-01T00:00:00Z",
+			nil,
+		},
+		{
+			"accepts ISO8601",
+			"2021-01-01",
+			"2021-01-01T00:00:00Z",
+			nil,
+		},
+		{
+			"handles empty input",
+			"",
+			"",
+			nil,
+		},
+		{
+			"handles invalid input",
+			"not a date",
+			"",
+			&iso8601.UnexpectedCharacterError{
+				Character: 'n',
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			output, err := maybeConvertToRFC3339(c.input)
+			assert.Equal(t, c.output, output)
+			assert.Equal(t, c.err, err)
 		})
 	}
 }
