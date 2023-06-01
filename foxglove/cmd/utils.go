@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/olekukonko/tablewriter"
+	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 )
 
@@ -205,4 +207,18 @@ func promptForInput(prompt string) string {
 	var value string
 	fmt.Scanln(&value)
 	return value
+}
+
+// maybeConvertToRFC3339 converts an ISO8601 timestamp to RFC3339, if an input
+// timestamp is supplied. If the input is empty, it returns an empty string and
+// no error.
+func maybeConvertToRFC3339(timestamp string) (string, error) {
+	if timestamp == "" {
+		return "", nil
+	}
+	parsed, err := iso8601.ParseString(timestamp)
+	if err != nil {
+		return "", err
+	}
+	return parsed.Format(time.RFC3339), nil
 }

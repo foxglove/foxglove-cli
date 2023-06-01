@@ -3,10 +3,8 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
-	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 )
 
@@ -29,22 +27,13 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
-			var err error
-			var startTime string
-			var endTime string
-			if start != "" {
-				parsed, err := iso8601.ParseString(start)
-				if err != nil {
-					dief("failed to parse start time: %s", err)
-				}
-				startTime = parsed.Format(time.RFC3339)
+			startTime, err := maybeConvertToRFC3339(start)
+			if err != nil {
+				dief("failed to parse start time: %s", err)
 			}
-			if end != "" {
-				parsed, err := iso8601.ParseString(end)
-				if err != nil {
-					dief("failed to parse end time: %s", err)
-				}
-				endTime = parsed.Format(time.RFC3339)
+			endTime, err := maybeConvertToRFC3339(end)
+			if err != nil {
+				dief("failed to parse end time: %s", err)
 			}
 			err = renderList(
 				os.Stdout,

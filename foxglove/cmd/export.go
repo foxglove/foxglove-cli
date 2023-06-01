@@ -887,12 +887,20 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		Use:   "export",
 		Short: "Export a data selection from foxglove data platform",
 		Run: func(cmd *cobra.Command, args []string) {
+			startTime, err := maybeConvertToRFC3339(start)
+			if err != nil {
+				dief("failed to parse start time: %s", err)
+			}
+			endTime, err := maybeConvertToRFC3339(end)
+			if err != nil {
+				dief("failed to parse end time: %s", err)
+			}
 			request, err := createStreamRequest(
 				importID,
 				deviceID,
 				deviceName,
-				start,
-				end,
+				startTime,
+				endTime,
 				outputFormat,
 				topicList,
 			)
@@ -937,8 +945,8 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	exportCmd.PersistentFlags().StringVarP(&outputFile, "output-file", "o", "", "output file")
 	exportCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "import ID")
-	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (RFC3339 timestamp)")
-	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (RFC3339 timestamp")
+	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (ISO8601 timestamp)")
+	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (ISO8601 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
 	AddDeviceAutocompletion(exportCmd, params)

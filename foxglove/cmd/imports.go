@@ -25,14 +25,30 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
-			err := renderList(
+			startTime, err := maybeConvertToRFC3339(start)
+			if err != nil {
+				dief("failed to parse start time: %s", err)
+			}
+			endTime, err := maybeConvertToRFC3339(end)
+			if err != nil {
+				dief("failed to parse end time: %s", err)
+			}
+			dataStartTime, err := maybeConvertToRFC3339(dataStart)
+			if err != nil {
+				dief("failed to parse data start time: %s", err)
+			}
+			dataEndTime, err := maybeConvertToRFC3339(dataEnd)
+			if err != nil {
+				dief("failed to parse data end time: %s", err)
+			}
+			err = renderList(
 				os.Stdout,
 				&console.ImportsRequest{
 					DeviceID:       deviceID,
-					Start:          start,
-					End:            end,
-					DataStart:      dataStart,
-					DataEnd:        dataEnd,
+					Start:          startTime,
+					End:            endTime,
+					DataStart:      dataStartTime,
+					DataEnd:        dataEndTime,
 					IncludeDeleted: includeDeleted,
 				},
 				client.Imports,
@@ -46,10 +62,10 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 	}
 	importsListCmd.InheritedFlags()
 	importsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
-	importsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of import time range")
-	importsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of import time range")
-	importsListCmd.PersistentFlags().StringVarP(&dataStart, "data-start", "", "", "start of data time range")
-	importsListCmd.PersistentFlags().StringVarP(&dataEnd, "data-end", "", "", "end of data time range")
+	importsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of import time range (ISO8601)")
+	importsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of import time range (ISO8601)")
+	importsListCmd.PersistentFlags().StringVarP(&dataStart, "data-start", "", "", "start of data time range (ISO8601)")
+	importsListCmd.PersistentFlags().StringVarP(&dataEnd, "data-end", "", "", "end of data time range (ISO8601)")
 	importsListCmd.PersistentFlags().BoolVarP(&includeDeleted, "include-deleted", "", false, "end of data time range")
 	AddFormatFlag(importsListCmd, &format)
 	return importsListCmd
