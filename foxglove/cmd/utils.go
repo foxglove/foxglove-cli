@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
+	tw "github.com/foxglove/foxglove-cli/foxglove/util/tablewriter"
 	"github.com/foxglove/mcap/go/mcap"
-	"github.com/olekukonko/tablewriter"
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 )
@@ -91,7 +91,15 @@ func renderList[RequestType console.Request, ResponseType console.Record](
 	}
 	switch format {
 	case "table":
-		renderTable(w, records)
+		if len(records) == 0 {
+			fmt.Println("No records found")
+			return nil
+		}
+		data := [][]string{}
+		for _, record := range records {
+			data = append(data, record.Fields())
+		}
+		tw.PrintTable(w, records[0].Headers(), data)
 	case "json":
 		err := renderJSON(w, records)
 		if err != nil {
@@ -106,29 +114,6 @@ func renderList[RequestType console.Request, ResponseType console.Record](
 		return fmt.Errorf("unsupported format %s", format)
 	}
 	return nil
-}
-
-func renderTable[RecordType console.Record](w io.Writer, records []RecordType) {
-	table := tablewriter.NewWriter(w)
-	if len(records) == 0 {
-		return
-	}
-	headers := records[0].Headers()
-	table.SetHeader(headers)
-	table.SetBorders(tablewriter.Border{
-		Left:   true,
-		Top:    false,
-		Right:  true,
-		Bottom: false,
-	})
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
-	table.SetCenterSeparator("|")
-	data := [][]string{}
-	for _, record := range records {
-		data = append(data, record.Fields())
-	}
-	table.AppendBulk(data)
-	table.Render()
 }
 
 func renderJSON[RecordType console.Record](w io.Writer, records []RecordType) error {
