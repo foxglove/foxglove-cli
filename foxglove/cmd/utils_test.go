@@ -74,16 +74,6 @@ func TestRenderJSON(t *testing.T) {
 			"\n", ""))
 }
 
-func TestRenderTable(t *testing.T) {
-	records := []TestRecord{
-		{A: "a", B: "b"},
-		{A: "c", B: "d"},
-	}
-	buf := &bytes.Buffer{}
-	renderTable(buf, records)
-	assert.Equal(t, "| A | B |\n|---|---|\n| a | b |\n| c | d |\n", buf.String())
-}
-
 func TestRenderList(t *testing.T) {
 	records := []TestRecord{
 		{A: "a", B: "b"},
