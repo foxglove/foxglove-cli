@@ -384,13 +384,11 @@ type ErrorResponse struct {
 }
 
 type CreateDeviceRequest struct {
-	Name         string `json:"name"`
-	SerialNumber string `json:"serialNumber,omitempty"`
+	Name string `json:"name"`
 }
 type CreateDeviceResponse struct {
-	ID           string  `json:"id"`
-	Name         string  `json:"name"`
-	SerialNumber *string `json:"serialNumber"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 type CreateEventRequest struct {

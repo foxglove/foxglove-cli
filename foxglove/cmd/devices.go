@@ -47,9 +47,13 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
+
+			if serialNumber != "" {
+				fmt.Fprintf(os.Stderr, "Warning: serial-number is deprecated and will be removed in the next release\n")
+			}
+
 			resp, err := client.CreateDevice(console.CreateDeviceRequest{
-				Name:         name,
-				SerialNumber: serialNumber,
+				Name: name,
 			})
 			if err != nil {
 				fatalf("Failed to create device: %s\n", err)
@@ -59,6 +63,6 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	}
 	addDeviceCmd.InheritedFlags()
 	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "name of the device")
-	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "device serial number")
+	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "Deprecated. Value will be ignored.")
 	return addDeviceCmd
 }
