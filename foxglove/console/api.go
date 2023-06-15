@@ -75,16 +75,19 @@ type DeviceCodeResponse struct {
 type DevicesRequest struct{}
 
 type DevicesResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties"`
+	CreatedAt  time.Time              `json:"createdAt"`
+	UpdatedAt  time.Time              `json:"updatedAt"`
 }
 
 func (r DevicesResponse) Fields() []string {
+	properties, _ := json.Marshal(r.Properties)
 	return []string{
 		r.ID,
 		r.Name,
+		string(properties),
 		r.CreatedAt.Format(time.RFC3339),
 		r.UpdatedAt.Format(time.RFC3339),
 	}
@@ -94,6 +97,7 @@ func (r DevicesResponse) Headers() []string {
 	return []string{
 		"ID",
 		"Name",
+		"Custom Properties",
 		"Created At",
 		"Updated At",
 	}
