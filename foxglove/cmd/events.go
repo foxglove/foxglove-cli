@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/spf13/cobra"
@@ -26,12 +25,12 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 
 			metadata := make(map[string]string)
 			for _, kv := range keyvals {
-				parts := strings.FieldsFunc(kv, func(c rune) bool { return c == ':' })
-				if len(parts) != 2 {
+				key, val, err := splitPair(kv, ':')
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "Invalid key/value pair: %s\n", kv)
 					os.Exit(1)
 				}
-				metadata[parts[0]] = parts[1]
+				metadata[key] = val
 			}
 			response, err := client.CreateEvent(console.CreateEventRequest{
 				DeviceID: deviceID,

@@ -389,7 +389,7 @@ type ErrorResponse struct {
 
 type CreateDeviceRequest struct {
 	Name       string                 `json:"name"`
-	Properties map[string]interface{} `json:"properties"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 type CreateDeviceResponse struct {
@@ -417,6 +417,18 @@ type ExtensionResponse struct {
 	Description   *string `json:"description"`
 	ActiveVersion *string `json:"activeVersion"`
 	Sha256Sum     *string `json:"sha256Sum"`
+}
+
+type CustomPropertiesRequest struct {
+	ResourceType string `json:"resourceType"`
+}
+
+type CustomPropertiesResponseItem struct {
+	Key          string   `json:"key"`
+	Label        string   `json:"label"`
+	ResourceType string   `json:"resourceType"`
+	ValueType    string   `json:"valueType"`
+	Values       []string `json:"values"`
 }
 
 func (r ExtensionResponse) Fields() []string {
