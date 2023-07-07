@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/util"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 
 			metadata := make(map[string]string)
 			for _, kv := range keyvals {
-				key, val, err := splitPair(kv, ':')
+				key, val, err := util.SplitPair(kv, ':')
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Invalid key/value pair: %s\n", kv)
 					os.Exit(1)
