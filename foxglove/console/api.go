@@ -388,11 +388,14 @@ type ErrorResponse struct {
 }
 
 type CreateDeviceRequest struct {
-	Name string `json:"name"`
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties"`
 }
+
 type CreateDeviceResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties"`
 }
 
 type CreateEventRequest struct {
