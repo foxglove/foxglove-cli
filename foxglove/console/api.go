@@ -398,6 +398,13 @@ type CreateDeviceResponse struct {
 	Properties map[string]interface{} `json:"properties"`
 }
 
+type EditDeviceRequest struct {
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
+}
+
+type EditDeviceResponse CreateDeviceResponse
+
 type CreateEventRequest struct {
 	DeviceID string            `json:"deviceId"`
 	Start    string            `json:"start"`

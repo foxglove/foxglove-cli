@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/ajg/form"
@@ -213,6 +214,45 @@ func (c *FoxgloveClient) post(
 	return nil
 }
 
+func (c *FoxgloveClient) patch(
+	endpoint string,
+	reqBody any,
+	target any,
+) error {
+	buf := bytes.Buffer{}
+	err := json.NewEncoder(&buf).Encode(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPatch, c.baseurl+endpoint, &buf)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("content-type", "application/json")
+
+	resp, err := c.authed.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusForbidden:
+		return ErrForbidden
+	case http.StatusOK:
+		break
+	default:
+		return unpackErrorResponse(resp.Body)
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(target)
+	if err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+	return nil
+}
+
 func (c *FoxgloveClient) delete(endpoint string) error {
 	req, err := http.NewRequest(http.MethodDelete, c.baseurl+endpoint, nil)
 	if err != nil {
@@ -241,6 +281,15 @@ func (c *FoxgloveClient) delete(endpoint string) error {
 
 func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDeviceResponse, err error) {
 	err = c.post("/v1/devices", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) EditDevice(nameOrId string, req CreateDeviceRequest) (resp EditDeviceResponse, err error) {
+	path, err := url.JoinPath("/v1/devices", nameOrId)
+	if err != nil {
+		return EditDeviceResponse{}, err
+	}
+	err = c.patch(path, req, &resp)
 	return resp, err
 }
 

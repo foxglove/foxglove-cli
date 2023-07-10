@@ -204,7 +204,7 @@ func Execute(version string) {
 		coverageCmd,
 		importShortcut,
 	)
-	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params))
+	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params), newEditDeviceCommand(params))
 	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
 	extensionsCmd.AddCommand(newListExtensionsCommand(params))
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))

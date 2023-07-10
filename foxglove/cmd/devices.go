@@ -75,3 +75,51 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
 	return addDeviceCmd
 }
+
+func newEditDeviceCommand(params *baseParams) *cobra.Command {
+	var name string
+	var propertyPairs []string
+	addDeviceCmd := &cobra.Command{
+		Use:   "edit",
+		Short: "Edit a device",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(
+				params.baseURL, *params.clientID,
+				params.token,
+				params.userAgent,
+			)
+
+			properties, err := util.DeviceProperties(propertyPairs, client)
+			if err != nil {
+				fatalf("Failed to edit device: %s\n", err)
+			}
+
+			nameOrId := args[0]
+			reqBody := console.CreateDeviceRequest{}
+			if properties == nil && name == "" {
+				fatalf("Nothing to update\n")
+			}
+
+			if name != "" {
+				reqBody.Name = name
+			}
+			if properties != nil {
+				reqBody.Properties = properties
+			}
+
+			resp, err := client.EditDevice(nameOrId, console.CreateDeviceRequest{
+				Name:       name,
+				Properties: properties,
+			})
+			if err != nil {
+				fatalf("Failed to edit device: %s\n", err)
+			}
+			fmt.Fprintf(os.Stderr, "Device updated: %s\n", resp.Name)
+		},
+	}
+	addDeviceCmd.InheritedFlags()
+	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "New name for the device")
+	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
+	return addDeviceCmd
+}
