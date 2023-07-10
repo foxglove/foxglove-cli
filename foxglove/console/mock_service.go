@@ -144,13 +144,7 @@ func (s *MockFoxgloveServer) upload(w http.ResponseWriter, r *http.Request) {
 func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	response := []CustomPropertiesResponseItem{
-		{Key: "str", ResourceType: "devices", Label: "", ValueType: "string"},
-		{Key: "num", ResourceType: "devices", Label: "", ValueType: "number"},
-		{Key: "bool", ResourceType: "devices", Label: "", ValueType: "boolean"},
-		{Key: "enum", ResourceType: "devices", Label: "", ValueType: "enum", Values: []string{"foo", "bar"}},
-	}
-	err := json.NewEncoder(w).Encode(response)
+	err := json.NewEncoder(w).Encode(s.registeredDevices)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
