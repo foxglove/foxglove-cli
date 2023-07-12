@@ -75,16 +75,19 @@ type DeviceCodeResponse struct {
 type DevicesRequest struct{}
 
 type DevicesResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties"`
+	CreatedAt  time.Time              `json:"createdAt"`
+	UpdatedAt  time.Time              `json:"updatedAt"`
 }
 
 func (r DevicesResponse) Fields() []string {
+	properties, _ := json.Marshal(r.Properties)
 	return []string{
 		r.ID,
 		r.Name,
+		string(properties),
 		r.CreatedAt.Format(time.RFC3339),
 		r.UpdatedAt.Format(time.RFC3339),
 	}
@@ -94,6 +97,7 @@ func (r DevicesResponse) Headers() []string {
 	return []string{
 		"ID",
 		"Name",
+		"Custom Properties",
 		"Created At",
 		"Updated At",
 	}
@@ -384,11 +388,14 @@ type ErrorResponse struct {
 }
 
 type CreateDeviceRequest struct {
-	Name string `json:"name"`
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
+
 type CreateDeviceResponse struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Properties map[string]interface{} `json:"properties"`
 }
 
 type CreateEventRequest struct {
@@ -410,6 +417,18 @@ type ExtensionResponse struct {
 	Description   *string `json:"description"`
 	ActiveVersion *string `json:"activeVersion"`
 	Sha256Sum     *string `json:"sha256Sum"`
+}
+
+type CustomPropertiesRequest struct {
+	ResourceType string `json:"resourceType"`
+}
+
+type CustomPropertiesResponseItem struct {
+	Key          string   `json:"key"`
+	Label        string   `json:"label"`
+	ResourceType string   `json:"resourceType"`
+	ValueType    string   `json:"valueType"`
+	Values       []string `json:"values"`
 }
 
 func (r ExtensionResponse) Fields() []string {

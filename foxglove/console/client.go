@@ -341,6 +341,11 @@ func (c *FoxgloveClient) Extensions(req ExtensionsRequest) (resp []ExtensionResp
 	return resp, err
 }
 
+func (c *FoxgloveClient) DeviceCustomProperties(req CustomPropertiesRequest) (resp []CustomPropertiesResponseItem, err error) {
+	err = c.get("/v1/custom-properties", req, &resp)
+	return resp, err
+}
+
 func (c *FoxgloveClient) Attachment(id string) (io.ReadCloser, error) {
 	res, err := c.authed.Get(c.baseurl + "/v1/recording-attachments/" + id + "/download")
 	if err != nil {

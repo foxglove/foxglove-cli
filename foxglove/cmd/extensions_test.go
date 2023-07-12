@@ -46,7 +46,7 @@ func TestUnpublishExtensionCommand(t *testing.T) {
 	t.Run("returns ok if deleted", func(t *testing.T) {
 		sv, err := console.NewMockServer(ctx)
 		assert.Nil(t, err)
-		client := newAuthedClient(t, sv.BaseURL())
+		client := console.NewMockAuthedClient(t, sv.BaseURL())
 		err = executeExtensionDelete(
 			client,
 			sv.ValidExtensionId(),
@@ -56,28 +56,11 @@ func TestUnpublishExtensionCommand(t *testing.T) {
 	t.Run("does not error if extension not found", func(t *testing.T) {
 		sv, err := console.NewMockServer(ctx)
 		assert.Nil(t, err)
-		client := newAuthedClient(t, sv.BaseURL())
+		client := console.NewMockAuthedClient(t, sv.BaseURL())
 		err = executeExtensionDelete(
 			client,
 			"nonexistent-extension-id",
 		)
 		assert.Nil(t, err)
 	})
-}
-
-func newAuthedClient(t *testing.T, baseUrl string) *console.FoxgloveClient {
-	client := console.NewRemoteFoxgloveClient(
-		baseUrl,
-		"client",
-		"",
-		"user-agent",
-	)
-	token, err := client.SignIn("client-id")
-	assert.Nil(t, err)
-	return console.NewRemoteFoxgloveClient(
-		baseUrl,
-		"client",
-		token,
-		"user-agent",
-	)
 }

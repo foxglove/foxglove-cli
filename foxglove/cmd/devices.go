@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/util"
 	"github.com/spf13/cobra"
 )
 
@@ -38,6 +39,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	var name string
 	var serialNumber string
+	var propertyPairs []string
 	addDeviceCmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a device for your organization",
@@ -52,8 +54,14 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Warning: serial-number is deprecated and will be removed in the next release\n")
 			}
 
+			properties, err := util.DeviceProperties(propertyPairs, client)
+			if err != nil {
+				fatalf("Failed to create device: %s\n", err)
+			}
+
 			resp, err := client.CreateDevice(console.CreateDeviceRequest{
-				Name: name,
+				Name:       name,
+				Properties: properties,
 			})
 			if err != nil {
 				fatalf("Failed to create device: %s\n", err)
@@ -64,5 +72,6 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	addDeviceCmd.InheritedFlags()
 	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "name of the device")
 	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "Deprecated. Value will be ignored.")
+	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
 	return addDeviceCmd
 }

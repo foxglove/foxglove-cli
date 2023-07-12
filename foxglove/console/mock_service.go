@@ -19,13 +19,14 @@ import (
 )
 
 type MockFoxgloveServer struct {
-	mtx               *sync.RWMutex
-	Uploads           map[string][]byte // object storage
-	IDTokens          map[string]string // device ID -> ID token
-	BearerTokens      map[string]string // bearer token -> ID token
-	registeredDevices []DevicesResponse
-	tokenRequests     int
-	port              int
+	mtx                  *sync.RWMutex
+	Uploads              map[string][]byte // object storage
+	IDTokens             map[string]string // device ID -> ID token
+	BearerTokens         map[string]string // bearer token -> ID token
+	registeredDevices    []DevicesResponse
+	registeredProperties []CustomPropertiesResponseItem
+	tokenRequests        int
+	port                 int
 }
 
 func randomString(n int) (string, error) {
@@ -138,6 +139,34 @@ func (s *MockFoxgloveServer) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	key := mux.Vars(r)["key"]
 	s.Uploads[key] = bytes
+}
+
+func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request) {
+	req := CreateDeviceRequest{}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	resp := CreateDeviceResponse{
+		ID:         fmt.Sprintf("dev_%s", req.Name),
+		Name:       req.Name,
+		Properties: req.Properties,
+	}
+
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	s.registeredDevices = append(s.registeredDevices, DevicesResponse{
+		ID:         resp.ID,
+		Name:       resp.Name,
+		Properties: resp.Properties,
+	})
 }
 
 func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
@@ -267,6 +296,23 @@ func (s *MockFoxgloveServer) ValidExtensionId() string {
 	return "ext_mock_extension_id"
 }
 
+func (s *MockFoxgloveServer) customProperties(w http.ResponseWriter, r *http.Request) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	err := json.NewEncoder(w).Encode(s.registeredProperties)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func (s *MockFoxgloveServer) RegisteredProperties() []CustomPropertiesResponseItem {
+	return s.registeredProperties
+}
+
+func (s *MockFoxgloveServer) RegisteredDevices() []DevicesResponse {
+	return s.registeredDevices
+}
+
 func (s *MockFoxgloveServer) withAuthz(next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(r.Header.Get("Authorization"), " ")
@@ -301,6 +347,12 @@ func mockServer(port int) *MockFoxgloveServer {
 				UpdatedAt: time.Now(),
 			},
 		},
+		registeredProperties: []CustomPropertiesResponseItem{
+			{Key: "str", ResourceType: "devices", Label: "", ValueType: "string"},
+			{Key: "num", ResourceType: "devices", Label: "", ValueType: "number"},
+			{Key: "bool", ResourceType: "devices", Label: "", ValueType: "boolean"},
+			{Key: "enum", ResourceType: "devices", Label: "", ValueType: "enum", Values: []string{"foo", "bar"}},
+		},
 	}
 }
 
@@ -311,11 +363,13 @@ func (sv *MockFoxgloveServer) liveness(w http.ResponseWriter, r *http.Request) {
 func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/v1/signin", sv.signIn).Methods("POST")
+	r.HandleFunc("/v1/custom-properties", sv.withAuthz(sv.customProperties)).Methods("GET")
 	r.HandleFunc("/v1/data/stream", sv.withAuthz(sv.stream)).Methods("POST")
 	r.HandleFunc("/v1/data/imports", sv.withAuthz(sv.imports)).Methods("GET")
 	r.HandleFunc("/v1/data/upload", sv.withAuthz(sv.uploadRedirect)).Methods("POST")
 	r.HandleFunc("/v1/auth/device-code", sv.deviceCode).Methods("POST")
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")
+	r.HandleFunc("/v1/devices", sv.withAuthz(sv.createDevice)).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")
