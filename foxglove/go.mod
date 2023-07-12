@@ -1,6 +1,6 @@
 module github.com/foxglove/foxglove-cli/foxglove
 
-go 1.18
+go 1.20
 
 require (
 	github.com/ajg/form v1.5.1

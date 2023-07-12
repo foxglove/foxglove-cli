@@ -169,6 +169,42 @@ func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// Send response, but don't actually edit
+func (s *MockFoxgloveServer) editDevice(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	req := EditDeviceRequest{}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	found := false
+	for _, dev := range s.registeredDevices {
+		if dev.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	resp := EditDeviceResponse{
+		ID:         fmt.Sprintf("dev_%s", req.Name),
+		Name:       req.Name,
+		Properties: req.Properties,
+	}
+
+	err = json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -371,6 +407,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/auth/token", sv.token).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.createDevice)).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
+	r.HandleFunc("/v1/devices/{id}", sv.withAuthz(sv.editDevice)).Methods("PATCH")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")
 	r.HandleFunc("/v1/extensions/{id}", sv.withAuthz(sv.deleteExtension)).Methods("DELETE")

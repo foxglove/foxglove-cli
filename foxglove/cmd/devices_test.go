@@ -28,3 +28,21 @@ func TestAddDeviceCommand(t *testing.T) {
 		})
 	})
 }
+
+func TestEditDeviceCommand(t *testing.T) {
+	ctx := context.Background()
+	sv, err := console.NewMockServer(ctx)
+	assert.Nil(t, err)
+
+	t.Run("creates a device", func(t *testing.T) {
+		client := console.NewMockAuthedClient(t, sv.BaseURL())
+		dev, err := client.EditDevice("test-device", console.CreateDeviceRequest{
+			Name:       "new-name",
+			Properties: map[string]interface{}{"key": "val"},
+		})
+		assert.Nil(t, err)
+
+		assert.Equal(t, dev.Name, "new-name")
+		assert.Equal(t, dev.Properties, map[string]interface{}{"key": "val"})
+	})
+}
