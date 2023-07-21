@@ -13,10 +13,10 @@ your OS and architecture:
 | OS/Arch     |                                                                                                            |
 |--------|------------------------------------------------------------------------------------------------------------|
 | linux/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-amd64 -o foxglove |
-| darwin/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-darwin-amd64 -o foxglove |
+| macos/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-amd64 -o foxglove |
 | windows/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-amd64.exe -o foxglove.exe |
 | linux/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-arm64 -o foxglove |
-| darwin/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-darwin-arm64 -o foxglove |
+| macos/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-arm64 -o foxglove |
 | windows/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe |
 
 
