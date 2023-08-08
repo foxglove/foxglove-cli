@@ -33,6 +33,7 @@ type UploadResponse struct {
 }
 
 type StreamRequest struct {
+	RecordingID  string     `json:"recordingId,omitempty"`
 	ImportID     string     `json:"importId,omitempty"`
 	DeviceID     string     `json:"device.id,omitempty"`
 	DeviceName   string     `json:"device.name,omitempty"`
@@ -43,8 +44,8 @@ type StreamRequest struct {
 }
 
 func (req *StreamRequest) Validate() error {
-	if req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" {
-		return fmt.Errorf("either import-id or device-id/device-name, start, and end are required")
+	if req.RecordingID == "" && req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" {
+		return fmt.Errorf("either recording-id, import-id, or all three of device-id/device-name, start, and end are required")
 	}
 	if req.DeviceID != "" && req.DeviceName != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
 		return fmt.Errorf("start/end are required if device is supplied")
