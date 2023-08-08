@@ -34,7 +34,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 	var deviceName string
 	importCmd := &cobra.Command{
 		Use:   fmt.Sprintf("%s [FILE]", commandName),
-		Short: "Import a data file to the foxglove data platform",
+		Short: "Import a data file to Foxglove Data Platform",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above

@@ -27,7 +27,7 @@ func newLoginCommand(params *baseParams) *cobra.Command {
 	var baseURL string
 	loginCmd := &cobra.Command{
 		Use:   "login",
-		Short: "Log in to the foxglove data platform",
+		Short: "Log in to Foxglove Data Platform",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeLogin(baseURL, *params.clientID, params.userAgent, &console.PlatformAuthDelegate{})
 			if err != nil {
