@@ -889,6 +889,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
+		Long:  "Export a data selection from Foxglove Data Platform by Recording ID, Import ID, or Device and time range",
 		Run: func(cmd *cobra.Command, args []string) {
 			startTime, err := maybeConvertToRFC3339(start)
 			if err != nil {
