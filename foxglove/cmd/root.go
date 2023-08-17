@@ -145,6 +145,10 @@ func Execute(version string) {
 		Use:   "extensions",
 		Short: "List and publish Studio extensions",
 	}
+	pendingImportsCmd := &cobra.Command{
+		Use:   "pending-imports",
+		Short: "List pending imports",
+	}
 
 	var clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -209,6 +213,7 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newListExtensionsCommand(params))
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
+	pendingImportsCmd.AddCommand(newPendingImportsCommand(params))
 
 	rootCmd.AddCommand(
 		authCmd,
@@ -219,6 +224,7 @@ func Execute(version string) {
 		attachmentsCmd,
 		recordingsCmd,
 		eventsCmd,
+		pendingImportsCmd,
 	)
 
 	cobra.CheckErr(rootCmd.Execute())
