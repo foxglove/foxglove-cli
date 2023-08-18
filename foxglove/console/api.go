@@ -477,6 +477,7 @@ type PendingImportsRequest struct {
 	DeviceName      string `json:"device.name" form:"device.name,omitempty"`
 	Error           string `json:"error" form:"error,omitempty"`
 	Filename        string `json:"filename" form:"filename,omitempty"`
+	UpdatedSince    string `json:"updatedSince" form:"updatedSince,omitempty"`
 	ShowCompleted   bool   `json:"showCompleted" form:"showCompleted,omitempty"`
 	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
 	SiteId          string `json:"siteId" form:"siteId,omitempty"`

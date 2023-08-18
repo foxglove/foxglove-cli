@@ -18,16 +18,22 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var showCompleted bool
 	var showQuarantined bool
 	var siteId string
+	var updatedSince string
 	pendingImportsCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List the pending imports. These are in-progess import jobs for newly uploaded recordings.",
+		Short: "List the pending and errored import jpbs for uploaded recordings.",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
 			)
-			err := renderList(
+			parsedUpdatedSince, err := maybeConvertToRFC3339(updatedSince)
+			if err != nil && updatedSince != "" {
+				fmt.Fprintf(os.Stderr, "Failed to parse value of --updated-since: %s\n", err)
+				os.Exit(1)
+			}
+			err = renderList(
 				os.Stdout,
 				console.PendingImportsRequest{
 					RequestId:       requestId,
@@ -35,6 +41,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 					DeviceName:      deviceName,
 					Error:           error,
 					Filename:        filename,
+					UpdatedSince:    parsedUpdatedSince,
 					ShowCompleted:   showCompleted,
 					ShowQuarantined: showQuarantined,
 					SiteId:          siteId,
@@ -57,6 +64,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	pendingImportsCmd.PersistentFlags().BoolVarP(&showCompleted, "show-completed", "", false, "Show completed requests")
 	pendingImportsCmd.PersistentFlags().BoolVarP(&showQuarantined, "show-quarantined", "", false, "Show quarantined requests")
 	pendingImportsCmd.PersistentFlags().StringVarP(&siteId, "site-id", "", "", "Site ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&updatedSince, "updated-since", "", "", "Filter pending imports updated since this time (ISO8601)")
 	AddFormatFlag(pendingImportsCmd, &format)
 	return pendingImportsCmd
 }
