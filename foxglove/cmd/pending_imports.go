@@ -29,7 +29,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				params.userAgent,
 			)
 			parsedUpdatedSince, err := maybeConvertToRFC3339(updatedSince)
-			if err != nil && updatedSince != "" {
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to parse value of --updated-since: %s\n", err)
 				os.Exit(1)
 			}
