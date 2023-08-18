@@ -53,9 +53,9 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceId, "device-id", "", "", "Device ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	pendingImportsCmd.PersistentFlags().StringVarP(&filename, "filename", "", "", "Filename")
-	pendingImportsCmd.PersistentFlags().StringVarP(&error, "error", "", "", "filter based on error messages")
-	pendingImportsCmd.PersistentFlags().BoolVarP(&showCompleted, "show-completed", "", false, "show completed requests")
-	pendingImportsCmd.PersistentFlags().BoolVarP(&showQuarantined, "show-quarantined", "", false, "show quarantined requests")
+	pendingImportsCmd.PersistentFlags().StringVarP(&error, "error", "", "", "Filter based on error messages")
+	pendingImportsCmd.PersistentFlags().BoolVarP(&showCompleted, "show-completed", "", false, "Show completed requests")
+	pendingImportsCmd.PersistentFlags().BoolVarP(&showQuarantined, "show-quarantined", "", false, "Show quarantined requests")
 	pendingImportsCmd.PersistentFlags().StringVarP(&siteId, "site-id", "", "", "Site ID")
 	AddFormatFlag(pendingImportsCmd, &format)
 	return pendingImportsCmd

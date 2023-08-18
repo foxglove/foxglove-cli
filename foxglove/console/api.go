@@ -485,10 +485,10 @@ type PendingImportsRequest struct {
 type PendingImportsResponseItem struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
-	OrgId         *string   `json:"orgId"`
-	Filename      *string   `json:"filename"`
-	PipelineStage *string   `json:"pipelineStage"`
-	RequestId     *string   `json:"requestId"`
+	OrgId         string    `json:"orgId"`
+	Filename      string    `json:"filename"`
+	PipelineStage string    `json:"pipelineStage"`
+	RequestId     string    `json:"requestId"`
 	DeviceId      string    `json:"deviceId"`
 	DeviceName    string    `json:"deviceName"`
 	ImportId      string    `json:"importId"`
@@ -501,12 +501,12 @@ func (r PendingImportsResponseItem) Fields() []string {
 	createdAt := r.CreatedAt.Format(time.RFC3339)
 	updatedAt := r.UpdatedAt.Format(time.RFC3339)
 	return []string{
-		requiredVal(&createdAt),
-		requiredVal(&updatedAt),
-		requiredVal(r.OrgId),
-		requiredVal(r.Filename),
-		requiredVal(r.PipelineStage),
-		requiredVal(r.RequestId),
+		createdAt,
+		updatedAt,
+		r.OrgId,
+		r.Filename,
+		r.PipelineStage,
+		r.RequestId,
 		r.DeviceId,
 		r.DeviceName,
 		r.ImportId,
