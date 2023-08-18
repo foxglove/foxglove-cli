@@ -21,7 +21,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var updatedSince string
 	pendingImportsCmd := &cobra.Command{
 		Use:   "list",
-		Short: "List the pending and errored import jpbs for uploaded recordings.",
+		Short: "List the pending and errored import jobs for uploaded recordings",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := console.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
