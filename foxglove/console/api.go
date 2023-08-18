@@ -471,6 +471,69 @@ func (e ExtensionResponse) String() string {
 	return fmt.Sprintf("%s.%s-%s", e.Publisher, e.Name, *version)
 }
 
+type PendingImportsRequest struct {
+	RequestId       string `json:"requestId" form:"requestId,omitempty"`
+	DeviceId        string `json:"device.id" form:"device.id,omitempty"`
+	DeviceName      string `json:"device.name" form:"device.name,omitempty"`
+	Error           string `json:"error" form:"error,omitempty"`
+	Filename        string `json:"filename" form:"filename,omitempty"`
+	UpdatedSince    string `json:"updatedSince" form:"updatedSince,omitempty"`
+	ShowCompleted   bool   `json:"showCompleted" form:"showCompleted,omitempty"`
+	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
+	SiteId          string `json:"siteId" form:"siteId,omitempty"`
+}
+
+type PendingImportsResponseItem struct {
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+	OrgId         string    `json:"orgId"`
+	Filename      string    `json:"filename"`
+	PipelineStage string    `json:"pipelineStage"`
+	RequestId     string    `json:"requestId"`
+	DeviceId      string    `json:"deviceId"`
+	DeviceName    string    `json:"deviceName"`
+	ImportId      string    `json:"importId"`
+	SiteId        string    `json:"siteId"`
+	Status        string    `json:"status"`
+	Error         string    `json:"error"`
+}
+
+func (r PendingImportsResponseItem) Fields() []string {
+	createdAt := r.CreatedAt.Format(time.RFC3339)
+	updatedAt := r.UpdatedAt.Format(time.RFC3339)
+	return []string{
+		createdAt,
+		updatedAt,
+		r.OrgId,
+		r.Filename,
+		r.PipelineStage,
+		r.RequestId,
+		r.DeviceId,
+		r.DeviceName,
+		r.ImportId,
+		r.SiteId,
+		r.Status,
+		r.Error,
+	}
+}
+
+func (r PendingImportsResponseItem) Headers() []string {
+	return []string{
+		"Created at",
+		"Updated at",
+		"Org ID",
+		"Filename",
+		"Pipeline stage",
+		"Request ID",
+		"Device ID",
+		"Device name",
+		"Import ID",
+		"Site ID",
+		"Status",
+		"Error",
+	}
+}
+
 func requiredVal(val *string) string {
 	if val != nil {
 		return *val

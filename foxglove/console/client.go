@@ -403,6 +403,11 @@ func (c *FoxgloveClient) Attachment(id string) (io.ReadCloser, error) {
 	return res.Body, nil
 }
 
+func (c *FoxgloveClient) PendingImports(req PendingImportsRequest) (resp []PendingImportsResponseItem, err error) {
+	err = c.get("/v1/data/pending-imports", req, &resp)
+	return resp, err
+}
+
 // Token returns a token for the provided device code. If the token for the
 // device code does not exist yet, ErrForbidden is returned. It is up to the
 // caller to give up after sufficient retries.
