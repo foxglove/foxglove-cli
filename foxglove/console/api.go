@@ -189,7 +189,7 @@ type RecordingsResponse struct {
 	End          string           `json:"end"`
 	ImportStatus string           `json:"importStatus"`
 	Site         SiteSummary      `json:"site"`
-	EdgeSite     *SiteSummary     `json:"edgeSite"`
+	EdgeSite     SiteSummary      `json:"edgeSite"`
 	Device       DeviceSummary    `json:"device"`
 	Metadata     []MetadataRecord `json:"metadata"`
 }
