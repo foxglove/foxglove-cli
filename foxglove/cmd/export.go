@@ -842,6 +842,10 @@ func createStreamRequest(
 	end string,
 	outputFormat string,
 	topicList string,
+	stampsOnly bool,
+	jqFilter string,
+	limit int,
+	offset int,
 ) (*console.StreamRequest, error) {
 	var startTime, endTime *time.Time
 	if start != "" {
@@ -871,6 +875,10 @@ func createStreamRequest(
 		End:          endTime,
 		OutputFormat: outputFormat,
 		Topics:       topics,
+		StampsOnly:   stampsOnly,
+		JQFilter:     jqFilter,
+		Limit:        limit,
+		Offset:       offset,
 	}
 	if err := request.Validate(); err != nil {
 		return nil, err
@@ -889,6 +897,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var outputFormat string
 	var topicList string
 	var outputFile string
+	var stampsOnly bool
+	var jqFilter string
+	var limit int
+	var offset int
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
@@ -911,6 +923,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				endTime,
 				outputFormat,
 				topicList,
+				stampsOnly,
+				jqFilter,
+				limit,
+				offset,
 			)
 			if err != nil {
 				fatalf("Failed to build request: %s\n", err)
@@ -958,6 +974,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (ISO8601 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
+	exportCmd.PersistentFlags().BoolVarP(&stampsOnly, "stamps-only", "", false, "return an MCAP of just timestamps")
+	exportCmd.PersistentFlags().IntVarP(&limit, "limit", "", 0, "limit size of resultset")
+	exportCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset into result from which to start streaming")
+	exportCmd.PersistentFlags().StringVarP(&jqFilter, "experimental-jq-filter", "", "", "apply jq-style filter to results server-side")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }

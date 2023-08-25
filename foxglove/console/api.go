@@ -41,6 +41,10 @@ type StreamRequest struct {
 	End          *time.Time `json:"end,omitempty"`
 	OutputFormat string     `json:"outputFormat"`
 	Topics       []string   `json:"topics"`
+	StampsOnly   bool       `json:"stampsOnly"`
+	JQFilter     string     `json:"jqFilter,omitempty"`
+	Limit        int        `json:"limit"`
+	Offset       int        `json:"offset"`
 }
 
 func (req *StreamRequest) Validate() error {
