@@ -796,8 +796,11 @@ func executeExport(
 		bearerToken,
 		userAgent,
 	)
-	progressWriter := progressbar.DefaultBytes(-1, "exporting")
-	writer := io.MultiWriter(w, progressWriter)
+	writer := w
+	if stdoutRedirected() {
+		progressWriter := progressbar.DefaultBytes(-1, "exporting")
+		writer = io.MultiWriter(w, progressWriter)
+	}
 	if request.OutputFormat == "json" {
 		request.OutputFormat = "mcap0"
 		pipeReader, pipeWriter, err := os.Pipe()
