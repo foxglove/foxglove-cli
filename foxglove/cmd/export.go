@@ -843,7 +843,7 @@ func createStreamRequest(
 	outputFormat string,
 	topicList string,
 	stampsOnly bool,
-	jqFilter string,
+	queryString string,
 	limit int,
 	offset int,
 ) (*console.StreamRequest, error) {
@@ -876,7 +876,7 @@ func createStreamRequest(
 		OutputFormat: outputFormat,
 		Topics:       topics,
 		StampsOnly:   stampsOnly,
-		JQFilter:     jqFilter,
+		Query:        queryString,
 		Limit:        limit,
 		Offset:       offset,
 	}
@@ -898,7 +898,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var topicList string
 	var outputFile string
 	var stampsOnly bool
-	var jqFilter string
+	var query string
 	var limit int
 	var offset int
 	exportCmd := &cobra.Command{
@@ -924,7 +924,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				outputFormat,
 				topicList,
 				stampsOnly,
-				jqFilter,
+				query,
 				limit,
 				offset,
 			)
@@ -977,7 +977,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().BoolVarP(&stampsOnly, "stamps-only", "", false, "return an MCAP of just timestamps")
 	exportCmd.PersistentFlags().IntVarP(&limit, "limit", "", 0, "limit size of resultset")
 	exportCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset into result from which to start streaming")
-	exportCmd.PersistentFlags().StringVarP(&jqFilter, "experimental-jq-filter", "", "", "apply jq-style filter to results server-side")
+	exportCmd.PersistentFlags().StringVarP(&query, "query", "", "", "experimental query string")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }

@@ -42,7 +42,7 @@ type StreamRequest struct {
 	OutputFormat string     `json:"outputFormat"`
 	Topics       []string   `json:"topics"`
 	StampsOnly   bool       `json:"stampsOnly"`
-	JQFilter     string     `json:"jqFilter,omitempty"`
+	Query        string     `json:"query,omitempty"`
 	Limit        int        `json:"limit"`
 	Offset       int        `json:"offset"`
 }
