@@ -51,13 +51,15 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 	importCmd := &cobra.Command{
 		Use:   fmt.Sprintf("%s [FILE]", commandName),
 		Short: "Import a data file to Foxglove Data Platform",
-		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			filename := args[0] // guaranteed length 1 due to Args setting above
 			if deviceName == "" && deviceID == "" && edgeRecordingID == "" {
 				dief("Must specify either --device-id, --device-name, or --edge-recording-id")
 			}
 			if deviceName != "" || deviceID != "" {
+				if len(args) == 0 {
+					dief("Filename not specified")
+				}
+				filename := args[0]
 				err := executeImport(
 					params.baseURL,
 					*params.clientID,
