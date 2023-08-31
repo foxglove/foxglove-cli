@@ -408,6 +408,11 @@ func (c *FoxgloveClient) PendingImports(req PendingImportsRequest) (resp []Pendi
 	return resp, err
 }
 
+func (c *FoxgloveClient) ImportFromEdge(req ImportFromEdgeRequest, id string) (resp ImportFromEdgeResponse, err error) {
+	err = c.post("/v1/recordings/"+id+"/import", req, &resp)
+	return resp, err
+}
+
 // Token returns a token for the provided device code. If the token for the
 // device code does not exist yet, ErrForbidden is returned. It is up to the
 // caller to give up after sufficient retries.
