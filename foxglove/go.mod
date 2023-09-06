@@ -1,20 +1,19 @@
 module github.com/foxglove/foxglove-cli/foxglove
 
-go 1.20
+go 1.21
+
+toolchain go1.21.0
 
 require (
 	github.com/ajg/form v1.5.1
-	github.com/foxglove/mcap/go/cli/mcap v0.0.0-20220405011520-743b1f8e6ac0
+	github.com/foxglove/go-rosbag v0.0.2
 	github.com/foxglove/mcap/go/mcap v1.0.1
-	github.com/foxglove/mcap/go/ros v0.0.0-20220328132551-ffb9c0b0ebdc
 	github.com/gorilla/mux v1.8.0
-	github.com/olekukonko/tablewriter v0.0.5
-	github.com/pierrec/lz4/v4 v4.1.17
 	github.com/relvacode/iso8601 v1.3.0
 	github.com/schollz/progressbar/v3 v3.8.3
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.4
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -30,6 +29,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
+	github.com/pierrec/lz4/v4 v4.1.18 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spf13/afero v1.6.0 // indirect
