@@ -70,14 +70,13 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 					params.userAgent,
 				)
 				if err != nil {
-					fatalf("Failed to import %s: %s\n", filename, err)
+					dief("Failed to import %s: %s\n", filename, err)
 				}
 			}
 			if edgeRecordingID != "" {
 				err := importFromEdge(params.baseURL, *params.clientID, params.token, params.userAgent, edgeRecordingID)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to import edge recording: %s\n", err)
-					os.Exit(1)
+					dief("Failed to import edge recording: %s\n", err)
 				}
 			}
 		},
