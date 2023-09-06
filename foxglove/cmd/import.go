@@ -26,38 +26,65 @@ func executeImport(baseURL, clientID, deviceID, deviceName, filename, token, use
 	if err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func importFromEdge(baseURL, clientID, token, userAgent, edgeRecordingID string) error {
+	client := console.NewRemoteFoxgloveClient(
+		baseURL, clientID,
+		token,
+		userAgent,
+	)
+	_, err := client.ImportFromEdge(console.ImportFromEdgeRequest{}, edgeRecordingID)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func newImportCommand(params *baseParams, commandName string) (*cobra.Command, error) {
 	var deviceID string
 	var deviceName string
+	var edgeRecordingID string
 	importCmd := &cobra.Command{
 		Use:   fmt.Sprintf("%s [FILE]", commandName),
 		Short: "Import a data file to Foxglove Data Platform",
-		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			filename := args[0] // guaranteed length 1 due to Args setting above
-			if deviceName == "" && deviceID == "" {
-				dief("Must specify either --device-id or --device-name")
+			if deviceName == "" && deviceID == "" && edgeRecordingID == "" {
+				dief("Must specify either --device-id, --device-name, or --edge-recording-id")
 			}
-			err := executeImport(
-				params.baseURL,
-				*params.clientID,
-				deviceID,
-				deviceName,
-				filename,
-				viper.GetString("bearer_token"),
-				params.userAgent,
-			)
-			if err != nil {
-				fatalf("Failed to import %s: %s\n", filename, err)
+			if deviceName != "" || deviceID != "" {
+				if len(args) == 0 {
+					dief("Filename not specified")
+				}
+				filename := args[0]
+				err := executeImport(
+					params.baseURL,
+					*params.clientID,
+					deviceID,
+					deviceName,
+					filename,
+					viper.GetString("bearer_token"),
+					params.userAgent,
+				)
+				if err != nil {
+					dief("Failed to import %s: %s\n", filename, err)
+				}
+			}
+			if edgeRecordingID != "" {
+				err := importFromEdge(params.baseURL, *params.clientID, params.token, params.userAgent, edgeRecordingID)
+				if err != nil {
+					dief("Failed to import edge recording: %s\n", err)
+				}
 			}
 		},
 	}
 	importCmd.InheritedFlags()
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
+	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "edge recording ID")
 	AddDeviceAutocompletion(importCmd, params)
 	return importCmd, nil
 }

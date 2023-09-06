@@ -534,6 +534,13 @@ func (r PendingImportsResponseItem) Headers() []string {
 	}
 }
 
+type ImportFromEdgeRequest struct{}
+
+type ImportFromEdgeResponse struct {
+	ID           string `json:"id"`
+	ImportStatus string `json:"importStatus"`
+}
+
 func requiredVal(val *string) string {
 	if val != nil {
 		return *val
