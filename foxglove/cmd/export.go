@@ -889,6 +889,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var outputFormat string
 	var topicList string
 	var outputFile string
+	var isJsonOutput bool
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
@@ -915,6 +916,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if err != nil {
 				fatalf("Failed to build request: %s\n", err)
 			}
+			if isJsonOutput {
+				outputFormat = "json"
+			}
+			println(isJsonOutput, outputFormat)
 			if outputFile != "" && outputFormat != "json" {
 				err = doExport(
 					cmd.Context(),
@@ -958,6 +963,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (ISO8601 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
+	exportCmd.PersistentFlags().BoolVar(&isJsonOutput, "json", false, "alias for --output-format json")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }
