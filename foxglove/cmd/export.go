@@ -919,7 +919,6 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if isJsonOutput {
 				outputFormat = "json"
 			}
-			println(isJsonOutput, outputFormat)
 			if outputFile != "" && outputFormat != "json" {
 				err = doExport(
 					cmd.Context(),
