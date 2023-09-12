@@ -31,7 +31,7 @@ func newLoginCommand(params *baseParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			err := executeLogin(baseURL, *params.clientID, params.userAgent, &console.PlatformAuthDelegate{})
 			if err != nil {
-				dief("Login failed: %s\n", err)
+				dief("Login failed: %s", err)
 			}
 		},
 	}

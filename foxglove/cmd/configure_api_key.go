@@ -20,7 +20,7 @@ func newConfigureAPIKeyCommand() *cobra.Command {
 			}
 			err := configureAuth(token, defaultString(baseURL, defaultBaseURL))
 			if err != nil {
-				dief("Configuration failed: %s\n", err)
+				dief("Configuration failed: %s", err)
 			}
 		},
 	}

@@ -36,7 +36,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 				filename,
 			)
 			if err != nil {
-				dief("Extension upload failed: %s\n", err)
+				dief("Extension upload failed: %s", err)
 			}
 			fmt.Fprintln(os.Stderr, "Extension published")
 		},
@@ -64,7 +64,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 			)
 
 			if err != nil {
-				dief("Failed to list extensions: %s\n", err)
+				dief("Failed to list extensions: %s", err)
 			}
 		},
 	}
@@ -86,7 +86,7 @@ func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
 			)
 			err := executeExtensionDelete(client, args[0])
 			if err != nil {
-				dief("Failed to delete extension: %s\n", err)
+				dief("Failed to delete extension: %s", err)
 			}
 			fmt.Fprintln(os.Stderr, "Extension deleted")
 		},

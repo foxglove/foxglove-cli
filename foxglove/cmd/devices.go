@@ -56,7 +56,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 
 			properties, err := util.DeviceProperties(propertyPairs, client)
 			if err != nil {
-				dief("Failed to create device: %s\n", err)
+				dief("Failed to create device: %s", err)
 			}
 
 			resp, err := client.CreateDevice(console.CreateDeviceRequest{
@@ -64,7 +64,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 				Properties: properties,
 			})
 			if err != nil {
-				dief("Failed to create device: %s\n", err)
+				dief("Failed to create device: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Device created: %s\n", resp.ID)
 		},
@@ -92,13 +92,13 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 
 			properties, err := util.DeviceProperties(propertyPairs, client)
 			if err != nil {
-				dief("Failed to edit device: %s\n", err)
+				dief("Failed to edit device: %s", err)
 			}
 
 			nameOrId := args[0]
 			reqBody := console.CreateDeviceRequest{}
 			if properties == nil && name == "" {
-				dief("Nothing to update\n")
+				dief("Nothing to update")
 			}
 
 			if name != "" {
@@ -113,7 +113,7 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 				Properties: properties,
 			})
 			if err != nil {
-				dief("Failed to edit device: %s\n", err)
+				dief("Failed to edit device: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Device updated: %s\n", resp.Name)
 		},
