@@ -916,8 +916,8 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if err != nil {
 				fatalf("Failed to build request: %s\n", err)
 			}
-			if isJsonOutput {
-				outputFormat = "json"
+			if isJsonOutput && outputFormat != "json" {
+				dief("Export failed. Output format conflict: --json, --output-format ", outputFormat)
 			}
 			if outputFile != "" && outputFormat != "json" {
 				err = doExport(
