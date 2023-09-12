@@ -25,7 +25,7 @@ page](https://github.com/foxglove/foxglove-cli/releases).
 
 #### Install from source
 Installation from source requires the following:
-* Go >= 1.20
+* Go >= 1.21
 
 To install from source, run
 

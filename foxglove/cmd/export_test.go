@@ -13,7 +13,7 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
 	"github.com/foxglove/foxglove-cli/foxglove/util"
-	"github.com/foxglove/foxglove-cli/foxglove/util/ros"
+	"github.com/foxglove/go-rosbag"
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/assert"
 )
@@ -114,22 +114,22 @@ func TestCombineBagTempfiles(t *testing.T) {
 	parts := []*bytes.Buffer{}
 	for i := 0; i < 3; i++ {
 		part := &bytes.Buffer{}
-		writer, err := ros.NewBagWriter(part)
+		writer, err := rosbag.NewWriter(part)
 		assert.Nil(t, err)
-		assert.Nil(t, writer.WriteConnection(&ros.Connection{
+		assert.Nil(t, writer.WriteConnection(&rosbag.Connection{
 			Conn:  0,
 			Topic: "/foo",
-			Data: ros.ConnectionData{
+			Data: rosbag.ConnectionHeader{
 				Topic:             "/foo",
 				Type:              "std_msgs/String",
 				MD5Sum:            "abc",
 				MessageDefinition: []byte{},
 			},
 		}))
-		assert.Nil(t, writer.WriteConnection(&ros.Connection{
+		assert.Nil(t, writer.WriteConnection(&rosbag.Connection{
 			Conn:  1,
 			Topic: "/bar",
-			Data: ros.ConnectionData{
+			Data: rosbag.ConnectionHeader{
 				Topic:             "/foo",
 				Type:              "std_msgs/String",
 				MD5Sum:            "abc",
@@ -137,7 +137,7 @@ func TestCombineBagTempfiles(t *testing.T) {
 			},
 		}))
 		for j := 0; j < 1000; j++ {
-			assert.Nil(t, writer.WriteMessage(&ros.Message{
+			assert.Nil(t, writer.WriteMessage(&rosbag.Message{
 				Conn: uint32(j % 2),
 				Time: uint64(i*1000 + j),
 				Data: []byte{},
@@ -159,7 +159,7 @@ func TestCombineBagTempfiles(t *testing.T) {
 	}
 	output := util.NewBufWriteSeeker()
 	assert.Nil(t, combineBagTmpFiles(output, tmpfiles))
-	reader, err := ros.NewBagReader(bytes.NewReader(output.Bytes()))
+	reader, err := rosbag.NewReader(bytes.NewReader(output.Bytes()))
 	assert.Nil(t, err)
 	info, err := reader.Info()
 	assert.Nil(t, err)

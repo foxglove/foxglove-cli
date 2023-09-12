@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
-	roslib "github.com/foxglove/foxglove-cli/foxglove/util/ros"
-	"github.com/foxglove/mcap/go/cli/mcap/utils/ros"
+	"github.com/foxglove/go-rosbag"
+	"github.com/foxglove/go-rosbag/ros1msg"
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/foxglove/mcap/go/mcap/readopts"
 	"github.com/schollz/progressbar/v3"
@@ -90,7 +90,7 @@ func mcap2JSON(
 	msg := &bytes.Buffer{}
 	msgReader := &bytes.Reader{}
 	buf := make([]byte, 1024*1024)
-	transcoders := make(map[uint16]*ros.JSONTranscoder)
+	transcoders := make(map[uint16]*ros1msg.JSONTranscoder)
 	descriptors := make(map[uint16]protoreflect.MessageDescriptor)
 	encoder := json.NewEncoder(w)
 	reader, err := mcap.NewReader(r)
@@ -115,7 +115,7 @@ func mcap2JSON(
 			transcoder, ok := transcoders[channel.SchemaID]
 			if !ok {
 				packageName := strings.Split(schema.Name, "/")[0]
-				transcoder, err = ros.NewJSONTranscoder(packageName, schema.Data)
+				transcoder, err = ros1msg.NewJSONTranscoder(packageName, schema.Data)
 				if err != nil {
 					return fmt.Errorf("failed to build transcoder for %s: %w", channel.Topic, err)
 				}
@@ -196,16 +196,21 @@ type fileInfo struct {
 // closes it. If the input is corrupt, we simply close the output with what was
 // successfully read.
 func reindexBagFile(w io.Writer, r io.Reader) error {
-	writer, err := roslib.NewBagWriter(w)
+	writer, err := rosbag.NewWriter(w)
 	if err != nil {
 		return fmt.Errorf("failed to construct bag writer: %w", err)
 	}
-	lexer, err := roslib.NewBagLexer(r)
+	reader, err := rosbag.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("failed to construct bag lexer: %w", err)
+		return fmt.Errorf("failed to construct bag reader: %w", err)
 	}
-	for {
-		tokenType, token, err := lexer.Next()
+	it, err := reader.Messages()
+	if err != nil {
+		return fmt.Errorf("failed to construct bag iterator: %w", err)
+	}
+	connections := make(map[uint32]bool)
+	for it.More() {
+		conn, msg, err := it.Next()
 		if err != nil {
 			// We'll hit an EOF at the end of a "complete" bag export, so only
 			// log if we get another error (e.g UnexpectedEOF).
@@ -217,25 +222,19 @@ func reindexBagFile(w io.Writer, r io.Reader) error {
 			// since we are explicitly parsing a corrupt file.
 			return writer.Close()
 		}
-		switch tokenType {
-		case roslib.OpConnection:
-			connection, err := roslib.ParseConnection(token)
-			if err != nil {
+
+		if !connections[conn.Conn] {
+			if err = writer.WriteConnection(conn); err != nil {
 				return err
 			}
-			if err = writer.WriteConnection(connection); err != nil {
-				return err
-			}
-		case roslib.OpMessageData:
-			message, err := roslib.ParseMessage(token)
-			if err != nil {
-				return err
-			}
-			if err = writer.WriteMessage(message); err != nil {
-				return err
-			}
+			connections[conn.Conn] = true
+		}
+
+		if err = writer.WriteMessage(msg); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 // reindexMCAPFile rewrites an MCAP file to a new output location, and properly
@@ -330,7 +329,7 @@ func reindex(tmpdir string, filename string, format string) (bool, *fileInfo, er
 	defer f.Close()
 	switch format {
 	case "bag1":
-		reader, err := roslib.NewBagReader(f)
+		reader, err := rosbag.NewReader(f)
 		if err != nil {
 			return false, nil, err
 		}
@@ -370,7 +369,7 @@ func reindex(tmpdir string, filename string, format string) (bool, *fileInfo, er
 		if err != nil {
 			return false, nil, err
 		}
-		reader, err = roslib.NewBagReader(f)
+		reader, err = rosbag.NewReader(f)
 		if err != nil {
 			return false, nil, err
 		}
@@ -581,7 +580,7 @@ func doExport(
 
 func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 	debugf("combining %d bag files", len(tmpfiles))
-	writer, err := roslib.NewBagWriter(w)
+	writer, err := rosbag.NewWriter(w)
 	if err != nil {
 		return fmt.Errorf("failed to construct output writer: %w", err)
 	}
@@ -592,13 +591,9 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 			debugf("omitting empty partial file %s", tmpfile.name)
 			continue
 		}
-		_, err := tmpfile.rs.Seek(0, 0)
+		_, err := tmpfile.rs.Seek(0, io.SeekStart)
 		if err != nil {
 			return err
-		}
-		lexer, err := roslib.NewBagLexer(tmpfile.rs)
-		if err != nil {
-			return fmt.Errorf("failed to construct lexer: %w", err)
 		}
 		var scanThrough uint64
 		if i == len(tmpfiles)-1 {
@@ -611,52 +606,43 @@ func combineBagTmpFiles(w io.Writer, tmpfiles []partialFile) error {
 		}
 		connIDIncrement = maxObservedConn + 1
 		debugf("combining %s with connID increment %d and maxObservedConn %d", tmpfile.name, connIDIncrement, maxObservedConn)
-	Top:
-		for {
-			tokenType, token, err := lexer.Next()
+
+		reader, err := rosbag.NewReader(tmpfile.rs)
+		if err != nil {
+			return fmt.Errorf("failed to construct reader: %w", err)
+		}
+		it, err := reader.Messages(rosbag.ScanLinear(true))
+		if err != nil {
+			return fmt.Errorf("failed to construct iterator: %w", err)
+		}
+
+		for it.More() {
+			conn, msg, err := it.Next()
 			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
 				return fmt.Errorf("failed to read message: %w", err)
 			}
-			switch tokenType {
-			case roslib.OpMessageData:
-				message, err := roslib.ParseMessage(token)
-				if err != nil {
-					return fmt.Errorf("failed to parse message: %w", err)
-				}
-				if message.Time > scanThrough {
-					break Top
-				}
-				message.Conn += connIDIncrement
-				err = writer.WriteMessage(message)
-				if err != nil {
-					return fmt.Errorf("failed to write message: %w", err)
-				}
-			case roslib.OpConnection:
-				conn, err := roslib.ParseConnection(token)
-				if err != nil {
-					return fmt.Errorf("failed to parse channel: %w", err)
-				}
-				conn.Conn += connIDIncrement
-				if conn.Conn > maxObservedConn {
-					maxObservedConn = conn.Conn
-				}
 
-				// deduplicate the written-out connections, so we don't rewrite
-				// the ones at EOF. These will be written by the writer close.
-				// Since bag format doesn't indicate the end of the "data
-				// section" we have no other way to recognize these than if they
-				// had already been written out.
-				if !connectionsWritten[conn.Conn] {
-					err = writer.WriteConnection(conn)
-					if err != nil {
-						return fmt.Errorf("failed to write channel: %w", err)
-					}
-					connectionsWritten[conn.Conn] = true
-				}
+			if msg.Time > scanThrough {
+				break
+			}
 
+			conn.Conn += connIDIncrement
+			if conn.Conn > maxObservedConn {
+				maxObservedConn = conn.Conn
+			}
+
+			if !connectionsWritten[conn.Conn] {
+				err = writer.WriteConnection(conn)
+				if err != nil {
+					return fmt.Errorf("failed to write channel: %w", err)
+				}
+				connectionsWritten[conn.Conn] = true
+			}
+
+			msg.Conn += connIDIncrement
+			err = writer.WriteMessage(msg)
+			if err != nil {
+				return fmt.Errorf("failed to write message: %w", err)
 			}
 		}
 	}
