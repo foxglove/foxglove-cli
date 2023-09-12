@@ -173,10 +173,7 @@ func mcap2JSON(
 }
 
 func stdoutRedirected() bool {
-	if os.Getenv("REDIRECTED_STDOUT") == "1" {
-		return false
-	}
-	return true
+	return os.Getenv("REDIRECTED_STDOUT") == "1"
 }
 
 func validOutputFormat(format string) bool {
