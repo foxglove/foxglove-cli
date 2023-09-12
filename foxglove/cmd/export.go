@@ -173,7 +173,11 @@ func mcap2JSON(
 }
 
 func stdoutRedirected() bool {
-	return os.Getenv("REDIRECTED_STDOUT") != "1"
+	// 69206454 -> file mode bits magic number indicating redirection to /dev/null
+	if fi, _ := os.Stdout.Stat(); fi.Mode() != 69206454 && ((fi.Mode() & os.ModeCharDevice) == os.ModeCharDevice) {
+		return false
+	}
+	return true
 }
 
 func validOutputFormat(format string) bool {
