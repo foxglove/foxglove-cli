@@ -914,7 +914,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				topicList,
 			)
 			if err != nil {
-				fatalf("Failed to build request: %s\n", err)
+				dief("Failed to build request: %s\n", err)
 			}
 			if isJsonOutput && outputFormat != "json" {
 				dief("Export failed. Output format conflict: --json, --output-format ", outputFormat)
@@ -930,13 +930,13 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 					request,
 				)
 				if err != nil {
-					fatalf("Export failed: %s\n", err)
+					dief("Export failed: %s\n", err)
 				}
 				fmt.Fprint(os.Stderr, "\n")
 				return
 			}
 			if !stdoutRedirected() && request.OutputFormat != "json" {
-				fatalf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
+				dief("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
 			}
 			defer os.Stdout.Close()
 			err = executeExport(
@@ -949,7 +949,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				request,
 			)
 			if err != nil {
-				fatalf("Export failed: %s\n", err)
+				dief("Export failed: %s\n", err)
 			}
 		},
 	}

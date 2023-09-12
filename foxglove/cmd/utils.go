@@ -144,11 +144,6 @@ func debugf(format string, args ...any) {
 	}
 }
 
-func fatalf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
-	os.Exit(1)
-}
-
 // Define a `format` flag on a command for one of the formats above
 func AddFormatFlag(cmd *cobra.Command, format *string) {
 	cmd.PersistentFlags().StringVarP(

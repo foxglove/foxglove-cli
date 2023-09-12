@@ -50,7 +50,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 				format,
 			)
 			if err != nil {
-				fatalf("Failed to list coverage: %s\n", err)
+				dief("Failed to list coverage: %s\n", err)
 			}
 		},
 	}
