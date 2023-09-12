@@ -173,7 +173,7 @@ func mcap2JSON(
 }
 
 func stdoutRedirected() bool {
-	if fi, _ := os.Stdout.Stat(); (fi.Mode() & os.ModeCharDevice) == os.ModeCharDevice {
+	if os.Getenv("REDIRECTED_STDOUT") == "1" {
 		return false
 	}
 	return true
