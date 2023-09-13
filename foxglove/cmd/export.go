@@ -174,10 +174,8 @@ func mcap2JSON(
 
 func stdoutRedirected() bool {
 	devNullStat, _ := os.Stat("/dev/null")
-	if fi, _ := os.Stdout.Stat(); fi.Mode() != devNullStat.Mode() && ((fi.Mode() & os.ModeCharDevice) == os.ModeCharDevice) {
-		return false
-	}
-	return true
+	currStat, _ := os.Stdout.Stat()
+	return currStat.Mode() == devNullStat.Mode() || ((currStat.Mode() & os.ModeCharDevice) != os.ModeCharDevice)
 }
 
 func validOutputFormat(format string) bool {
