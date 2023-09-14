@@ -874,6 +874,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var outputFormat string
 	var topicList string
 	var outputFile string
+	var isJsonOutput bool
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
@@ -898,7 +899,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				topicList,
 			)
 			if err != nil {
-				fatalf("Failed to build request: %s\n", err)
+				dief("Failed to build request: %s", err)
+			}
+			if isJsonOutput && outputFormat != "json" {
+				dief("Export failed. Output format conflict: --json, --output-format ", outputFormat)
 			}
 			if outputFile != "" && outputFormat != "json" {
 				err = doExport(
@@ -911,13 +915,13 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 					request,
 				)
 				if err != nil {
-					fatalf("Export failed: %s\n", err)
+					dief("Export failed: %s", err)
 				}
 				fmt.Fprint(os.Stderr, "\n")
 				return
 			}
 			if !stdoutRedirected() && request.OutputFormat != "json" {
-				fatalf("Binary output may screw up your terminal. Please redirect to a pipe or file.\n")
+				dief("Binary output may screw up your terminal. Please redirect to a pipe or file.")
 			}
 			defer os.Stdout.Close()
 			err = executeExport(
@@ -930,7 +934,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				request,
 			)
 			if err != nil {
-				fatalf("Export failed: %s\n", err)
+				dief("Export failed: %s", err)
 			}
 		},
 	}
@@ -943,6 +947,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (ISO8601 timestamp")
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
+	exportCmd.PersistentFlags().BoolVar(&isJsonOutput, "json", false, "alias for --output-format json")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }
