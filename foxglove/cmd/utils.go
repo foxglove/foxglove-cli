@@ -160,7 +160,7 @@ func AddJsonFlag(cmd *cobra.Command, isJsonFormat *bool) {
 		isJsonFormat,
 		"json",
 		false,
-		"render output in specified format (table, json, csv)",
+		"alias for --format json",
 	)
 }
 
