@@ -165,7 +165,7 @@ func AddJsonFlag(cmd *cobra.Command, isJsonFormat *bool) {
 }
 
 // Ensure --json alias is not conflicting with --format's value
-func EnsureFormatFlagsNotConflicting(formatFlagValue string, jsonFlagValue bool) string {
+func ResolveFormat(formatFlagValue string, jsonFlagValue bool) string {
 	if formatFlagValue == "" {
 		if jsonFlagValue {
 			return "json"

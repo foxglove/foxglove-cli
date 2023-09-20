@@ -19,7 +19,7 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List MCAP attachments",
 		Run: func(cmd *cobra.Command, args []string) {
-			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
+			format = ResolveFormat(format, isJsonFormat)
 			client := console.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),

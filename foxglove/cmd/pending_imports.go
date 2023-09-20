@@ -34,7 +34,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Failed to parse value of --updated-since: %s\n", err)
 				os.Exit(1)
 			}
-			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
+			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
 				console.PendingImportsRequest{

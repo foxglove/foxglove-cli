@@ -36,7 +36,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				dief("failed to parse end time: %s", err)
 			}
-			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
+			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
 				&console.RecordingsRequest{

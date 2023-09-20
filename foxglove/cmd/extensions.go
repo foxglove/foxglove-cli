@@ -57,7 +57,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
-			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
+			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
 				console.ExtensionsRequest{},
