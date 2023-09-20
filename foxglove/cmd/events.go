@@ -64,6 +64,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	var start string
 	var end string
 	var query string
+	var isJsonFormat bool
 	eventsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List events",
@@ -73,6 +74,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
+			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
 				&console.EventsRequest{
@@ -104,5 +106,6 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by metadata with keyword or \"$key:$value\"")
 	AddDeviceAutocompletion(eventsListCmd, params)
 	AddFormatFlag(eventsListCmd, &format)
+	AddJsonFlag(eventsListCmd, &isJsonFormat)
 	return eventsListCmd
 }

@@ -18,6 +18,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	var start string
 	var end string
 	var importStatus string
+	var isJsonFormat bool
 	recordingsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List recordings",
@@ -35,6 +36,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				dief("failed to parse end time: %s", err)
 			}
+			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
 				&console.RecordingsRequest{
@@ -67,5 +69,6 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	recordingsListCmd.PersistentFlags().StringVarP(&importStatus, "import-status", "", "", "import status")
 	AddFormatFlag(recordingsListCmd, &format)
 	AddDeviceAutocompletion(recordingsListCmd, params)
+	AddJsonFlag(recordingsListCmd, &isJsonFormat)
 	return recordingsListCmd
 }

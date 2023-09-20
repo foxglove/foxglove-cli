@@ -16,6 +16,7 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 	var dataStart string
 	var includeDeleted bool
 	var dataEnd string
+	var isJsonFormat bool
 	importsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List imports for a device",
@@ -41,6 +42,7 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				dief("failed to parse data end time: %s", err)
 			}
+			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
 				&console.ImportsRequest{
@@ -68,5 +70,6 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 	importsListCmd.PersistentFlags().StringVarP(&dataEnd, "data-end", "", "", "end of data time range (ISO8601)")
 	importsListCmd.PersistentFlags().BoolVarP(&includeDeleted, "include-deleted", "", false, "end of data time range")
 	AddFormatFlag(importsListCmd, &format)
+	AddJsonFlag(importsListCmd, &isJsonFormat)
 	return importsListCmd
 }

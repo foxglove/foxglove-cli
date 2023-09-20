@@ -16,6 +16,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 	var tolerance int
 	var recordingID string
 	var includeEdgeRecordings bool
+	var isJsonFormat bool
 	coverageListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List coverage ranges",
@@ -35,6 +36,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 			if err != nil {
 				dief("failed to parse end time: %s", err)
 			}
+			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
 				&console.CoverageRequest{
@@ -66,5 +68,6 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 	coverageListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end of coverage time range (ISO8601)")
 	AddFormatFlag(coverageListCmd, &format)
 	AddDeviceAutocompletion(coverageListCmd, params)
+	AddJsonFlag(coverageListCmd, &isJsonFormat)
 	return coverageListCmd
 }

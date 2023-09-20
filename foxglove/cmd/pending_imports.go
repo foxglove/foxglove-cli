@@ -19,6 +19,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var showQuarantined bool
 	var siteId string
 	var updatedSince string
+	var isJsonFormat bool
 	pendingImportsCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the pending and errored import jobs for uploaded recordings",
@@ -33,6 +34,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Failed to parse value of --updated-since: %s\n", err)
 				os.Exit(1)
 			}
+			format = EnsureFormatFlagsNotConflicting(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
 				console.PendingImportsRequest{
@@ -66,5 +68,6 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	pendingImportsCmd.PersistentFlags().StringVarP(&siteId, "site-id", "", "", "Site ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&updatedSince, "updated-since", "", "", "Filter pending imports updated since this time (ISO8601)")
 	AddFormatFlag(pendingImportsCmd, &format)
+	AddJsonFlag(pendingImportsCmd, &isJsonFormat)
 	return pendingImportsCmd
 }
