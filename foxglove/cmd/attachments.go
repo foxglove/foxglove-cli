@@ -14,10 +14,12 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var importID string
 	var recordingID string
+	var isJsonFormat bool
 	attachmentsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List MCAP attachments",
 		Run: func(cmd *cobra.Command, args []string) {
+			format = ResolveFormat(format, isJsonFormat)
 			client := console.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
@@ -42,6 +44,7 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 	attachmentsListCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "Import ID")
 	attachmentsListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")
 	AddFormatFlag(attachmentsListCmd, &format)
+	AddJsonFlag(attachmentsListCmd, &isJsonFormat)
 	return attachmentsListCmd
 }
 

@@ -11,6 +11,7 @@ import (
 
 func newListDevicesCommand(params *baseParams) *cobra.Command {
 	var format string
+	var isJsonFormat bool
 	deviceListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List devices registered to your organization",
@@ -20,6 +21,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
+			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
 				console.DevicesRequest{},
@@ -33,6 +35,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 	}
 	deviceListCmd.InheritedFlags()
 	AddFormatFlag(deviceListCmd, &format)
+	AddJsonFlag(deviceListCmd, &isJsonFormat)
 	return deviceListCmd
 }
 

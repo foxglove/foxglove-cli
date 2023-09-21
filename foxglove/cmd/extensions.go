@@ -47,6 +47,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 
 func newListExtensionsCommand(params *baseParams) *cobra.Command {
 	var format string
+	var isJsonFormat bool
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Studio extensions created for your organization",
@@ -56,6 +57,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 				params.token,
 				params.userAgent,
 			)
+			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
 				console.ExtensionsRequest{},
@@ -70,6 +72,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 	}
 	listCmd.InheritedFlags()
 	AddFormatFlag(listCmd, &format)
+	AddJsonFlag(listCmd, &isJsonFormat)
 	return listCmd
 }
 

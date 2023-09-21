@@ -150,9 +150,35 @@ func AddFormatFlag(cmd *cobra.Command, format *string) {
 		format,
 		"format",
 		"",
-		"table",
+		"",
 		"render output in specified format (table, json, csv)",
 	)
+}
+
+func AddJsonFlag(cmd *cobra.Command, isJsonFormat *bool) {
+	cmd.PersistentFlags().BoolVar(
+		isJsonFormat,
+		"json",
+		false,
+		"alias for --format json",
+	)
+}
+
+// Ensure --json alias is not conflicting with --format's value
+func ResolveFormat(formatFlagValue string, jsonFlagValue bool) string {
+	if formatFlagValue == "" {
+		if jsonFlagValue {
+			return "json"
+		} else {
+			return "table"
+		}
+	}
+
+	if jsonFlagValue && formatFlagValue != "json" {
+		dief("Command failed. Output format conflict: --json, --format")
+	}
+
+	return formatFlagValue
 }
 
 // AddDeviceAutocompletion adds autocompletion for device-name and device-id
