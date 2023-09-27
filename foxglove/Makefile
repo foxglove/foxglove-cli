@@ -15,11 +15,11 @@ version:
 	@echo VERSION=$(VERSION)
 
 build: version
-	go build -ldflags "-X main.Version=$(VERSION)"
+	go build -tags 'netgo' -ldflags '-X main.Version=$(VERSION)'
 
 build-release: version
 	mkdir -p bin
-	go build -ldflags "-X main.Version=$(VERSION)" -o bin/$(BINARY_NAME)
+	go build -tags 'netgo' -ldflags '-X main.Version=$(VERSION)' -o bin/$(BINARY_NAME)
 
 install: version
-	go install -ldflags "-X main.Version=$(VERSION)"
+	go install -tags 'netgo' -ldflags '-X main.Version=$(VERSION)'
