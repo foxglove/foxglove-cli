@@ -198,6 +198,7 @@ func Execute(version string) {
 	configureAPIKey := newConfigureAPIKeyCommand()
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(configureAPIKey)
+	authCmd.AddCommand(infoCmd)
 	recordingsCmd.AddCommand(newListRecordingsCommand(params))
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	attachmentsCmd.AddCommand(newListAttachmentsCommand(params))
@@ -226,7 +227,6 @@ func Execute(version string) {
 		recordingsCmd,
 		eventsCmd,
 		pendingImportsCmd,
-		infoCmd,
 	)
 
 	cobra.CheckErr(rootCmd.Execute())
