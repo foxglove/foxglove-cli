@@ -194,6 +194,7 @@ func Execute(version string) {
 		return
 	}
 	loginCmd := newLoginCommand(params)
+	infoCmd := newInfoCommand(params)
 	configureAPIKey := newConfigureAPIKeyCommand()
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(configureAPIKey)
@@ -225,6 +226,7 @@ func Execute(version string) {
 		recordingsCmd,
 		eventsCmd,
 		pendingImportsCmd,
+		infoCmd,
 	)
 
 	cobra.CheckErr(rootCmd.Execute())
