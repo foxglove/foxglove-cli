@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
@@ -15,6 +16,7 @@ import (
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var ErrTruncatedMCAP = errors.New("truncated mcap file")
@@ -227,4 +229,13 @@ func maybeConvertToRFC3339(timestamp string) (string, error) {
 		return "", err
 	}
 	return parsed.Format(time.RFC3339), nil
+}
+
+func AuthIsApiKey() (bool, error) {
+	token := viper.Get("bearer_token")
+	if token == nil {
+		dief("Auth is not setup. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.")
+	}
+	stringifiedToken := fmt.Sprintf("%v", token)
+	return strings.HasPrefix(stringifiedToken, "fox_sk_"), nil
 }

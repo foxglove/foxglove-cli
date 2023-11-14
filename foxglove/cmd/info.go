@@ -11,6 +11,13 @@ import (
 )
 
 func executeInfo(baseURL, clientID, token, userAgent string) error {
+	isUsingApiKey, err := AuthIsApiKey()
+	if err != nil {
+		return err
+	}
+	if isUsingApiKey {
+		dief("Command not available for auth with api keys")
+	}
 	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
 	me, err := client.Me()
 	if err != nil {
@@ -22,7 +29,6 @@ func executeInfo(baseURL, clientID, token, userAgent string) error {
 	fmt.Fprintln(w, "Org ID\t", me.OrgId)
 	fmt.Fprintln(w, "Org Slug\t", me.OrgSlug)
 	fmt.Fprintln(w, "Admin\t", me.Admin)
-	fmt.Fprintln(w, "Token type\t", "session")
 	w.Flush()
 
 	return nil
