@@ -25,9 +25,17 @@ func configfile() (string, error) {
 	return path.Join(home, ".foxgloverc"), nil
 }
 
-func configureAuth(token, baseURL string) error {
+type AuthType int
+
+const (
+	TokenSession AuthType = iota
+	TokenApiKey
+)
+
+func configureAuth(token, baseURL string, authType AuthType) error {
 	viper.Set("bearer_token", token)
 	viper.Set("base_url", baseURL)
+	viper.Set("auth_type", authType)
 	err := viper.WriteConfigAs(viper.ConfigFileUsed())
 	if err != nil {
 		return fmt.Errorf("Failed to write config: %w", err)
