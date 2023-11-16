@@ -3,33 +3,38 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"text/tabwriter"
+	"strconv"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
+	tw "github.com/foxglove/foxglove-cli/foxglove/util/tablewriter"
 
 	"github.com/spf13/cobra"
 )
 
 func executeInfo(baseURL, clientID, token, userAgent string) error {
-	isUsingApiKey, err := AuthIsApiKey()
-	if err != nil {
-		return err
-	}
-	if isUsingApiKey {
-		dief("Command not available for auth with api keys")
-	}
 	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
 	me, err := client.Me()
 	if err != nil {
 		return err
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', 0)
-	fmt.Fprintln(w, "Email\t", me.Email)
-	fmt.Fprintln(w, "Email verified\t", me.EmailVerified)
-	fmt.Fprintln(w, "Org ID\t", me.OrgId)
-	fmt.Fprintln(w, "Org Slug\t", me.OrgSlug)
-	fmt.Fprintln(w, "Admin\t", me.Admin)
-	w.Flush()
+
+	headers := []string{
+		"Email",
+		"Email verified",
+		"Org ID",
+		"Org Slug",
+		"Admin",
+	}
+	data := [][]string{{
+		me.Email,
+		strconv.FormatBool(me.EmailVerified),
+		me.OrgId,
+		me.OrgSlug,
+		strconv.FormatBool(me.Admin),
+	}}
+
+	fmt.Println("Authenticated with session token")
+	tw.PrintTable(os.Stdout, headers, data)
 
 	return nil
 }
@@ -37,8 +42,15 @@ func executeInfo(baseURL, clientID, token, userAgent string) error {
 func newInfoCommand(params *baseParams) *cobra.Command {
 	loginCmd := &cobra.Command{
 		Use:   "info",
-		Short: "Display information about the currently logged-in user",
+		Short: "Display information about the currently authenticated user",
 		Run: func(cmd *cobra.Command, args []string) {
+			if !IsAuthenticated() {
+				dief("Not signed in. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.")
+			}
+			isUsingApiKey := TokenIsApiKey(params.token)
+			if isUsingApiKey {
+				dief("Authenticated with API key. Command not available for auth with api keys.")
+			}
 			err := executeInfo(params.baseURL, *params.clientID, params.token, params.userAgent)
 			if err != nil {
 				dief("Info command failed: %s", err)

@@ -231,11 +231,11 @@ func maybeConvertToRFC3339(timestamp string) (string, error) {
 	return parsed.Format(time.RFC3339), nil
 }
 
-func AuthIsApiKey() (bool, error) {
-	token := viper.Get("bearer_token")
-	if token == nil {
-		dief("Auth is not setup. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.")
-	}
-	stringifiedToken := fmt.Sprintf("%v", token)
-	return strings.HasPrefix(stringifiedToken, "fox_sk_"), nil
+func TokenIsApiKey(token string) bool {
+	return strings.HasPrefix(token, "fox_sk_")
+}
+
+func IsAuthenticated() bool {
+  token := viper.GetString("bearer_token")
+  return token != ""
 }
