@@ -413,6 +413,12 @@ func (c *FoxgloveClient) ImportFromEdge(req ImportFromEdgeRequest, id string) (r
 	return resp, err
 }
 
+func (c *FoxgloveClient) Me() (resp MeResponse, err error) {
+	req := MeRequest{}
+	err = c.get("/v1/me", req, &resp)
+	return resp, err
+}
+
 // Token returns a token for the provided device code. If the token for the
 // device code does not exist yet, ErrForbidden is returned. It is up to the
 // caller to give up after sufficient retries.

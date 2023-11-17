@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
@@ -15,6 +16,7 @@ import (
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var ErrTruncatedMCAP = errors.New("truncated mcap file")
@@ -227,4 +229,21 @@ func maybeConvertToRFC3339(timestamp string) (string, error) {
 		return "", err
 	}
 	return parsed.Format(time.RFC3339), nil
+}
+
+func TokenIsApiKey(token string) bool {
+	authType := viper.GetInt("auth_type")
+	switch AuthType(authType) {
+	case TokenApiKey:
+		return true
+	case TokenSession:
+		return false
+	default:
+		return strings.HasPrefix(token, "fox_sk_")
+	}
+}
+
+func IsAuthenticated() bool {
+	token := viper.GetString("bearer_token")
+	return token != ""
 }

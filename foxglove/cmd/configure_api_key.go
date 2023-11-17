@@ -18,7 +18,7 @@ func newConfigureAPIKeyCommand() *cobra.Command {
 				prompt := fmt.Sprintf("Enter an API key (will be written to %s):\n", viper.ConfigFileUsed())
 				token = promptForInput(prompt)
 			}
-			err := configureAuth(token, defaultString(baseURL, defaultBaseURL))
+			err := configureAuth(token, defaultString(baseURL, defaultBaseURL), TokenApiKey)
 			if err != nil {
 				dief("Configuration failed: %s", err)
 			}

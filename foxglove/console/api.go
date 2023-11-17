@@ -541,6 +541,18 @@ type ImportFromEdgeResponse struct {
 	ImportStatus string `json:"importStatus"`
 }
 
+type MeRequest struct{}
+
+type MeResponse struct {
+	ID             string `json:"id"`
+	OrgId          string `json:"orgId"`
+	OrgDisplayName string `json:"orgDisplayName"`
+	OrgSlug        string `json:"orgSlug"`
+	Email          string `json:"email"`
+	EmailVerified  bool   `json:"emailVerified"`
+	Admin          bool   `json:"admin"`
+}
+
 func requiredVal(val *string) string {
 	if val != nil {
 		return *val
