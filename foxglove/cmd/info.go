@@ -12,6 +12,12 @@ import (
 )
 
 func executeInfo(baseURL, clientID, token, userAgent string) error {
+	isUsingApiKey := TokenIsApiKey(token)
+	if isUsingApiKey {
+		fmt.Println("Authenticated with API key")
+		return nil
+	}
+
 	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
 	me, err := client.Me()
 	if err != nil {
@@ -46,10 +52,6 @@ func newInfoCommand(params *baseParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if !IsAuthenticated() {
 				dief("Not signed in. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.")
-			}
-			isUsingApiKey := TokenIsApiKey(params.token)
-			if isUsingApiKey {
-				dief("Authenticated with API key. Command not available for auth with api keys.")
 			}
 			err := executeInfo(params.baseURL, *params.clientID, params.token, params.userAgent)
 			if err != nil {
