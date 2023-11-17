@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/foxglove/foxglove-cli/foxglove/console"
@@ -232,7 +233,14 @@ func maybeConvertToRFC3339(timestamp string) (string, error) {
 
 func TokenIsApiKey(token string) bool {
 	authType := viper.GetInt("auth_type")
-	return AuthType(authType) == TokenApiKey
+	switch AuthType(authType) {
+	case TokenApiKey:
+		return true
+	case TokenSession:
+		return false
+	default:
+		return strings.HasPrefix(token, "fox_sk_")
+	}
 }
 
 func IsAuthenticated() bool {

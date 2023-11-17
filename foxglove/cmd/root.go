@@ -28,7 +28,8 @@ func configfile() (string, error) {
 type AuthType int
 
 const (
-	TokenSession AuthType = iota
+	Unknown AuthType = iota
+	TokenSession
 	TokenApiKey
 )
 
