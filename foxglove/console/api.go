@@ -25,6 +25,7 @@ type TokenResponse struct {
 type UploadRequest struct {
 	Filename   string `json:"filename"`
 	DeviceID   string `json:"device.id,omitempty"`
+	Key        string `json:"key,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
 }
 
@@ -34,6 +35,7 @@ type UploadResponse struct {
 
 type StreamRequest struct {
 	RecordingID  string     `json:"recordingId,omitempty"`
+	Key          string     `json:"key,omitempty"`
 	ImportID     string     `json:"importId,omitempty"`
 	DeviceID     string     `json:"device.id,omitempty"`
 	DeviceName   string     `json:"device.name,omitempty"`
@@ -44,8 +46,8 @@ type StreamRequest struct {
 }
 
 func (req *StreamRequest) Validate() error {
-	if req.RecordingID == "" && req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" {
-		return fmt.Errorf("either recording-id, import-id, or all three of device-id/device-name, start, and end are required")
+	if req.RecordingID == "" && req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" && req.Key == "" {
+		return fmt.Errorf("either recording-id/key, import-id, or all three of device-id/device-name, start, and end are required")
 	}
 	if req.DeviceID != "" && req.DeviceName != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
 		return fmt.Errorf("start/end are required if device is supplied")
@@ -192,6 +194,7 @@ type RecordingsResponse struct {
 	EdgeSite     SiteSummary      `json:"edgeSite"`
 	Device       DeviceSummary    `json:"device"`
 	Metadata     []MetadataRecord `json:"metadata"`
+	Key          string           `json:"key"`
 }
 
 func (r RecordingsResponse) Headers() []string {
@@ -212,6 +215,7 @@ func (r RecordingsResponse) Headers() []string {
 		"Device ID",
 		"Device Name",
 		"Metadata",
+		"Key",
 	}
 }
 
@@ -234,6 +238,7 @@ func (r RecordingsResponse) Fields() []string {
 		r.Device.ID,
 		r.Device.Name,
 		string(metadata),
+		r.Key,
 	}
 }
 

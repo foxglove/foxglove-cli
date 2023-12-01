@@ -63,6 +63,7 @@ func Import(
 	client *FoxgloveClient,
 	deviceID string,
 	deviceName string,
+	key string,
 	filename string,
 ) error {
 	f, err := os.Open(filename)
@@ -80,6 +81,7 @@ func Import(
 	reader := progressbar.NewReader(f, bar)
 	err = client.Upload(&reader, UploadRequest{
 		Filename:   name,
+		Key:        key,
 		DeviceID:   deviceID,
 		DeviceName: deviceName,
 	})

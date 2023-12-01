@@ -820,6 +820,7 @@ func executeExport(
 
 func createStreamRequest(
 	recordingID string,
+	key string,
 	importID string,
 	deviceID string,
 	deviceName string,
@@ -849,6 +850,7 @@ func createStreamRequest(
 
 	request := &console.StreamRequest{
 		RecordingID:  recordingID,
+		Key:          key,
 		ImportID:     importID,
 		DeviceName:   deviceName,
 		DeviceID:     deviceID,
@@ -866,6 +868,7 @@ func createStreamRequest(
 
 func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var recordingID string
+	var key string
 	var importID string
 	var deviceID string
 	var deviceName string
@@ -893,6 +896,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			}
 			request, err := createStreamRequest(
 				recordingID,
+				key,
 				importID,
 				deviceID,
 				deviceName,
@@ -950,6 +954,7 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	exportCmd.PersistentFlags().StringVarP(&outputFile, "output-file", "o", "", "output file")
 	exportCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "recording ID")
+	exportCmd.PersistentFlags().StringVarP(&key, "key", "", "", "recording key")
 	exportCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "import ID")
 	exportCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start time (ISO8601 timestamp)")
 	exportCmd.PersistentFlags().StringVarP(&end, "end", "", "", "end time (ISO8601 timestamp")
