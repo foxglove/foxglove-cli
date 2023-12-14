@@ -1,9 +1,8 @@
-## Foxglove CLI
+# Foxglove CLI
 
-The Foxglove CLI tool enables command line interaction with remotely stored
-data in Foxglove Data Platform.
+Interact with data stored remotely in the Foxglove platform, directly from the command line.
 
-### Installation
+## Installation
 
 Download the latest release for your OS and architecture:
 
@@ -23,14 +22,15 @@ Alternatively, install the CLI tool from source (requires Go >= 1.21) – this 
     $ git clone git@github.com:foxglove/foxglove-cli.git
     $ make install
 
-### Usage
+## Getting started
 
-Run `foxglove -h` for complete usage documentation.
+Create a [free Foxglove account](https://console.foxglove.dev/signup) to start importing and interacting with data.
 
-#### Authenticating
+Run `foxglove -h` for complete documentation.
 
-Before interacting with data, you must [create a free Foxglove account](https://console.foxglove.dev/signup) 
-and authenticate from the command line:
+### Authentication
+
+Log in to your Foxglove account from the command line:
 
 ```
 $ foxglove auth login
@@ -66,7 +66,7 @@ $ foxglove devices list
 | dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
-#### Imported data
+### Imports
 
 Import ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
 
@@ -94,7 +94,7 @@ $ foxglove data imports list
 | 5ad56d95-7dcc-f12a-9b09-0f4d4ec9e2e5 | dev_mHH1Cp4gPybCPR8y | input.bag                          | 2021-11-03T23:21:37Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:26Z | bag1       | mcap0       | 32761      | 38542             |
 ```
 
-#### Exported data
+### Exports
 
 Export data by providing a device, time range, and an optional list of topics to include. 
 
@@ -153,7 +153,7 @@ $ rosbag info output.bag
                   /gps/fix_velocity   3364 msgs    : geometry_msgs/TwistWithCovarianceStamped
 ```
 
-#### Events
+### Events
 
 Create events to denote instances or time ranges of interest:
 
@@ -171,10 +171,10 @@ $ foxglove events list
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
-#### Foxglove extensions
+### Extensions
 
 With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share
-[Foxglove extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
+[extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
 within your organization.
 
 Create and package an extension with the
@@ -187,8 +187,8 @@ Publish an extension to install it for all Foxglove organization members:
 $ foxglove extensions upload ./my-extension.1.0.0.foxe
 ```
 
-You can use this same command to update an existing extension with a newer version. 
-The last published version of an extension will be installed across your organization.
+Use this same command to update an existing extension with a newer version –
+the last published version of an extension will be installed across your organization.
 
 List all extensions:
 
@@ -214,7 +214,7 @@ all Foxglove organization members:
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
 
-### Shell autocompletion
+## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support autocompletion for subcommands and certain parameters (like device IDs).
 
