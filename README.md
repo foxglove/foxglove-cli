@@ -5,10 +5,7 @@ data in Foxglove Data Platform.
 
 ### Installation
 
-#### Install a release
-
-To download the latest release, use one of the following commands according to
-your OS and architecture:
+Download the latest release for your OS and architecture:
 
 | OS/Arch     |                                                                                                            |
 |--------|------------------------------------------------------------------------------------------------------------|
@@ -19,40 +16,33 @@ your OS and architecture:
 | macos/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-arm64 -o foxglove |
 | windows/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe |
 
+To install a specific release, see the [releases page](https://github.com/foxglove/foxglove-cli/releases).
 
-To install a specific release, see the [releases
-page](https://github.com/foxglove/foxglove-cli/releases).
+Alternatively, install the CLI tool from source (requires Go >= 1.21) – this will install it to `$GOPATH/bin`:
 
-#### Install from source
-Installation from source requires the following:
-* Go >= 1.21
-
-To install from source, run
-
-    git clone git@github.com:foxglove/foxglove-cli.git
-    make install
-
-This will install `foxglove` to `$GOPATH/bin`.
+    $ git clone git@github.com:foxglove/foxglove-cli.git
+    $ make install
 
 ### Usage
 
-See `foxglove -h` for complete usage documentation.
+Run `foxglove -h` for complete usage documentation.
 
 #### Authenticating
 
-Before interacting with the data platform it is necessary to authenticate:
+Before interacting with data, you must [create a free Foxglove account](https://console.foxglove.dev/signup) 
+and authenticate from the command line:
 
 ```
-foxglove auth login
+$ foxglove auth login
 ```
 
-Alternatively, you can configure the tool to use a Foxglove API key:
+Alternatively, you can configure the tool to use a [Foxglove API key](https://docs.foxglove.dev/docs/organization-setup/settings/#api-keys):
 
 ```
-foxglove auth configure-api-key
+$ foxglove auth configure-api-key
 ```
 
-This will overwrite any previously set credential. Use the [Foxglove API key settings](https://console.foxglove.dev/foxglovehq/settings/apikeys)
+This will overwrite any previously set credential. Use the [API key settings page](https://console.foxglove.dev/foxglovehq/settings/apikeys)
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
 ### Devices
