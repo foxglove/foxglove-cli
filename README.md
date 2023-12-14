@@ -68,7 +68,7 @@ $ foxglove devices list
 
 #### Imported data
 
-Import ROS 1 bag and MCAP files into the Foxglove platform:
+Import ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
 
 ```
 $ foxglove data imports add ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
