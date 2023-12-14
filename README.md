@@ -46,42 +46,48 @@ Before interacting with the data platform it is necessary to authenticate:
 foxglove auth login
 ```
 
-#### Configuration with an API key
-
-As an alternative to interactive login, the tool can be configured to use a
-foxglove API key:
+Alternatively, you can configure the tool to use a Foxglove API key:
 
 ```
 foxglove auth configure-api-key
 ```
 
-This will overwrite any previously set credential. The API key should be
-configured in the Foxglove console with whatever capabilities you intend to
-use, for instance `data.upload` (for importing data) or `data.stream` (for
-exporting).
+This will overwrite any previously set credential. Use the [Foxglove API key settings](https://console.foxglove.dev/foxglovehq/settings/apikeys)
+to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
-#### Importing data
+### Devices
 
-Before importing data it is necessary to add a device:
+Before importing data, you must first create a device:
 
 ```
-foxglove devices add --name "my device"
+$ foxglove devices add --name "my device"
 Device created: dev_drpLqjBZYUzus3gv
 ```
 
-To load data into the platform, use `foxglove data imports add`. The platform
-accepts imports in ros1 bag or mcap format:
+List all devices:
 
 ```
-foxglove data imports add ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
+$ foxglove devices list
+|          ID          |        NAME        |      CREATED AT      |      UPDATED AT      |
+|----------------------|--------------------|----------------------|----------------------|
+| dev_mHH1Cp4gPybCPR8y | Adrian's Robot     | 2021-10-28T17:20:55Z | 2021-10-28T17:20:55Z |
+| dev_WEJUVEOVApoIpe1M | GPS                | 2021-11-01T17:38:55Z | 2021-11-01T17:38:55Z |
+| dev_drpLqjBZYUzus3gv | updog              | 2021-11-25T02:22:45Z | 2021-11-25T02:22:45Z |
+| dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
-This is equivalent to the shorthand, 
+#### Imported data
+
+Import ROS 1 bag and MCAP files into the Foxglove platform:
+
 ```
-foxglove data import ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
+$ foxglove data imports add ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
+
+// Shorthand version
+$ foxglove data import ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
 ```
 
-Imports can be listed with the CLI as well:
+List all imports:
 
 ```
 $ foxglove data imports list
@@ -98,27 +104,74 @@ $ foxglove data imports list
 | 5ad56d95-7dcc-f12a-9b09-0f4d4ec9e2e5 | dev_mHH1Cp4gPybCPR8y | input.bag                          | 2021-11-03T23:21:37Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:26Z | bag1       | mcap0       | 32761      | 38542             |
 ```
 
-#### Devices
+#### Exported data
 
-The CLI tool supports listing devices for the org, and adding new ones:
+Export data by providing a device, time range, and an optional list of topics to include. 
 
-```
-$ foxglove devices list
-|          ID          |        NAME        |      CREATED AT      |      UPDATED AT      |
-|----------------------|--------------------|----------------------|----------------------|
-| dev_mHH1Cp4gPybCPR8y | Adrian's Robot     | 2021-10-28T17:20:55Z | 2021-10-28T17:20:55Z |
-| dev_WEJUVEOVApoIpe1M | GPS                | 2021-11-01T17:38:55Z | 2021-11-01T17:38:55Z |
-| dev_drpLqjBZYUzus3gv | updog              | 2021-11-25T02:22:45Z | 2021-11-25T02:22:45Z |
-| dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
-```
+You can also specify the output format (`mcap0`, `bag1`, and `json`) and file name:
 
 ```
-foxglove devices add --name "my device"
-Device created: dev_drpLqjBZYUzus3gv
+// Output MCAP file (output.mcap)
+$ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
+
+// Output ROS 1 bag file (output.bag)
+$ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
+
+// Output JSON (directly to console)
+$ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
+    {"topic":"/tf","sequence":0,"log_time":1490149580.103843113,"publish_time":1490149580.103843113,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.117017840,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
+    {"topic":"/tf","sequence":0,"log_time":1490149580.113944947,"publish_time":1490149580.113944947,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.127078895,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
+    {"topic":"/tf","sequence":0,"log_time":1490149580.124028613,"publish_time":1490149580.124028613,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.137141823,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
+    {"topic":"/tf","sequence":0,"log_time":1490149580.134219155,"publish_time":1490149580.134219155,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.147199242,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
+    {"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
+```
+
+If you've output a file, you can inspect the exported data:
+
+```
+// MCAP file
+$ mcap info output.mcap
+    library: mcap go #(devel); fg-data-platform-db07abe7
+    profile: ros1
+    messages: 6728
+    duration: 5m39.304931438s
+    start: 2021-03-22T08:03:38.473036858-07:00 (1616425418.473036858)
+    end: 2021-03-22T08:09:17.777968296-07:00 (1616425757.777968296)
+    compression:
+            lz4: [1/1 chunks] (86.05%)
+    channels:
+            (1) /gps/fix           3364 msgs (9.91 Hz)   : sensor_msgs/NavSatFix [ros1msg]
+            (2) /gps/fix_velocity  3364 msgs (9.91 Hz)   : geometry_msgs/TwistWithCovarianceStamped [ros1msg]
+    attachments: 0
+
+// ROS 1 bag file
+$ rosbag reindex output.bag
+$ rosbag info output.bag
+    path:         output.bag
+    version:      2.0
+    duration:     5:39s (339s)
+    start:        Mar 22 2021 08:03:38.47 (1616425418.47)
+    end:          Mar 22 2021 08:09:17.78 (1616425757.78)
+    size:         328.6 KB
+    messages:     6728
+    compression:  lz4 [1/1 chunks; 12.87%]
+    uncompressed:   1.8 MB @ 5.5 KB/s
+    compressed:   240.0 KB @ 0.7 KB/s (12.87%)
+    types:        geometry_msgs/TwistWithCovarianceStamped [b00b6ce36bf21f646151de97da2c485c]
+                  sensor_msgs/NavSatFix                    [7f6e605ad1e52d05162190ff17be80b6]
+    topics:       /gps/fix            3364 msgs    : sensor_msgs/NavSatFix
+                  /gps/fix_velocity   3364 msgs    : geometry_msgs/TwistWithCovarianceStamped
 ```
 
 #### Events
-The tool supports creating and searching events:
+
+Create events to denote instances or time ranges of interest:
+
+```
+$ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y --start 2023-04-19T13:26:37.030302Z --end 2023-04-19T13:26:37.030302Z --metadata requires-labeling:true
+```
+
+List all events:
 
 ```
 $ foxglove events list
@@ -128,112 +181,51 @@ $ foxglove events list
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
-For adding events, see `foxglove events add -h`.
+#### Foxglove extensions
 
-#### Querying data
-```
-$ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
+With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share
+[Foxglove extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
+within your organization.
 
-$ mcap info output.mcap
-library: mcap go #(devel); fg-data-platform-db07abe7
-profile: ros1
-messages: 6728
-duration: 5m39.304931438s
-start: 2021-03-22T08:03:38.473036858-07:00 (1616425418.473036858)
-end: 2021-03-22T08:09:17.777968296-07:00 (1616425757.777968296)
-compression:
-        lz4: [1/1 chunks] (86.05%)
-channels:
-        (1) /gps/fix           3364 msgs (9.91 Hz)   : sensor_msgs/NavSatFix [ros1msg]
-        (2) /gps/fix_velocity  3364 msgs (9.91 Hz)   : geometry_msgs/TwistWithCovarianceStamped [ros1msg]
-attachments: 0
-```
+Create and package an extension with the
+[`foxglove-extension`](https://github.com/foxglove/create-foxglove-extension/)
+tool. 
 
-Query data as a ROS bag:
+Publish an extension to install it for all Foxglove organization members:
 
 ```
-$ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
-$ rosbag reindex output.bag
-$ rosbag info output.bag
-path:         output.bag
-version:      2.0
-duration:     5:39s (339s)
-start:        Mar 22 2021 08:03:38.47 (1616425418.47)
-end:          Mar 22 2021 08:09:17.78 (1616425757.78)
-size:         328.6 KB
-messages:     6728
-compression:  lz4 [1/1 chunks; 12.87%]
-uncompressed:   1.8 MB @ 5.5 KB/s
-compressed:   240.0 KB @ 0.7 KB/s (12.87%)
-types:        geometry_msgs/TwistWithCovarianceStamped [b00b6ce36bf21f646151de97da2c485c]
-              sensor_msgs/NavSatFix                    [7f6e605ad1e52d05162190ff17be80b6]
-topics:       /gps/fix            3364 msgs    : sensor_msgs/NavSatFix
-              /gps/fix_velocity   3364 msgs    : geometry_msgs/TwistWithCovarianceStamped
+$ foxglove extensions upload ./my-extension.1.0.0.foxe
 ```
 
-Output data to the console as JSON:
+You can use this same command to update an existing extension with a newer version. 
+The last published version of an extension will be installed across your organization.
+
+List all extensions:
 
 ```
-$ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
-{"topic":"/tf","sequence":0,"log_time":1490149580.103843113,"publish_time":1490149580.103843113,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.117017840,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
-{"topic":"/tf","sequence":0,"log_time":1490149580.113944947,"publish_time":1490149580.113944947,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.127078895,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
-{"topic":"/tf","sequence":0,"log_time":1490149580.124028613,"publish_time":1490149580.124028613,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.137141823,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
-{"topic":"/tf","sequence":0,"log_time":1490149580.134219155,"publish_time":1490149580.134219155,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.147199242,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
-{"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
+$ foxglove extensions list
+    [
+        {
+            "id": "ext_BsGXKGsZ9c4WQF1",
+            "name": "my_new_panel",
+            "publisher": "panel-publisher",
+            "displayName": "My New Panel",
+            "description": "Creates a panel",
+            "activeVersion": "1.0.0",
+            "sha256Sum": "395c3af8745ab104cd902d937366719a402bda4677ed3671cb38522c1ba13cbe"
+        }
+    ]
 ```
 
-#### Studio extensions
-
-With a paid foxglove account, you can upload
-[Studio extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
-to share with your organization.
-
-Extensions are created and packaged with the
-[foxglove-extension](https://github.com/foxglove/create-foxglove-extension/)
-tool. The latest version of each uploaded extension will be installed in Studio
-for all organization members.
-
-To publish a new extension, or update one with a newer version:
+Unpublish an extension by its ID to **delete** its files and uninstall it for 
+all Foxglove organization members:
 
 ```
-foxglove extensions upload ./my-extension.1.0.0.foxe
-```
-
-To list your extensions:
-
-```
-foxglove extensions list
-```
-
-Example JSON output:
-
-```json
-[
-    {
-        "id": "ext_BsGXKGsZ9c4WQF1",
-        "name": "my_new_panel",
-        "publisher": "panel-publisher",
-        "displayName": "My New Panel",
-        "description": "Creates a panel",
-        "activeVersion": "1.0.0",
-        "sha256Sum": "395c3af8745ab104cd902d937366719a402bda4677ed3671cb38522c1ba13cbe"
-    }
-]
-```
-
-You can use the global `--format` flag to change the output type.
-
-To unpublish an extension, use the ID listed from the above command. This will
-**delete** your extension files and cause the extension to be uninstalled from
-Studio for all organization members.
-
-```
-foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
+$ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
 
 ### Shell autocompletion
 
-The foxglove tool supports shell autocompletion for subcommands and some kinds
-of parameters (such as device IDs). To enable this, consult the instructions
-for your shell under `foxglove completion <shell> -h`. Supported shells are
-bash, zsh, fish, and PowerShell.
+Certain shells (bash, zsh, fish, and PowerShell) support autocompletion for subcommands and certain parameters (like device IDs).
+
+To enable this, consult your shell instructions under `$ foxglove completion <shell> -h`.
