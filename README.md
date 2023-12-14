@@ -22,11 +22,13 @@ Alternatively, install the CLI tool from source (requires Go >= 1.21) – this 
     $ git clone git@github.com:foxglove/foxglove-cli.git
     $ make install
 
+## Documentation
+
+Once you've installed the CLI tool, run `foxglove -h` from the command line for a complete list of subcommands, arguments, and usage details.
+
 ## Getting started
 
 Create a [free Foxglove account](https://console.foxglove.dev/signup) to start importing and interacting with data.
-
-Run `foxglove -h` for complete documentation.
 
 ### Authentication
 
