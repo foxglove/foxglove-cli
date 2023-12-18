@@ -2,6 +2,8 @@
 
 Interact with data stored remotely in the Foxglove platform, directly from the command line.
 
+Once you've installed the CLI tool, run `foxglove -h` from the command line for a complete list of subcommands, arguments, and usage details.
+
 ## Installation
 
 Download the latest release for your OS and architecture:
@@ -21,10 +23,6 @@ Alternatively, install the CLI tool from source (requires Go >= 1.21) – this 
 
     $ git clone git@github.com:foxglove/foxglove-cli.git
     $ make install
-
-## Documentation
-
-Once you've installed the CLI tool, run `foxglove -h` from the command line for a complete list of subcommands, arguments, and usage details.
 
 ## Getting started
 
