@@ -114,7 +114,7 @@ $ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00
 $ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
 ```
 
-If you've output a file, you can inspect the exported data:
+If you've output a file, inspect its contents:
 
 ```
 // MCAP file
