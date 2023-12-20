@@ -888,6 +888,9 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if err != nil {
 				dief("failed to parse end time: %s", err)
 			}
+			if isJsonOutput {
+				outputFormat = "json"
+			}
 			request, err := createStreamRequest(
 				recordingID,
 				importID,
@@ -901,9 +904,9 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if err != nil {
 				dief("Failed to build request: %s", err)
 			}
-			if isJsonOutput && outputFormat != "json" {
-				dief("Export failed. Output format conflict: --json, --output-format ", outputFormat)
-			}
+
+			// If there is an output file and the output format is not JSON,
+			// export to that file with resumable downloads.
 			if outputFile != "" && outputFormat != "json" {
 				err = doExport(
 					cmd.Context(),
@@ -920,10 +923,15 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				fmt.Fprint(os.Stderr, "\n")
 				return
 			}
+
+			// Otherwise we are going to stdout. Ensure it's either JSON or
+			// getting redirected.
 			if !stdoutRedirected() && request.OutputFormat != "json" {
 				dief("Binary output may screw up your terminal. Please redirect to a pipe or file.")
 			}
 			defer os.Stdout.Close()
+
+			// Do the export, without resumable downloads.
 			err = executeExport(
 				cmd.Context(),
 				os.Stdout,
