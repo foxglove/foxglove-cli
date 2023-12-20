@@ -50,20 +50,20 @@ to add the capabilities you intend to use (e.g. `data.upload` for importing data
 Before importing data, you must first create a device:
 
 ```
-$ foxglove devices add --name "my device"
-Device created: dev_drpLqjBZYUzus3gv
+$ foxglove devices add --name RobotA
+    Device created: dev_drpLqjBZYUzus3gv
 ```
 
 List all devices:
 
 ```
 $ foxglove devices list
-|          ID          |        NAME        |      CREATED AT      |      UPDATED AT      |
-|----------------------|--------------------|----------------------|----------------------|
-| dev_mHH1Cp4gPybCPR8y | Adrian's Robot     | 2021-10-28T17:20:55Z | 2021-10-28T17:20:55Z |
-| dev_WEJUVEOVApoIpe1M | GPS                | 2021-11-01T17:38:55Z | 2021-11-01T17:38:55Z |
-| dev_drpLqjBZYUzus3gv | updog              | 2021-11-25T02:22:45Z | 2021-11-25T02:22:45Z |
-| dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
+    |          ID          |        NAME        |      CREATED AT      |      UPDATED AT      |
+    |----------------------|--------------------|----------------------|----------------------|
+    | dev_mHH1Cp4gPybCPR8y | Adrian's Robot     | 2021-10-28T17:20:55Z | 2021-10-28T17:20:55Z |
+    | dev_WEJUVEOVApoIpe1M | GPS                | 2021-11-01T17:38:55Z | 2021-11-01T17:38:55Z |
+    | dev_drpLqjBZYUzus3gv | updog              | 2021-11-25T02:22:45Z | 2021-11-25T02:22:45Z |
+    | dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
 ### Imports
@@ -71,27 +71,24 @@ $ foxglove devices list
 Import ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
 
 ```
-$ foxglove data imports add ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
-
-// Shorthand version
-$ foxglove data import ~/data/bags/gps.bag --device-id dev_drpLqjBZYUzus3gv
+$ foxglove data import ~/data/bags/gps.bag --device-name RobotA
 ```
 
 List all imports:
 
 ```
 $ foxglove data imports list
-|              IMPORT ID               |      DEVICE ID       |              FILENAME              |     IMPORT TIME      |        START         |         END          | INPUT TYPE | OUTPUT TYPE | INPUT SIZE | TOTAL OUTPUT SIZE |
-|--------------------------------------|----------------------|------------------------------------|----------------------|----------------------|----------------------|------------|-------------|------------|-------------------|
-| 55c8480b-0fef-243a-ea74-f07063f51c6e | dev_flm75pLkfzUBX2DH | demo.bag                           | 2022-01-28T22:37:44Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:27Z | bag1       | mcap0       | 70311473   | 68833788          |
-| 31285b3d-3f97-ea58-3751-a1597ae3f16f | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-21-58-17_1.bag | 2022-02-21T22:03:32Z | 2022-02-21T21:58:17Z | 2022-02-21T21:58:21Z | bag1       | mcap0       | 12823      | 8847              |
-| 837cfa3e-541e-9540-1c7a-a1f1b3ef3694 | dev_jCuXYeFwCkZowpHs | gps4.bag                           | 2022-03-17T12:34:34Z | 2021-03-22T15:03:38Z | 2021-03-22T15:09:18Z | bag1       | mcap0       | 5321782    | 1619916           |
-| 820e51d8-9f1d-8ec5-f586-41bbaa87d45d | dev_JOgi4YiCRgaoszKw | input.bag                          | 2021-11-02T16:34:49Z | 2016-11-18T23:46:10Z | 2016-11-18T23:51:25Z | bag1       | mcap0       | 1770886024 | 1571403963        |
-| 8f563534-264d-ad79-b404-684c8639d4a0 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-19-44-47_1.bag | 2022-02-21T20:12:54Z | 2022-02-21T19:44:47Z | 2022-02-21T19:44:47Z | bag1       | mcap0       | 10964      | 8196              |
-| b8c45da6-2110-8c77-370f-a6ec482cdcf6 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-22-49-04_0.bag | 2022-02-21T22:50:48Z | 2022-02-21T22:49:05Z | 2022-02-21T22:49:23Z | bag1       | mcap0       | 16734      | 10688             |
-| 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_JtSXCGiM0RC2YHDO | nuscenes.bag                       | 2022-02-24T15:13:32Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
-| 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_mHH1Cp4gPybCPR8y | nuscenes-0061-v1.bag               | 2022-01-11T22:05:09Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
-| 5ad56d95-7dcc-f12a-9b09-0f4d4ec9e2e5 | dev_mHH1Cp4gPybCPR8y | input.bag                          | 2021-11-03T23:21:37Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:26Z | bag1       | mcap0       | 32761      | 38542             |
+    |              IMPORT ID               |      DEVICE ID       |              FILENAME              |     IMPORT TIME      |        START         |         END          | INPUT TYPE | OUTPUT TYPE | INPUT SIZE | TOTAL OUTPUT SIZE |
+    |--------------------------------------|----------------------|------------------------------------|----------------------|----------------------|----------------------|------------|-------------|------------|-------------------|
+    | 55c8480b-0fef-243a-ea74-f07063f51c6e | dev_flm75pLkfzUBX2DH | demo.bag                           | 2022-01-28T22:37:44Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:27Z | bag1       | mcap0       | 70311473   | 68833788          |
+    | 31285b3d-3f97-ea58-3751-a1597ae3f16f | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-21-58-17_1.bag | 2022-02-21T22:03:32Z | 2022-02-21T21:58:17Z | 2022-02-21T21:58:21Z | bag1       | mcap0       | 12823      | 8847              |
+    | 837cfa3e-541e-9540-1c7a-a1f1b3ef3694 | dev_jCuXYeFwCkZowpHs | gps4.bag                           | 2022-03-17T12:34:34Z | 2021-03-22T15:03:38Z | 2021-03-22T15:09:18Z | bag1       | mcap0       | 5321782    | 1619916           |
+    | 820e51d8-9f1d-8ec5-f586-41bbaa87d45d | dev_JOgi4YiCRgaoszKw | input.bag                          | 2021-11-02T16:34:49Z | 2016-11-18T23:46:10Z | 2016-11-18T23:51:25Z | bag1       | mcap0       | 1770886024 | 1571403963        |
+    | 8f563534-264d-ad79-b404-684c8639d4a0 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-19-44-47_1.bag | 2022-02-21T20:12:54Z | 2022-02-21T19:44:47Z | 2022-02-21T19:44:47Z | bag1       | mcap0       | 10964      | 8196              |
+    | b8c45da6-2110-8c77-370f-a6ec482cdcf6 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-22-49-04_0.bag | 2022-02-21T22:50:48Z | 2022-02-21T22:49:05Z | 2022-02-21T22:49:23Z | bag1       | mcap0       | 16734      | 10688             |
+    | 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_JtSXCGiM0RC2YHDO | nuscenes.bag                       | 2022-02-24T15:13:32Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
+    | 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_mHH1Cp4gPybCPR8y | nuscenes-0061-v1.bag               | 2022-01-11T22:05:09Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
+    | 5ad56d95-7dcc-f12a-9b09-0f4d4ec9e2e5 | dev_mHH1Cp4gPybCPR8y | input.bag                          | 2021-11-03T23:21:37Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:26Z | bag1       | mcap0       | 32761      | 38542             |
 ```
 
 ### Exports
@@ -99,7 +96,7 @@ $ foxglove data imports list
 Retrieve data for a device, time range, and optional list of topics, and export it directly to the console (`--output-format json`) or to a new file (`--output-format mcap0` or `--output-format bag1`):
 
 ```
-// Output JSON (directly to console)
+# Output JSON (directly to console)
 $ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
     {"topic":"/tf","sequence":0,"log_time":1490149580.103843113,"publish_time":1490149580.103843113,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.117017840,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
     {"topic":"/tf","sequence":0,"log_time":1490149580.113944947,"publish_time":1490149580.113944947,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.127078895,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
@@ -107,17 +104,17 @@ $ foxglove data export --device-id dev_flm75pLkfzUBX2DH --start 2001-01-01T00:00
     {"topic":"/tf","sequence":0,"log_time":1490149580.134219155,"publish_time":1490149580.134219155,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.147199242,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
     {"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
 
-// Output MCAP file (output.mcap)
+# Output MCAP file (output.mcap)
 $ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
 
-// Output ROS 1 bag file (output.bag)
+# Output ROS 1 bag file (output.bag)
 $ foxglove data export --device-id dev_drpLqjBZYUzus3gv --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
 ```
 
 If you've output a file, inspect its contents:
 
 ```
-// MCAP file
+# MCAP file
 $ mcap info output.mcap
     library: mcap go #(devel); fg-data-platform-db07abe7
     profile: ros1
@@ -132,7 +129,7 @@ $ mcap info output.mcap
             (2) /gps/fix_velocity  3364 msgs (9.91 Hz)   : geometry_msgs/TwistWithCovarianceStamped [ros1msg]
     attachments: 0
 
-// ROS 1 bag file
+# ROS 1 bag file
 $ rosbag reindex output.bag
 $ rosbag info output.bag
     path:         output.bag
@@ -156,7 +153,9 @@ $ rosbag info output.bag
 Create events to denote instances or time ranges of interest:
 
 ```
-$ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y --start 2023-04-19T13:26:37.030302Z --end 2023-04-19T13:26:37.030302Z --metadata requires-labeling:true
+$ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y \
+    --start 2023-04-19T13:26:37.030302Z --end 2023-04-19T13:26:37.030302Z \
+    --metadata requires-labeling:true
 ```
 
 List all events:
