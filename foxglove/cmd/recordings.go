@@ -18,6 +18,10 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	var start string
 	var end string
 	var importStatus string
+	var limit int
+	var offset int
+	var sortBy string
+	var sortOrder string
 	var isJsonFormat bool
 	recordingsListCmd := &cobra.Command{
 		Use:   "list",
@@ -48,6 +52,10 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 					SiteID:       primarySiteID,
 					EdgeSiteID:   edgeSiteID,
 					ImportStatus: importStatus,
+					Limit:        limit,
+					Offset:       offset,
+					SortBy:       sortBy,
+					SortOrder:    sortOrder,
 				},
 				client.Recordings,
 				format,
@@ -67,6 +75,10 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	recordingsListCmd.PersistentFlags().StringVarP(&primarySiteID, "site-id", "", "", "primary site ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&edgeSiteID, "edge-site-id", "", "", "edge site ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&importStatus, "import-status", "", "", "import status")
+	recordingsListCmd.PersistentFlags().IntVarP(&limit, "limit", "", 2000, "max number of recordings to return")
+	recordingsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "number of recordings to skip")
+	recordingsListCmd.PersistentFlags().StringVarP(&sortBy, "sort-by", "", "", "sort recordings by a field")
+	recordingsListCmd.PersistentFlags().StringVarP(&sortOrder, "sort-order", "", "", "sort order: 'asc' 'desc'")
 	AddFormatFlag(recordingsListCmd, &format)
 	AddDeviceAutocompletion(recordingsListCmd, params)
 	AddJsonFlag(recordingsListCmd, &isJsonFormat)

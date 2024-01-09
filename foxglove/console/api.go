@@ -163,6 +163,10 @@ type RecordingsRequest struct {
 	SiteID       string `json:"site.id" form:"site.id,omitempty"`
 	EdgeSiteID   string `json:"edgeSite.id" form:"edgeSite.id,omitempty"`
 	ImportStatus string `json:"importStatus" form:"importStatus,omitempty"`
+	Limit        int    `json:"limit" form:"limit,omitempty"`
+	Offset       int    `json:"offset" form:"offset,omitempty"`
+	SortBy       string `json:"sortBy" form:"sortBy,omitempty"`
+	SortOrder    string `json:"sortOrder" form:"sortOrder,omitempty"`
 }
 
 type SiteSummary struct {
