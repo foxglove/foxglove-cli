@@ -209,6 +209,7 @@ func Execute(version string) {
 	authCmd.AddCommand(configureAPIKey)
 	authCmd.AddCommand(infoCmd)
 	recordingsCmd.AddCommand(newListRecordingsCommand(params))
+	recordingsCmd.AddCommand(newDeleteRecordingCommand(params))
 	importsCmd.AddCommand(newListImportsCommand(params), addImportCmd)
 	attachmentsCmd.AddCommand(newListAttachmentsCommand(params))
 	attachmentsCmd.AddCommand(newDownloadAttachmentCmd(params))
