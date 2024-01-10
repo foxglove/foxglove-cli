@@ -375,6 +375,10 @@ func (c *FoxgloveClient) Recordings(req *RecordingsRequest) (resp []RecordingsRe
 	return resp, err
 }
 
+func (c *FoxgloveClient) DeleteRecording(id string) error {
+	return c.delete("/v1/recordings/" + id)
+}
+
 func (c *FoxgloveClient) Attachments(req *AttachmentsRequest) (resp []AttachmentsResponse, err error) {
 	err = c.get("/v1/recording-attachments", req, &resp)
 	return resp, err

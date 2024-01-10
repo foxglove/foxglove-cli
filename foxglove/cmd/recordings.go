@@ -72,3 +72,19 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	AddJsonFlag(recordingsListCmd, &isJsonFormat)
 	return recordingsListCmd
 }
+
+func newDeleteRecordingCommand(params *baseParams) *cobra.Command {
+	deleteCmd := &cobra.Command{
+		Use:   "delete [ID]",
+		Short: "Delete a recording from your organization",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			client := console.NewRemoteFoxgloveClient(params.baseURL, *params.clientID, params.token, params.userAgent)
+			if err := client.DeleteRecording(args[0]); err != nil {
+				dief("Failed to delete recording: %s", err)
+			}
+		},
+	}
+	deleteCmd.InheritedFlags()
+	return deleteCmd
+}
