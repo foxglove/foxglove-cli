@@ -26,7 +26,7 @@ Alternatively, install the CLI tool from source (requires Go >= 1.21) – this 
 
 ## Getting started
 
-Create a [free Foxglove account](https://console.foxglove.dev/signup) to start importing and interacting with data.
+Create a [free Foxglove account](https://app.foxglove.dev/signup) to start importing and interacting with data.
 
 ### Authentication
 
@@ -42,7 +42,7 @@ Alternatively, you can configure the tool to use a [Foxglove API key](https://do
 $ foxglove auth configure-api-key
 ```
 
-This will overwrite any previously set credential. Use the [API key settings page](https://console.foxglove.dev/foxglovehq/settings/apikeys)
+This will overwrite any previously set credential. Use the [API key settings page](https://app.foxglove.dev/~/settings/apikeys)
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
 ### Devices
