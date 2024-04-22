@@ -107,8 +107,8 @@ github.com/envoyproxy/protoc-gen-validate v0.6.2/go.mod h1:2t7qjJNvHPx8IjnBOzl9E
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.9.0/go.mod h1:eQcE1qtQxscV5RaZvpXrrb8Drkc3/DdQ+uUYCNjL+zU=
 github.com/fatih/color v1.13.0/go.mod h1:kLAiJbzzSOZDVNGyDpeOxJ47H46qBXwg5ILebYFFOfk=
-github.com/foxglove/go-rosbag v0.0.2 h1:5jz+Wz8hM32ocq4rspa6HsArKdlkrjPP63QKx4+Fofc=
-github.com/foxglove/go-rosbag v0.0.2/go.mod h1:TUoXE7AfzYNv1WrHfUQ0vZExg6yAV+KZGcRhsjJa1TY=
+github.com/foxglove/go-rosbag v0.0.6 h1:LcWr1LqdS1NxWO4+mbPfo7d1jpL3gybqRmX1abD8eAw=
+github.com/foxglove/go-rosbag v0.0.6/go.mod h1:Kz3doYZfPO6OIawx4tFm9MU9COkuzcYaI963psJeLrA=
 github.com/foxglove/mcap/go/mcap v1.0.1 h1:k5QK6AtdRFjmU/mB5bYInVfeUr57CIj+KAO48Ymd4c8=
 github.com/foxglove/mcap/go/mcap v1.0.1/go.mod h1:3UsmtxZGHWURgxEgQh3t0cGfyPyLoCGsa/gtS/Y6UPM=
 github.com/fsnotify/fsnotify v1.5.1 h1:mZcQUHVQUQWoPXXtuf9yuEXKudkV2sx1E06UadKWpgI=
