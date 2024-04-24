@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -20,14 +20,14 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 		Short: "List MCAP attachments",
 		Run: func(cmd *cobra.Command, args []string) {
 			format = ResolveFormat(format, isJsonFormat)
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
 				params.userAgent,
 			)
 			err := renderList(
 				os.Stdout,
-				&console.AttachmentsRequest{
+				&api.AttachmentsRequest{
 					ImportID:    importID,
 					RecordingID: recordingID,
 				},
@@ -55,7 +55,7 @@ func newDownloadAttachmentCmd(params *baseParams) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			attachmentID := args[0]
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				viper.GetString("bearer_token"),
 				params.userAgent,

@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 )
 
-func executeExtensionUpload(client *console.FoxgloveClient, filename string) error {
+func executeExtensionUpload(client *api.FoxgloveClient, filename string) error {
 	ctx := context.Background()
-	return console.UploadExtensionFile(ctx, client, filename)
+	return api.UploadExtensionFile(ctx, client, filename)
 }
 
-func executeExtensionDelete(client *console.FoxgloveClient, extensionId string) error {
+func executeExtensionDelete(client *api.FoxgloveClient, extensionId string) error {
 	return client.DeleteExtension(extensionId)
 }
 
@@ -25,7 +25,7 @@ func newPublishExtensionCommand(params *baseParams) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			filename := args[0] // guaranteed length 1 due to Args setting above
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL,
 				*params.clientID,
 				params.token,
@@ -52,7 +52,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List Studio extensions created for your organization",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -60,7 +60,7 @@ func newListExtensionsCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
-				console.ExtensionsRequest{},
+				api.ExtensionsRequest{},
 				client.Extensions,
 				format,
 			)
@@ -82,7 +82,7 @@ func newUnpublishExtensionCommand(params *baseParams) *cobra.Command {
 		Short: "Delete and unpublish a Studio extension from your organization",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,

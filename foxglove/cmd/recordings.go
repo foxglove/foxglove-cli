@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +27,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List recordings",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -43,7 +43,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
-				&console.RecordingsRequest{
+				&api.RecordingsRequest{
 					DeviceID:     deviceID,
 					DeviceName:   deviceName,
 					Start:        startTime,
@@ -91,7 +91,7 @@ func newDeleteRecordingCommand(params *baseParams) *cobra.Command {
 		Short: "Delete a recording from your organization",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(params.baseURL, *params.clientID, params.token, params.userAgent)
+			client := api.NewRemoteFoxgloveClient(params.baseURL, *params.clientID, params.token, params.userAgent)
 			if err := client.DeleteRecording(args[0]); err != nil {
 				dief("Failed to delete recording: %s", err)
 			}

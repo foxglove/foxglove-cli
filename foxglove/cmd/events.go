@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/foxglove/foxglove-cli/foxglove/util"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +18,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 		Use:   "add",
 		Short: "Add an event",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -33,7 +33,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				}
 				metadata[key] = val
 			}
-			response, err := client.CreateEvent(console.CreateEventRequest{
+			response, err := client.CreateEvent(api.CreateEventRequest{
 				DeviceID: deviceID,
 				Start:    start,
 				End:      end,
@@ -69,7 +69,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List events",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -77,7 +77,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
-				&console.EventsRequest{
+				&api.EventsRequest{
 					DeviceID:   deviceID,
 					DeviceName: deviceName,
 					SortBy:     sortBy,

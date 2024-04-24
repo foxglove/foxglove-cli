@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDeviceProperties(t *testing.T) {
 	ctx := context.Background()
-	sv, err := console.NewMockServer(ctx)
+	sv, err := api.NewMockServer(ctx)
 	assert.Nil(t, err)
-	propertyOfType := func(valueType string) *console.CustomPropertiesResponseItem {
+	propertyOfType := func(valueType string) *api.CustomPropertiesResponseItem {
 		for _, prop := range sv.RegisteredProperties() {
 			if prop.ValueType == valueType {
 				return &prop
@@ -65,8 +65,8 @@ func TestDeviceProperties(t *testing.T) {
 	})
 }
 
-func newAuthedClient(t *testing.T, baseUrl string) *console.FoxgloveClient {
-	client := console.NewRemoteFoxgloveClient(
+func newAuthedClient(t *testing.T, baseUrl string) *api.FoxgloveClient {
+	client := api.NewRemoteFoxgloveClient(
 		baseUrl,
 		"client",
 		"",
@@ -74,7 +74,7 @@ func newAuthedClient(t *testing.T, baseUrl string) *console.FoxgloveClient {
 	)
 	token, err := client.SignIn("client-id")
 	assert.Nil(t, err)
-	return console.NewRemoteFoxgloveClient(
+	return api.NewRemoteFoxgloveClient(
 		baseUrl,
 		"client",
 		token,

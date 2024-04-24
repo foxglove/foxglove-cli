@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 
 	"github.com/spf13/cobra"
 )
 
-func executeLogin(baseURL, clientID, userAgent string, authDelegate console.AuthDelegate) error {
+func executeLogin(baseURL, clientID, userAgent string, authDelegate api.AuthDelegate) error {
 	ctx := context.Background()
-	client := console.NewRemoteFoxgloveClient(baseURL, clientID, "", userAgent)
-	bearerToken, err := console.Login(ctx, client, authDelegate)
+	client := api.NewRemoteFoxgloveClient(baseURL, clientID, "", userAgent)
+	bearerToken, err := api.Login(ctx, client, authDelegate)
 	if err != nil {
 		return err
 	}
@@ -29,13 +29,13 @@ func newLoginCommand(params *baseParams) *cobra.Command {
 		Use:   "login",
 		Short: "Log in to Foxglove Data Platform",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := executeLogin(baseURL, *params.clientID, params.userAgent, &console.PlatformAuthDelegate{})
+			err := executeLogin(baseURL, *params.clientID, params.userAgent, &api.PlatformAuthDelegate{})
 			if err != nil {
 				dief("Login failed: %s", err)
 			}
 		},
 	}
 	loginCmd.InheritedFlags()
-	loginCmd.PersistentFlags().StringVarP(&baseURL, "base-url", "", defaultBaseURL, "console API server")
+	loginCmd.PersistentFlags().StringVarP(&baseURL, "base-url", "", defaultBaseURL, "API server")
 	return loginCmd
 }

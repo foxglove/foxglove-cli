@@ -25,7 +25,7 @@ func newConfigureAPIKeyCommand() *cobra.Command {
 		},
 	}
 	configCmd.PersistentFlags().StringVarP(&token, "api-key", "", "", "api key (for non-interactive use)")
-	configCmd.PersistentFlags().StringVarP(&baseURL, "base-url", "", defaultBaseURL, "console API server")
+	configCmd.PersistentFlags().StringVarP(&baseURL, "base-url", "", defaultBaseURL, "API server")
 	configCmd.InheritedFlags()
 	return configCmd
 }

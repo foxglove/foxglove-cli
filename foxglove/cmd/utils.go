@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	tw "github.com/foxglove/foxglove-cli/foxglove/util/tablewriter"
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/relvacode/iso8601"
@@ -81,7 +81,7 @@ func validateImportLooksLegal(r io.ReadSeeker) error {
 	return ErrInvalidInput
 }
 
-func renderList[RequestType console.Request, ResponseType console.Record](
+func renderList[RequestType api.Request, ResponseType api.Record](
 	w io.Writer,
 	req RequestType,
 	fn func(RequestType) ([]ResponseType, error),
@@ -118,13 +118,13 @@ func renderList[RequestType console.Request, ResponseType console.Record](
 	return nil
 }
 
-func renderJSON[RecordType console.Record](w io.Writer, records []RecordType) error {
+func renderJSON[RecordType api.Record](w io.Writer, records []RecordType) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "    ")
 	return encoder.Encode(records)
 }
 
-func renderCSV[RecordType console.Record](w io.Writer, records []RecordType) error {
+func renderCSV[RecordType api.Record](w io.Writer, records []RecordType) error {
 	writer := csv.NewWriter(w)
 	err := writer.Write(records[0].Headers())
 	if err != nil {

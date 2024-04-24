@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +24,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List the pending and errored import jobs for uploaded recordings",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -37,7 +37,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
-				console.PendingImportsRequest{
+				api.PendingImportsRequest{
 					RequestId:       requestId,
 					DeviceId:        deviceId,
 					DeviceName:      deviceName,

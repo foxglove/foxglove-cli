@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/foxglove/foxglove-cli/foxglove/util"
 	"github.com/foxglove/go-rosbag"
 	"github.com/foxglove/mcap/go/mcap"
@@ -179,9 +179,9 @@ func TestDoExport(t *testing.T) {
 	t.Run("single request success", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
-		client := console.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
+		client := api.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)
 		start, err := time.Parse(time.RFC3339, "2001-01-01T00:00:00Z")
@@ -211,7 +211,7 @@ func TestDoExport(t *testing.T) {
 			"abc",
 			token,
 			"user-agent",
-			&console.StreamRequest{
+			&api.StreamRequest{
 				DeviceID:     "test-device",
 				Start:        &start,
 				End:          &end,
@@ -233,7 +233,7 @@ func TestExportCommand(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		buf := &bytes.Buffer{}
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
 		err = executeExport(
 			ctx,
@@ -242,7 +242,7 @@ func TestExportCommand(t *testing.T) {
 			"",
 			"abc",
 			"user-agent",
-			&console.StreamRequest{
+			&api.StreamRequest{
 				DeviceID:     "test-device",
 				Start:        &start,
 				End:          &end,
@@ -250,13 +250,13 @@ func TestExportCommand(t *testing.T) {
 				Topics:       []string{"/diagnostics"},
 			},
 		)
-		assert.ErrorIs(t, err, console.ErrForbidden)
+		assert.ErrorIs(t, err, api.ErrForbidden)
 	})
 	t.Run("returns error on invalid format", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		buf := &bytes.Buffer{}
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
 		err = executeExport(
 			ctx,
@@ -265,7 +265,7 @@ func TestExportCommand(t *testing.T) {
 			"",
 			"abc",
 			"user-agent",
-			&console.StreamRequest{
+			&api.StreamRequest{
 				DeviceID:     "test-device",
 				Start:        &start,
 				End:          &end,
@@ -280,9 +280,9 @@ func TestExportCommand(t *testing.T) {
 		err := withStdoutRedirected(buf, func() {
 			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 			defer cancel()
-			sv, err := console.NewMockServer(ctx)
+			sv, err := api.NewMockServer(ctx)
 			assert.Nil(t, err)
-			client := console.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
+			client := api.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 			token, err := client.SignIn("client-id")
 			assert.Nil(t, err)
 			err = executeExport(
@@ -292,7 +292,7 @@ func TestExportCommand(t *testing.T) {
 				"abc",
 				token,
 				"user-agent",
-				&console.StreamRequest{
+				&api.StreamRequest{
 					DeviceID:     "test-device",
 					Start:        &start,
 					End:          &end,
@@ -309,9 +309,9 @@ func TestExportCommand(t *testing.T) {
 		buf := &bytes.Buffer{}
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
-		client := console.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
+		client := api.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)
 		clientID := "client-id"
@@ -337,7 +337,7 @@ func TestExportCommand(t *testing.T) {
 				"abc",
 				token,
 				"user-agent",
-				&console.StreamRequest{
+				&api.StreamRequest{
 					DeviceID:     "test-device",
 					Start:        &start,
 					End:          &end,
@@ -354,9 +354,9 @@ func TestExportCommand(t *testing.T) {
 		buf := &bytes.Buffer{}
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
-		client := console.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
+		client := api.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)
 		clientID := "client-id"
@@ -382,7 +382,7 @@ func TestExportCommand(t *testing.T) {
 				"abc",
 				token,
 				"user-agent",
-				&console.StreamRequest{
+				&api.StreamRequest{
 					DeviceID:     "test-device",
 					Start:        &start,
 					End:          &end,
