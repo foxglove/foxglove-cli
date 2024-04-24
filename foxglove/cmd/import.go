@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,8 +21,8 @@ func executeImport(baseURL, clientID, deviceID, deviceName, key, filename, token
 	if err != nil {
 		return err
 	}
-	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	err = console.Import(ctx, client, deviceID, deviceName, key, filename)
+	client := api.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+	err = api.Import(ctx, client, deviceID, deviceName, key, filename)
 	if err != nil {
 		return err
 	}
@@ -31,12 +31,12 @@ func executeImport(baseURL, clientID, deviceID, deviceName, key, filename, token
 }
 
 func importFromEdge(baseURL, clientID, token, userAgent, edgeRecordingID string) error {
-	client := console.NewRemoteFoxgloveClient(
+	client := api.NewRemoteFoxgloveClient(
 		baseURL, clientID,
 		token,
 		userAgent,
 	)
-	_, err := client.ImportFromEdge(console.ImportFromEdgeRequest{}, edgeRecordingID)
+	_, err := client.ImportFromEdge(api.ImportFromEdgeRequest{}, edgeRecordingID)
 	if err != nil {
 		return err
 	}

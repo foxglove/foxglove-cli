@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List imports for a device",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -45,7 +45,7 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
-				&console.ImportsRequest{
+				&api.ImportsRequest{
 					DeviceID:       deviceID,
 					Start:          startTime,
 					End:            endTime,

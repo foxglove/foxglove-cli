@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List coverage ranges",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -39,7 +39,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
-				&console.CoverageRequest{
+				&api.CoverageRequest{
 					DeviceID:              deviceID,
 					DeviceName:            deviceName,
 					Start:                 startTime,

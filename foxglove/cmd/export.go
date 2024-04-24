@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/foxglove/go-rosbag"
 	"github.com/foxglove/go-rosbag/ros1msg"
 	"github.com/foxglove/mcap/go/mcap"
@@ -451,7 +451,7 @@ func doExport(
 	clientID string,
 	bearerToken string,
 	userAgent string,
-	request *console.StreamRequest,
+	request *api.StreamRequest,
 ) error {
 	tmpdir, err := os.MkdirTemp(".", "export")
 	if err != nil {
@@ -769,13 +769,13 @@ func executeExport(
 	clientID string,
 	bearerToken string,
 	userAgent string,
-	request *console.StreamRequest,
+	request *api.StreamRequest,
 ) error {
 	debugf("exporting with request: %+v", request)
 	if !validOutputFormat(request.OutputFormat) {
 		return ErrInvalidFormat
 	}
-	client := console.NewRemoteFoxgloveClient(
+	client := api.NewRemoteFoxgloveClient(
 		baseURL,
 		clientID,
 		bearerToken,
@@ -795,7 +795,7 @@ func executeExport(
 		errs := make(chan error, 1)
 		done := make(chan bool, 1)
 		go func() {
-			err = console.Export(ctx, pipeWriter, client, request)
+			err = api.Export(ctx, pipeWriter, client, request)
 			if err != nil {
 				errs <- err
 				return
@@ -814,7 +814,7 @@ func executeExport(
 			return err
 		}
 	} else {
-		return console.Export(ctx, writer, client, request)
+		return api.Export(ctx, writer, client, request)
 	}
 }
 
@@ -828,7 +828,7 @@ func createStreamRequest(
 	end string,
 	outputFormat string,
 	topicList string,
-) (*console.StreamRequest, error) {
+) (*api.StreamRequest, error) {
 	var startTime, endTime *time.Time
 	if start != "" {
 		start, err := time.Parse(time.RFC3339, start)
@@ -848,7 +848,7 @@ func createStreamRequest(
 
 	topics := strings.FieldsFunc(topicList, func(c rune) bool { return c == ',' })
 
-	request := &console.StreamRequest{
+	request := &api.StreamRequest{
 		RecordingID:  recordingID,
 		Key:          key,
 		ImportID:     importID,

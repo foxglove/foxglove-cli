@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 )
 
 type OrgCustomProperties map[string]PropertyDefinition
@@ -17,7 +17,7 @@ type PropertyDefinition struct {
 
 // Validate CLI properties input & convert to args for a device request.
 // This requires downloading the available properties for the org.
-func DeviceProperties(propertyPairs []string, client *console.FoxgloveClient) (map[string]interface{}, error) {
+func DeviceProperties(propertyPairs []string, client *api.FoxgloveClient) (map[string]interface{}, error) {
 	if len(propertyPairs) == 0 {
 		return nil, nil
 	}
@@ -66,8 +66,8 @@ func DeviceProperties(propertyPairs []string, client *console.FoxgloveClient) (m
 }
 
 // Download device custom properties and convert to a lookup map
-func fetchAvailableProperties(client *console.FoxgloveClient) (OrgCustomProperties, error) {
-	propertiesResp, err := client.DeviceCustomProperties(console.CustomPropertiesRequest{
+func fetchAvailableProperties(client *api.FoxgloveClient) (OrgCustomProperties, error) {
+	propertiesResp, err := client.DeviceCustomProperties(api.CustomPropertiesRequest{
 		ResourceType: "device",
 	})
 	if err != nil {

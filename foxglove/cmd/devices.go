@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/foxglove/foxglove-cli/foxglove/util"
 	"github.com/spf13/cobra"
 )
@@ -16,7 +16,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List devices registered to your organization",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -24,7 +24,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
-				console.DevicesRequest{},
+				api.DevicesRequest{},
 				client.Devices,
 				format,
 			)
@@ -47,7 +47,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 		Use:   "add",
 		Short: "Add a device for your organization",
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -62,7 +62,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 				dief("Failed to create device: %s", err)
 			}
 
-			resp, err := client.CreateDevice(console.CreateDeviceRequest{
+			resp, err := client.CreateDevice(api.CreateDeviceRequest{
 				Name:       name,
 				Properties: properties,
 			})
@@ -87,7 +87,7 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 		Short: "Edit a device",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			client := console.NewRemoteFoxgloveClient(
+			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
 				params.userAgent,
@@ -99,7 +99,7 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 			}
 
 			nameOrId := args[0]
-			reqBody := console.CreateDeviceRequest{}
+			reqBody := api.CreateDeviceRequest{}
 			if properties == nil && name == "" {
 				dief("Nothing to update")
 			}
@@ -111,7 +111,7 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 				reqBody.Properties = properties
 			}
 
-			resp, err := client.EditDevice(nameOrId, console.CreateDeviceRequest{
+			resp, err := client.EditDevice(nameOrId, api.CreateDeviceRequest{
 				Name:       name,
 				Properties: properties,
 			})

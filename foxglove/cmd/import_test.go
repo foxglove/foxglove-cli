@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,7 +14,7 @@ func TestImportCommand(t *testing.T) {
 	t.Run("returns forbidden if not authenticated", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
 		err = executeImport(
 			sv.BaseURL(),
@@ -26,14 +26,14 @@ func TestImportCommand(t *testing.T) {
 			"",
 			"user-agent",
 		)
-		assert.ErrorIs(t, err, console.ErrForbidden)
+		assert.ErrorIs(t, err, api.ErrForbidden)
 	})
 	t.Run("returns friendly message when device is not registered", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		sv, err := console.NewMockServer(ctx)
+		sv, err := api.NewMockServer(ctx)
 		assert.Nil(t, err)
-		client := console.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
+		client := api.NewRemoteFoxgloveClient(sv.BaseURL(), "client-id", "", "test-app")
 		token, err := client.SignIn("client-id")
 		assert.Nil(t, err)
 		err = executeImport(

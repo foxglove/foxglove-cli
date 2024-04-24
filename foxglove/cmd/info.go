@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	tw "github.com/foxglove/foxglove-cli/foxglove/util/tablewriter"
 
 	"github.com/spf13/cobra"
@@ -18,7 +18,7 @@ func executeInfo(baseURL, clientID, token, userAgent string) error {
 		return nil
 	}
 
-	client := console.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
+	client := api.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
 	me, err := client.Me()
 	if err != nil {
 		return err

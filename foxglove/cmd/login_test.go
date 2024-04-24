@@ -5,19 +5,19 @@ import (
 	"os"
 	"testing"
 
-	"github.com/foxglove/foxglove-cli/foxglove/console"
+	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 )
 
 func TestLoginCommand(t *testing.T) {
 	ctx := context.Background()
-	sv, err := console.NewMockServer(ctx)
+	sv, err := api.NewMockServer(ctx)
 	assert.Nil(t, err)
 	configfile := "./test-config.yaml"
 	err = initConfig(&configfile)
 	assert.Nil(t, err)
-	err = executeLogin(sv.BaseURL(), "client-id", "test-app", &console.MockAuthDelegate{})
+	err = executeLogin(sv.BaseURL(), "client-id", "test-app", &api.MockAuthDelegate{})
 	assert.Nil(t, err)
 	assert.NotEmpty(t, sv.BearerTokens)
 	m := make(map[string]string)
