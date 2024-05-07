@@ -203,7 +203,7 @@ func reindexBagFile(w io.Writer, r io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("failed to construct bag reader: %w", err)
 	}
-	it, err := reader.Messages()
+	it, err := reader.Messages(rosbag.ScanLinear(true))
 	if err != nil {
 		return fmt.Errorf("failed to construct bag iterator: %w", err)
 	}
@@ -233,7 +233,7 @@ func reindexBagFile(w io.Writer, r io.Reader) error {
 			return err
 		}
 	}
-	return nil
+	return writer.Close()
 }
 
 // reindexMCAPFile rewrites an MCAP file to a new output location, and properly
