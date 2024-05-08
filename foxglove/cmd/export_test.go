@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/foxglove/go-rosbag"
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func withStdoutRedirected(output io.Writer, f func()) error {
@@ -406,4 +408,40 @@ func TestExportCommand(t *testing.T) {
 		}
 		assert.Equal(t, 30445, count)
 	})
+}
+
+func copyTo(t *testing.T, from, to string) {
+	infile, err := os.Open(from)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, infile.Close())
+	}()
+	outfile, err := os.Create(to)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, outfile.Close())
+	}()
+	_, err = io.Copy(outfile, infile)
+	require.NoError(t, err)
+}
+
+func TestReindexBag(t *testing.T) {
+	workingPath := filepath.Join(t.TempDir(), "gps.bag.active")
+	copyTo(t, "../testdata/gps.bag.active", workingPath)
+	didReindex, info, err := reindex(t.TempDir(), workingPath, "bag1")
+	require.NoError(t, err)
+	require.True(t, didReindex)
+	require.Equal(t, 30445, int(info.messageCount))
+
+	// check that the new bag is indexed by retrieving Info() from it
+	fd, err := os.Open(workingPath)
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, fd.Close())
+	}()
+	reader, err := rosbag.NewReader(fd)
+	require.NoError(t, err)
+	bagInfo, err := reader.Info()
+	require.NoError(t, err)
+	require.Equal(t, 30445, int(bagInfo.MessageCount))
 }
