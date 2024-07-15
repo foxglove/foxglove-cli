@@ -64,6 +64,9 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 			if len(args) == 0 {
 				dief("Filename not specified")
 			}
+			if len(args) > 1 {
+				dief("Only one filename can be specified")
+			}
 			filename := args[0]
 			err := executeImport(
 				params.baseURL,
