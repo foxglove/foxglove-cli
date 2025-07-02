@@ -370,6 +370,11 @@ func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, e
 	return resp, err
 }
 
+func (c *FoxgloveClient) Projects(req ProjectsRequest) (resp []ProjectsResponse, err error) {
+	err = c.get("/v1/projects", req, &resp)
+	return resp, err
+}
+
 func (c *FoxgloveClient) Recordings(req *RecordingsRequest) (resp []RecordingsResponse, err error) {
 	err = c.get("/v1/recordings", req, &resp)
 	return resp, err

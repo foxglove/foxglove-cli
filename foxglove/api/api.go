@@ -154,6 +154,37 @@ func (r AttachmentsResponse) Headers() []string {
 	}
 }
 
+type ProjectsRequest struct{}
+
+type ProjectsResponse struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name,omitempty"`
+	OrgMemberCount int        `json:"orgMemberCount"`
+	LastSeenAt     *time.Time `json:"lastSeenAt,omitempty"`
+}
+
+func (r ProjectsResponse) Fields() []string {
+	lastSeenAt := ""
+	if r.LastSeenAt != nil {
+		lastSeenAt = r.LastSeenAt.Format(time.RFC3339)
+	}
+	return []string{
+		r.ID,
+		r.Name,
+		fmt.Sprintf("%d", r.OrgMemberCount),
+		lastSeenAt,
+	}
+}
+
+func (r ProjectsResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Name",
+		"Member Count",
+		"Last Recording Uploaded At",
+	}
+}
+
 type RecordingsRequest struct {
 	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName   string `json:"device.name" form:"device.name,omitempty"`

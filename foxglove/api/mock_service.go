@@ -341,6 +341,21 @@ func (s *MockFoxgloveServer) customProperties(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func (s *MockFoxgloveServer) projects(w http.ResponseWriter, r *http.Request) {
+	projects := []ProjectsResponse{
+		{
+			ID:             "prj_mHH1Cp4gPybCPR8y",
+			Name:           "My First Project",
+			OrgMemberCount: 11,
+			LastSeenAt:     nil,
+		},
+	}
+	err := json.NewEncoder(w).Encode(projects)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func (s *MockFoxgloveServer) RegisteredProperties() []CustomPropertiesResponseItem {
 	return s.registeredProperties
 }
@@ -408,6 +423,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.createDevice)).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
 	r.HandleFunc("/v1/devices/{id}", sv.withAuthz(sv.editDevice)).Methods("PATCH")
+	r.HandleFunc("/v1/projects", sv.withAuthz(sv.projects)).Methods("GET")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")
 	r.HandleFunc("/v1/extensions/{id}", sv.withAuthz(sv.deleteExtension)).Methods("DELETE")

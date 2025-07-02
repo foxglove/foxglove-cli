@@ -14,7 +14,7 @@ import (
 const (
 	foxgloveClientID = "d51173be08ed4cf7a734aed9ac30afd0"
 	appname          = "foxglove-cli"
-	defaultBaseURL   = "https://api.foxglove.dev"
+	defaultBaseURL   = "http://localhost:3000/api"
 )
 
 func configfile() (string, error) {
@@ -158,6 +158,10 @@ func Execute(version string) {
 		Use:   "pending-imports",
 		Short: "List pending imports",
 	}
+	projectsCmd := &cobra.Command{
+		Use:   "projects",
+		Short: "List and manage projects",
+	}
 
 	var clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -226,6 +230,7 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 	pendingImportsCmd.AddCommand(newPendingImportsCommand(params))
+	projectsCmd.AddCommand(newListProjectsCommand(params))
 
 	rootCmd.AddCommand(
 		authCmd,
@@ -237,6 +242,7 @@ func Execute(version string) {
 		recordingsCmd,
 		eventsCmd,
 		pendingImportsCmd,
+		projectsCmd,
 	)
 
 	cobra.CheckErr(rootCmd.Execute())

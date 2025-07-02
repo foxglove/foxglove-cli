@@ -66,6 +66,18 @@ $ foxglove devices list
     | dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
+### Projects
+
+List all projects:
+
+```
+$ foxglove projects list
+    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT |
+    |----------------------|--------------------|--------------|----------------------------|
+    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       |
+    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       |
+```
+
 ### Imports
 
 Import ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
