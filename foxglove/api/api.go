@@ -27,6 +27,7 @@ type UploadRequest struct {
 	DeviceID   string `json:"device.id,omitempty"`
 	Key        string `json:"key,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
+	ProjectID  string `json:"projectId,omitempty"`
 }
 
 type UploadResponse struct {

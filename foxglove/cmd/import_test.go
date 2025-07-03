@@ -19,6 +19,7 @@ func TestImportCommand(t *testing.T) {
 		err = executeImport(
 			sv.BaseURL(),
 			"abc",
+			"prj_1234abcd",
 			"test-device",
 			"",
 			"",
@@ -39,6 +40,7 @@ func TestImportCommand(t *testing.T) {
 		err = executeImport(
 			sv.BaseURL(),
 			"abc",
+			"prj_1234abcd",
 			"unregistered-device",
 			"",
 			"",

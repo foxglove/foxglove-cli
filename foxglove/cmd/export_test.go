@@ -190,9 +190,11 @@ func TestDoExport(t *testing.T) {
 		assert.Nil(t, err)
 		clientID := "client-id"
 		deviceID := "test-device"
+		projectID := "prj_1234abcd"
 		err = executeImport(
 			sv.BaseURL(),
 			clientID,
+			projectID,
 			deviceID,
 			"",
 			"",
@@ -318,9 +320,11 @@ func TestExportCommand(t *testing.T) {
 		assert.Nil(t, err)
 		clientID := "client-id"
 		deviceID := "test-device"
+		projectID := "prj_1234abcd"
 		err = executeImport(
 			sv.BaseURL(),
 			clientID,
+			projectID,
 			deviceID,
 			"",
 			"",
@@ -363,9 +367,11 @@ func TestExportCommand(t *testing.T) {
 		assert.Nil(t, err)
 		clientID := "client-id"
 		deviceID := "test-device"
+		projectID := "prj_1234abcd"
 		err = executeImport(
 			sv.BaseURL(),
 			clientID,
+			projectID,
 			deviceID,
 			"",
 			"",
