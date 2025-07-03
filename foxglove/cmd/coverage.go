@@ -8,6 +8,7 @@ import (
 )
 
 func newListCoverageCommand(params *baseParams) *cobra.Command {
+	var projectID string
 	var deviceName string
 	var deviceID string
 	var format string
@@ -40,6 +41,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 			err = renderList(
 				os.Stdout,
 				&api.CoverageRequest{
+					ProjectID:             projectID,
 					DeviceID:              deviceID,
 					DeviceName:            deviceName,
 					Start:                 startTime,
@@ -57,6 +59,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	coverageListCmd.InheritedFlags()
+	coverageListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID")
 	coverageListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
 	coverageListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	coverageListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")

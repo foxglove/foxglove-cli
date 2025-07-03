@@ -392,6 +392,7 @@ func (r EventResponseItem) Headers() []string {
 }
 
 type CoverageRequest struct {
+	ProjectID             string `json:"projectId" form:"projectId,omitempty"`
 	Tolerance             int    `json:"tolerance" form:"tolerance,omitempty"`
 	RecordingID           string `json:"recordingId" form:"recordingId,omitempty"`
 	IncludeEdgeRecordings bool   `json:"includeEdgeRecordings" form:"includeEdgeRecordings,omitempty"`
