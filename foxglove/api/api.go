@@ -24,10 +24,10 @@ type TokenResponse struct {
 
 type UploadRequest struct {
 	Filename   string `json:"filename"`
+	ProjectID  string `json:"projectId,omitempty"`
 	DeviceID   string `json:"device.id,omitempty"`
 	Key        string `json:"key,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
-	ProjectID  string `json:"projectId,omitempty"`
 }
 
 type UploadResponse struct {
@@ -69,7 +69,6 @@ type DeviceCodeRequest struct {
 
 type DeviceCodeResponse struct {
 	DeviceCode              string `json:"deviceCode"`
-	ProjectID               string `json:"projectId"`
 	UserCode                string `json:"userCode"`
 	ExpiresIn               int    `json:"expiresIn"`
 	Interval                int    `json:"interval"`
@@ -84,10 +83,10 @@ type DevicesRequest struct {
 type DevicesResponse struct {
 	ID         string                 `json:"id"`
 	Name       string                 `json:"name"`
-	ProjectID  string                 `json:"projectId"`
 	Properties map[string]interface{} `json:"properties"`
 	CreatedAt  time.Time              `json:"createdAt"`
 	UpdatedAt  time.Time              `json:"updatedAt"`
+	ProjectID  string                 `json:"projectId"`
 }
 
 func (r DevicesResponse) Fields() []string {
@@ -95,10 +94,10 @@ func (r DevicesResponse) Fields() []string {
 	return []string{
 		r.ID,
 		r.Name,
-		r.ProjectID,
 		string(properties),
 		r.CreatedAt.Format(time.RFC3339),
 		r.UpdatedAt.Format(time.RFC3339),
+		r.ProjectID,
 	}
 }
 
@@ -106,10 +105,10 @@ func (r DevicesResponse) Headers() []string {
 	return []string{
 		"ID",
 		"Name",
-		"Project ID",
 		"Custom Properties",
 		"Created At",
 		"Updated At",
+		"Project ID",
 	}
 }
 
@@ -355,7 +354,6 @@ type EventsRequest struct {
 type EventResponseItem struct {
 	ID        string            `json:"id"`
 	Device    DeviceSummary     `json:"device"`
-	ProjectID string            `json:"projectId,omitempty"`
 	Start     string            `json:"start"`
 	End       string            `json:"end"`
 	Metadata  map[string]string `json:"metadata"`
@@ -369,7 +367,6 @@ func (r EventResponseItem) Fields() []string {
 		r.ID,
 		r.Device.ID,
 		r.Device.Name,
-		r.ProjectID,
 		r.Start,
 		r.End,
 		r.CreatedAt,
@@ -392,8 +389,8 @@ func (r EventResponseItem) Headers() []string {
 }
 
 type CoverageRequest struct {
-	ProjectID             string `json:"projectId" form:"projectId,omitempty"`
 	Tolerance             int    `json:"tolerance" form:"tolerance,omitempty"`
+	ProjectID             string `json:"projectId" form:"projectId,omitempty"`
 	RecordingID           string `json:"recordingId" form:"recordingId,omitempty"`
 	IncludeEdgeRecordings bool   `json:"includeEdgeRecordings" form:"includeEdgeRecordings,omitempty"`
 	DeviceID              string `json:"device.id" form:"device.id,omitempty"`
@@ -451,8 +448,8 @@ type CreateDeviceRequest struct {
 type CreateDeviceResponse struct {
 	ID         string                 `json:"id"`
 	Name       string                 `json:"name"`
-	ProjectID  string                 `json:"projectId"`
 	Properties map[string]interface{} `json:"properties"`
+	ProjectID  string                 `json:"projectId"`
 }
 
 type EditDeviceRequest struct {
