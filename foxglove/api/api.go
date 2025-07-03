@@ -535,6 +535,9 @@ type PendingImportsRequest struct {
 	ShowCompleted   bool   `json:"showCompleted" form:"showCompleted,omitempty"`
 	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
 	SiteId          string `json:"siteId" form:"siteId,omitempty"`
+	ProjectID       string `json:"projectId" form:"projectId,omitempty"`
+	// Note that `HasProjectID` is string, because an optional `false` boolean would get omitted.
+	HasProjectID string `json:"hasProjectId" form:"hasProjectId,omitempty"`
 }
 
 type PendingImportsResponseItem struct {
@@ -548,6 +551,7 @@ type PendingImportsResponseItem struct {
 	DeviceName    string    `json:"deviceName"`
 	ImportId      string    `json:"importId"`
 	SiteId        string    `json:"siteId"`
+	ProjectID     string    `json:"projectId"`
 	Status        string    `json:"status"`
 	Error         string    `json:"error"`
 }
@@ -566,6 +570,7 @@ func (r PendingImportsResponseItem) Fields() []string {
 		r.DeviceName,
 		r.ImportId,
 		r.SiteId,
+		r.ProjectID,
 		r.Status,
 		r.Error,
 	}
@@ -583,6 +588,7 @@ func (r PendingImportsResponseItem) Headers() []string {
 		"Device name",
 		"Import ID",
 		"Site ID",
+		"Project ID",
 		"Status",
 		"Error",
 	}

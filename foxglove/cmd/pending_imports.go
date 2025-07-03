@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
@@ -19,6 +20,8 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var showQuarantined bool
 	var siteId string
 	var updatedSince string
+	var projectID string
+	var hasProjectID string
 	var isJsonFormat bool
 	pendingImportsCmd := &cobra.Command{
 		Use:   "list",
@@ -34,20 +37,30 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Failed to parse value of --updated-since: %s\n", err)
 				os.Exit(1)
 			}
+			if hasProjectID != "" {
+				_, err := strconv.ParseBool(hasProjectID)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Invalid value for --has-project-id: %s. Must be 'true' or 'false'\n", err)
+					os.Exit(1)
+				}
+			}
 			format = ResolveFormat(format, isJsonFormat)
+			req := api.PendingImportsRequest{
+				RequestId:       requestId,
+				DeviceId:        deviceId,
+				DeviceName:      deviceName,
+				Error:           error,
+				Filename:        filename,
+				UpdatedSince:    parsedUpdatedSince,
+				ShowCompleted:   showCompleted,
+				ShowQuarantined: showQuarantined,
+				SiteId:          siteId,
+				ProjectID:       projectID,
+				HasProjectID:    hasProjectID,
+			}
 			err = renderList(
 				os.Stdout,
-				api.PendingImportsRequest{
-					RequestId:       requestId,
-					DeviceId:        deviceId,
-					DeviceName:      deviceName,
-					Error:           error,
-					Filename:        filename,
-					UpdatedSince:    parsedUpdatedSince,
-					ShowCompleted:   showCompleted,
-					ShowQuarantined: showQuarantined,
-					SiteId:          siteId,
-				},
+				req,
 				client.PendingImports,
 				format,
 			)
@@ -58,6 +71,8 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	pendingImportsCmd.InheritedFlags()
+	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&hasProjectID, "has-project-id", "", "", "Use `false` to find pending imports not yet associated with a project")
 	pendingImportsCmd.PersistentFlags().StringVarP(&requestId, "request-id", "", "", "Request ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceId, "device-id", "", "", "Device ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
