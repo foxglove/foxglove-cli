@@ -19,7 +19,7 @@ func TestListProjectsCommand(t *testing.T) {
 		assert.Nil(t, err)
 
 		assert.Contains(t, projects, api.ProjectsResponse{
-			ID:             "prj_mHH1Cp4gPybCPR8y",
+			ID:             "prj_1234abcd",
 			Name:           "My First Project",
 			OrgMemberCount: 11,
 			LastSeenAt:     nil,

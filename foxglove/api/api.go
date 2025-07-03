@@ -68,6 +68,7 @@ type DeviceCodeRequest struct {
 
 type DeviceCodeResponse struct {
 	DeviceCode              string `json:"deviceCode"`
+	ProjectID               string `json:"projectId"`
 	UserCode                string `json:"userCode"`
 	ExpiresIn               int    `json:"expiresIn"`
 	Interval                int    `json:"interval"`
@@ -75,11 +76,14 @@ type DeviceCodeResponse struct {
 	VerificationUriComplete string `json:"verificationUriComplete"`
 }
 
-type DevicesRequest struct{}
+type DevicesRequest struct {
+	ProjectID string `json:"projectId" form:"projectId,omitempty"`
+}
 
 type DevicesResponse struct {
 	ID         string                 `json:"id"`
 	Name       string                 `json:"name"`
+	ProjectID  string                 `json:"projectId"`
 	Properties map[string]interface{} `json:"properties"`
 	CreatedAt  time.Time              `json:"createdAt"`
 	UpdatedAt  time.Time              `json:"updatedAt"`
@@ -90,6 +94,7 @@ func (r DevicesResponse) Fields() []string {
 	return []string{
 		r.ID,
 		r.Name,
+		r.ProjectID,
 		string(properties),
 		r.CreatedAt.Format(time.RFC3339),
 		r.UpdatedAt.Format(time.RFC3339),
@@ -100,6 +105,7 @@ func (r DevicesResponse) Headers() []string {
 	return []string{
 		"ID",
 		"Name",
+		"Project ID",
 		"Custom Properties",
 		"Created At",
 		"Updated At",
@@ -430,12 +436,14 @@ type ErrorResponse struct {
 
 type CreateDeviceRequest struct {
 	Name       string                 `json:"name"`
+	ProjectID  string                 `json:"projectId,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 type CreateDeviceResponse struct {
 	ID         string                 `json:"id"`
 	Name       string                 `json:"name"`
+	ProjectID  string                 `json:"projectId"`
 	Properties map[string]interface{} `json:"properties"`
 }
 
