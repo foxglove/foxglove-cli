@@ -194,6 +194,7 @@ func (r ProjectsResponse) Headers() []string {
 type RecordingsRequest struct {
 	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName   string `json:"device.name" form:"device.name,omitempty"`
+	ProjectID    string `json:"projectId" form:"projectId,omitempty"`
 	Start        string `json:"start" form:"start,omitempty"`
 	End          string `json:"end" form:"end,omitempty"`
 	Path         string `json:"path" form:"path,omitempty"`
@@ -236,6 +237,7 @@ type RecordingsResponse struct {
 	Device       DeviceSummary    `json:"device"`
 	Metadata     []MetadataRecord `json:"metadata"`
 	Key          string           `json:"key"`
+	ProjectID    string           `json:"projectId"`
 }
 
 func (r RecordingsResponse) Headers() []string {
@@ -257,6 +259,7 @@ func (r RecordingsResponse) Headers() []string {
 		"Device Name",
 		"Metadata",
 		"Key",
+		"Project ID",
 	}
 }
 
@@ -280,6 +283,7 @@ func (r RecordingsResponse) Fields() []string {
 		r.Device.Name,
 		string(metadata),
 		r.Key,
+		r.ProjectID,
 	}
 }
 
@@ -350,6 +354,7 @@ type EventsRequest struct {
 type EventResponseItem struct {
 	ID        string            `json:"id"`
 	Device    DeviceSummary     `json:"device"`
+	ProjectID string            `json:"projectId,omitempty"`
 	Start     string            `json:"start"`
 	End       string            `json:"end"`
 	Metadata  map[string]string `json:"metadata"`
@@ -363,6 +368,7 @@ func (r EventResponseItem) Fields() []string {
 		r.ID,
 		r.Device.ID,
 		r.Device.Name,
+		r.ProjectID,
 		r.Start,
 		r.End,
 		r.CreatedAt,

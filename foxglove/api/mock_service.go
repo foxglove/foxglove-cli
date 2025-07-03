@@ -152,6 +152,7 @@ func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request
 	resp := CreateDeviceResponse{
 		ID:         fmt.Sprintf("dev_%s", req.Name),
 		Name:       req.Name,
+		ProjectID:  req.ProjectID,
 		Properties: req.Properties,
 	}
 
@@ -165,6 +166,7 @@ func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request
 	s.registeredDevices = append(s.registeredDevices, DevicesResponse{
 		ID:         resp.ID,
 		Name:       resp.Name,
+		ProjectID:  resp.ProjectID,
 		Properties: resp.Properties,
 	})
 }
@@ -344,7 +346,7 @@ func (s *MockFoxgloveServer) customProperties(w http.ResponseWriter, r *http.Req
 func (s *MockFoxgloveServer) projects(w http.ResponseWriter, r *http.Request) {
 	projects := []ProjectsResponse{
 		{
-			ID:             "prj_mHH1Cp4gPybCPR8y",
+			ID:             "prj_1234abcd",
 			Name:           "My First Project",
 			OrgMemberCount: 11,
 			LastSeenAt:     nil,
@@ -394,6 +396,7 @@ func mockServer(port int) *MockFoxgloveServer {
 			{
 				ID:        "test-device",
 				Name:      "my test device",
+				ProjectID: "prj_1234abcd",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			},
