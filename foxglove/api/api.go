@@ -535,7 +535,7 @@ type PendingImportsRequest struct {
 	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
 	SiteId          string `json:"siteId" form:"siteId,omitempty"`
 	ProjectID       string `json:"projectId" form:"projectId,omitempty"`
-	// Note that `HasProjectID` is a string to be able to submit "false" as a value
+	// NOTE `HasProjectID` is a string because `false` booleans count as "empty" and get omitted.
 	HasProjectID string `json:"hasProjectId" form:"hasProjectId,omitempty"`
 }
 
