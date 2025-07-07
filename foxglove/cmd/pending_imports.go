@@ -41,22 +41,21 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				hasProjectID = "false"
 			}
 			format = ResolveFormat(format, isJsonFormat)
-			req := api.PendingImportsRequest{
-				RequestId:       requestId,
-				DeviceId:        deviceId,
-				DeviceName:      deviceName,
-				Error:           error,
-				Filename:        filename,
-				UpdatedSince:    parsedUpdatedSince,
-				ShowCompleted:   showCompleted,
-				ShowQuarantined: showQuarantined,
-				SiteId:          siteId,
-				ProjectID:       projectID,
-				HasProjectID:    hasProjectID,
-			}
 			err = renderList(
 				os.Stdout,
-				req,
+				api.PendingImportsRequest{
+					RequestId:       requestId,
+					DeviceId:        deviceId,
+					DeviceName:      deviceName,
+					Error:           error,
+					Filename:        filename,
+					UpdatedSince:    parsedUpdatedSince,
+					ShowCompleted:   showCompleted,
+					ShowQuarantined: showQuarantined,
+					SiteId:          siteId,
+					ProjectID:       projectID,
+					HasProjectID:    hasProjectID,
+				},
 				client.PendingImports,
 				format,
 			)
