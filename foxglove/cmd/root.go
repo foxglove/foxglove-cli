@@ -14,7 +14,7 @@ import (
 const (
 	foxgloveClientID = "d51173be08ed4cf7a734aed9ac30afd0"
 	appname          = "foxglove-cli"
-	defaultBaseURL   = "http://localhost:3000/api"
+	defaultBaseURL   = "https://api.foxglove.dev"
 )
 
 func configfile() (string, error) {
