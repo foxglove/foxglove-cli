@@ -6,6 +6,7 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func newPendingImportsCommand(params *baseParams) *cobra.Command {
@@ -66,7 +67,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	pendingImportsCmd.InheritedFlags()
-	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	pendingImportsCmd.PersistentFlags().BoolVarP(&withoutProject, "without-project", "", false, "Filter to pending imports without a project")
 	pendingImportsCmd.PersistentFlags().StringVarP(&requestId, "request-id", "", "", "Request ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceId, "device-id", "", "", "Device ID")

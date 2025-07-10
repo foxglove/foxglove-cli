@@ -44,6 +44,15 @@ func configureAuth(token, baseURL string, authType AuthType) error {
 	return nil
 }
 
+func configureProjectID(projectID string) error {
+	viper.Set("default_project_id", projectID)
+	err := viper.WriteConfigAs(viper.ConfigFileUsed())
+	if err != nil {
+		return fmt.Errorf("Failed to write config: %w", err)
+	}
+	return nil
+}
+
 var logDebug bool
 
 func debugMode() bool {
@@ -209,8 +218,10 @@ func Execute(version string) {
 	loginCmd := newLoginCommand(params)
 	infoCmd := newInfoCommand(params)
 	configureAPIKey := newConfigureAPIKeyCommand()
+	configureProjectID := newConfigureProjectIDCommand()
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(configureAPIKey)
+	authCmd.AddCommand(configureProjectID)
 	authCmd.AddCommand(infoCmd)
 	recordingsCmd.AddCommand(newListRecordingsCommand(params))
 	recordingsCmd.AddCommand(newDeleteRecordingCommand(params))

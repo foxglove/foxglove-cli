@@ -81,7 +81,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 		},
 	}
 	importCmd.InheritedFlags()
-	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
+	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "project ID")
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "recording key")
