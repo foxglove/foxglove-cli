@@ -68,6 +68,9 @@ $ foxglove devices list
 
 ### Projects
 
+Projects provide data isolation and access control to resources. See if your organization
+has [Projects](https://docs.foxglove.dev/docs/projects) enabled.
+
 List all projects:
 
 ```
