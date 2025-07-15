@@ -13,6 +13,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	var deviceID string
 	var deviceName string
 	var primarySiteID string
+	var projectID string
 	var edgeSiteID string
 	var path string
 	var start string
@@ -46,6 +47,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 				&api.RecordingsRequest{
 					DeviceID:     deviceID,
 					DeviceName:   deviceName,
+					ProjectID:    projectID,
 					Start:        startTime,
 					End:          endTime,
 					Path:         path,
@@ -67,6 +69,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	recordingsListCmd.InheritedFlags()
+	recordingsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	recordingsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of data range (ISO8601 format)")

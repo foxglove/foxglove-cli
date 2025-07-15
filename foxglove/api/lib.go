@@ -61,6 +61,7 @@ func Export(
 func Import(
 	ctx context.Context,
 	client *FoxgloveClient,
+	projectID string,
 	deviceID string,
 	deviceName string,
 	key string,
@@ -82,6 +83,7 @@ func Import(
 	err = client.Upload(&reader, UploadRequest{
 		Filename:   name,
 		Key:        key,
+		ProjectID:  projectID,
 		DeviceID:   deviceID,
 		DeviceName: deviceName,
 	})

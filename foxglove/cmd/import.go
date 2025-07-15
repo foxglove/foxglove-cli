@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func executeImport(baseURL, clientID, deviceID, deviceName, key, filename, token, userAgent string) error {
+func executeImport(baseURL, clientID, projectID, deviceID, deviceName, key, filename, token, userAgent string) error {
 	ctx := context.Background()
 	f, err := os.Open(filename)
 	if err != nil {
@@ -22,7 +22,7 @@ func executeImport(baseURL, clientID, deviceID, deviceName, key, filename, token
 		return err
 	}
 	client := api.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	err = api.Import(ctx, client, deviceID, deviceName, key, filename)
+	err = api.Import(ctx, client, projectID, deviceID, deviceName, key, filename)
 	if err != nil {
 		return err
 	}
@@ -45,6 +45,7 @@ func importFromEdge(baseURL, clientID, token, userAgent, edgeRecordingID string)
 }
 
 func newImportCommand(params *baseParams, commandName string) (*cobra.Command, error) {
+	var projectID string
 	var deviceID string
 	var deviceName string
 	var edgeRecordingID string
@@ -66,6 +67,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 			err := executeImport(
 				params.baseURL,
 				*params.clientID,
+				projectID,
 				deviceID,
 				deviceName,
 				key,
@@ -79,6 +81,7 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 		},
 	}
 	importCmd.InheritedFlags()
+	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "recording key")

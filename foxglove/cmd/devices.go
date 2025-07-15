@@ -12,6 +12,7 @@ import (
 func newListDevicesCommand(params *baseParams) *cobra.Command {
 	var format string
 	var isJsonFormat bool
+	var projectID string
 	deviceListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List devices registered to your organization",
@@ -24,7 +25,9 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
-				api.DevicesRequest{},
+				api.DevicesRequest{
+					ProjectID: projectID,
+				},
 				client.Devices,
 				format,
 			)
@@ -34,6 +37,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	deviceListCmd.InheritedFlags()
+	deviceListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
 	AddFormatFlag(deviceListCmd, &format)
 	AddJsonFlag(deviceListCmd, &isJsonFormat)
 	return deviceListCmd
@@ -41,6 +45,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 
 func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	var name string
+	var projectID string
 	var serialNumber string
 	var propertyPairs []string
 	addDeviceCmd := &cobra.Command{
@@ -64,6 +69,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 
 			resp, err := client.CreateDevice(api.CreateDeviceRequest{
 				Name:       name,
+				ProjectID:  projectID,
 				Properties: properties,
 			})
 			if err != nil {
@@ -74,6 +80,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	}
 	addDeviceCmd.InheritedFlags()
 	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "name of the device")
+	addDeviceCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
 	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "Deprecated. Value will be ignored.")
 	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
 	return addDeviceCmd

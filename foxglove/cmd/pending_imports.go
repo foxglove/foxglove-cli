@@ -19,7 +19,9 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var showQuarantined bool
 	var siteId string
 	var updatedSince string
+	var projectID string
 	var isJsonFormat bool
+	var withoutProject bool
 	pendingImportsCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the pending and errored import jobs for uploaded recordings",
@@ -34,6 +36,10 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Failed to parse value of --updated-since: %s\n", err)
 				os.Exit(1)
 			}
+			var hasProjectID string
+			if withoutProject {
+				hasProjectID = "false"
+			}
 			format = ResolveFormat(format, isJsonFormat)
 			err = renderList(
 				os.Stdout,
@@ -47,6 +53,8 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 					ShowCompleted:   showCompleted,
 					ShowQuarantined: showQuarantined,
 					SiteId:          siteId,
+					ProjectID:       projectID,
+					HasProjectID:    hasProjectID,
 				},
 				client.PendingImports,
 				format,
@@ -58,6 +66,8 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	pendingImportsCmd.InheritedFlags()
+	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID")
+	pendingImportsCmd.PersistentFlags().BoolVarP(&withoutProject, "without-project", "", false, "Filter to pending imports without a project")
 	pendingImportsCmd.PersistentFlags().StringVarP(&requestId, "request-id", "", "", "Request ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceId, "device-id", "", "", "Device ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")

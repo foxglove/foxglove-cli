@@ -152,6 +152,7 @@ func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request
 	resp := CreateDeviceResponse{
 		ID:         fmt.Sprintf("dev_%s", req.Name),
 		Name:       req.Name,
+		ProjectID:  req.ProjectID,
 		Properties: req.Properties,
 	}
 
@@ -165,6 +166,7 @@ func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request
 	s.registeredDevices = append(s.registeredDevices, DevicesResponse{
 		ID:         resp.ID,
 		Name:       resp.Name,
+		ProjectID:  resp.ProjectID,
 		Properties: resp.Properties,
 	})
 }
@@ -341,6 +343,21 @@ func (s *MockFoxgloveServer) customProperties(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func (s *MockFoxgloveServer) projects(w http.ResponseWriter, r *http.Request) {
+	projects := []ProjectsResponse{
+		{
+			ID:             "prj_1234abcd",
+			Name:           "My First Project",
+			OrgMemberCount: 11,
+			LastSeenAt:     nil,
+		},
+	}
+	err := json.NewEncoder(w).Encode(projects)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
 func (s *MockFoxgloveServer) RegisteredProperties() []CustomPropertiesResponseItem {
 	return s.registeredProperties
 }
@@ -379,6 +396,7 @@ func mockServer(port int) *MockFoxgloveServer {
 			{
 				ID:        "test-device",
 				Name:      "my test device",
+				ProjectID: "prj_1234abcd",
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
 			},
@@ -408,6 +426,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.createDevice)).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
 	r.HandleFunc("/v1/devices/{id}", sv.withAuthz(sv.editDevice)).Methods("PATCH")
+	r.HandleFunc("/v1/projects", sv.withAuthz(sv.projects)).Methods("GET")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")
 	r.HandleFunc("/v1/extensions/{id}", sv.withAuthz(sv.deleteExtension)).Methods("DELETE")

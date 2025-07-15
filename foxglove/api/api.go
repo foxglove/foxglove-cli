@@ -24,6 +24,7 @@ type TokenResponse struct {
 
 type UploadRequest struct {
 	Filename   string `json:"filename"`
+	ProjectID  string `json:"projectId,omitempty"`
 	DeviceID   string `json:"device.id,omitempty"`
 	Key        string `json:"key,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
@@ -75,7 +76,9 @@ type DeviceCodeResponse struct {
 	VerificationUriComplete string `json:"verificationUriComplete"`
 }
 
-type DevicesRequest struct{}
+type DevicesRequest struct {
+	ProjectID string `json:"projectId" form:"projectId,omitempty"`
+}
 
 type DevicesResponse struct {
 	ID         string                 `json:"id"`
@@ -83,6 +86,7 @@ type DevicesResponse struct {
 	Properties map[string]interface{} `json:"properties"`
 	CreatedAt  time.Time              `json:"createdAt"`
 	UpdatedAt  time.Time              `json:"updatedAt"`
+	ProjectID  string                 `json:"projectId"`
 }
 
 func (r DevicesResponse) Fields() []string {
@@ -93,6 +97,7 @@ func (r DevicesResponse) Fields() []string {
 		string(properties),
 		r.CreatedAt.Format(time.RFC3339),
 		r.UpdatedAt.Format(time.RFC3339),
+		r.ProjectID,
 	}
 }
 
@@ -103,6 +108,7 @@ func (r DevicesResponse) Headers() []string {
 		"Custom Properties",
 		"Created At",
 		"Updated At",
+		"Project ID",
 	}
 }
 
@@ -154,9 +160,41 @@ func (r AttachmentsResponse) Headers() []string {
 	}
 }
 
+type ProjectsRequest struct{}
+
+type ProjectsResponse struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name,omitempty"`
+	OrgMemberCount int        `json:"orgMemberCount"`
+	LastSeenAt     *time.Time `json:"lastSeenAt,omitempty"`
+}
+
+func (r ProjectsResponse) Fields() []string {
+	lastSeenAt := ""
+	if r.LastSeenAt != nil {
+		lastSeenAt = r.LastSeenAt.Format(time.RFC3339)
+	}
+	return []string{
+		r.ID,
+		r.Name,
+		fmt.Sprintf("%d", r.OrgMemberCount),
+		lastSeenAt,
+	}
+}
+
+func (r ProjectsResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Name",
+		"Member Count",
+		"Last Recording Uploaded At",
+	}
+}
+
 type RecordingsRequest struct {
 	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName   string `json:"device.name" form:"device.name,omitempty"`
+	ProjectID    string `json:"projectId" form:"projectId,omitempty"`
 	Start        string `json:"start" form:"start,omitempty"`
 	End          string `json:"end" form:"end,omitempty"`
 	Path         string `json:"path" form:"path,omitempty"`
@@ -199,6 +237,7 @@ type RecordingsResponse struct {
 	Device       DeviceSummary    `json:"device"`
 	Metadata     []MetadataRecord `json:"metadata"`
 	Key          string           `json:"key"`
+	ProjectID    string           `json:"projectId"`
 }
 
 func (r RecordingsResponse) Headers() []string {
@@ -220,6 +259,7 @@ func (r RecordingsResponse) Headers() []string {
 		"Device Name",
 		"Metadata",
 		"Key",
+		"Project ID",
 	}
 }
 
@@ -243,6 +283,7 @@ func (r RecordingsResponse) Fields() []string {
 		r.Device.Name,
 		string(metadata),
 		r.Key,
+		r.ProjectID,
 	}
 }
 
@@ -349,6 +390,7 @@ func (r EventResponseItem) Headers() []string {
 
 type CoverageRequest struct {
 	Tolerance             int    `json:"tolerance" form:"tolerance,omitempty"`
+	ProjectID             string `json:"projectId" form:"projectId,omitempty"`
 	RecordingID           string `json:"recordingId" form:"recordingId,omitempty"`
 	IncludeEdgeRecordings bool   `json:"includeEdgeRecordings" form:"includeEdgeRecordings,omitempty"`
 	DeviceID              string `json:"device.id" form:"device.id,omitempty"`
@@ -399,6 +441,7 @@ type ErrorResponse struct {
 
 type CreateDeviceRequest struct {
 	Name       string                 `json:"name"`
+	ProjectID  string                 `json:"projectId,omitempty"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
@@ -406,6 +449,7 @@ type CreateDeviceResponse struct {
 	ID         string                 `json:"id"`
 	Name       string                 `json:"name"`
 	Properties map[string]interface{} `json:"properties"`
+	ProjectID  string                 `json:"projectId"`
 }
 
 type EditDeviceRequest struct {
@@ -490,6 +534,9 @@ type PendingImportsRequest struct {
 	ShowCompleted   bool   `json:"showCompleted" form:"showCompleted,omitempty"`
 	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
 	SiteId          string `json:"siteId" form:"siteId,omitempty"`
+	ProjectID       string `json:"projectId" form:"projectId,omitempty"`
+	// NOTE `HasProjectID` is a string because `false` booleans count as "empty" and get omitted.
+	HasProjectID string `json:"hasProjectId" form:"hasProjectId,omitempty"`
 }
 
 type PendingImportsResponseItem struct {
@@ -503,6 +550,7 @@ type PendingImportsResponseItem struct {
 	DeviceName    string    `json:"deviceName"`
 	ImportId      string    `json:"importId"`
 	SiteId        string    `json:"siteId"`
+	ProjectID     string    `json:"projectId"`
 	Status        string    `json:"status"`
 	Error         string    `json:"error"`
 }
@@ -521,6 +569,7 @@ func (r PendingImportsResponseItem) Fields() []string {
 		r.DeviceName,
 		r.ImportId,
 		r.SiteId,
+		r.ProjectID,
 		r.Status,
 		r.Error,
 	}
@@ -538,6 +587,7 @@ func (r PendingImportsResponseItem) Headers() []string {
 		"Device name",
 		"Import ID",
 		"Site ID",
+		"Project ID",
 		"Status",
 		"Error",
 	}
