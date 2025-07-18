@@ -6,6 +6,7 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func newListRecordingsCommand(params *baseParams) *cobra.Command {
@@ -69,7 +70,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	recordingsListCmd.InheritedFlags()
-	recordingsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
+	recordingsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
 	recordingsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "start of data range (ISO8601 format)")
