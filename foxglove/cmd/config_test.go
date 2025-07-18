@@ -21,7 +21,8 @@ func TestConfigCommand(t *testing.T) {
 		err := cmd.Execute()
 		assert.Nil(t, err)
 
-		viper.ReadInConfig()
+		err = viper.ReadInConfig()
+		assert.Nil(t, err)
 
 		assert.Equal(t, "test-api-key-123", viper.GetString("bearer_token"))
 		// Check that the api key update also changes the auth_type to TokenApiKey
