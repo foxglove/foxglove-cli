@@ -171,6 +171,7 @@ func Execute(version string) {
 		Use:   "projects",
 		Short: "List and manage projects",
 	}
+	configCmd := newConfigCommand()
 
 	var clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -254,6 +255,7 @@ func Execute(version string) {
 		eventsCmd,
 		pendingImportsCmd,
 		projectsCmd,
+		configCmd,
 	)
 
 	cobra.CheckErr(rootCmd.Execute())

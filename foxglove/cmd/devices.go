@@ -38,7 +38,7 @@ func newListDevicesCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	deviceListCmd.InheritedFlags()
-	deviceListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "project ID")
+	deviceListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	AddFormatFlag(deviceListCmd, &format)
 	AddJsonFlag(deviceListCmd, &isJsonFormat)
 	return deviceListCmd
@@ -81,7 +81,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	}
 	addDeviceCmd.InheritedFlags()
 	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "name of the device")
-	addDeviceCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "project ID")
+	addDeviceCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "Deprecated. Value will be ignored.")
 	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
 	return addDeviceCmd

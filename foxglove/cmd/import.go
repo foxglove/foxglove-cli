@@ -81,11 +81,11 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 		},
 	}
 	importCmd.InheritedFlags()
-	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "project ID")
-	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
-	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
-	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "recording key")
-	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "edge recording ID")
+	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
+	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
+	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "Recording key")
+	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "Edge recording ID")
 	AddDeviceAutocompletion(importCmd, params)
 	return importCmd, nil
 }
