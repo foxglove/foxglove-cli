@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,7 +35,7 @@ func newConfigGetCommand() *cobra.Command {
 			key := args[0]
 
 			if !isValidConfigKey(key) {
-				dief("Invalid configuration key '%s'. Valid keys are: project-id, api-key", key)
+				dief("Invalid configuration key '%s'. Valid keys are: %s", key, strings.Join(validConfigKeys, ", "))
 			}
 
 			viperKey := mapConfigKeyToViperKey(key)
@@ -58,30 +59,17 @@ func newConfigSetCommand() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set [KEY] [VALUE]",
 		Short: "Set a configuration value",
-		Args:  cobra.MaximumNArgs(2),
+		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) < 1 {
 				dief("Configuration key is required")
 			}
 
 			key := args[0]
-			if !isValidConfigKey(key) {
-				dief("Invalid configuration key '%s'. Valid keys are: project-id, api-key", key)
-			}
+			value := args[1]
 
-			var value string
-			if len(args) == 2 {
-				value = args[1]
-			} else {
-				// If the value is not provided, prompt for an input
-				switch key {
-				case "project-id":
-					value = promptForInput(fmt.Sprintf("Enter project ID (will be written to %s):\n", viper.ConfigFileUsed()))
-				case "api-key":
-					value = promptForInput(fmt.Sprintf("Enter an API key (will be written to %s):\n", viper.ConfigFileUsed()))
-				default:
-					dief("Invalid configuration key '%s'. Valid keys are: project-id, api-key", key)
-				}
+			if !isValidConfigKey(key) {
+				dief("Invalid configuration key '%s'. Valid keys are: %s", key, strings.Join(validConfigKeys, ", "))
 			}
 
 			viperKey := mapConfigKeyToViperKey(key)
@@ -113,7 +101,7 @@ func newConfigUnsetCommand() *cobra.Command {
 			key := args[0]
 
 			if !isValidConfigKey(key) {
-				dief("Invalid configuration key '%s'. Valid keys are: project-id, api-key", key)
+				dief("Invalid configuration key '%s'. Valid keys are: %s", key, strings.Join(validConfigKeys, ", "))
 			}
 			viperKey := mapConfigKeyToViperKey(key)
 			if !viper.IsSet(viperKey) {
@@ -141,12 +129,18 @@ func newConfigUnsetCommand() *cobra.Command {
 	return unsetCmd
 }
 
+var validConfigKeys = []string{
+	"project-id",
+	"api-key",
+}
+
 func isValidConfigKey(key string) bool {
-	validKeys := map[string]bool{
-		"project-id": true,
-		"api-key":    true,
+	for _, validKey := range validConfigKeys {
+		if key == validKey {
+			return true
+		}
 	}
-	return validKeys[key]
+	return false
 }
 
 func mapConfigKeyToViperKey(key string) string {
