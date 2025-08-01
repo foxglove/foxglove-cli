@@ -20,7 +20,7 @@ func newListImportsCommand(params *baseParams) *cobra.Command {
 	importsListCmd := &cobra.Command{
 		Use:        "list",
 		Short:      "List imports for a device",
-		Deprecated: "Use 'recordings list' instead.",
+		Deprecated: "use 'recordings list' instead.",
 		Run: func(cmd *cobra.Command, args []string) {
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,

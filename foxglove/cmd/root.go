@@ -129,7 +129,7 @@ func Execute(version string) {
 	importsCmd := &cobra.Command{
 		Use:        "imports",
 		Short:      "Query and modify data imports",
-		Deprecated: "Use 'recordings list' to list, and 'data import' to import data.",
+		Deprecated: "use 'recordings list' to list, and 'data import' to import data.",
 	}
 	attachmentsCmd := &cobra.Command{
 		Use:   "attachments",
@@ -193,7 +193,7 @@ func Execute(version string) {
 		baseURL:   defaultString(viper.GetString("base_url"), defaultBaseURL),
 	}
 
-	deprecatedMsg := "Use 'data import' instead."
+	deprecatedMsg := "use 'data import' instead."
 	addImportCmd, err := newImportCommand(params, "add", &deprecatedMsg)
 	if err != nil {
 		fmt.Println(err)

@@ -15,8 +15,7 @@ func newConfigCommand() *cobra.Command {
 		Short: "Manage CLI configuration",
 		Long: `Manage CLI configuration values.
 Available configuration keys:
-  - project-id: Default project ID for commands
-  - api-key: API key for authentication`,
+  - project-id: Default project ID for commands`,
 	}
 
 	configCmd.AddCommand(newConfigGetCommand())
@@ -45,7 +44,7 @@ func newConfigGetCommand() *cobra.Command {
 				if viper.IsSet(viperKey) {
 					fmt.Println()
 				} else {
-					dief("Configuration key '%s' not found", key)
+					dief("No value set for key '%s'", key)
 				}
 			} else {
 				fmt.Println(value)
@@ -76,11 +75,6 @@ func newConfigSetCommand() *cobra.Command {
 
 			viper.Set(viperKey, value)
 
-			// For api-key, also set auth_type to indicate it's an API key
-			if key == "api-key" {
-				viper.Set("auth_type", TokenApiKey)
-			}
-
 			err := viper.WriteConfigAs(viper.ConfigFileUsed())
 			if err != nil {
 				dief("Failed to write config: %s", err)
@@ -105,7 +99,7 @@ func newConfigUnsetCommand() *cobra.Command {
 			}
 			viperKey := mapConfigKeyToViperKey(key)
 			if !viper.IsSet(viperKey) {
-				dief("Configuration key '%s' not found", key)
+				dief("No value set for key '%s'", key)
 			}
 			configFile := viper.ConfigFileUsed()
 			settings := viper.AllSettings()
@@ -131,7 +125,6 @@ func newConfigUnsetCommand() *cobra.Command {
 
 var validConfigKeys = []string{
 	"project-id",
-	"api-key",
 }
 
 func isValidConfigKey(key string) bool {
@@ -147,8 +140,6 @@ func mapConfigKeyToViperKey(key string) string {
 	switch key {
 	case "project-id":
 		return "default_project_id"
-	case "api-key":
-		return "bearer_token"
 	default:
 		return key
 	}
