@@ -127,8 +127,9 @@ func Execute(version string) {
 		Short: "Data access and management",
 	}
 	importsCmd := &cobra.Command{
-		Use:   "imports",
-		Short: "Query and modify data imports",
+		Use:        "imports",
+		Short:      "Query and modify data imports",
+		Deprecated: "use 'recordings list' to list, and 'data import' to import data.",
 	}
 	attachmentsCmd := &cobra.Command{
 		Use:   "attachments",
@@ -162,6 +163,7 @@ func Execute(version string) {
 		Use:   "projects",
 		Short: "List and manage projects",
 	}
+	configCmd := newConfigCommand()
 
 	var clientID, cfgFile string
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "", "", "config file (default is $HOME/.foxglove.yaml)")
@@ -191,12 +193,13 @@ func Execute(version string) {
 		baseURL:   defaultString(viper.GetString("base_url"), defaultBaseURL),
 	}
 
-	addImportCmd, err := newImportCommand(params, "add")
+	deprecatedMsg := "use 'data import' instead."
+	addImportCmd, err := newImportCommand(params, "add", &deprecatedMsg)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	importShortcut, err := newImportCommand(params, "import")
+	importShortcut, err := newImportCommand(params, "import", nil)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -243,6 +246,7 @@ func Execute(version string) {
 		eventsCmd,
 		pendingImportsCmd,
 		projectsCmd,
+		configCmd,
 	)
 
 	cobra.CheckErr(rootCmd.Execute())

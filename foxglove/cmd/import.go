@@ -44,16 +44,21 @@ func importFromEdge(baseURL, clientID, token, userAgent, edgeRecordingID string)
 	return nil
 }
 
-func newImportCommand(params *baseParams, commandName string) (*cobra.Command, error) {
+func newImportCommand(params *baseParams, commandName string, deprecated *string) (*cobra.Command, error) {
 	var projectID string
 	var deviceID string
 	var deviceName string
 	var edgeRecordingID string
 	var key string
+	var deprecatedMsg string
+	if deprecated != nil {
+		deprecatedMsg = *deprecated
+	}
 	importCmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s [FILE]", commandName),
-		Short: "Import a data file to Foxglove Data Platform",
-		Args:  cobra.ExactArgs(1),
+		Use:        fmt.Sprintf("%s [FILE]", commandName),
+		Short:      "Import a data file to Foxglove Data Platform",
+		Args:       cobra.ExactArgs(1),
+		Deprecated: deprecatedMsg,
 		Run: func(cmd *cobra.Command, args []string) {
 			if edgeRecordingID != "" {
 				err := importFromEdge(params.baseURL, *params.clientID, params.token, params.userAgent, edgeRecordingID)
@@ -81,11 +86,11 @@ func newImportCommand(params *baseParams, commandName string) (*cobra.Command, e
 		},
 	}
 	importCmd.InheritedFlags()
-	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID")
-	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "device ID")
-	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "device name")
-	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "recording key")
-	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "edge recording ID")
+	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
+	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
+	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "Recording key")
+	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "Edge recording ID")
 	AddDeviceAutocompletion(importCmd, params)
 	return importCmd, nil
 }

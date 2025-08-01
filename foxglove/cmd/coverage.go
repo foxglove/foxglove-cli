@@ -5,6 +5,7 @@ import (
 
 	"github.com/foxglove/foxglove-cli/foxglove/api"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func newListCoverageCommand(params *baseParams) *cobra.Command {
@@ -59,7 +60,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	coverageListCmd.InheritedFlags()
-	coverageListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID")
+	coverageListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	coverageListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
 	coverageListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	coverageListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")
