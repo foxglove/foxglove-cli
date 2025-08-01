@@ -29,10 +29,12 @@ func newConfigGetCommand() *cobra.Command {
 	getCmd := &cobra.Command{
 		Use:   "get [KEY]",
 		Short: "Get a configuration value",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) == 0 {
+				dief("No key provided. Valid keys are: %s", strings.Join(validConfigKeys, ", "))
+			}
 			key := args[0]
-
 			if !isValidConfigKey(key) {
 				dief("Invalid configuration key '%s'. Valid keys are: %s", key, strings.Join(validConfigKeys, ", "))
 			}
@@ -58,18 +60,20 @@ func newConfigSetCommand() *cobra.Command {
 	setCmd := &cobra.Command{
 		Use:   "set [KEY] [VALUE]",
 		Short: "Set a configuration value",
-		Args:  cobra.ExactArgs(2),
+		Args:  cobra.MaximumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) < 1 {
-				dief("Configuration key is required")
+				dief("No key provided. Valid keys are: %s", strings.Join(validConfigKeys, ", "))
 			}
-
 			key := args[0]
-			value := args[1]
-
 			if !isValidConfigKey(key) {
 				dief("Invalid configuration key '%s'. Valid keys are: %s", key, strings.Join(validConfigKeys, ", "))
 			}
+
+			if len(args) < 2 {
+				dief("No value provided. Please provide a value for: %s", args[0])
+			}
+			value := args[1]
 
 			viperKey := mapConfigKeyToViperKey(key)
 
@@ -90,10 +94,12 @@ func newConfigUnsetCommand() *cobra.Command {
 	unsetCmd := &cobra.Command{
 		Use:   "unset [KEY]",
 		Short: "Remove a configuration value",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) == 0 {
+				dief("No key provided. Valid keys are: %s", strings.Join(validConfigKeys, ", "))
+			}
 			key := args[0]
-
 			if !isValidConfigKey(key) {
 				dief("Invalid configuration key '%s'. Valid keys are: %s", key, strings.Join(validConfigKeys, ", "))
 			}
