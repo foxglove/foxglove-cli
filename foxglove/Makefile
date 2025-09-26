@@ -10,7 +10,7 @@ lint:
 test:
 	go test ./... -cover
 
-version: $(eval VERSION=$(shell git describe --tags))
+version: $(eval VERSION=$(shell git describe --tags 2>/dev/null || echo dev))
 version:
 	@echo VERSION=$(VERSION)
 

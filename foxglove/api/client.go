@@ -43,7 +43,7 @@ func unpackErrorResponse(r io.Reader) error {
 	}
 	err = json.Unmarshal(bytes, &resp)
 	if err != nil {
-		return fmt.Errorf(string(bytes))
+		return errors.New(string(bytes))
 	}
 	return fmt.Errorf("%s", coalesce(resp.Error, resp.Message))
 }
