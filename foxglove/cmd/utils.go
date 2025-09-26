@@ -213,7 +213,9 @@ func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
 func promptForInput(prompt string) string {
 	fmt.Print(prompt)
 	var value string
-	fmt.Scanln(&value)
+	if _, err := fmt.Scanln(&value); err != nil {
+		dief("failed to read input: %v", err)
+	}
 	return value
 }
 
