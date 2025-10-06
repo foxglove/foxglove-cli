@@ -47,7 +47,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				os.Stdout,
 				api.PendingImportsRequest{
 					RequestId:       requestId,
-					Key:		 key,
+					Key:		     key,
 					DeviceId:        deviceId,
 					DeviceName:      deviceName,
 					Error:           error,
