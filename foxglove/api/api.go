@@ -526,6 +526,7 @@ func (e ExtensionResponse) String() string {
 
 type PendingImportsRequest struct {
 	RequestId       string `json:"requestId" form:"requestId,omitempty"`
+	Key		        string `json:"key" form:"key,omitempty"`
 	DeviceId        string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName      string `json:"device.name" form:"device.name,omitempty"`
 	Error           string `json:"error" form:"error,omitempty"`

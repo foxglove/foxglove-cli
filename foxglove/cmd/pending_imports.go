@@ -12,6 +12,7 @@ import (
 func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var requestId string
+	var key string
 	var deviceId string
 	var deviceName string
 	var filename string
@@ -46,6 +47,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				os.Stdout,
 				api.PendingImportsRequest{
 					RequestId:       requestId,
+					Key:		     key,
 					DeviceId:        deviceId,
 					DeviceName:      deviceName,
 					Error:           error,
@@ -70,6 +72,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	pendingImportsCmd.PersistentFlags().BoolVarP(&withoutProject, "without-project", "", false, "Filter to pending imports without a project")
 	pendingImportsCmd.PersistentFlags().StringVarP(&requestId, "request-id", "", "", "Request ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&key, "key", "", "", "Key")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceId, "device-id", "", "", "Device ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	pendingImportsCmd.PersistentFlags().StringVarP(&filename, "filename", "", "", "Filename")
