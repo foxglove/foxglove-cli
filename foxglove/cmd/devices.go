@@ -89,8 +89,9 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 
 func newEditDeviceCommand(params *baseParams) *cobra.Command {
 	var name string
+	var projectID string
 	var propertyPairs []string
-	addDeviceCmd := &cobra.Command{
+	editDeviceCmd := &cobra.Command{
 		Use:   "edit",
 		Short: "Edit a device",
 		Args:  cobra.ExactArgs(1),
@@ -119,18 +120,24 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 				reqBody.Properties = properties
 			}
 
-			resp, err := client.EditDevice(nameOrId, api.CreateDeviceRequest{
-				Name:       name,
-				Properties: properties,
-			})
+			resp, err := client.EditDevice(
+				nameOrId,
+				api.EditDeviceRequestQuery{
+					ProjectID: projectID,
+				},
+				api.EditDeviceRequestBody{
+					Name:       name,
+					Properties: properties,
+				})
 			if err != nil {
 				dief("Failed to edit device: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Device updated: %s\n", resp.Name)
 		},
 	}
-	addDeviceCmd.InheritedFlags()
-	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "New name for the device")
-	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
-	return addDeviceCmd
+	editDeviceCmd.InheritedFlags()
+	editDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "New name for the device")
+	editDeviceCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	editDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
+	return editDeviceCmd
 }

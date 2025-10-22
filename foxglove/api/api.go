@@ -452,7 +452,11 @@ type CreateDeviceResponse struct {
 	ProjectID  string                 `json:"projectId"`
 }
 
-type EditDeviceRequest struct {
+type EditDeviceRequestQuery struct {
+	ProjectID string `form:"projectId,omitempty"`
+}
+
+type EditDeviceRequestBody struct {
 	Name       string                 `json:"name"`
 	Properties map[string]interface{} `json:"properties,omitempty"`
 }

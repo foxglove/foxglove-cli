@@ -216,15 +216,23 @@ func (c *FoxgloveClient) post(
 
 func (c *FoxgloveClient) patch(
 	endpoint string,
+	reqQuery any,
 	reqBody any,
 	target any,
 ) error {
-	buf := bytes.Buffer{}
-	err := json.NewEncoder(&buf).Encode(reqBody)
+	queryBuf := bytes.Buffer{}
+	encoder := form.NewEncoder(&queryBuf)
+	encoder.DelimitWith('/') // required to support dotted fields in query strings
+	err := encoder.Encode(reqQuery)
 	if err != nil {
 		return fmt.Errorf("failed to encode request: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPatch, c.baseurl+endpoint, &buf)
+	bodyBuf := bytes.Buffer{}
+	err = json.NewEncoder(&bodyBuf).Encode(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to encode request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPatch, c.baseurl+endpoint+"?"+queryBuf.String(), &bodyBuf)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -284,12 +292,16 @@ func (c *FoxgloveClient) CreateDevice(req CreateDeviceRequest) (resp CreateDevic
 	return resp, err
 }
 
-func (c *FoxgloveClient) EditDevice(nameOrId string, req CreateDeviceRequest) (resp EditDeviceResponse, err error) {
+func (c *FoxgloveClient) EditDevice(
+	nameOrId string,
+	reqQuery EditDeviceRequestQuery,
+	reqBody EditDeviceRequestBody,
+) (resp EditDeviceResponse, err error) {
 	path, err := url.JoinPath("/v1/devices", nameOrId)
 	if err != nil {
 		return EditDeviceResponse{}, err
 	}
-	err = c.patch(path, req, &resp)
+	err = c.patch(path, reqQuery, reqBody, &resp)
 	return resp, err
 }
 

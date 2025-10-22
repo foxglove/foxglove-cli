@@ -36,12 +36,17 @@ func TestEditDeviceCommand(t *testing.T) {
 	sv, err := api.NewMockServer(ctx)
 	assert.Nil(t, err)
 
-	t.Run("creates a device", func(t *testing.T) {
+	t.Run("edits a device", func(t *testing.T) {
 		client := api.NewMockAuthedClient(t, sv.BaseURL())
-		dev, err := client.EditDevice("test-device", api.CreateDeviceRequest{
-			Name:       "new-name",
-			Properties: map[string]interface{}{"key": "val"},
-		})
+		dev, err := client.EditDevice(
+			"test-device",
+			api.EditDeviceRequestQuery{
+				ProjectID: "prj_1234abcd",
+			},
+			api.EditDeviceRequestBody{
+				Name:       "new-name",
+				Properties: map[string]interface{}{"key": "val"},
+			})
 		assert.Nil(t, err)
 
 		assert.Equal(t, dev.Name, "new-name")
