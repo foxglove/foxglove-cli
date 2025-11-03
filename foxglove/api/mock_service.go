@@ -174,7 +174,8 @@ func (s *MockFoxgloveServer) createDevice(w http.ResponseWriter, r *http.Request
 // Send response, but don't actually edit
 func (s *MockFoxgloveServer) editDevice(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	req := EditDeviceRequest{}
+	projectId := r.URL.Query().Get("projectId")
+	req := EditDeviceRequestBody{}
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -186,7 +187,7 @@ func (s *MockFoxgloveServer) editDevice(w http.ResponseWriter, r *http.Request) 
 
 	found := false
 	for _, dev := range s.registeredDevices {
-		if dev.ID == id {
+		if dev.ID == id && dev.ProjectID == projectId {
 			found = true
 		}
 	}
