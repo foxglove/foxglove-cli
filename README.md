@@ -196,7 +196,7 @@ tool.
 Publish an extension to install it for all Foxglove organization members:
 
 ```
-$ foxglove extensions upload ./my-extension.1.0.0.foxe
+$ foxglove extensions publish ./my-extension.1.0.0.foxe
 ```
 
 Use this same command to update an existing extension with a newer version –
