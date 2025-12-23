@@ -8,14 +8,14 @@ Once you've installed the CLI tool, run `foxglove -h` from the command line for 
 
 Download the latest release for your OS and architecture:
 
-| OS/Arch     |                                                                                                            |
-|--------|------------------------------------------------------------------------------------------------------------|
-| linux/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-amd64 -o foxglove && chmod +x foxglove |
-| macos/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-amd64 -o foxglove && chmod +x foxglove |
-| windows/amd64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-amd64.exe -o foxglove.exe |
-| linux/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-arm64 -o foxglove && chmod +x foxglove |
-| macos/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-arm64 -o foxglove && chmod +x foxglove |
-| windows/arm64    | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe |
+| OS/Arch       |                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| linux/amd64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-amd64 -o foxglove && chmod +x foxglove |
+| macos/amd64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-amd64 -o foxglove && chmod +x foxglove |
+| windows/amd64 | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-amd64.exe -o foxglove.exe            |
+| linux/arm64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-arm64 -o foxglove && chmod +x foxglove |
+| macos/arm64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-arm64 -o foxglove && chmod +x foxglove |
+| windows/arm64 | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe            |
 
 To install a specific release, see the [releases page](https://github.com/foxglove/foxglove-cli/releases).
 
@@ -191,7 +191,7 @@ within your organization.
 
 Create and package an extension with the
 [`foxglove-extension`](https://github.com/foxglove/create-foxglove-extension/)
-tool. 
+tool.
 
 Publish an extension to install it for all Foxglove organization members:
 
@@ -219,7 +219,7 @@ $ foxglove extensions list
     ]
 ```
 
-Unpublish an extension by its ID to **delete** its files and uninstall it for 
+Unpublish an extension by its ID to **delete** its files and uninstall it for
 all Foxglove organization members:
 
 ```
@@ -231,3 +231,7 @@ $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 Certain shells (bash, zsh, fish, and PowerShell) support autocompletion for subcommands and certain parameters (like device IDs).
 
 To enable this, consult your shell instructions under `$ foxglove completion <shell> -h`.
+
+## Stay in touch
+
+Join our [Discord community](https://foxglove.dev/chat) to ask questions, share feedback, and stay up to date on what our team is working on.
