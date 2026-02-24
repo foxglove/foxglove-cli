@@ -25,8 +25,8 @@ type TokenResponse struct {
 type UploadRequest struct {
 	Filename   string `json:"filename"`
 	ProjectID  string `json:"projectId,omitempty"`
-	DeviceID   string `json:"device.id,omitempty"`
 	Key        string `json:"key,omitempty"`
+	DeviceID   string `json:"device.id,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
 	SessionID  string `json:"sessionId,omitempty"`
 	SessionKey string `json:"sessionKey,omitempty"`
@@ -40,6 +40,7 @@ type StreamRequest struct {
 	RecordingID  string     `json:"recordingId,omitempty"`
 	Key          string     `json:"key,omitempty"`
 	ImportID     string     `json:"importId,omitempty"`
+	ProjectID    string     `json:"projectId,omitempty"`
 	DeviceID     string     `json:"device.id,omitempty"`
 	DeviceName   string     `json:"device.name,omitempty"`
 	Start        *time.Time `json:"start,omitempty"`
@@ -48,7 +49,6 @@ type StreamRequest struct {
 	Topics       []string   `json:"topics"`
 	SessionID    string     `json:"sessionId,omitempty"`
 	SessionKey   string     `json:"sessionKey,omitempty"`
-	ProjectID    string     `json:"projectId,omitempty"`
 }
 
 func (req *StreamRequest) Validate() error {
@@ -128,9 +128,9 @@ func (r DevicesResponse) Headers() []string {
 type AttachmentsRequest struct {
 	ImportID    string `form:"importId,omitempty"`
 	RecordingID string `form:"recordingId,omitempty"`
+	ProjectID   string `form:"projectId,omitempty"`
 	SessionID   string `form:"sessionId,omitempty"`
 	SessionKey  string `form:"sessionKey,omitempty"`
-	ProjectID   string `form:"projectId,omitempty"`
 }
 
 type AttachmentsResponse struct {
@@ -211,6 +211,8 @@ type RecordingsRequest struct {
 	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName   string `json:"device.name" form:"device.name,omitempty"`
 	ProjectID    string `json:"projectId" form:"projectId,omitempty"`
+	SessionID    string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey   string `json:"sessionKey" form:"sessionKey,omitempty"`
 	Start        string `json:"start" form:"start,omitempty"`
 	End          string `json:"end" form:"end,omitempty"`
 	Path         string `json:"path" form:"path,omitempty"`
@@ -221,8 +223,6 @@ type RecordingsRequest struct {
 	Offset       int    `json:"offset" form:"offset,omitempty"`
 	SortBy       string `json:"sortBy" form:"sortBy,omitempty"`
 	SortOrder    string `json:"sortOrder" form:"sortOrder,omitempty"`
-	SessionID    string `json:"sessionId" form:"sessionId,omitempty"`
-	SessionKey   string `json:"sessionKey" form:"sessionKey,omitempty"`
 }
 
 type SiteSummary struct {
@@ -410,13 +410,13 @@ type CoverageRequest struct {
 	Tolerance             int    `json:"tolerance" form:"tolerance,omitempty"`
 	ProjectID             string `json:"projectId" form:"projectId,omitempty"`
 	RecordingID           string `json:"recordingId" form:"recordingId,omitempty"`
+	SessionID             string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey            string `json:"sessionKey" form:"sessionKey,omitempty"`
 	IncludeEdgeRecordings bool   `json:"includeEdgeRecordings" form:"includeEdgeRecordings,omitempty"`
 	DeviceID              string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName            string `json:"device.name" form:"device.name,omitempty"`
 	Start                 string `json:"start" form:"start,omitempty"`
 	End                   string `json:"end" form:"end,omitempty"`
-	SessionID             string `json:"sessionId" form:"sessionId,omitempty"`
-	SessionKey            string `json:"sessionKey" form:"sessionKey,omitempty"`
 }
 type CoverageResponse struct {
 	DeviceID string        `json:"deviceId"`
@@ -560,10 +560,10 @@ type PendingImportsRequest struct {
 	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
 	SiteId          string `json:"siteId" form:"siteId,omitempty"`
 	ProjectID       string `json:"projectId" form:"projectId,omitempty"`
+	SessionID       string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey      string `json:"sessionKey" form:"sessionKey,omitempty"`
 	// NOTE `HasProjectID` is a string because `false` booleans count as "empty" and get omitted.
 	HasProjectID string `json:"hasProjectId" form:"hasProjectId,omitempty"`
-	SessionID    string `json:"sessionId" form:"sessionId,omitempty"`
-	SessionKey   string `json:"sessionKey" form:"sessionKey,omitempty"`
 }
 
 type PendingImportsResponseItem struct {

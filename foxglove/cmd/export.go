@@ -892,9 +892,6 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 		Short: "Export a data selection from Foxglove Data Platform",
 		Long:  "Export a data selection from Foxglove Data Platform by Recording ID, Import ID, Session ID/Key, or Device and time range",
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
-				dief("%s", err)
-			}
 			startTime, err := maybeConvertToRFC3339(start)
 			if err != nil {
 				dief("failed to parse start time: %s", err)
@@ -977,8 +974,8 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
 	exportCmd.PersistentFlags().BoolVar(&isJsonOutput, "json", false, "alias for --output-format json")
 	exportCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "session ID")
-	exportCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "session key (requires --project-id)")
-	exportCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID (required when using --session-key)")
+	exportCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (required when using with --project-id)")
+	exportCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID (required when using --session-key)")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }

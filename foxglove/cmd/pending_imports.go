@@ -88,7 +88,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	pendingImportsCmd.PersistentFlags().BoolVarP(&showQuarantined, "show-quarantined", "", false, "Show quarantined requests")
 	pendingImportsCmd.PersistentFlags().StringVarP(&siteId, "site-id", "", "", "Site ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
-	pendingImportsCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (requires --project-id)")
+	pendingImportsCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (required when using with --project-id)")
 	pendingImportsCmd.PersistentFlags().StringVarP(&updatedSince, "updated-since", "", "", "Filter pending imports updated since this time (ISO8601)")
 	AddFormatFlag(pendingImportsCmd, &format)
 	AddJsonFlag(pendingImportsCmd, &isJsonFormat)

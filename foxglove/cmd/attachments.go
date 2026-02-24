@@ -53,7 +53,7 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 	attachmentsListCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "Import ID")
 	attachmentsListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")
 	attachmentsListCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
-	attachmentsListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (requires --project-id)")
+	attachmentsListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (required when using with --project-id)")
 	attachmentsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID (required when using --session-key)")
 	AddFormatFlag(attachmentsListCmd, &format)
 	AddJsonFlag(attachmentsListCmd, &isJsonFormat)

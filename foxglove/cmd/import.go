@@ -99,7 +99,7 @@ func newImportCommand(params *baseParams, commandName string, deprecated *string
 	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "Recording key")
 	importCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
-	importCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (requires --project-id)")
+	importCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (required when using with --project-id)")
 	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "Edge recording ID")
 	AddDeviceAutocompletion(importCmd, params)
 	return importCmd, nil
