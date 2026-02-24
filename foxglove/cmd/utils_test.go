@@ -148,3 +148,26 @@ func TestMaybeConvertToRFC3339(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateSessionKeyRequiresProjectID(t *testing.T) {
+	t.Run("returns nil when session-key is empty", func(t *testing.T) {
+		err := validateSessionKeyRequiresProjectID("", "")
+		assert.NoError(t, err)
+	})
+
+	t.Run("returns nil when session-key and project-id are both provided", func(t *testing.T) {
+		err := validateSessionKeyRequiresProjectID("my-session-key", "prj_123")
+		assert.NoError(t, err)
+	})
+
+	t.Run("returns error when session-key is provided without project-id", func(t *testing.T) {
+		err := validateSessionKeyRequiresProjectID("my-session-key", "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "--project-id is required when using --session-key")
+	})
+
+	t.Run("returns nil when only project-id is provided", func(t *testing.T) {
+		err := validateSessionKeyRequiresProjectID("", "prj_123")
+		assert.NoError(t, err)
+	})
+}

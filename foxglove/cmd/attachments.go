@@ -14,11 +14,17 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var importID string
 	var recordingID string
+	var sessionID string
+	var sessionKey string
+	var projectID string
 	var isJsonFormat bool
 	attachmentsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List MCAP attachments",
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
+				dief("%s", err)
+			}
 			format = ResolveFormat(format, isJsonFormat)
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
@@ -30,6 +36,9 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 				&api.AttachmentsRequest{
 					ImportID:    importID,
 					RecordingID: recordingID,
+					SessionID:   sessionID,
+					SessionKey:  sessionKey,
+					ProjectID:   projectID,
 				},
 				client.Attachments,
 				format,
@@ -43,6 +52,9 @@ func newListAttachmentsCommand(params *baseParams) *cobra.Command {
 	attachmentsListCmd.InheritedFlags()
 	attachmentsListCmd.PersistentFlags().StringVarP(&importID, "import-id", "", "", "Import ID")
 	attachmentsListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")
+	attachmentsListCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
+	attachmentsListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (requires --project-id)")
+	attachmentsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID (required when using --session-key)")
 	AddFormatFlag(attachmentsListCmd, &format)
 	AddJsonFlag(attachmentsListCmd, &isJsonFormat)
 	return attachmentsListCmd

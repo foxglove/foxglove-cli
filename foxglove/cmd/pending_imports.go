@@ -22,12 +22,17 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	var siteId string
 	var updatedSince string
 	var projectID string
+	var sessionID string
+	var sessionKey string
 	var isJsonFormat bool
 	var withoutProject bool
 	pendingImportsCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the pending and errored import jobs for uploaded recordings",
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
+				dief("%s", err)
+			}
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
@@ -47,7 +52,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 				os.Stdout,
 				api.PendingImportsRequest{
 					RequestId:       requestId,
-					Key:		     key,
+					Key:             key,
 					DeviceId:        deviceId,
 					DeviceName:      deviceName,
 					Error:           error,
@@ -58,6 +63,8 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 					SiteId:          siteId,
 					ProjectID:       projectID,
 					HasProjectID:    hasProjectID,
+					SessionID:       sessionID,
+					SessionKey:      sessionKey,
 				},
 				client.PendingImports,
 				format,
@@ -69,7 +76,7 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	pendingImportsCmd.InheritedFlags()
-	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID (required when using --session-key)")
 	pendingImportsCmd.PersistentFlags().BoolVarP(&withoutProject, "without-project", "", false, "Filter to pending imports without a project")
 	pendingImportsCmd.PersistentFlags().StringVarP(&requestId, "request-id", "", "", "Request ID")
 	pendingImportsCmd.PersistentFlags().StringVarP(&key, "key", "", "", "Key")
@@ -80,6 +87,8 @@ func newPendingImportsCommand(params *baseParams) *cobra.Command {
 	pendingImportsCmd.PersistentFlags().BoolVarP(&showCompleted, "show-completed", "", false, "Show completed requests")
 	pendingImportsCmd.PersistentFlags().BoolVarP(&showQuarantined, "show-quarantined", "", false, "Show quarantined requests")
 	pendingImportsCmd.PersistentFlags().StringVarP(&siteId, "site-id", "", "", "Site ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
+	pendingImportsCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (requires --project-id)")
 	pendingImportsCmd.PersistentFlags().StringVarP(&updatedSince, "updated-since", "", "", "Filter pending imports updated since this time (ISO8601)")
 	AddFormatFlag(pendingImportsCmd, &format)
 	AddJsonFlag(pendingImportsCmd, &isJsonFormat)
