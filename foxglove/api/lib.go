@@ -65,6 +65,8 @@ func Import(
 	deviceID string,
 	deviceName string,
 	key string,
+	sessionID string,
+	sessionKey string,
 	filename string,
 ) error {
 	f, err := os.Open(filename)
@@ -86,6 +88,8 @@ func Import(
 		ProjectID:  projectID,
 		DeviceID:   deviceID,
 		DeviceName: deviceName,
+		SessionID:  sessionID,
+		SessionKey: sessionKey,
 	})
 	if err != nil {
 		return err

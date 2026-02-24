@@ -17,12 +17,17 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 	var end string
 	var tolerance int
 	var recordingID string
+	var sessionID string
+	var sessionKey string
 	var includeEdgeRecordings bool
 	var isJsonFormat bool
 	coverageListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List coverage ranges",
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
+				dief("%s", err)
+			}
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
@@ -48,6 +53,8 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 					Start:                 startTime,
 					End:                   endTime,
 					RecordingID:           recordingID,
+					SessionID:             sessionID,
+					SessionKey:            sessionKey,
 					Tolerance:             tolerance,
 					IncludeEdgeRecordings: includeEdgeRecordings,
 				},
@@ -60,10 +67,12 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	coverageListCmd.InheritedFlags()
-	coverageListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	coverageListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID (required when using --session-key)")
 	coverageListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
 	coverageListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	coverageListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")
+	coverageListCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
+	coverageListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (requires --project-id)")
 	coverageListCmd.PersistentFlags().IntVarP(&tolerance, "tolerance", "", 0,
 		"Number of seconds by which ranges must be separated to be considered distinct")
 

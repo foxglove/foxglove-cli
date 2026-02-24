@@ -249,3 +249,10 @@ func IsAuthenticated() bool {
 	token := viper.GetString("bearer_token")
 	return token != ""
 }
+
+func validateSessionKeyRequiresProjectID(sessionKey, projectID string) error {
+	if sessionKey != "" && projectID == "" {
+		return fmt.Errorf("--project-id is required when using --session-key")
+	}
+	return nil
+}

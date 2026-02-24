@@ -28,6 +28,8 @@ type UploadRequest struct {
 	DeviceID   string `json:"device.id,omitempty"`
 	Key        string `json:"key,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
+	SessionID  string `json:"sessionId,omitempty"`
+	SessionKey string `json:"sessionKey,omitempty"`
 }
 
 type UploadResponse struct {
@@ -44,14 +46,25 @@ type StreamRequest struct {
 	End          *time.Time `json:"end,omitempty"`
 	OutputFormat string     `json:"outputFormat"`
 	Topics       []string   `json:"topics"`
+	SessionID    string     `json:"sessionId,omitempty"`
+	SessionKey   string     `json:"sessionKey,omitempty"`
+	ProjectID    string     `json:"projectId,omitempty"`
 }
 
 func (req *StreamRequest) Validate() error {
-	if req.RecordingID == "" && req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" && req.Key == "" {
-		return fmt.Errorf("either recording-id/key, import-id, or all three of device-id/device-name, start, and end are required")
+	hasRecordingSource := req.RecordingID != "" || req.Key != ""
+	hasSessionSource := req.SessionID != "" || req.SessionKey != ""
+	hasDeviceSource := req.DeviceID != "" || req.DeviceName != ""
+	hasImportSource := req.ImportID != ""
+
+	if !hasRecordingSource && !hasSessionSource && !hasDeviceSource && !hasImportSource {
+		return fmt.Errorf("either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required")
 	}
-	if req.DeviceID != "" && req.DeviceName != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
-		return fmt.Errorf("start/end are required if device is supplied")
+	if req.SessionKey != "" && req.ProjectID == "" {
+		return fmt.Errorf("project-id is required when using session-key")
+	}
+	if hasDeviceSource && !hasImportSource && !hasRecordingSource && !hasSessionSource && (req.Start == nil || req.End == nil) {
+		return fmt.Errorf("start/end are required if device is supplied without recording or session")
 	}
 	if req.Start != nil && req.End != nil && req.End.Before(*req.Start) {
 		return fmt.Errorf("end must be after or equal to start")
@@ -115,6 +128,9 @@ func (r DevicesResponse) Headers() []string {
 type AttachmentsRequest struct {
 	ImportID    string `form:"importId,omitempty"`
 	RecordingID string `form:"recordingId,omitempty"`
+	SessionID   string `form:"sessionId,omitempty"`
+	SessionKey  string `form:"sessionKey,omitempty"`
+	ProjectID   string `form:"projectId,omitempty"`
 }
 
 type AttachmentsResponse struct {
@@ -205,6 +221,8 @@ type RecordingsRequest struct {
 	Offset       int    `json:"offset" form:"offset,omitempty"`
 	SortBy       string `json:"sortBy" form:"sortBy,omitempty"`
 	SortOrder    string `json:"sortOrder" form:"sortOrder,omitempty"`
+	SessionID    string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey   string `json:"sessionKey" form:"sessionKey,omitempty"`
 }
 
 type SiteSummary struct {
@@ -397,6 +415,8 @@ type CoverageRequest struct {
 	DeviceName            string `json:"device.name" form:"device.name,omitempty"`
 	Start                 string `json:"start" form:"start,omitempty"`
 	End                   string `json:"end" form:"end,omitempty"`
+	SessionID             string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey            string `json:"sessionKey" form:"sessionKey,omitempty"`
 }
 type CoverageResponse struct {
 	DeviceID string        `json:"deviceId"`
@@ -530,7 +550,7 @@ func (e ExtensionResponse) String() string {
 
 type PendingImportsRequest struct {
 	RequestId       string `json:"requestId" form:"requestId,omitempty"`
-	Key		        string `json:"key" form:"key,omitempty"`
+	Key             string `json:"key" form:"key,omitempty"`
 	DeviceId        string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName      string `json:"device.name" form:"device.name,omitempty"`
 	Error           string `json:"error" form:"error,omitempty"`
@@ -542,6 +562,8 @@ type PendingImportsRequest struct {
 	ProjectID       string `json:"projectId" form:"projectId,omitempty"`
 	// NOTE `HasProjectID` is a string because `false` booleans count as "empty" and get omitted.
 	HasProjectID string `json:"hasProjectId" form:"hasProjectId,omitempty"`
+	SessionID    string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey   string `json:"sessionKey" form:"sessionKey,omitempty"`
 }
 
 type PendingImportsResponseItem struct {

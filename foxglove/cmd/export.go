@@ -828,6 +828,9 @@ func createStreamRequest(
 	end string,
 	outputFormat string,
 	topicList string,
+	sessionID string,
+	sessionKey string,
+	projectID string,
 ) (*api.StreamRequest, error) {
 	var startTime, endTime *time.Time
 	if start != "" {
@@ -858,6 +861,9 @@ func createStreamRequest(
 		End:          endTime,
 		OutputFormat: outputFormat,
 		Topics:       topics,
+		SessionID:    sessionID,
+		SessionKey:   sessionKey,
+		ProjectID:    projectID,
 	}
 	if err := request.Validate(); err != nil {
 		return nil, err
@@ -878,11 +884,17 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var topicList string
 	var outputFile string
 	var isJsonOutput bool
+	var sessionID string
+	var sessionKey string
+	var projectID string
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
-		Long:  "Export a data selection from Foxglove Data Platform by Recording ID, Import ID, or Device and time range",
+		Long:  "Export a data selection from Foxglove Data Platform by Recording ID, Import ID, Session ID/Key, or Device and time range",
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
+				dief("%s", err)
+			}
 			startTime, err := maybeConvertToRFC3339(start)
 			if err != nil {
 				dief("failed to parse start time: %s", err)
@@ -904,6 +916,9 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				endTime,
 				outputFormat,
 				topicList,
+				sessionID,
+				sessionKey,
+				projectID,
 			)
 			if err != nil {
 				dief("Failed to build request: %s", err)
@@ -961,6 +976,9 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&outputFormat, "output-format", "", "mcap0", "output format (mcap0, bag1, or json)")
 	exportCmd.PersistentFlags().StringVarP(&topicList, "topics", "", "", "comma separated list of topics")
 	exportCmd.PersistentFlags().BoolVar(&isJsonOutput, "json", false, "alias for --output-format json")
+	exportCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "session ID")
+	exportCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "session key (requires --project-id)")
+	exportCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "project ID (required when using --session-key)")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }
