@@ -488,12 +488,10 @@ type EditDeviceRequestBody struct {
 
 type EditDeviceResponse CreateDeviceResponse
 
-// Session types (list, get, create, update, delete)
 type SessionsRequest struct {
 	ProjectID string `json:"projectId" form:"projectId,omitempty"`
 }
 
-// SessionRecordingSummary is one recording in a session (GET session "recordings" array).
 type SessionRecordingSummary struct {
 	ID    string `json:"id"`
 	Path  string `json:"path,omitempty"`
@@ -510,13 +508,13 @@ func (r SessionRecordingSummary) Fields() []string {
 }
 
 type SessionResponse struct {
-	ID         string                   `json:"id"`
-	Name       string                   `json:"name,omitempty"`
-	Key        string                   `json:"key,omitempty"`
-	ProjectID  string                   `json:"projectId,omitempty"`
-	Device     *DeviceSummary           `json:"device,omitempty"`
-	CreatedAt  time.Time                `json:"createdAt"`
-	UpdatedAt  time.Time                `json:"updatedAt"`
+	ID         string                    `json:"id"`
+	Name       string                    `json:"name,omitempty"`
+	Key        string                    `json:"key,omitempty"`
+	ProjectID  string                    `json:"projectId,omitempty"`
+	Device     *DeviceSummary            `json:"device,omitempty"`
+	CreatedAt  time.Time                 `json:"createdAt"`
+	UpdatedAt  time.Time                 `json:"updatedAt"`
 	Recordings []SessionRecordingSummary `json:"recordings,omitempty"`
 }
 
@@ -526,17 +524,26 @@ func (r SessionResponse) Headers() []string {
 		"Name",
 		"Key",
 		"Project ID",
+		"Device",
 		"Created At",
 		"Updated At",
 	}
 }
 
 func (r SessionResponse) Fields() []string {
+	device := "-"
+	if r.Device != nil {
+		device = r.Device.Name
+		if r.Device.ID != "" {
+			device = r.Device.Name + " (" + r.Device.ID + ")"
+		}
+	}
 	return []string{
 		r.ID,
 		r.Name,
 		r.Key,
 		r.ProjectID,
+		device,
 		r.CreatedAt.Format(time.RFC3339),
 		r.UpdatedAt.Format(time.RFC3339),
 	}
@@ -547,9 +554,9 @@ type GetSessionRequest struct {
 }
 
 type CreateSessionRequest struct {
-	Name      string   `json:"name,omitempty"`
-	ProjectID string   `json:"projectId,omitempty"`
-	DeviceID  string   `json:"deviceId,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	ProjectID    string   `json:"projectId,omitempty"`
+	DeviceID     string   `json:"deviceId,omitempty"`
 	RecordingIDs []string `json:"recordingIds,omitempty"`
 }
 
@@ -562,18 +569,15 @@ type CreateSessionResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-type UpdateSessionRequest struct {
-	Name string `json:"name,omitempty"`
-}
-
+// UpdateSessionResponse is the response type for PATCH /sessions (e.g. when adding/removing recordings).
 type UpdateSessionResponse CreateSessionResponse
 
-// Session recordings: list via GET session (response has recordingIds); add/remove via PATCH session
+// SessionRecordingsResponse holds recording IDs (derived from GET session's "recordings" array). Add/remove via PATCH /sessions/{keyOrId}.
 type SessionRecordingsResponse struct {
 	RecordingIDs []string `json:"recordingIds"`
 }
 
-// PatchSessionRecordingsRequest is the body for PATCH /sessions/{keyOrId} (add/remove recordings)
+// PatchSessionRecordingsRequest is the request body for PATCH /sessions/{keyOrId} when adding or removing recordings.
 type PatchSessionRecordingsRequest struct {
 	AddRecordingIDs    []string `json:"addRecordingIds,omitempty"`
 	RemoveRecordingIDs []string `json:"removeRecordingIds,omitempty"`

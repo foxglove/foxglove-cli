@@ -355,6 +355,8 @@ func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 	switch res.StatusCode {
 	case http.StatusForbidden, http.StatusUnauthorized:
 		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
+	case http.StatusNotFound:
+		return ErrNotFound
 	case http.StatusOK:
 		break
 	default:
@@ -391,15 +393,6 @@ func (c *FoxgloveClient) CreateSession(req CreateSessionRequest) (resp CreateSes
 	return resp, err
 }
 
-func (c *FoxgloveClient) UpdateSession(keyOrID string, projectID string, req UpdateSessionRequest) (resp UpdateSessionResponse, err error) {
-	path, err := url.JoinPath("/v1/sessions", keyOrID)
-	if err != nil {
-		return UpdateSessionResponse{}, err
-	}
-	err = c.patch(path, GetSessionRequest{ProjectID: projectID}, req, &resp)
-	return resp, err
-}
-
 func (c *FoxgloveClient) DeleteSession(keyOrID string, projectID string) error {
 	path, err := url.JoinPath("/v1/sessions", keyOrID)
 	if err != nil {
@@ -412,7 +405,7 @@ func (c *FoxgloveClient) DeleteSession(keyOrID string, projectID string) error {
 	return c.delete(endpoint)
 }
 
-// ListSessionRecordings returns recording IDs for a session (GET session includes "recordings" array per API spec).
+// ListSessionRecordings returns recording IDs for a session (from GET session's recordings array).
 func (c *FoxgloveClient) ListSessionRecordings(keyOrID string, projectID string) (resp SessionRecordingsResponse, err error) {
 	session, err := c.GetSession(keyOrID, projectID)
 	if err != nil {
@@ -425,7 +418,7 @@ func (c *FoxgloveClient) ListSessionRecordings(keyOrID string, projectID string)
 	return SessionRecordingsResponse{RecordingIDs: ids}, nil
 }
 
-// PatchSessionRecordings adds or removes recordings in a session (PATCH /sessions/{keyOrId} per API spec).
+// PatchSessionRecordings adds or removes recordings in a session via PATCH /sessions/{keyOrId}.
 func (c *FoxgloveClient) PatchSessionRecordings(keyOrID string, projectID string, req PatchSessionRecordingsRequest) (UpdateSessionResponse, error) {
 	path, err := url.JoinPath("/v1/sessions", keyOrID)
 	if err != nil {
