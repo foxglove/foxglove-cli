@@ -304,7 +304,15 @@ func (s *MockFoxgloveServer) patchSession(w http.ResponseWriter, r *http.Request
 			}
 			s.registeredSessions[i].RecordingIDs = ids
 			s.registeredSessions[i].UpdatedAt = time.Now()
-			_ = json.NewEncoder(w).Encode(UpdateSessionResponse(s.registeredSessions[i]))
+			sess := &s.registeredSessions[i]
+			_ = json.NewEncoder(w).Encode(UpdateSessionResponse{
+				ID:        sess.ID,
+				Name:      sess.Name,
+				Key:       sess.Key,
+				ProjectID: sess.ProjectID,
+				CreatedAt: sess.CreatedAt,
+				UpdatedAt: sess.UpdatedAt,
+			})
 			return
 		}
 	}
