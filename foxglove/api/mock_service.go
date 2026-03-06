@@ -256,16 +256,20 @@ func (s *MockFoxgloveServer) createSession(w http.ResponseWriter, r *http.Reques
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	s.mtx.Lock()
-	s.registeredSessions = append(s.registeredSessions, SessionResponse{
+	sess := SessionResponse{
 		ID:         resp.ID,
-		Name:      resp.Name,
-		Key:       resp.Key,
-		ProjectID: resp.ProjectID,
-		CreatedAt: resp.CreatedAt,
-		UpdatedAt: resp.UpdatedAt,
+		Name:       resp.Name,
+		Key:        resp.Key,
+		ProjectID:  resp.ProjectID,
+		CreatedAt:  resp.CreatedAt,
+		UpdatedAt:  resp.UpdatedAt,
 		Recordings: []SessionRecordingSummary{},
-	})
+	}
+	if req.DeviceID != "" {
+		sess.Device = &DeviceSummary{ID: req.DeviceID, Name: req.DeviceID}
+	}
+	s.mtx.Lock()
+	s.registeredSessions = append(s.registeredSessions, sess)
 	s.mtx.Unlock()
 	_ = json.NewEncoder(w).Encode(resp)
 }
