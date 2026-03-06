@@ -488,6 +488,80 @@ type EditDeviceRequestBody struct {
 
 type EditDeviceResponse CreateDeviceResponse
 
+// Session types (list, get, create, update, delete)
+type SessionsRequest struct {
+	ProjectID string `json:"projectId" form:"projectId,omitempty"`
+}
+
+type SessionResponse struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name,omitempty"`
+	Key          string    `json:"key,omitempty"`
+	ProjectID    string    `json:"projectId,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+	RecordingIDs []string  `json:"recordingIds,omitempty"`
+}
+
+func (r SessionResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Name",
+		"Key",
+		"Project ID",
+		"Created At",
+		"Updated At",
+	}
+}
+
+func (r SessionResponse) Fields() []string {
+	return []string{
+		r.ID,
+		r.Name,
+		r.Key,
+		r.ProjectID,
+		r.CreatedAt.Format(time.RFC3339),
+		r.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+type GetSessionRequest struct {
+	ProjectID string `json:"projectId" form:"projectId,omitempty"`
+}
+
+type CreateSessionRequest struct {
+	Name      string   `json:"name,omitempty"`
+	ProjectID string   `json:"projectId,omitempty"`
+	DeviceID  string   `json:"deviceId,omitempty"`
+	RecordingIDs []string `json:"recordingIds,omitempty"`
+}
+
+type CreateSessionResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name,omitempty"`
+	Key       string    `json:"key,omitempty"`
+	ProjectID string    `json:"projectId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type UpdateSessionRequest struct {
+	Name string `json:"name,omitempty"`
+}
+
+type UpdateSessionResponse CreateSessionResponse
+
+// Session recordings: list via GET session (response has recordingIds); add/remove via PATCH session
+type SessionRecordingsResponse struct {
+	RecordingIDs []string `json:"recordingIds"`
+}
+
+// PatchSessionRecordingsRequest is the body for PATCH /sessions/{keyOrId} (add/remove recordings)
+type PatchSessionRecordingsRequest struct {
+	AddRecordingIDs    []string `json:"addRecordingIds,omitempty"`
+	RemoveRecordingIDs []string `json:"removeRecordingIds,omitempty"`
+}
+
 type CreateEventRequest struct {
 	DeviceID string            `json:"deviceId"`
 	Start    string            `json:"start"`

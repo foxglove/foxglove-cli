@@ -24,6 +24,7 @@ type MockFoxgloveServer struct {
 	IDTokens             map[string]string // device ID -> ID token
 	BearerTokens         map[string]string // bearer token -> ID token
 	registeredDevices    []DevicesResponse
+	registeredSessions   []SessionResponse
 	registeredProperties []CustomPropertiesResponseItem
 	tokenRequests        int
 	port                 int
@@ -217,6 +218,113 @@ func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *MockFoxgloveServer) sessionsList(w http.ResponseWriter, r *http.Request) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	err := json.NewEncoder(w).Encode(s.registeredSessions)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func (s *MockFoxgloveServer) getSession(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	for _, sess := range s.registeredSessions {
+		if sess.ID == id || sess.Key == id {
+			_ = json.NewEncoder(w).Encode(sess)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func (s *MockFoxgloveServer) createSession(w http.ResponseWriter, r *http.Request) {
+	req := CreateSessionRequest{}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	key, _ := randomString(8)
+	resp := CreateSessionResponse{
+		ID:        "sess_" + key,
+		Name:      req.Name,
+		Key:       key,
+		ProjectID: req.ProjectID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	s.mtx.Lock()
+	s.registeredSessions = append(s.registeredSessions, SessionResponse{
+		ID:           resp.ID,
+		Name:         resp.Name,
+		Key:          resp.Key,
+		ProjectID:    resp.ProjectID,
+		CreatedAt:    resp.CreatedAt,
+		UpdatedAt:    resp.UpdatedAt,
+		RecordingIDs: []string{},
+	})
+	s.mtx.Unlock()
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *MockFoxgloveServer) patchSession(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	req := PatchSessionRecordingsRequest{}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for i := range s.registeredSessions {
+		if s.registeredSessions[i].ID == id || s.registeredSessions[i].Key == id {
+			ids := s.registeredSessions[i].RecordingIDs
+			if ids == nil {
+				ids = []string{}
+			}
+			for _, addID := range req.AddRecordingIDs {
+				ids = append(ids, addID)
+			}
+			if len(req.RemoveRecordingIDs) > 0 {
+				removeSet := make(map[string]bool)
+				for _, rid := range req.RemoveRecordingIDs {
+					removeSet[rid] = true
+				}
+				newIDs := make([]string, 0, len(ids))
+				for _, rid := range ids {
+					if !removeSet[rid] {
+						newIDs = append(newIDs, rid)
+					}
+				}
+				ids = newIDs
+			}
+			s.registeredSessions[i].RecordingIDs = ids
+			s.registeredSessions[i].UpdatedAt = time.Now()
+			_ = json.NewEncoder(w).Encode(UpdateSessionResponse(s.registeredSessions[i]))
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func (s *MockFoxgloveServer) deleteSession(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	for i, sess := range s.registeredSessions {
+		if sess.ID == id || sess.Key == id {
+			s.registeredSessions = append(s.registeredSessions[:i], s.registeredSessions[i+1:]...)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNotFound)
+}
+
 func (s *MockFoxgloveServer) imports(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -402,6 +510,7 @@ func mockServer(port int) *MockFoxgloveServer {
 				UpdatedAt: time.Now(),
 			},
 		},
+		registeredSessions: []SessionResponse{},
 		registeredProperties: []CustomPropertiesResponseItem{
 			{Key: "str", ResourceType: "devices", Label: "", ValueType: "string"},
 			{Key: "num", ResourceType: "devices", Label: "", ValueType: "number"},
@@ -427,6 +536,11 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.createDevice)).Methods("POST")
 	r.HandleFunc("/v1/devices", sv.withAuthz(sv.devices)).Methods("GET")
 	r.HandleFunc("/v1/devices/{id}", sv.withAuthz(sv.editDevice)).Methods("PATCH")
+	r.HandleFunc("/v1/sessions", sv.withAuthz(sv.sessionsList)).Methods("GET")
+	r.HandleFunc("/v1/sessions", sv.withAuthz(sv.createSession)).Methods("POST")
+	r.HandleFunc("/v1/sessions/{id}", sv.withAuthz(sv.getSession)).Methods("GET")
+	r.HandleFunc("/v1/sessions/{id}", sv.withAuthz(sv.patchSession)).Methods("PATCH")
+	r.HandleFunc("/v1/sessions/{id}", sv.withAuthz(sv.deleteSession)).Methods("DELETE")
 	r.HandleFunc("/v1/projects", sv.withAuthz(sv.projects)).Methods("GET")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")
