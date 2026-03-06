@@ -569,15 +569,12 @@ type CreateSessionResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// UpdateSessionResponse is the response type for PATCH /sessions (e.g. when adding/removing recordings).
 type UpdateSessionResponse CreateSessionResponse
 
-// SessionRecordingsResponse holds recording IDs (derived from GET session's "recordings" array). Add/remove via PATCH /sessions/{keyOrId}.
 type SessionRecordingsResponse struct {
 	RecordingIDs []string `json:"recordingIds"`
 }
 
-// PatchSessionRecordingsRequest is the request body for PATCH /sessions/{keyOrId} when adding or removing recordings.
 type PatchSessionRecordingsRequest struct {
 	AddRecordingIDs    []string `json:"addRecordingIds,omitempty"`
 	RemoveRecordingIDs []string `json:"removeRecordingIds,omitempty"`
