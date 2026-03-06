@@ -493,14 +493,31 @@ type SessionsRequest struct {
 	ProjectID string `json:"projectId" form:"projectId,omitempty"`
 }
 
+// SessionRecordingSummary is one recording in a session (GET session "recordings" array).
+type SessionRecordingSummary struct {
+	ID    string `json:"id"`
+	Path  string `json:"path,omitempty"`
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
+}
+
+func (r SessionRecordingSummary) Headers() []string {
+	return []string{"ID", "Start", "End", "Path"}
+}
+
+func (r SessionRecordingSummary) Fields() []string {
+	return []string{r.ID, r.Start, r.End, r.Path}
+}
+
 type SessionResponse struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name,omitempty"`
-	Key          string    `json:"key,omitempty"`
-	ProjectID    string    `json:"projectId,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-	RecordingIDs []string  `json:"recordingIds,omitempty"`
+	ID         string                   `json:"id"`
+	Name       string                   `json:"name,omitempty"`
+	Key        string                   `json:"key,omitempty"`
+	ProjectID  string                   `json:"projectId,omitempty"`
+	Device     *DeviceSummary           `json:"device,omitempty"`
+	CreatedAt  time.Time                `json:"createdAt"`
+	UpdatedAt  time.Time                `json:"updatedAt"`
+	Recordings []SessionRecordingSummary `json:"recordings,omitempty"`
 }
 
 func (r SessionResponse) Headers() []string {

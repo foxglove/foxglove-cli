@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/foxglove/foxglove-cli/foxglove/api"
+	tw "github.com/foxglove/foxglove-cli/foxglove/util/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -72,17 +73,17 @@ func newGetSessionCommand(params *baseParams) *cobra.Command {
 			fmt.Printf("Name:       %s\n", session.Name)
 			fmt.Printf("Key:        %s\n", session.Key)
 			fmt.Printf("Project ID: %s\n", session.ProjectID)
+			if session.Device != nil {
+				fmt.Printf("Device:     %s (%s)\n", session.Device.Name, session.Device.ID)
+			}
 			fmt.Printf("Created At: %s\n", session.CreatedAt.Format("2006-01-02T15:04:05Z07:00"))
 			fmt.Printf("Updated At: %s\n", session.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"))
-			recordingIDs := session.RecordingIDs
-			if len(recordingIDs) == 0 {
-				recs, err := client.ListSessionRecordings(keyOrID, projectID)
-				if err == nil {
-					recordingIDs = recs.RecordingIDs
+			if len(session.Recordings) > 0 {
+				ids := make([]string, len(session.Recordings))
+				for i, rec := range session.Recordings {
+					ids[i] = rec.ID
 				}
-			}
-			if len(recordingIDs) > 0 {
-				fmt.Printf("Recordings: %s\n", strings.Join(recordingIDs, ", "))
+				fmt.Printf("Recordings: %s\n", strings.Join(ids, ", "))
 			} else {
 				fmt.Printf("Recordings: (none)\n")
 			}
@@ -160,16 +161,23 @@ func newSessionRecordingsListCommand(params *baseParams) *cobra.Command {
 				params.userAgent,
 			)
 			keyOrID := args[0]
-			recs, err := client.ListSessionRecordings(keyOrID, projectID)
+			session, err := client.GetSession(keyOrID, projectID)
 			if err != nil {
 				if err == api.ErrForbidden {
 					dief("Not authenticated. Run foxglove auth login.")
 				}
 				dief("Failed to list session recordings: %s", err)
 			}
-			for _, id := range recs.RecordingIDs {
-				fmt.Println(id)
+			recs := session.Recordings
+			if len(recs) == 0 {
+				fmt.Println("No recordings in this session.")
+				return
 			}
+			data := make([][]string, len(recs))
+			for i, r := range recs {
+				data[i] = r.Fields()
+			}
+			tw.PrintTable(os.Stdout, recs[0].Headers(), data)
 		},
 	}
 	listCmd.InheritedFlags()

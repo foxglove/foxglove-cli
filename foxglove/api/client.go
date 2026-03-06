@@ -412,15 +412,15 @@ func (c *FoxgloveClient) DeleteSession(keyOrID string, projectID string) error {
 	return c.delete(endpoint)
 }
 
-// ListSessionRecordings returns recording IDs for a session (GET session includes recordingIds per API spec).
+// ListSessionRecordings returns recording IDs for a session (GET session includes "recordings" array per API spec).
 func (c *FoxgloveClient) ListSessionRecordings(keyOrID string, projectID string) (resp SessionRecordingsResponse, err error) {
 	session, err := c.GetSession(keyOrID, projectID)
 	if err != nil {
 		return SessionRecordingsResponse{}, err
 	}
-	ids := session.RecordingIDs
-	if ids == nil {
-		ids = []string{}
+	ids := make([]string, 0, len(session.Recordings))
+	for _, rec := range session.Recordings {
+		ids = append(ids, rec.ID)
 	}
 	return SessionRecordingsResponse{RecordingIDs: ids}, nil
 }

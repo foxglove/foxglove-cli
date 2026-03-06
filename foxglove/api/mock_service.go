@@ -258,13 +258,13 @@ func (s *MockFoxgloveServer) createSession(w http.ResponseWriter, r *http.Reques
 	}
 	s.mtx.Lock()
 	s.registeredSessions = append(s.registeredSessions, SessionResponse{
-		ID:           resp.ID,
-		Name:         resp.Name,
-		Key:          resp.Key,
-		ProjectID:    resp.ProjectID,
-		CreatedAt:    resp.CreatedAt,
-		UpdatedAt:    resp.UpdatedAt,
-		RecordingIDs: []string{},
+		ID:         resp.ID,
+		Name:      resp.Name,
+		Key:       resp.Key,
+		ProjectID: resp.ProjectID,
+		CreatedAt: resp.CreatedAt,
+		UpdatedAt: resp.UpdatedAt,
+		Recordings: []SessionRecordingSummary{},
 	})
 	s.mtx.Unlock()
 	_ = json.NewEncoder(w).Encode(resp)
@@ -282,27 +282,27 @@ func (s *MockFoxgloveServer) patchSession(w http.ResponseWriter, r *http.Request
 	defer s.mtx.Unlock()
 	for i := range s.registeredSessions {
 		if s.registeredSessions[i].ID == id || s.registeredSessions[i].Key == id {
-			ids := s.registeredSessions[i].RecordingIDs
-			if ids == nil {
-				ids = []string{}
+			recs := s.registeredSessions[i].Recordings
+			if recs == nil {
+				recs = []SessionRecordingSummary{}
 			}
 			for _, addID := range req.AddRecordingIDs {
-				ids = append(ids, addID)
+				recs = append(recs, SessionRecordingSummary{ID: addID})
 			}
 			if len(req.RemoveRecordingIDs) > 0 {
 				removeSet := make(map[string]bool)
 				for _, rid := range req.RemoveRecordingIDs {
 					removeSet[rid] = true
 				}
-				newIDs := make([]string, 0, len(ids))
-				for _, rid := range ids {
-					if !removeSet[rid] {
-						newIDs = append(newIDs, rid)
+				newRecs := make([]SessionRecordingSummary, 0, len(recs))
+				for _, r := range recs {
+					if !removeSet[r.ID] {
+						newRecs = append(newRecs, r)
 					}
 				}
-				ids = newIDs
+				recs = newRecs
 			}
-			s.registeredSessions[i].RecordingIDs = ids
+			s.registeredSessions[i].Recordings = recs
 			s.registeredSessions[i].UpdatedAt = time.Now()
 			sess := &s.registeredSessions[i]
 			_ = json.NewEncoder(w).Encode(UpdateSessionResponse{
