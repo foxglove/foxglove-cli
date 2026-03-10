@@ -163,6 +163,45 @@ $ rosbag info output.bag
                   /gps/fix_velocity   3364 msgs    : geometry_msgs/TwistWithCovarianceStamped
 ```
 
+### MCAP local utilities
+
+Use `foxglove mcap rename` to update topic names in an existing MCAP file.
+This command rewrites channel metadata only (it does not decode or modify message payloads).
+
+```
+# Rename to a new file (recommended first pass)
+$ foxglove mcap rename examples/example-rename.mcap \
+    --from /tf \
+    --to /tf_out \
+    --output examples/example-rename-out.mcap
+
+# Then rename in place on the output file
+$ foxglove mcap rename examples/example-rename-out.mcap \
+    --from /tf_out \
+    --to /tf_inplace
+```
+
+Quick verification with `mcap info`:
+
+```
+# Before rename
+$ mcap info examples/example-rename.mcap
+# Look under "channels" for:
+#   /tf
+
+# After rename to a new file
+$ mcap info examples/example-rename-out.mcap
+# Look under "channels" for:
+#   /tf_out
+# and confirm /tf is no longer listed
+
+# After in-place rename
+$ mcap info examples/example-rename-out.mcap
+# Look under "channels" for:
+#   /tf_inplace
+# and confirm /tf_out is no longer listed
+```
+
 ### Events
 
 Create events to denote instances or time ranges of interest:

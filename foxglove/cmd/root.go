@@ -163,6 +163,10 @@ func Execute(version string) {
 		Use:   "projects",
 		Short: "List and manage projects",
 	}
+	mcapCmd := &cobra.Command{
+		Use:   "mcap",
+		Short: "Local MCAP file utilities",
+	}
 	configCmd := newConfigCommand()
 
 	var clientID, cfgFile string
@@ -234,6 +238,7 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 	pendingImportsCmd.AddCommand(newPendingImportsCommand(params))
 	projectsCmd.AddCommand(newListProjectsCommand(params))
+	mcapCmd.AddCommand(newMcapRenameCommand())
 
 	rootCmd.AddCommand(
 		authCmd,
@@ -246,6 +251,7 @@ func Execute(version string) {
 		eventsCmd,
 		pendingImportsCmd,
 		projectsCmd,
+		mcapCmd,
 		configCmd,
 	)
 
