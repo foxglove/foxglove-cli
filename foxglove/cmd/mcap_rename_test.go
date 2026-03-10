@@ -131,6 +131,22 @@ func TestMCAPRenameCommand_MissingTopic(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr))
 }
 
+func TestMCAPRenameCommand_TopicCollision(t *testing.T) {
+	tmp := t.TempDir()
+	inputPath := filepath.Join(tmp, "input.mcap")
+	outputPath := filepath.Join(tmp, "output.mcap")
+	writeTestMCAP(t, inputPath)
+
+	cmd := newMcapRenameCommand()
+	cmd.SetArgs([]string{inputPath, "--from", "/foo", "--to", "/bar", "--output", outputPath})
+
+	err := cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+	_, statErr := os.Stat(outputPath)
+	assert.True(t, os.IsNotExist(statErr))
+}
+
 func TestMCAPRenameCommand_FlagValidation(t *testing.T) {
 	tmp := t.TempDir()
 	inputPath := filepath.Join(tmp, "input.mcap")
@@ -141,7 +157,7 @@ func TestMCAPRenameCommand_FlagValidation(t *testing.T) {
 		cmd.SetArgs([]string{inputPath, "--to", "/new"})
 		err := cmd.Execute()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "required flag \"from\" not set")
+		assert.Contains(t, err.Error(), "\"from\" not set")
 	})
 
 	t.Run("requires to", func(t *testing.T) {
@@ -149,7 +165,7 @@ func TestMCAPRenameCommand_FlagValidation(t *testing.T) {
 		cmd.SetArgs([]string{inputPath, "--from", "/foo"})
 		err := cmd.Execute()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "required flag \"to\" not set")
+		assert.Contains(t, err.Error(), "\"to\" not set")
 	})
 
 	t.Run("from and to must differ", func(t *testing.T) {

@@ -20,6 +20,13 @@ func rewriteMCAPTopics(dst io.Writer, src io.Reader, fromTopic string, toTopic s
 	if err != nil {
 		return 0, fmt.Errorf("failed to construct output writer: %w", err)
 	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = writer.Close()
+		}
+	}()
+
 	lexer, err := mcap.NewLexer(src, &mcap.LexerOptions{
 		AttachmentCallback: func(ar *mcap.AttachmentReader) error {
 			return writer.WriteAttachment(&mcap.Attachment{
@@ -67,6 +74,9 @@ func rewriteMCAPTopics(dst io.Writer, src io.Reader, fromTopic string, toTopic s
 			if err != nil {
 				return renamed, fmt.Errorf("failed to parse channel: %w", err)
 			}
+			if channel.Topic == toTopic {
+				return renamed, fmt.Errorf("target topic %q already exists in the file", toTopic)
+			}
 			if channel.Topic == fromTopic {
 				channel.Topic = toTopic
 				renamed++
@@ -94,12 +104,14 @@ func rewriteMCAPTopics(dst io.Writer, src io.Reader, fromTopic string, toTopic s
 			if err := writer.Close(); err != nil {
 				return renamed, fmt.Errorf("failed to finalize output: %w", err)
 			}
+			closed = true
 			return renamed, nil
 		}
 	}
 	if err := writer.Close(); err != nil {
 		return renamed, fmt.Errorf("failed to finalize output: %w", err)
 	}
+	closed = true
 	return renamed, nil
 }
 
@@ -108,7 +120,6 @@ func renameMCAPFile(inputPath string, outputPath string, fromTopic string, toTop
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer input.Close()
 
 	var targetPath string
 	if outputPath == "" {
@@ -121,10 +132,13 @@ func renameMCAPFile(inputPath string, outputPath string, fromTopic string, toTop
 	if inPlace {
 		tmpfile, err := os.CreateTemp(filepath.Dir(inputPath), "mcap-rename-*")
 		if err != nil {
+			input.Close()
 			return fmt.Errorf("failed to create temporary file: %w", err)
 		}
 		tmpname := tmpfile.Name()
 		renamed, rewriteErr := rewriteMCAPTopics(tmpfile, input, fromTopic, toTopic)
+		// Close both files before any rename or cleanup.
+		input.Close()
 		closeErr := tmpfile.Close()
 		if rewriteErr != nil {
 			_ = os.Remove(tmpname)
@@ -145,6 +159,9 @@ func renameMCAPFile(inputPath string, outputPath string, fromTopic string, toTop
 		return nil
 	}
 
+	// Non-in-place path: input can be deferred.
+	defer input.Close()
+
 	output, err := os.Create(targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
@@ -156,6 +173,7 @@ func renameMCAPFile(inputPath string, outputPath string, fromTopic string, toTop
 		return rewriteErr
 	}
 	if closeErr != nil {
+		_ = os.Remove(targetPath)
 		return fmt.Errorf("failed to close output file: %w", closeErr)
 	}
 	if renamed == 0 {
@@ -175,12 +193,6 @@ func newMcapRenameCommand() *cobra.Command {
 		Short: "Rename a topic inside an MCAP file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if fromTopic == "" {
-				return fmt.Errorf("required flag \"from\" not set")
-			}
-			if toTopic == "" {
-				return fmt.Errorf("required flag \"to\" not set")
-			}
 			if fromTopic == toTopic {
 				return fmt.Errorf("--from and --to must be different")
 			}
@@ -190,5 +202,7 @@ func newMcapRenameCommand() *cobra.Command {
 	renameCmd.Flags().StringVar(&fromTopic, "from", "", "Existing topic name to rename")
 	renameCmd.Flags().StringVar(&toTopic, "to", "", "New topic name")
 	renameCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Write renamed MCAP to a new file (default: in-place)")
+	_ = renameCmd.MarkFlagRequired("from")
+	_ = renameCmd.MarkFlagRequired("to")
 	return renameCmd
 }
