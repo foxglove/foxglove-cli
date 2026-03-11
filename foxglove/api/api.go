@@ -64,9 +64,6 @@ func (req *StreamRequest) Validate() error {
 		return fmt.Errorf("project-id is required when using session-key")
 	}
 	if hasDeviceSource && !hasImportSource && !hasRecordingSource && !hasSessionSource {
-		if req.DeviceID == "" || req.DeviceName == "" {
-			return fmt.Errorf("both device-id and device-name are required when using device path")
-		}
 		if req.Start == nil || req.End == nil {
 			return fmt.Errorf("start/end are required if device is supplied without recording or session")
 		}

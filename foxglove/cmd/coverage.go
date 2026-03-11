@@ -72,7 +72,7 @@ func newListCoverageCommand(params *baseParams) *cobra.Command {
 	coverageListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	coverageListCmd.PersistentFlags().StringVarP(&recordingID, "recording-id", "", "", "Recording ID")
 	coverageListCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
-	coverageListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (required when using with --project-id)")
+	coverageListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key")
 	coverageListCmd.PersistentFlags().IntVarP(&tolerance, "tolerance", "", 0,
 		"Number of seconds by which ranges must be separated to be considered distinct")
 

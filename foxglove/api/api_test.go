@@ -91,31 +91,6 @@ func TestStreamRequestValidate(t *testing.T) {
 		}
 		assert.NoError(t, req.Validate())
 	})
-
-	t.Run("fails with only device-id when device is sole source (device-name required)", func(t *testing.T) {
-		req := &StreamRequest{
-			DeviceID:     "device-123",
-			Start:        &start,
-			End:          &end,
-			OutputFormat: "mcap0",
-		}
-		err := req.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "both device-id and device-name are required when using device path")
-	})
-
-	t.Run("fails with only device-name when device is sole source (device-id required)", func(t *testing.T) {
-		req := &StreamRequest{
-			DeviceName:   "My Device",
-			Start:        &start,
-			End:          &end,
-			OutputFormat: "mcap0",
-		}
-		err := req.Validate()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "both device-id and device-name are required when using device path")
-	})
-
 	t.Run("fails with device without start/end and no other source", func(t *testing.T) {
 		req := &StreamRequest{
 			DeviceID:     "device-123",

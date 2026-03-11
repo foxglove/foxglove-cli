@@ -91,7 +91,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	recordingsListCmd.PersistentFlags().StringVarP(&sortBy, "sort-by", "", "", "Sort recordings by a field")
 	recordingsListCmd.PersistentFlags().StringVarP(&sortOrder, "sort-order", "", "", "Sort order: 'asc' 'desc'")
 	recordingsListCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
-	recordingsListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key (required when using with --project-id)")
+	recordingsListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key")
 	AddFormatFlag(recordingsListCmd, &format)
 	AddDeviceAutocompletion(recordingsListCmd, params)
 	AddJsonFlag(recordingsListCmd, &isJsonFormat)
