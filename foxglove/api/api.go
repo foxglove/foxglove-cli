@@ -486,7 +486,9 @@ type EditDeviceRequestBody struct {
 type EditDeviceResponse CreateDeviceResponse
 
 type SessionsRequest struct {
-	ProjectID string `json:"projectId" form:"projectId,omitempty"`
+	ProjectID  string `json:"projectId" form:"projectId,omitempty"`
+	DeviceID   string `json:"deviceId" form:"deviceId,omitempty"`
+	DeviceName string `json:"deviceName" form:"deviceName,omitempty"`
 }
 
 type SessionRecordingSummary struct {

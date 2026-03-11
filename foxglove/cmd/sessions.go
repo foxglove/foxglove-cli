@@ -15,6 +15,8 @@ func newListSessionsCommand(params *baseParams) *cobra.Command {
 	var format string
 	var isJsonFormat bool
 	var projectID string
+	var deviceID string
+	var deviceName string
 	sessionsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List sessions in your organization",
@@ -28,7 +30,9 @@ func newListSessionsCommand(params *baseParams) *cobra.Command {
 			err := renderList(
 				os.Stdout,
 				api.SessionsRequest{
-					ProjectID: projectID,
+					ProjectID:  projectID,
+					DeviceID:   deviceID,
+					DeviceName: deviceName,
 				},
 				client.Sessions,
 				format,
@@ -41,8 +45,11 @@ func newListSessionsCommand(params *baseParams) *cobra.Command {
 	}
 	sessionsListCmd.InheritedFlags()
 	sessionsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID (optional filter)")
+	sessionsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Filter by device ID")
+	sessionsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Filter by device name")
 	AddFormatFlag(sessionsListCmd, &format)
 	AddJsonFlag(sessionsListCmd, &isJsonFormat)
+	AddDeviceAutocompletion(sessionsListCmd, params)
 	return sessionsListCmd
 }
 

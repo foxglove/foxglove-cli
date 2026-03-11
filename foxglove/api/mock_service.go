@@ -219,9 +219,27 @@ func (s *MockFoxgloveServer) devices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *MockFoxgloveServer) sessionsList(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filterDeviceID := q.Get("deviceId")
+	filterDeviceName := q.Get("deviceName")
+
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	err := json.NewEncoder(w).Encode(s.registeredSessions)
+	out := s.registeredSessions
+	if filterDeviceID != "" || filterDeviceName != "" {
+		filtered := make([]SessionResponse, 0, len(out))
+		for _, sess := range out {
+			if filterDeviceID != "" && (sess.Device == nil || sess.Device.ID != filterDeviceID) {
+				continue
+			}
+			if filterDeviceName != "" && (sess.Device == nil || sess.Device.Name != filterDeviceName) {
+				continue
+			}
+			filtered = append(filtered, sess)
+		}
+		out = filtered
+	}
+	err := json.NewEncoder(w).Encode(out)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
