@@ -355,6 +355,8 @@ func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 	switch res.StatusCode {
 	case http.StatusForbidden, http.StatusUnauthorized:
 		return fmt.Errorf("%w\n%s", ErrForbidden, unpackErrorResponse(res.Body))
+	case http.StatusNotFound:
+		return ErrNotFound
 	case http.StatusOK:
 		break
 	default:
@@ -370,6 +372,75 @@ func (c *FoxgloveClient) get(endpoint string, req any, target any) error {
 func (c *FoxgloveClient) Devices(req DevicesRequest) (resp []DevicesResponse, err error) {
 	err = c.get("/v1/devices", req, &resp)
 	return resp, err
+}
+
+func (c *FoxgloveClient) Sessions(req SessionsRequest) (resp []SessionResponse, err error) {
+	err = c.get("/v1/sessions", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) GetSession(keyOrID string, projectID string) (resp SessionResponse, err error) {
+	path, err := url.JoinPath("/v1/sessions", keyOrID)
+	if err != nil {
+		return SessionResponse{}, err
+	}
+	err = c.get(path, GetSessionRequest{ProjectID: projectID}, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) CreateSession(req CreateSessionRequest) (resp CreateSessionResponse, err error) {
+	err = c.post("/v1/sessions", req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) DeleteSession(keyOrID string, projectID string) error {
+	path, err := url.JoinPath("/v1/sessions", keyOrID)
+	if err != nil {
+		return err
+	}
+	endpoint := path
+	if projectID != "" {
+		endpoint = path + "?projectId=" + url.QueryEscape(projectID)
+	}
+	return c.delete(endpoint)
+}
+
+// ListSessionRecordings returns recording IDs for a session (from GET session's recordings array).
+func (c *FoxgloveClient) ListSessionRecordings(keyOrID string, projectID string) (resp SessionRecordingsResponse, err error) {
+	session, err := c.GetSession(keyOrID, projectID)
+	if err != nil {
+		return SessionRecordingsResponse{}, err
+	}
+	ids := make([]string, 0, len(session.Recordings))
+	for _, rec := range session.Recordings {
+		ids = append(ids, rec.ID)
+	}
+	return SessionRecordingsResponse{RecordingIDs: ids}, nil
+}
+
+// PatchSessionRecordings adds or removes recordings in a session via PATCH /sessions/{keyOrId}.
+func (c *FoxgloveClient) PatchSessionRecordings(keyOrID string, projectID string, req PatchSessionRecordingsRequest) (UpdateSessionResponse, error) {
+	path, err := url.JoinPath("/v1/sessions", keyOrID)
+	if err != nil {
+		return UpdateSessionResponse{}, err
+	}
+	var resp UpdateSessionResponse
+	err = c.patch(path, GetSessionRequest{ProjectID: projectID}, req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) AddRecordingToSession(keyOrID string, projectID string, recordingID string) error {
+	_, err := c.PatchSessionRecordings(keyOrID, projectID, PatchSessionRecordingsRequest{
+		AddRecordingIDs: []string{recordingID},
+	})
+	return err
+}
+
+func (c *FoxgloveClient) RemoveRecordingFromSession(keyOrID string, projectID string, recordingID string) error {
+	_, err := c.PatchSessionRecordings(keyOrID, projectID, PatchSessionRecordingsRequest{
+		RemoveRecordingIDs: []string{recordingID},
+	})
+	return err
 }
 
 func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, err error) {

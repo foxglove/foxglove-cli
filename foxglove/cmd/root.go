@@ -163,6 +163,10 @@ func Execute(version string) {
 		Use:   "projects",
 		Short: "List and manage projects",
 	}
+	sessionsCmd := &cobra.Command{
+		Use:   "sessions",
+		Short: "List and manage sessions",
+	}
 	configCmd := newConfigCommand()
 
 	var clientID, cfgFile string
@@ -228,6 +232,13 @@ func Execute(version string) {
 		importShortcut,
 	)
 	devicesCmd.AddCommand(newListDevicesCommand(params), newAddDeviceCommand(params), newEditDeviceCommand(params))
+	sessionsCmd.AddCommand(
+		newListSessionsCommand(params),
+		newGetSessionCommand(params),
+		newAddSessionCommand(params),
+		newSessionRecordingsCommand(params),
+		newDeleteSessionCommand(params),
+	)
 	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
 	extensionsCmd.AddCommand(newListExtensionsCommand(params))
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
@@ -240,6 +251,7 @@ func Execute(version string) {
 		dataCmd,
 		newVersionCommand(version),
 		devicesCmd,
+		sessionsCmd,
 		extensionsCmd,
 		attachmentsCmd,
 		recordingsCmd,

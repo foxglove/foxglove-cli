@@ -25,9 +25,11 @@ type TokenResponse struct {
 type UploadRequest struct {
 	Filename   string `json:"filename"`
 	ProjectID  string `json:"projectId,omitempty"`
-	DeviceID   string `json:"device.id,omitempty"`
 	Key        string `json:"key,omitempty"`
+	DeviceID   string `json:"device.id,omitempty"`
 	DeviceName string `json:"device.name,omitempty"`
+	SessionID  string `json:"sessionId,omitempty"`
+	SessionKey string `json:"sessionKey,omitempty"`
 }
 
 type UploadResponse struct {
@@ -38,20 +40,33 @@ type StreamRequest struct {
 	RecordingID  string     `json:"recordingId,omitempty"`
 	Key          string     `json:"key,omitempty"`
 	ImportID     string     `json:"importId,omitempty"`
+	ProjectID    string     `json:"projectId,omitempty"`
 	DeviceID     string     `json:"device.id,omitempty"`
 	DeviceName   string     `json:"device.name,omitempty"`
 	Start        *time.Time `json:"start,omitempty"`
 	End          *time.Time `json:"end,omitempty"`
 	OutputFormat string     `json:"outputFormat"`
 	Topics       []string   `json:"topics"`
+	SessionID    string     `json:"sessionId,omitempty"`
+	SessionKey   string     `json:"sessionKey,omitempty"`
 }
 
 func (req *StreamRequest) Validate() error {
-	if req.RecordingID == "" && req.ImportID == "" && req.DeviceID == "" && req.DeviceName == "" && req.Key == "" {
-		return fmt.Errorf("either recording-id/key, import-id, or all three of device-id/device-name, start, and end are required")
+	hasRecordingSource := req.RecordingID != "" || req.Key != ""
+	hasSessionSource := req.SessionID != "" || req.SessionKey != ""
+	hasDeviceSource := req.DeviceID != "" || req.DeviceName != ""
+	hasImportSource := req.ImportID != ""
+
+	if !hasRecordingSource && !hasSessionSource && !hasDeviceSource && !hasImportSource {
+		return fmt.Errorf("either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required")
 	}
-	if req.DeviceID != "" && req.DeviceName != "" && req.ImportID == "" && (req.Start == nil || req.End == nil) {
-		return fmt.Errorf("start/end are required if device is supplied")
+	if req.SessionKey != "" && req.ProjectID == "" {
+		return fmt.Errorf("project-id is required when using session-key")
+	}
+	if hasDeviceSource && !hasImportSource && !hasRecordingSource && !hasSessionSource {
+		if req.Start == nil || req.End == nil {
+			return fmt.Errorf("start/end are required if device is supplied without recording or session")
+		}
 	}
 	if req.Start != nil && req.End != nil && req.End.Before(*req.Start) {
 		return fmt.Errorf("end must be after or equal to start")
@@ -115,6 +130,9 @@ func (r DevicesResponse) Headers() []string {
 type AttachmentsRequest struct {
 	ImportID    string `form:"importId,omitempty"`
 	RecordingID string `form:"recordingId,omitempty"`
+	ProjectID   string `form:"projectId,omitempty"`
+	SessionID   string `form:"sessionId,omitempty"`
+	SessionKey  string `form:"sessionKey,omitempty"`
 }
 
 type AttachmentsResponse struct {
@@ -195,6 +213,8 @@ type RecordingsRequest struct {
 	DeviceID     string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName   string `json:"device.name" form:"device.name,omitempty"`
 	ProjectID    string `json:"projectId" form:"projectId,omitempty"`
+	SessionID    string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey   string `json:"sessionKey" form:"sessionKey,omitempty"`
 	Start        string `json:"start" form:"start,omitempty"`
 	End          string `json:"end" form:"end,omitempty"`
 	Path         string `json:"path" form:"path,omitempty"`
@@ -392,6 +412,8 @@ type CoverageRequest struct {
 	Tolerance             int    `json:"tolerance" form:"tolerance,omitempty"`
 	ProjectID             string `json:"projectId" form:"projectId,omitempty"`
 	RecordingID           string `json:"recordingId" form:"recordingId,omitempty"`
+	SessionID             string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey            string `json:"sessionKey" form:"sessionKey,omitempty"`
 	IncludeEdgeRecordings bool   `json:"includeEdgeRecordings" form:"includeEdgeRecordings,omitempty"`
 	DeviceID              string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName            string `json:"device.name" form:"device.name,omitempty"`
@@ -463,6 +485,100 @@ type EditDeviceRequestBody struct {
 
 type EditDeviceResponse CreateDeviceResponse
 
+type SessionsRequest struct {
+	ProjectID  string `json:"projectId" form:"projectId,omitempty"`
+	DeviceID   string `json:"deviceId" form:"deviceId,omitempty"`
+	DeviceName string `json:"deviceName" form:"deviceName,omitempty"`
+}
+
+type SessionRecordingSummary struct {
+	ID    string `json:"id"`
+	Path  string `json:"path,omitempty"`
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
+}
+
+func (r SessionRecordingSummary) Headers() []string {
+	return []string{"ID", "Start", "End", "Path"}
+}
+
+func (r SessionRecordingSummary) Fields() []string {
+	return []string{r.ID, r.Start, r.End, r.Path}
+}
+
+type SessionResponse struct {
+	ID         string                    `json:"id"`
+	Name       string                    `json:"name,omitempty"`
+	Key        string                    `json:"key,omitempty"`
+	ProjectID  string                    `json:"projectId,omitempty"`
+	Device     *DeviceSummary            `json:"device,omitempty"`
+	CreatedAt  time.Time                 `json:"createdAt"`
+	UpdatedAt  time.Time                 `json:"updatedAt"`
+	Recordings []SessionRecordingSummary `json:"recordings,omitempty"`
+}
+
+func (r SessionResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Name",
+		"Key",
+		"Project ID",
+		"Device",
+		"Created At",
+		"Updated At",
+	}
+}
+
+func (r SessionResponse) Fields() []string {
+	device := "-"
+	if r.Device != nil {
+		device = r.Device.Name
+		if r.Device.ID != "" {
+			device = r.Device.Name + " (" + r.Device.ID + ")"
+		}
+	}
+	return []string{
+		r.ID,
+		r.Name,
+		r.Key,
+		r.ProjectID,
+		device,
+		r.CreatedAt.Format(time.RFC3339),
+		r.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+type GetSessionRequest struct {
+	ProjectID string `json:"projectId" form:"projectId,omitempty"`
+}
+
+type CreateSessionRequest struct {
+	Name         string   `json:"name,omitempty"`
+	ProjectID    string   `json:"projectId,omitempty"`
+	DeviceID     string   `json:"deviceId,omitempty"`
+	RecordingIDs []string `json:"recordingIds,omitempty"`
+}
+
+type CreateSessionResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name,omitempty"`
+	Key       string    `json:"key,omitempty"`
+	ProjectID string    `json:"projectId,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type UpdateSessionResponse CreateSessionResponse
+
+type SessionRecordingsResponse struct {
+	RecordingIDs []string `json:"recordingIds"`
+}
+
+type PatchSessionRecordingsRequest struct {
+	AddRecordingIDs    []string `json:"addRecordingIds,omitempty"`
+	RemoveRecordingIDs []string `json:"removeRecordingIds,omitempty"`
+}
+
 type CreateEventRequest struct {
 	DeviceID string            `json:"deviceId"`
 	Start    string            `json:"start"`
@@ -530,7 +646,7 @@ func (e ExtensionResponse) String() string {
 
 type PendingImportsRequest struct {
 	RequestId       string `json:"requestId" form:"requestId,omitempty"`
-	Key		        string `json:"key" form:"key,omitempty"`
+	Key             string `json:"key" form:"key,omitempty"`
 	DeviceId        string `json:"device.id" form:"device.id,omitempty"`
 	DeviceName      string `json:"device.name" form:"device.name,omitempty"`
 	Error           string `json:"error" form:"error,omitempty"`
@@ -540,6 +656,8 @@ type PendingImportsRequest struct {
 	ShowQuarantined bool   `json:"showQuarantined" form:"showQuarantined,omitempty"`
 	SiteId          string `json:"siteId" form:"siteId,omitempty"`
 	ProjectID       string `json:"projectId" form:"projectId,omitempty"`
+	SessionID       string `json:"sessionId" form:"sessionId,omitempty"`
+	SessionKey      string `json:"sessionKey" form:"sessionKey,omitempty"`
 	// NOTE `HasProjectID` is a string because `false` booleans count as "empty" and get omitted.
 	HasProjectID string `json:"hasProjectId" form:"hasProjectId,omitempty"`
 }

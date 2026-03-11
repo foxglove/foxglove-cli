@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-func executeImport(baseURL, clientID, projectID, deviceID, deviceName, key, filename, token, userAgent string) error {
+func executeImport(baseURL, clientID, projectID, deviceID, deviceName, key, sessionID, sessionKey, filename, token, userAgent string) error {
 	ctx := context.Background()
 	f, err := os.Open(filename)
 	if err != nil {
@@ -22,7 +22,7 @@ func executeImport(baseURL, clientID, projectID, deviceID, deviceName, key, file
 		return err
 	}
 	client := api.NewRemoteFoxgloveClient(baseURL, clientID, token, userAgent)
-	err = api.Import(ctx, client, projectID, deviceID, deviceName, key, filename)
+	err = api.Import(ctx, client, projectID, deviceID, deviceName, key, sessionID, sessionKey, filename)
 	if err != nil {
 		return err
 	}
@@ -50,6 +50,8 @@ func newImportCommand(params *baseParams, commandName string, deprecated *string
 	var deviceName string
 	var edgeRecordingID string
 	var key string
+	var sessionID string
+	var sessionKey string
 	var deprecatedMsg string
 	if deprecated != nil {
 		deprecatedMsg = *deprecated
@@ -68,6 +70,10 @@ func newImportCommand(params *baseParams, commandName string, deprecated *string
 				return
 			}
 
+			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
+				dief("%s", err)
+			}
+
 			filename := args[0]
 			err := executeImport(
 				params.baseURL,
@@ -76,6 +82,8 @@ func newImportCommand(params *baseParams, commandName string, deprecated *string
 				deviceID,
 				deviceName,
 				key,
+				sessionID,
+				sessionKey,
 				filename,
 				viper.GetString("bearer_token"),
 				params.userAgent,
@@ -86,10 +94,12 @@ func newImportCommand(params *baseParams, commandName string, deprecated *string
 		},
 	}
 	importCmd.InheritedFlags()
-	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	importCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID (required when using --session-key)")
 	importCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
 	importCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	importCmd.PersistentFlags().StringVarP(&key, "key", "", "", "Recording key")
+	importCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
+	importCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key")
 	importCmd.PersistentFlags().StringVarP(&edgeRecordingID, "edge-recording-id", "", "", "Edge recording ID")
 	AddDeviceAutocompletion(importCmd, params)
 	return importCmd, nil

@@ -24,11 +24,16 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	var offset int
 	var sortBy string
 	var sortOrder string
+	var sessionID string
+	var sessionKey string
 	var isJsonFormat bool
 	recordingsListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List recordings",
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := validateSessionKeyRequiresProjectID(sessionKey, projectID); err != nil {
+				dief("%s", err)
+			}
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
@@ -59,6 +64,8 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 					Offset:       offset,
 					SortBy:       sortBy,
 					SortOrder:    sortOrder,
+					SessionID:    sessionID,
+					SessionKey:   sessionKey,
 				},
 				client.Recordings,
 				format,
@@ -70,7 +77,7 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 		},
 	}
 	recordingsListCmd.InheritedFlags()
-	recordingsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
+	recordingsListCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID (required when using --session-key)")
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceID, "device-id", "", "", "Device ID")
 	recordingsListCmd.PersistentFlags().StringVarP(&deviceName, "device-name", "", "", "Device name")
 	recordingsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Start of data range (ISO8601 format)")
@@ -83,6 +90,8 @@ func newListRecordingsCommand(params *baseParams) *cobra.Command {
 	recordingsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "Number of recordings to skip")
 	recordingsListCmd.PersistentFlags().StringVarP(&sortBy, "sort-by", "", "", "Sort recordings by a field")
 	recordingsListCmd.PersistentFlags().StringVarP(&sortOrder, "sort-order", "", "", "Sort order: 'asc' 'desc'")
+	recordingsListCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "Session ID")
+	recordingsListCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key")
 	AddFormatFlag(recordingsListCmd, &format)
 	AddDeviceAutocompletion(recordingsListCmd, params)
 	AddJsonFlag(recordingsListCmd, &isJsonFormat)

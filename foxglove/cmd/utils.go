@@ -184,7 +184,7 @@ func ResolveFormat(formatFlagValue string, jsonFlagValue bool) string {
 }
 
 // AddDeviceAutocompletion adds autocompletion for device-name and device-id
-// parameters to the command.
+// parameters to the command. The command must have both flags.
 func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
 	if err := cmd.RegisterFlagCompletionFunc(
 		"device-id",
@@ -207,6 +207,22 @@ func AddDeviceAutocompletion(cmd *cobra.Command, params *baseParams) {
 		),
 	); err != nil {
 		dief("failed to register device-name autocompletion: %v", err)
+	}
+}
+
+// AddDeviceIDAutocompletion adds autocompletion for the device-id flag only.
+// Use this for commands that have --device-id but not --device-name.
+func AddDeviceIDAutocompletion(cmd *cobra.Command, params *baseParams) {
+	if err := cmd.RegisterFlagCompletionFunc(
+		"device-id",
+		listDevicesAutocompletionFunc(
+			params.baseURL,
+			*params.clientID,
+			params.token,
+			params.userAgent,
+		),
+	); err != nil {
+		dief("failed to register device-id autocompletion: %v", err)
 	}
 }
 
@@ -248,4 +264,11 @@ func TokenIsApiKey(token string) bool {
 func IsAuthenticated() bool {
 	token := viper.GetString("bearer_token")
 	return token != ""
+}
+
+func validateSessionKeyRequiresProjectID(sessionKey, projectID string) error {
+	if sessionKey != "" && projectID == "" {
+		return fmt.Errorf("--project-id is required when using --session-key")
+	}
+	return nil
 }
