@@ -14,6 +14,8 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 	var start string
 	var end string
 	var keyvals []string
+	var propertyKVs []string
+	var eventTypeID string
 	addEventCmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add an event",
@@ -28,17 +30,39 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 			for _, kv := range keyvals {
 				key, val, err := util.SplitPair(kv, ':')
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Invalid key/value pair: %s\n", kv)
+					fmt.Fprintf(os.Stderr, "Invalid metadata key/value pair: %s\n", kv)
 					os.Exit(1)
 				}
 				metadata[key] = val
 			}
-			response, err := client.CreateEvent(api.CreateEventRequest{
-				DeviceID: deviceID,
-				Start:    start,
-				End:      end,
-				Metadata: metadata,
-			})
+
+			var properties map[string]interface{}
+			if len(propertyKVs) > 0 {
+				properties = make(map[string]interface{})
+				for _, kv := range propertyKVs {
+					key, val, err := util.SplitPair(kv, ':')
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Invalid property key/value pair: %s\n", kv)
+						os.Exit(1)
+					}
+					properties[key] = util.ParsePropertyValue(val)
+				}
+			}
+
+			req := api.CreateEventRequest{
+				DeviceID:    deviceID,
+				Start:       start,
+				End:         end,
+				EventTypeID: eventTypeID,
+			}
+			if len(metadata) > 0 {
+				req.Metadata = metadata
+			}
+			if properties != nil {
+				req.Properties = properties
+			}
+
+			response, err := client.CreateEvent(req)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to add event: %s\n", err)
 				os.Exit(1)
@@ -50,6 +74,8 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 	addEventCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Start of event, RFC 3339 date-time format")
 	addEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "End of event (inclusive), RFC 3339 date-time format")
 	addEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
+	addEventCmd.PersistentFlags().StringArrayVarP(&propertyKVs, "properties", "p", []string{}, "Custom property colon-separated key:value pair. Multiple may be specified. Values are auto-parsed as number/boolean where applicable.")
+	addEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type", "", "", "Event type ID to associate with this event (e.g. evtt_123)")
 	return addEventCmd
 }
 
@@ -64,6 +90,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	var start string
 	var end string
 	var query string
+	var eventTypeID string
 	var isJsonFormat bool
 	eventsListCmd := &cobra.Command{
 		Use:   "list",
@@ -78,15 +105,16 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 			err := renderList(
 				os.Stdout,
 				&api.EventsRequest{
-					DeviceID:   deviceID,
-					DeviceName: deviceName,
-					SortBy:     sortBy,
-					SortOrder:  sortOrder,
-					Limit:      limit,
-					Offset:     offset,
-					Start:      start,
-					End:        end,
-					Query:      query,
+					DeviceID:    deviceID,
+					DeviceName:  deviceName,
+					SortBy:      sortBy,
+					SortOrder:   sortOrder,
+					Limit:       limit,
+					Offset:      offset,
+					Start:       start,
+					End:         end,
+					Query:       query,
+					EventTypeID: eventTypeID,
 				},
 				client.Events,
 				format,
@@ -103,7 +131,10 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().StringVarP(&sortOrder, "sort-order", "", "asc", "sort order")
 	eventsListCmd.PersistentFlags().IntVarP(&limit, "limit", "", 100, "limit")
 	eventsListCmd.PersistentFlags().IntVarP(&offset, "offset", "", 0, "offset")
-	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by metadata with keyword or \"$key:$value\"")
+	eventsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Exclude events before this time, RFC 3339 or ISO 8601 format")
+	eventsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "Exclude events after this time, RFC 3339 or ISO 8601 format")
+	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by properties or metadata, e.g. \"$key:$value\". See API docs for query syntax.")
+	eventsListCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type", "", "", "Filter by event type ID (e.g. evtt_123)")
 	AddDeviceAutocompletion(eventsListCmd, params)
 	AddFormatFlag(eventsListCmd, &format)
 	AddJsonFlag(eventsListCmd, &isJsonFormat)
