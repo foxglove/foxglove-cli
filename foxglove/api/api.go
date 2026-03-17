@@ -360,38 +360,59 @@ func (r ImportsResponse) Headers() []string {
 }
 
 type EventsRequest struct {
-	DeviceID   string `json:"device.id" form:"device.id,omitempty"`
-	DeviceName string `json:"device.name" form:"device.name,omitempty"`
-	SortBy     string `json:"sortBy" form:"sortBy,omitempty"`
-	SortOrder  string `json:"sortOrder" form:"sortOrder,omitempty"`
-	Limit      int    `json:"limit" form:"limit,omitempty"`
-	Offset     int    `json:"offset" form:"offset,omitempty"`
-	Start      string `json:"start" form:"start,omitempty"`
-	End        string `json:"end" form:"end,omitempty"`
-	Query      string `json:"key" form:"query,omitempty"`
+	DeviceID    string `json:"device.id" form:"device.id,omitempty"`
+	DeviceName  string `json:"device.name" form:"device.name,omitempty"`
+	SortBy      string `json:"sortBy" form:"sortBy,omitempty"`
+	SortOrder   string `json:"sortOrder" form:"sortOrder,omitempty"`
+	Limit       int    `json:"limit" form:"limit,omitempty"`
+	Offset      int    `json:"offset" form:"offset,omitempty"`
+	Start       string `json:"start" form:"start,omitempty"`
+	End         string `json:"end" form:"end,omitempty"`
+	Query       string `json:"key" form:"query,omitempty"`
+	EventTypeID string `json:"eventTypeId" form:"eventTypeId,omitempty"`
+}
+
+type EventTypeSummary struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
 }
 
 type EventResponseItem struct {
-	ID        string            `json:"id"`
-	Device    DeviceSummary     `json:"device"`
-	Start     string            `json:"start"`
-	End       string            `json:"end"`
-	Metadata  map[string]string `json:"metadata"`
-	CreatedAt string            `json:"createdAt"`
-	UpdatedAt string            `json:"updatedAt"`
+	ID          string                 `json:"id"`
+	Device      DeviceSummary          `json:"device"`
+	Start       string                 `json:"start"`
+	End         string                 `json:"end"`
+	Metadata    map[string]string      `json:"metadata"`
+	Properties  map[string]interface{} `json:"properties"`
+	EventType   *EventTypeSummary      `json:"eventType"`
+	EventTypeID string                 `json:"eventTypeId"`
+	CreatedAt   string                 `json:"createdAt"`
+	UpdatedAt   string                 `json:"updatedAt"`
 }
 
 func (r EventResponseItem) Fields() []string {
 	metadata, _ := json.Marshal(r.Metadata)
+	properties, _ := json.Marshal(r.Properties)
+	eventType := ""
+	if r.EventType != nil {
+		eventType = r.EventType.Name
+		if r.EventType.ID != "" {
+			eventType = r.EventType.Name + " (" + r.EventType.ID + ")"
+		}
+	} else if r.EventTypeID != "" {
+		eventType = r.EventTypeID
+	}
 	return []string{
 		r.ID,
 		r.Device.ID,
 		r.Device.Name,
 		r.Start,
 		r.End,
+		eventType,
 		r.CreatedAt,
 		r.UpdatedAt,
 		string(metadata),
+		string(properties),
 	}
 }
 
@@ -402,9 +423,11 @@ func (r EventResponseItem) Headers() []string {
 		"Device Name",
 		"Start",
 		"End",
+		"Event Type",
 		"Created At",
 		"Updated At",
 		"Metadata",
+		"Properties",
 	}
 }
 
@@ -580,13 +603,57 @@ type PatchSessionRecordingsRequest struct {
 }
 
 type CreateEventRequest struct {
-	DeviceID string            `json:"deviceId"`
-	Start    string            `json:"start"`
-	End      string            `json:"end"`
-	Metadata map[string]string `json:"metadata"`
+	DeviceID    string                 `json:"deviceId"`
+	Start       string                 `json:"start"`
+	End         string                 `json:"end"`
+	Metadata    map[string]string      `json:"metadata,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty"`
+	EventTypeID string                 `json:"eventTypeId,omitempty"`
 }
 
 type CreateEventResponse = EventResponseItem
+
+type EventTypesRequest struct{}
+
+type EventTypePropertyDefinition struct {
+	Key       string   `json:"key"`
+	Label     string   `json:"label"`
+	ValueType string   `json:"valueType"`
+	Required  bool     `json:"required"`
+	Values    []string `json:"values,omitempty"`
+}
+
+type EventTypeResponse struct {
+	ID         string                         `json:"id"`
+	Name       string                         `json:"name"`
+	ColorName  string                         `json:"colorName"`
+	Properties []EventTypePropertyDefinition  `json:"properties"`
+	CreatedAt  string                         `json:"createdAt"`
+	UpdatedAt  string                         `json:"updatedAt"`
+}
+
+func (r EventTypeResponse) Fields() []string {
+	properties, _ := json.Marshal(r.Properties)
+	return []string{
+		r.ID,
+		r.Name,
+		r.ColorName,
+		string(properties),
+		r.CreatedAt,
+		r.UpdatedAt,
+	}
+}
+
+func (r EventTypeResponse) Headers() []string {
+	return []string{
+		"ID",
+		"Name",
+		"Color",
+		"Properties",
+		"Created At",
+		"Updated At",
+	}
+}
 
 type ExtensionsRequest struct{}
 
