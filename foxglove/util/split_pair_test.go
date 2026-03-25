@@ -39,31 +39,3 @@ func TestSplitPair(t *testing.T) {
 	})
 }
 
-func TestParsePropertyValue(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected interface{}
-	}{
-		{"true", true},
-		{"false", false},
-		{"True", true},
-		{"FALSE", false},
-		{"0", float64(0)},
-		{"1", float64(1)},
-		{"42", float64(42)},
-		{"3.14", float64(3.14)},
-		{"-1", float64(-1)},
-		{"hello", "hello"},
-		{"", ""},
-		{"t", "t"},
-		{"f", "f"},
-		{"yes", "yes"},
-		{"no", "no"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := ParsePropertyValue(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}

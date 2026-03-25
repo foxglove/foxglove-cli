@@ -14,7 +14,6 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 	var start string
 	var end string
 	var keyvals []string
-	var propertyKVs []string
 	var eventTypeID string
 	addEventCmd := &cobra.Command{
 		Use:   "add",
@@ -36,25 +35,11 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				metadata[key] = val
 			}
 
-			var properties map[string]interface{}
-			if len(propertyKVs) > 0 {
-				properties = make(map[string]interface{})
-				for _, kv := range propertyKVs {
-					key, val, err := util.SplitPair(kv, ':')
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "Invalid property key/value pair: %s\n", kv)
-						os.Exit(1)
-					}
-					properties[key] = util.ParsePropertyValue(val)
-				}
-			}
-
 			response, err := client.CreateEvent(api.CreateEventRequest{
 				DeviceID:    deviceID,
 				Start:       start,
 				End:         end,
 				Metadata:    metadata,
-				Properties:  properties,
 				EventTypeID: eventTypeID,
 			})
 			if err != nil {
@@ -68,7 +53,6 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 	addEventCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Start of event, RFC 3339 date-time format")
 	addEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "End of event (inclusive), RFC 3339 date-time format")
 	addEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
-	addEventCmd.PersistentFlags().StringArrayVarP(&propertyKVs, "properties", "p", []string{}, "Custom property colon-separated key:value pair. Multiple may be specified. Values are auto-parsed as number/boolean where applicable.")
 	addEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type", "", "", "Event type ID to associate with this event (e.g. evtt_123)")
 	return addEventCmd
 }

@@ -366,7 +366,7 @@ type EventsRequest struct {
 	EventTypeID string   `json:"eventTypeId" form:"eventTypeId,omitempty"`
 	Limit       int      `json:"limit" form:"limit,omitempty"`
 	Offset      int      `json:"offset" form:"offset,omitempty"`
-	Query       string   `json:"key" form:"query,omitempty"`
+	Query       string   `json:"query" form:"query,omitempty"`
 	QueryFields []string `json:"queryFields" form:"queryFields,omitempty"`
 	SortBy      string   `json:"sortBy" form:"sortBy,omitempty"`
 	SortOrder   string   `json:"sortOrder" form:"sortOrder,omitempty"`
@@ -589,12 +589,11 @@ type PatchSessionRecordingsRequest struct {
 }
 
 type CreateEventRequest struct {
-	DeviceID    string                 `json:"deviceId"`
-	End         string                 `json:"end"`
-	EventTypeID string                 `json:"eventTypeId,omitempty"`
-	Metadata    map[string]string      `json:"metadata"`
-	Properties  map[string]interface{} `json:"properties,omitempty"`
-	Start       string                 `json:"start"`
+	DeviceID    string            `json:"deviceId"`
+	End         string            `json:"end"`
+	EventTypeID string            `json:"eventTypeId,omitempty"`
+	Metadata    map[string]string `json:"metadata"`
+	Start       string            `json:"start"`
 }
 
 type CreateEventResponse = EventResponseItem
