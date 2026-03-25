@@ -409,7 +409,7 @@ func (r EventResponseItem) Headers() []string {
 		"Device Name",
 		"Start",
 		"End",
-		"Event Type",
+		"Event Type ID",
 		"Created At",
 		"Updated At",
 		"Metadata",

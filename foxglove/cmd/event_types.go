@@ -22,7 +22,7 @@ func newListEventTypesCommand(params *baseParams) *cobra.Command {
 			format = ResolveFormat(format, isJsonFormat)
 			err := renderList(
 				os.Stdout,
-				api.EventTypesRequest{},
+				&api.EventTypesRequest{},
 				client.EventTypes,
 				format,
 			)

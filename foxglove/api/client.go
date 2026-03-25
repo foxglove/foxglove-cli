@@ -448,7 +448,7 @@ func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, e
 	return resp, err
 }
 
-func (c *FoxgloveClient) EventTypes(req EventTypesRequest) (resp []EventTypeResponse, err error) {
+func (c *FoxgloveClient) EventTypes(req *EventTypesRequest) (resp []EventTypeResponse, err error) {
 	err = c.get("/v1/event-types", req, &resp)
 	return resp, err
 }
