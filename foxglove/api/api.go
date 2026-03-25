@@ -395,11 +395,10 @@ func (r EventResponseItem) Fields() []string {
 	metadata, _ := json.Marshal(r.Metadata)
 	properties, _ := json.Marshal(r.Properties)
 	eventType := ""
-	if r.EventType != nil {
+	if r.EventType != nil && r.EventType.ID != "" {
+		eventType = r.EventType.Name + " (" + r.EventType.ID + ")"
+	} else if r.EventType != nil {
 		eventType = r.EventType.Name
-		if r.EventType.ID != "" {
-			eventType = r.EventType.Name + " (" + r.EventType.ID + ")"
-		}
 	} else if r.EventTypeID != "" {
 		eventType = r.EventTypeID
 	}

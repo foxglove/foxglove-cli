@@ -91,6 +91,11 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 		Use:   "list",
 		Short: "List events",
 		Run: func(cmd *cobra.Command, args []string) {
+			for _, qf := range queryFields {
+				if qf != "metadata" && qf != "properties" {
+					dief("Invalid --query-field value %q: must be \"metadata\" or \"properties\"", qf)
+				}
+			}
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
