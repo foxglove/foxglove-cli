@@ -606,7 +606,7 @@ type CreateEventRequest struct {
 	DeviceID    string                 `json:"deviceId"`
 	Start       string                 `json:"start"`
 	End         string                 `json:"end"`
-	Metadata    map[string]string      `json:"metadata,omitempty"`
+	Metadata    map[string]string      `json:"metadata"`
 	Properties  map[string]interface{} `json:"properties,omitempty"`
 	EventTypeID string                 `json:"eventTypeId,omitempty"`
 }

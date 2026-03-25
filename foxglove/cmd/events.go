@@ -49,20 +49,14 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				}
 			}
 
-			req := api.CreateEventRequest{
+			response, err := client.CreateEvent(api.CreateEventRequest{
 				DeviceID:    deviceID,
 				Start:       start,
 				End:         end,
+				Metadata:    metadata,
+				Properties:  properties,
 				EventTypeID: eventTypeID,
-			}
-			if len(metadata) > 0 {
-				req.Metadata = metadata
-			}
-			if properties != nil {
-				req.Properties = properties
-			}
-
-			response, err := client.CreateEvent(req)
+			})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to add event: %s\n", err)
 				os.Exit(1)

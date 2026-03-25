@@ -157,7 +157,7 @@ func Execute(version string) {
 	}
 	eventTypesCmd := &cobra.Command{
 		Use:   "event-types",
-		Short: "List and manage event types",
+		Short: "List event types",
 	}
 	pendingImportsCmd := &cobra.Command{
 		Use:   "pending-imports",
