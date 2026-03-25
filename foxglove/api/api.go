@@ -373,16 +373,10 @@ type EventsRequest struct {
 	Start       string   `json:"start" form:"start,omitempty"`
 }
 
-type EventTypeSummary struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
-}
-
 type EventResponseItem struct {
 	CreatedAt   string                 `json:"createdAt"`
 	Device      DeviceSummary          `json:"device"`
 	End         string                 `json:"end"`
-	EventType   *EventTypeSummary      `json:"eventType"`
 	EventTypeID string                 `json:"eventTypeId"`
 	ID          string                 `json:"id"`
 	Metadata    map[string]string      `json:"metadata"`
@@ -394,18 +388,13 @@ type EventResponseItem struct {
 func (r EventResponseItem) Fields() []string {
 	metadata, _ := json.Marshal(r.Metadata)
 	properties, _ := json.Marshal(r.Properties)
-	eventType := ""
-	if r.EventType != nil && r.EventType.ID != "" {
-		eventType = r.EventType.Name + " (" + r.EventType.ID + ")"
-	}
-
 	return []string{
 		r.ID,
 		r.Device.ID,
 		r.Device.Name,
 		r.Start,
 		r.End,
-		eventType,
+		r.EventTypeID,
 		r.CreatedAt,
 		r.UpdatedAt,
 		string(metadata),
