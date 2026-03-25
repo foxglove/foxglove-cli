@@ -369,7 +369,8 @@ type EventsRequest struct {
 	Start       string `json:"start" form:"start,omitempty"`
 	End         string `json:"end" form:"end,omitempty"`
 	Query       string `json:"key" form:"query,omitempty"`
-	EventTypeID string `json:"eventTypeId" form:"eventTypeId,omitempty"`
+	EventTypeID string   `json:"eventTypeId" form:"eventTypeId,omitempty"`
+	QueryFields []string `json:"queryFields" form:"queryFields,omitempty"`
 }
 
 type EventTypeSummary struct {

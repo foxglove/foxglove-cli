@@ -85,6 +85,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	var end string
 	var query string
 	var eventTypeID string
+	var queryFields []string
 	var isJsonFormat bool
 	eventsListCmd := &cobra.Command{
 		Use:   "list",
@@ -109,6 +110,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 					End:         end,
 					Query:       query,
 					EventTypeID: eventTypeID,
+					QueryFields: queryFields,
 				},
 				client.Events,
 				format,
@@ -129,6 +131,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "Exclude events after this time, RFC 3339 or ISO 8601 format")
 	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by properties or metadata, e.g. \"$key:$value\". See API docs for query syntax.")
 	eventsListCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type", "", "", "Filter by event type ID (e.g. evtt_123)")
+	eventsListCmd.PersistentFlags().StringArrayVarP(&queryFields, "query-field", "", []string{}, "Fields to query by (\"metadata\" or \"properties\"). Multiple may be specified. Defaults to \"metadata\".")
 	AddDeviceAutocompletion(eventsListCmd, params)
 	AddFormatFlag(eventsListCmd, &format)
 	AddJsonFlag(eventsListCmd, &isJsonFormat)
