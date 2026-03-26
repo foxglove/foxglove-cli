@@ -232,6 +232,26 @@ Certain shells (bash, zsh, fish, and PowerShell) support autocompletion for subc
 
 To enable this, consult your shell instructions under `$ foxglove completion <shell> -h`.
 
+## Development
+
+To build and test locally
+
+```sh
+cd foxglove
+make build
+
+# run tests
+make test
+# or run the local version of the cli
+./foxglove --help
+```
+
+To release a new version
+ 1. Draft a new [release](https://github.com/foxglove/foxglove-cli/releases)
+ 2. Create a new tag via the UI following the `v1.0.31` format
+ 3. Auto generate release notes and review them
+ 4. Publish the release. An action will build the assets
+
 ## Stay in touch
 
 Join our [Discord community](https://foxglove.dev/chat) to ask questions, share feedback, and stay up to date on what our team is working on.
