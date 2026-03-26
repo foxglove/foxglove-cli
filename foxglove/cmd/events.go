@@ -53,7 +53,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 	addEventCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Start of event, RFC 3339 date-time format")
 	addEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "End of event (inclusive), RFC 3339 date-time format")
 	addEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
-	addEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type", "", "", "Event type ID to associate with this event (e.g. evtt_123)")
+	addEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type-id", "", "", "Event type ID to associate with this event (e.g. evtt_123)")
 	return addEventCmd
 }
 
@@ -119,7 +119,7 @@ func newListEventsCommand(params *baseParams) *cobra.Command {
 	eventsListCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Exclude events before this time, RFC 3339 or ISO 8601 format")
 	eventsListCmd.PersistentFlags().StringVarP(&end, "end", "", "", "Exclude events after this time, RFC 3339 or ISO 8601 format")
 	eventsListCmd.PersistentFlags().StringVarP(&query, "query", "", "", "Filter by properties or metadata, e.g. \"$key:$value\". See API docs for query syntax.")
-	eventsListCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type", "", "", "Filter by event type ID (e.g. evtt_123)")
+	eventsListCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type-id", "", "", "Filter by event type ID (e.g. evtt_123)")
 	eventsListCmd.PersistentFlags().StringArrayVarP(&queryFields, "query-field", "", []string{}, "Fields to query by (\"metadata\" or \"properties\"). Multiple may be specified. Defaults to \"metadata\".")
 	AddDeviceAutocompletion(eventsListCmd, params)
 	AddFormatFlag(eventsListCmd, &format)
