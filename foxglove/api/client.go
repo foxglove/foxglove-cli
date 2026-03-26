@@ -448,6 +448,11 @@ func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, e
 	return resp, err
 }
 
+func (c *FoxgloveClient) EventTypes(req *EventTypesRequest) (resp []EventTypeResponse, err error) {
+	err = c.get("/v1/event-types", req, &resp)
+	return resp, err
+}
+
 func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, err error) {
 	err = c.get("/v1/data/imports", req, &resp)
 	return resp, err

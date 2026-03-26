@@ -155,6 +155,10 @@ func Execute(version string) {
 		Use:   "extensions",
 		Short: "List and publish Studio extensions",
 	}
+	eventTypesCmd := &cobra.Command{
+		Use:   "event-types",
+		Short: "List event types",
+	}
 	pendingImportsCmd := &cobra.Command{
 		Use:   "pending-imports",
 		Short: "List pending imports",
@@ -240,6 +244,7 @@ func Execute(version string) {
 		newDeleteSessionCommand(params),
 	)
 	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
+	eventTypesCmd.AddCommand(newListEventTypesCommand(params))
 	extensionsCmd.AddCommand(newListExtensionsCommand(params))
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
@@ -256,6 +261,7 @@ func Execute(version string) {
 		attachmentsCmd,
 		recordingsCmd,
 		eventsCmd,
+		eventTypesCmd,
 		pendingImportsCmd,
 		projectsCmd,
 		configCmd,
