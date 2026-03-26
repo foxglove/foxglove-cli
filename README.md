@@ -1,8 +1,10 @@
 # Foxglove CLI
 
-Interact with data stored remotely in the Foxglove platform, directly from the command line.
+Interact with Foxglove, directly from the command line.
 
 Once you've installed the CLI tool, run `foxglove -h` from the command line for a complete list of subcommands, arguments, and usage details.
+
+More information can also be found in the [Foxglove API docs](https://docs.foxglove.dev/api).
 
 ## Installation
 
