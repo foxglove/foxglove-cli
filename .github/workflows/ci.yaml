@@ -19,7 +19,7 @@ jobs:
       - name: download modules
         run: go mod download
         working-directory: foxglove
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
           working-directory: foxglove
           version: v2.12.2
