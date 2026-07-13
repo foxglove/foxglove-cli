@@ -49,28 +49,28 @@ func printHotDog(w io.Writer, headers []string, data [][]string) {
 	_, cellWidths := computeHotdogCellWidths(headers, data)
 
 	// write the headers
-	fmt.Fprintf(w, "|")
+	_, _ = fmt.Fprintf(w, "|")
 	for i, header := range headers {
 		padding := (cellWidths[i] - len(header)) / 2
-		fmt.Fprintf(w, "%s%s%s|", strings.Repeat(" ", padding), header, strings.Repeat(" ", padding))
+		_, _ = fmt.Fprintf(w, "%s%s%s|", strings.Repeat(" ", padding), header, strings.Repeat(" ", padding))
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 
 	// write the separator
-	fmt.Fprintf(w, "|")
+	_, _ = fmt.Fprintf(w, "|")
 	for _, width := range cellWidths {
-		fmt.Fprint(w, strings.Repeat("-", width))
-		fmt.Fprintf(w, "|")
+		_, _ = fmt.Fprint(w, strings.Repeat("-", width))
+		_, _ = fmt.Fprintf(w, "|")
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 
 	// write the data
 	for _, row := range data {
-		fmt.Fprint(w, "|")
+		_, _ = fmt.Fprint(w, "|")
 		for i, col := range row {
-			fmt.Fprintf(w, " %s%s|", col, strings.Repeat(" ", cellWidths[i]-len(col)-1))
+			_, _ = fmt.Fprintf(w, " %s%s|", col, strings.Repeat(" ", cellWidths[i]-len(col)-1))
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 }
 
@@ -129,10 +129,10 @@ func printHamburger(w io.Writer, termwidth int, headers []string, data [][]strin
 			strings.Repeat("-", maxHeaderWidth-len(recordHeader)),
 			rightDashes,
 		)
-		fmt.Fprintln(w, header)
+		_, _ = fmt.Fprintln(w, header)
 		for j, col := range row {
-			fmt.Fprintf(w, "%-*s| %-*s", maxHeaderWidth, headers[j], dashesRightExtent-1, col)
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintf(w, "%-*s| %-*s", maxHeaderWidth, headers[j], dashesRightExtent-1, col)
+			_, _ = fmt.Fprintln(w)
 		}
 	}
 }

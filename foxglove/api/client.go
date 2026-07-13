@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrForbidden = errors.New("Forbidden. Have you signed in with `foxglove auth login`?")
+	ErrForbidden = errors.New("forbidden: have you signed in with `foxglove auth login`?")
 	ErrNotFound  = errors.New("not found")
 )
 
@@ -150,7 +150,7 @@ func (c *FoxgloveClient) Upload(reader io.Reader, r UploadRequest) error {
 	if err != nil {
 		return fmt.Errorf("upload failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected %d on upload request", resp.StatusCode)
@@ -197,7 +197,7 @@ func (c *FoxgloveClient) post(
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusForbidden:
@@ -243,7 +243,7 @@ func (c *FoxgloveClient) patch(
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusForbidden:
@@ -271,7 +271,7 @@ func (c *FoxgloveClient) delete(endpoint string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusForbidden:
@@ -324,7 +324,7 @@ func (c *FoxgloveClient) UploadExtension(reader io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("extension upload failure: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
 	case http.StatusOK:

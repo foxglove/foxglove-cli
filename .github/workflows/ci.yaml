@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -11,32 +11,31 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       - name: install go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: foxglove/go.mod
-      - name: install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
       - name: download modules
         run: go mod download
         working-directory: foxglove
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
           working-directory: foxglove
+          version: v2.12.2
           args: ./...
   test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
       - name: install go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: foxglove/go.mod
       - run: git lfs pull
       - name: run tests
-        run:  make test
+        run: make test
   release:
     permissions:
       contents: write
@@ -76,11 +75,11 @@ jobs:
     env: ${{ matrix.env }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           fetch-depth: "0"
       - run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: foxglove/go.mod
       - name: Setup environment
@@ -94,7 +93,7 @@ jobs:
         run: |
           git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
       - name: Releaase
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: foxglove/bin/*
           body_path: ${{ github.workspace }}-CHANGELOG.txt

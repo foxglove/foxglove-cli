@@ -18,7 +18,7 @@ func executeLogin(baseURL, clientID, userAgent string, authDelegate api.AuthDele
 	}
 	err = configureAuth(bearerToken, baseURL, TokenSession)
 	if err != nil {
-		return fmt.Errorf("Failed to configure auth: %w", err)
+		return fmt.Errorf("failed to configure auth: %w", err)
 	}
 	return nil
 }

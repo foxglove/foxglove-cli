@@ -325,7 +325,7 @@ func reindex(tmpdir string, filename string, format string) (bool, *fileInfo, er
 	if err != nil {
 		return false, nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	switch format {
 	case "bag1":
 		reader, err := rosbag.NewReader(f)
@@ -457,7 +457,7 @@ func doExport(
 	if err != nil {
 		return fmt.Errorf("failed to create temporary output directory: %w", err)
 	}
-	defer os.RemoveAll(tmpdir)
+	defer func() { _ = os.RemoveAll(tmpdir) }()
 	zeroMessageDownloadCount := 0
 	repeatRequestCount := 0
 	tmpfiles := []partialFile{}
@@ -466,7 +466,7 @@ func doExport(
 		if err != nil {
 			return err
 		}
-		defer tmpfile.Close()
+		defer func() { _ = tmpfile.Close() }()
 		debugf("exporting to %s", tmpfile.Name())
 		err = executeExport(ctx, tmpfile, baseURL, clientID, bearerToken, userAgent, request)
 		if err != nil {
@@ -522,7 +522,7 @@ func doExport(
 		// at the end will be in charge of accounting for these duplicates.
 		newStart := time.Unix(int64(info.maxTime)/1e9, int64(info.maxTime)%1e9)
 
-		if request.Start != nil && newStart == *request.Start {
+		if request.Start != nil && newStart.Equal(*request.Start) {
 			repeatRequestCount++
 		} else {
 			repeatRequestCount = 0
@@ -565,7 +565,7 @@ func doExport(
 	if err != nil {
 		return err
 	}
-	defer output.Close()
+	defer func() { _ = output.Close() }()
 
 	switch request.OutputFormat {
 	case "bag1":
@@ -800,8 +800,11 @@ func executeExport(
 				errs <- err
 				return
 			}
+			if err := pipeWriter.Close(); err != nil {
+				errs <- err
+				return
+			}
 			done <- true
-			pipeWriter.Close()
 		}()
 		err = mcap2JSON(writer, pipeReader)
 		if err != nil {
@@ -831,6 +834,10 @@ func createStreamRequest(
 	sessionID string,
 	sessionKey string,
 	projectID string,
+	compressionFormat *string,
+	includeAttachments bool,
+	replayPolicy string,
+	replayLookbackSeconds float64,
 ) (*api.StreamRequest, error) {
 	var startTime, endTime *time.Time
 	if start != "" {
@@ -852,18 +859,22 @@ func createStreamRequest(
 	topics := strings.FieldsFunc(topicList, func(c rune) bool { return c == ',' })
 
 	request := &api.StreamRequest{
-		RecordingID:  recordingID,
-		Key:          key,
-		ImportID:     importID,
-		DeviceName:   deviceName,
-		DeviceID:     deviceID,
-		Start:        startTime,
-		End:          endTime,
-		OutputFormat: outputFormat,
-		Topics:       topics,
-		SessionID:    sessionID,
-		SessionKey:   sessionKey,
-		ProjectID:    projectID,
+		RecordingID:           recordingID,
+		Key:                   key,
+		ImportID:              importID,
+		DeviceName:            deviceName,
+		DeviceID:              deviceID,
+		Start:                 startTime,
+		End:                   endTime,
+		OutputFormat:          outputFormat,
+		CompressionFormat:     compressionFormat,
+		IncludeAttachments:    includeAttachments,
+		ReplayPolicy:          replayPolicy,
+		ReplayLookbackSeconds: replayLookbackSeconds,
+		Topics:                topics,
+		SessionID:             sessionID,
+		SessionKey:            sessionKey,
+		ProjectID:             projectID,
 	}
 	if err := request.Validate(); err != nil {
 		return nil, err
@@ -887,6 +898,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var sessionID string
 	var sessionKey string
 	var projectID string
+	var compression string
+	var includeAttachments bool
+	var replayPolicy string
+	var replayLookbackSeconds float64
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
@@ -903,6 +918,13 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if isJsonOutput {
 				outputFormat = "json"
 			}
+			// Only send compressionFormat if the user explicitly set it, so the
+			// API default (lz4) is used otherwise. An explicit empty value means
+			// no compression.
+			var compressionFormat *string
+			if cmd.Flags().Changed("compression") {
+				compressionFormat = &compression
+			}
 			request, err := createStreamRequest(
 				recordingID,
 				key,
@@ -916,6 +938,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				sessionID,
 				sessionKey,
 				projectID,
+				compressionFormat,
+				includeAttachments,
+				replayPolicy,
+				replayLookbackSeconds,
 			)
 			if err != nil {
 				dief("Failed to build request: %s", err)
@@ -945,8 +971,6 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if !stdoutRedirected() && request.OutputFormat != "json" {
 				dief("Binary output may screw up your terminal. Please redirect to a pipe or file.")
 			}
-			defer os.Stdout.Close()
-
 			// Do the export, without resumable downloads.
 			err = executeExport(
 				cmd.Context(),
@@ -976,6 +1000,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "session ID")
 	exportCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key")
 	exportCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID (required when using --session-key)")
+	exportCmd.PersistentFlags().StringVarP(&compression, "compression", "", "lz4", `mcap chunk compression format: "" (none), zstd, or lz4 (mcap output only)`)
+	exportCmd.PersistentFlags().BoolVar(&includeAttachments, "include-attachments", false, "include attachments in streamed data (mcap output only)")
+	exportCmd.PersistentFlags().StringVarP(&replayPolicy, "replay-policy", "", "", `replay policy: "" (none) or lastPerChannel`)
+	exportCmd.PersistentFlags().Float64VarP(&replayLookbackSeconds, "replay-lookback-seconds", "", 0, "max seconds to look back before start for lastPerChannel replay policy")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }

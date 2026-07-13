@@ -77,7 +77,7 @@ func newDownloadAttachmentCmd(params *baseParams) *cobra.Command {
 				fmt.Fprintf(os.Stderr, "Failed to fetch attachment: %s\n", err)
 				os.Exit(1)
 			}
-			defer rc.Close()
+			defer func() { _ = rc.Close() }()
 			_, err = io.Copy(os.Stdout, rc)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to fetch attachment: %s\n", err)
