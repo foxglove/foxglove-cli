@@ -831,6 +831,10 @@ func createStreamRequest(
 	sessionID string,
 	sessionKey string,
 	projectID string,
+	compressionFormat *string,
+	includeAttachments bool,
+	replayPolicy string,
+	replayLookbackSeconds float64,
 ) (*api.StreamRequest, error) {
 	var startTime, endTime *time.Time
 	if start != "" {
@@ -852,18 +856,22 @@ func createStreamRequest(
 	topics := strings.FieldsFunc(topicList, func(c rune) bool { return c == ',' })
 
 	request := &api.StreamRequest{
-		RecordingID:  recordingID,
-		Key:          key,
-		ImportID:     importID,
-		DeviceName:   deviceName,
-		DeviceID:     deviceID,
-		Start:        startTime,
-		End:          endTime,
-		OutputFormat: outputFormat,
-		Topics:       topics,
-		SessionID:    sessionID,
-		SessionKey:   sessionKey,
-		ProjectID:    projectID,
+		RecordingID:           recordingID,
+		Key:                   key,
+		ImportID:              importID,
+		DeviceName:            deviceName,
+		DeviceID:              deviceID,
+		Start:                 startTime,
+		End:                   endTime,
+		OutputFormat:          outputFormat,
+		CompressionFormat:     compressionFormat,
+		IncludeAttachments:    includeAttachments,
+		ReplayPolicy:          replayPolicy,
+		ReplayLookbackSeconds: replayLookbackSeconds,
+		Topics:                topics,
+		SessionID:             sessionID,
+		SessionKey:            sessionKey,
+		ProjectID:             projectID,
 	}
 	if err := request.Validate(); err != nil {
 		return nil, err
@@ -887,6 +895,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	var sessionID string
 	var sessionKey string
 	var projectID string
+	var compression string
+	var includeAttachments bool
+	var replayPolicy string
+	var replayLookbackSeconds float64
 	exportCmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export a data selection from Foxglove Data Platform",
@@ -903,6 +915,13 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 			if isJsonOutput {
 				outputFormat = "json"
 			}
+			// Only send compressionFormat if the user explicitly set it, so the
+			// API default (lz4) is used otherwise. An explicit empty value means
+			// no compression.
+			var compressionFormat *string
+			if cmd.Flags().Changed("compression") {
+				compressionFormat = &compression
+			}
 			request, err := createStreamRequest(
 				recordingID,
 				key,
@@ -916,6 +935,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 				sessionID,
 				sessionKey,
 				projectID,
+				compressionFormat,
+				includeAttachments,
+				replayPolicy,
+				replayLookbackSeconds,
 			)
 			if err != nil {
 				dief("Failed to build request: %s", err)
@@ -976,6 +999,10 @@ func newExportCommand(params *baseParams) (*cobra.Command, error) {
 	exportCmd.PersistentFlags().StringVarP(&sessionID, "session-id", "", "", "session ID")
 	exportCmd.PersistentFlags().StringVarP(&sessionKey, "session-key", "", "", "Session key")
 	exportCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", "", "Project ID (required when using --session-key)")
+	exportCmd.PersistentFlags().StringVarP(&compression, "compression", "", "lz4", `mcap chunk compression format: "" (none), zstd, or lz4 (mcap output only)`)
+	exportCmd.PersistentFlags().BoolVar(&includeAttachments, "include-attachments", false, "include attachments in streamed data (mcap output only)")
+	exportCmd.PersistentFlags().StringVarP(&replayPolicy, "replay-policy", "", "", `replay policy: "" (none) or lastPerChannel`)
+	exportCmd.PersistentFlags().Float64VarP(&replayLookbackSeconds, "replay-lookback-seconds", "", 0, "max seconds to look back before start for lastPerChannel replay policy")
 	AddDeviceAutocompletion(exportCmd, params)
 	return exportCmd, nil
 }
