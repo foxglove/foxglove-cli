@@ -2,13 +2,14 @@ version: "2"
 
 linters:
   exclusions:
-    # Match golangci-lint v1 default exclusions so upgrading the action does
-    # not suddenly fail CI on long-standing style findings.
+    # Restore golangci-lint v1 default exclusion presets.
     presets:
       - comments
       - common-false-positives
       - legacy
       - std-error-handling
+    # Suppress existing staticcheck findings so the Node 24 / golangci-lint v2
+    # CI upgrade stays green. Follow up: fix these and remove the rules.
     rules:
       - linters:
           - staticcheck
