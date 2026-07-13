@@ -39,7 +39,7 @@ func configureAuth(token, baseURL string, authType AuthType) error {
 	viper.Set("auth_type", authType)
 	err := viper.WriteConfigAs(viper.ConfigFileUsed())
 	if err != nil {
-		return fmt.Errorf("Failed to write config: %w", err)
+		return fmt.Errorf("failed to write config: %w", err)
 	}
 	return nil
 }

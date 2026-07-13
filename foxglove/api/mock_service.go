@@ -582,8 +582,11 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 }
 
 func randomPort() int {
-	l, _ := net.Listen("tcp", ":0")
-	defer l.Close()
+	l, err := net.Listen("tcp", ":0")
+	if err != nil {
+		panic(fmt.Sprintf("failed to find an available port: %v", err))
+	}
+	defer func() { _ = l.Close() }()
 	return l.Addr().(*net.TCPAddr).Port
 }
 

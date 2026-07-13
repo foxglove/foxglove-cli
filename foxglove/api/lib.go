@@ -25,7 +25,7 @@ type AuthDelegate interface {
 
 type PlatformAuthDelegate struct{}
 
-func (_ *PlatformAuthDelegate) openBrowser(url string) (*exec.Cmd, error) {
+func (*PlatformAuthDelegate) openBrowser(url string) (*exec.Cmd, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "linux":
@@ -50,7 +50,7 @@ func Export(
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	_, err = io.Copy(w, rc)
 	if err != nil {
 		return err
@@ -73,14 +73,14 @@ func Import(
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	stat, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat input: %w", err)
 	}
 	_, name := path.Split(filename)
 	bar := progressbar.DefaultBytes(stat.Size(), "uploading")
-	defer bar.Close()
+	defer func() { _ = bar.Close() }()
 	reader := progressbar.NewReader(f, bar)
 	err = client.Upload(&reader, UploadRequest{
 		Filename:   name,
@@ -106,7 +106,7 @@ func UploadExtensionFile(
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	stat, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat input: %w", err)
@@ -121,7 +121,7 @@ func UploadExtensionFile(
 	}
 
 	bar := progressbar.DefaultBytes(stat.Size(), "uploading")
-	defer bar.Close()
+	defer func() { _ = bar.Close() }()
 
 	if err != nil {
 		return fmt.Errorf("cannot upload extension: %w", err)
