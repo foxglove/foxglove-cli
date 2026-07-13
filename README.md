@@ -244,8 +244,6 @@ make build
 
 # run tests
 make test
-# lint (installs golangci-lint v2.12.2 if needed)
-make lint
 # or run the local version of the cli
 ./foxglove --help
 ```
