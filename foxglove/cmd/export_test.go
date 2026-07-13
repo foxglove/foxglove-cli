@@ -29,7 +29,7 @@ func withStdoutRedirected(output io.Writer, f func()) error {
 	os.Stdout = w
 
 	f()
-	w.Close()
+	_ = w.Close()
 
 	defer func() {
 		os.Stdout = stdout
@@ -207,7 +207,7 @@ func TestDoExport(t *testing.T) {
 		assert.Nil(t, err)
 
 		t.Cleanup(func() {
-			os.Remove("output.mcap")
+			_ = os.Remove("output.mcap")
 		})
 
 		err = doExport(

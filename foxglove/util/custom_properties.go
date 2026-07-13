@@ -71,7 +71,7 @@ func fetchAvailableProperties(client *api.FoxgloveClient) (OrgCustomProperties, 
 		ResourceType: "device",
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to load custom properties: %s\n", err)
+		return nil, fmt.Errorf("failed to load custom properties: %w", err)
 	}
 
 	properties := make(map[string]PropertyDefinition)

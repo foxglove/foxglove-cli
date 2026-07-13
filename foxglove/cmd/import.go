@@ -16,7 +16,7 @@ func executeImport(baseURL, clientID, projectID, deviceID, deviceName, key, sess
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	err = validateImportLooksLegal(f)
 	if err != nil {
 		return err

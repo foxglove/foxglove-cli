@@ -16,14 +16,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: foxglove/go.mod
-      - name: install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.1
       - name: download modules
         run: go mod download
         working-directory: foxglove
       - uses: golangci/golangci-lint-action@v6
         with:
           working-directory: foxglove
+          version: v2.12.2
           args: ./...
   test:
     runs-on: ubuntu-latest
