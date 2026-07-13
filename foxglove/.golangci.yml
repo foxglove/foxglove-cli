@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  exclusions:
+    # Match golangci-lint v1 default exclusions so upgrading the action does
+    # not suddenly fail CI on long-standing style findings.
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: "ST1005:"
+      - linters:
+          - staticcheck
+        text: "ST1006:"
+      - linters:
+          - staticcheck
+        text: "QF1009:"
