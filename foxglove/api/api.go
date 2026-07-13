@@ -37,18 +37,28 @@ type UploadResponse struct {
 }
 
 type StreamRequest struct {
-	RecordingID  string     `json:"recordingId,omitempty"`
-	Key          string     `json:"key,omitempty"`
-	ImportID     string     `json:"importId,omitempty"`
-	ProjectID    string     `json:"projectId,omitempty"`
-	DeviceID     string     `json:"device.id,omitempty"`
-	DeviceName   string     `json:"device.name,omitempty"`
-	Start        *time.Time `json:"start,omitempty"`
-	End          *time.Time `json:"end,omitempty"`
-	OutputFormat string     `json:"outputFormat"`
-	Topics       []string   `json:"topics"`
-	SessionID    string     `json:"sessionId,omitempty"`
-	SessionKey   string     `json:"sessionKey,omitempty"`
+	RecordingID           string     `json:"recordingId,omitempty"`
+	Key                   string     `json:"key,omitempty"`
+	ImportID              string     `json:"importId,omitempty"`
+	ProjectID             string     `json:"projectId,omitempty"`
+	DeviceID              string     `json:"device.id,omitempty"`
+	DeviceName            string     `json:"device.name,omitempty"`
+	Start                 *time.Time `json:"start,omitempty"`
+	End                   *time.Time `json:"end,omitempty"`
+	OutputFormat          string     `json:"outputFormat"`
+	CompressionFormat     *string    `json:"compressionFormat,omitempty"`
+	IncludeAttachments    bool       `json:"includeAttachments,omitempty"`
+	ReplayPolicy          string     `json:"replayPolicy,omitempty"`
+	ReplayLookbackSeconds float64    `json:"replayLookbackSeconds,omitempty"`
+	Topics                []string   `json:"topics"`
+	SessionID             string     `json:"sessionId,omitempty"`
+	SessionKey            string     `json:"sessionKey,omitempty"`
+}
+
+// isMCAPOutputFormat reports whether the output format produces an MCAP file.
+// "mcap0" is a deprecated alias for "mcap".
+func isMCAPOutputFormat(format string) bool {
+	return format == "mcap" || format == "mcap0"
 }
 
 func (req *StreamRequest) Validate() error {
@@ -70,6 +80,25 @@ func (req *StreamRequest) Validate() error {
 	}
 	if req.Start != nil && req.End != nil && req.End.Before(*req.Start) {
 		return fmt.Errorf("end must be after or equal to start")
+	}
+	if req.CompressionFormat != nil {
+		switch *req.CompressionFormat {
+		case "", "zstd", "lz4":
+		default:
+			return fmt.Errorf(`invalid compression format %q: supply "", zstd, or lz4`, *req.CompressionFormat)
+		}
+		if !isMCAPOutputFormat(req.OutputFormat) {
+			return fmt.Errorf("compression format is only valid for mcap output")
+		}
+	}
+	if req.IncludeAttachments && !isMCAPOutputFormat(req.OutputFormat) {
+		return fmt.Errorf("include-attachments is only valid for mcap output")
+	}
+	if req.ReplayPolicy != "" && req.ReplayPolicy != "lastPerChannel" {
+		return fmt.Errorf(`invalid replay policy %q: supply "" or lastPerChannel`, req.ReplayPolicy)
+	}
+	if req.ReplayLookbackSeconds < 0 {
+		return fmt.Errorf("replay-lookback-seconds must be >= 0")
 	}
 	return nil
 }
