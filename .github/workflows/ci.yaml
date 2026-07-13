@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -35,7 +35,7 @@ jobs:
           go-version-file: foxglove/go.mod
       - run: git lfs pull
       - name: run tests
-        run:  make test
+        run: make test
   release:
     permissions:
       contents: write
