@@ -65,6 +65,7 @@ One of --device-id, --device-name, --recording-id, --recording-key, --session-id
 	topicCmd.PersistentFlags().IntVar(&request.Limit, "limit", 0, "Maximum number of topics to return")
 	topicCmd.PersistentFlags().IntVar(&request.Offset, "offset", 0, "Number of topics to skip")
 	AddFormatFlag(topicCmd, &format)
+	AddDeviceAutocompletion(topicCmd, params)
 	AddJsonFlag(topicCmd, &isJSONFormat)
 	return topicCmd
 }
