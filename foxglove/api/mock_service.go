@@ -95,6 +95,16 @@ func (s *MockFoxgloveServer) stream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *MockFoxgloveServer) topics(w http.ResponseWriter, r *http.Request) {
+	_ = json.NewEncoder(w).Encode([]TopicsResponse{{
+		Encoding:       "cdr",
+		SchemaEncoding: "ros2msg",
+		SchemaName:     "sensor_msgs/msg/Image",
+		Topic:          "/camera/image",
+		Version:        "1",
+	}})
+}
+
 func (s *MockFoxgloveServer) lookupDevice(id, name string) *DevicesResponse {
 	for _, device := range s.registeredDevices {
 		if device.ID == id || device.Name == name {
@@ -559,6 +569,7 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/signin", sv.signIn).Methods("POST")
 	r.HandleFunc("/v1/custom-properties", sv.withAuthz(sv.customProperties)).Methods("GET")
 	r.HandleFunc("/v1/data/stream", sv.withAuthz(sv.stream)).Methods("POST")
+	r.HandleFunc("/v1/data/topics", sv.withAuthz(sv.topics)).Methods("GET")
 	r.HandleFunc("/v1/data/imports", sv.withAuthz(sv.imports)).Methods("GET")
 	r.HandleFunc("/v1/data/upload", sv.withAuthz(sv.uploadRedirect)).Methods("POST")
 	r.HandleFunc("/v1/auth/device-code", sv.deviceCode).Methods("POST")

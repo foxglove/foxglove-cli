@@ -167,6 +167,10 @@ func Execute(version string) {
 		Use:   "projects",
 		Short: "List and manage projects",
 	}
+	topicsCmd := &cobra.Command{
+		Use:   "topics",
+		Short: "List topics",
+	}
 	sessionsCmd := &cobra.Command{
 		Use:   "sessions",
 		Short: "List and manage sessions",
@@ -250,6 +254,7 @@ func Execute(version string) {
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
 	pendingImportsCmd.AddCommand(newPendingImportsCommand(params))
 	projectsCmd.AddCommand(newListProjectsCommand(params))
+	topicsCmd.AddCommand(newListTopicsCommand(params))
 
 	rootCmd.AddCommand(
 		authCmd,
@@ -264,6 +269,7 @@ func Execute(version string) {
 		eventTypesCmd,
 		pendingImportsCmd,
 		projectsCmd,
+		topicsCmd,
 		configCmd,
 	)
 
