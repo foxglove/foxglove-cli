@@ -107,6 +107,40 @@ type StreamResponse struct {
 	Link string `json:"link"`
 }
 
+type TopicsRequest struct {
+	Start          string `form:"start,omitempty"`
+	End            string `form:"end,omitempty"`
+	RecordingID    string `form:"recordingId,omitempty"`
+	RecordingKey   string `form:"recordingKey,omitempty"`
+	DeviceID       string `form:"deviceId,omitempty"`
+	DeviceName     string `form:"deviceName,omitempty"`
+	SessionID      string `form:"sessionId,omitempty"`
+	SessionKey     string `form:"sessionKey,omitempty"`
+	IncludeSchemas bool   `form:"includeSchemas,omitempty"`
+	SortBy         string `form:"sortBy,omitempty"`
+	SortOrder      string `form:"sortOrder,omitempty"`
+	ProjectID      string `form:"projectId,omitempty"`
+	Limit          int    `form:"limit,omitempty"`
+	Offset         int    `form:"offset,omitempty"`
+}
+
+type TopicsResponse struct {
+	Encoding       string `json:"encoding"`
+	Schema         string `json:"schema,omitempty"`
+	SchemaEncoding string `json:"schemaEncoding"`
+	SchemaName     string `json:"schemaName"`
+	Topic          string `json:"topic"`
+	Version        string `json:"version"`
+}
+
+func (r TopicsResponse) Headers() []string {
+	return []string{"Topic", "Schema Name", "Schema Encoding", "Encoding", "Version", "Schema"}
+}
+
+func (r TopicsResponse) Fields() []string {
+	return []string{r.Topic, r.SchemaName, r.SchemaEncoding, r.Encoding, r.Version, r.Schema}
+}
+
 type DeviceCodeRequest struct {
 	ClientID string `json:"clientId"`
 }

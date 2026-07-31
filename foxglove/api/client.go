@@ -482,6 +482,11 @@ func (c *FoxgloveClient) Coverage(req *CoverageRequest) (resp []CoverageResponse
 	return resp, err
 }
 
+func (c *FoxgloveClient) Topics(req *TopicsRequest) (resp []TopicsResponse, err error) {
+	err = c.get("/v1/data/topics", *req, &resp)
+	return resp, err
+}
+
 func (c *FoxgloveClient) Extensions(req ExtensionsRequest) (resp []ExtensionResponse, err error) {
 	err = c.get("/v1/extensions", req, &resp)
 	return resp, err
