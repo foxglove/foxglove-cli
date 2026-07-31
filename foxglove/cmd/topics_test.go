@@ -35,7 +35,7 @@ func TestTopicsRequest(t *testing.T) {
 		assert.Equal(t, "Bearer token", r.Header.Get("Authorization"))
 		assert.Equal(t, "device-123", r.URL.Query().Get("deviceId"))
 		assert.Equal(t, "2024-01-01T00:00:00Z", r.URL.Query().Get("start"))
-		assert.Empty(t, r.URL.Query().Get("importId"))
+		assert.Empty(t, r.URL.Query().Get("end"))
 		assert.Equal(t, "true", r.URL.Query().Get("includeSchemas"))
 		assert.Equal(t, "topic", r.URL.Query().Get("sortBy"))
 		assert.Equal(t, "10", r.URL.Query().Get("limit"))
