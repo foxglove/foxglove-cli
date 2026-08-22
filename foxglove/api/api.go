@@ -741,7 +741,7 @@ type ExtensionResponse struct {
 }
 
 type CustomPropertiesRequest struct {
-	ResourceType string `json:"resourceType"`
+	ResourceType string `json:"resourceType" form:"resourceType,omitempty"`
 }
 
 type CustomPropertiesResponseItem struct {
