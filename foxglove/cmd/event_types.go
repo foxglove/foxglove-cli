@@ -89,9 +89,6 @@ func newAddEventTypeCommand(params *baseParams) *cobra.Command {
 				CustomProperties: customProperties,
 			})
 			if err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
 				dief("Failed to add event type: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Created event type: %s\n", resp.ID)
@@ -118,12 +115,6 @@ func newGetEventTypeCommand(params *baseParams) *cobra.Command {
 			)
 			eventType, err := client.GetEventType(args[0])
 			if err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
-				if err == api.ErrNotFound {
-					dief("Event type not found: %s", args[0])
-				}
 				dief("Failed to get event type: %s", err)
 			}
 			format = ResolveFormat(format, isJsonFormat)
@@ -132,6 +123,7 @@ func newGetEventTypeCommand(params *baseParams) *cobra.Command {
 			}
 		},
 	}
+	getCmd.InheritedFlags()
 	AddFormatFlag(getCmd, &format)
 	AddJsonFlag(getCmd, &isJsonFormat)
 	return getCmd
@@ -170,17 +162,12 @@ func newEditEventTypeCommand(params *baseParams) *cobra.Command {
 			)
 			resp, err := client.UpdateEventType(args[0], req)
 			if err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
-				if err == api.ErrNotFound {
-					dief("Event type not found: %s", args[0])
-				}
 				dief("Failed to edit event type: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Event type updated: %s\n", resp.ID)
 		},
 	}
+	editCmd.InheritedFlags()
 	editCmd.PersistentFlags().StringVarP(&name, "name", "", "", "Name of the event type")
 	editCmd.PersistentFlags().StringVarP(&colorName, "color-name", "", "", "Color name of the event type, e.g. red")
 	editCmd.PersistentFlags().StringArrayVarP(&customPropertyPairs, "custom-property", "", []string{}, "Custom property ID, or ID:true/false for required. Replaces the current list. Multiple may be specified.")
@@ -199,13 +186,11 @@ func newDeleteEventTypeCommand(params *baseParams) *cobra.Command {
 				params.userAgent,
 			)
 			if err := client.DeleteEventType(args[0]); err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
 				dief("Failed to delete event type: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Event type deleted: %s\n", args[0])
 		},
 	}
+	deleteCmd.InheritedFlags()
 	return deleteCmd
 }

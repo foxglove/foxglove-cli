@@ -180,7 +180,7 @@ List, get, edit, and delete events:
 ```
 $ foxglove events list --device-id dev_mHH1Cp4gPybCPR8y --event-type-id evtt_123
 $ foxglove events get evt_idMGJImlICYP4dcy
-$ foxglove events edit evt_idMGJImlICYP4dcy --metadata note:updated
+$ foxglove events edit evt_idMGJImlICYP4dcy --metadata note:updated --property severity:high
 $ foxglove events delete evt_idMGJImlICYP4dcy
 ```
 

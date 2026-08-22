@@ -359,7 +359,6 @@ func (s *MockFoxgloveServer) eventsList(w http.ResponseWriter, r *http.Request) 
 	filterDeviceName := q.Get("deviceName")
 	filterEventID := q.Get("eventId")
 	filterEventTypeID := q.Get("eventTypeId")
-	filterProjectID := q.Get("projectId")
 
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
@@ -375,9 +374,6 @@ func (s *MockFoxgloveServer) eventsList(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 		if filterEventTypeID != "" && event.EventTypeID != filterEventTypeID {
-			continue
-		}
-		if filterProjectID != "" && event.Device.ID == "" {
 			continue
 		}
 		out = append(out, event)

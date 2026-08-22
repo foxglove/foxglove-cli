@@ -23,27 +23,6 @@ func parseMetadataPairs(keyvals []string) (map[string]string, error) {
 	return metadata, nil
 }
 
-func parseEventProperties(
-	client *api.FoxgloveClient,
-	propertyPairs []string,
-	unsetKeys []string,
-) (map[string]interface{}, error) {
-	properties, err := util.EventProperties(propertyPairs, client)
-	if err != nil {
-		return nil, err
-	}
-	if len(unsetKeys) == 0 {
-		return properties, nil
-	}
-	if properties == nil {
-		properties = make(map[string]interface{})
-	}
-	for _, key := range unsetKeys {
-		properties[key] = nil
-	}
-	return properties, nil
-}
-
 func joinQueryFields(queryFields []string) (string, error) {
 	for _, qf := range queryFields {
 		if qf != "metadata" && qf != "properties" {
@@ -77,7 +56,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				dief("Failed to add event: %s", err)
 			}
 
-			properties, err := parseEventProperties(client, propertyPairs, nil)
+			properties, err := util.EventProperties(propertyPairs, client)
 			if err != nil {
 				dief("Failed to add event: %s", err)
 			}
@@ -102,8 +81,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 				Properties:  properties,
 			})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to add event: %s\n", err)
-				os.Exit(1)
+				dief("Failed to add event: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Created event: %s\n", response.ID)
 		},
@@ -232,12 +210,6 @@ func newGetEventCommand(params *baseParams) *cobra.Command {
 			)
 			event, err := client.GetEvent(args[0])
 			if err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
-				if err == api.ErrNotFound {
-					dief("Event not found: %s", args[0])
-				}
 				dief("Failed to get event: %s", err)
 			}
 			format = ResolveFormat(format, isJsonFormat)
@@ -246,6 +218,7 @@ func newGetEventCommand(params *baseParams) *cobra.Command {
 			}
 		},
 	}
+	getEventCmd.InheritedFlags()
 	AddFormatFlag(getEventCmd, &format)
 	AddJsonFlag(getEventCmd, &isJsonFormat)
 	return getEventCmd
@@ -257,7 +230,6 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 	var keyvals []string
 	var eventTypeID string
 	var propertyPairs []string
-	var unsetProperties []string
 	editEventCmd := &cobra.Command{
 		Use:   "edit [ID]",
 		Short: "Edit an event",
@@ -294,8 +266,8 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 			if cmd.Flags().Changed("event-type-id") {
 				req.EventTypeID = &eventTypeID
 			}
-			if cmd.Flags().Changed("property") || cmd.Flags().Changed("unset-property") {
-				properties, err := parseEventProperties(client, propertyPairs, unsetProperties)
+			if cmd.Flags().Changed("property") {
+				properties, err := util.EventProperties(propertyPairs, client)
 				if err != nil {
 					dief("Failed to edit event: %s", err)
 				}
@@ -307,23 +279,17 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 
 			resp, err := client.UpdateEvent(args[0], req)
 			if err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
-				if err == api.ErrNotFound {
-					dief("Event not found: %s", args[0])
-				}
 				dief("Failed to edit event: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Event updated: %s\n", resp.ID)
 		},
 	}
+	editEventCmd.InheritedFlags()
 	editEventCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Event start time (inclusive), RFC 3339 or ISO 8601 format")
 	editEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "Event end time (inclusive), RFC 3339 or ISO 8601 format")
-	editEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
+	editEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Replace all event metadata with these colon-separated key value pairs. Multiple may be specified.")
 	editEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type-id", "", "", "Event type ID. Pass an empty value to remove the event type.")
-	editEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Event custom property colon-separated key value pair. Multiple may be specified.")
-	editEventCmd.PersistentFlags().StringArrayVarP(&unsetProperties, "unset-property", "", []string{}, "Event custom property key to unset. Multiple may be specified.")
+	editEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Set these event custom property keys. Other keys stay unchanged. Multiple may be specified.")
 	return editEventCmd
 }
 
@@ -339,13 +305,11 @@ func newDeleteEventCommand(params *baseParams) *cobra.Command {
 				params.userAgent,
 			)
 			if err := client.DeleteEvent(args[0]); err != nil {
-				if err == api.ErrForbidden {
-					dief("Not authenticated. Run foxglove auth login.")
-				}
 				dief("Failed to delete event: %s", err)
 			}
 			fmt.Fprintf(os.Stderr, "Event deleted: %s\n", args[0])
 		},
 	}
+	deleteEventCmd.InheritedFlags()
 	return deleteEventCmd
 }
