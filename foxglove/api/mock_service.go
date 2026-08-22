@@ -26,6 +26,8 @@ type MockFoxgloveServer struct {
 	registeredDevices    []DevicesResponse
 	registeredSessions   []SessionResponse
 	registeredProperties []CustomPropertiesResponseItem
+	registeredEvents     []EventResponseItem
+	registeredEventTypes []EventTypeResponse
 	tokenRequests        int
 	port                 int
 }
@@ -351,6 +353,258 @@ func (s *MockFoxgloveServer) patchSession(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNotFound)
 }
 
+func (s *MockFoxgloveServer) eventsList(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filterDeviceID := q.Get("deviceId")
+	filterDeviceName := q.Get("deviceName")
+	filterEventID := q.Get("eventId")
+	filterEventTypeID := q.Get("eventTypeId")
+	filterProjectID := q.Get("projectId")
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	out := make([]EventResponseItem, 0, len(s.registeredEvents))
+	for _, event := range s.registeredEvents {
+		if filterDeviceID != "" && event.Device.ID != filterDeviceID {
+			continue
+		}
+		if filterDeviceName != "" && event.Device.Name != filterDeviceName {
+			continue
+		}
+		if filterEventID != "" && event.ID != filterEventID {
+			continue
+		}
+		if filterEventTypeID != "" && event.EventTypeID != filterEventTypeID {
+			continue
+		}
+		if filterProjectID != "" && event.Device.ID == "" {
+			continue
+		}
+		out = append(out, event)
+	}
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func (s *MockFoxgloveServer) createEvent(w http.ResponseWriter, r *http.Request) {
+	req := CreateEventRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if req.Start == "" || req.End == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	id, _ := randomString(8)
+	device := DeviceSummary{ID: req.DeviceID, Name: req.DeviceName}
+	if device.ID == "" && device.Name != "" {
+		if found := s.lookupDevice("", device.Name); found != nil {
+			device.ID = found.ID
+			device.Name = found.Name
+		}
+	}
+	if device.Name == "" && device.ID != "" {
+		if found := s.lookupDevice(device.ID, ""); found != nil {
+			device.Name = found.Name
+		}
+	}
+	event := EventResponseItem{
+		ID:          "evt_" + id,
+		Device:      device,
+		Start:       req.Start,
+		End:         req.End,
+		EventTypeID: req.EventTypeID,
+		Metadata:    req.Metadata,
+		Properties:  req.Properties,
+		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:   time.Now().UTC().Format(time.RFC3339),
+	}
+	if event.Metadata == nil {
+		event.Metadata = map[string]string{}
+	}
+	s.mtx.Lock()
+	s.registeredEvents = append(s.registeredEvents, event)
+	s.mtx.Unlock()
+	_ = json.NewEncoder(w).Encode(event)
+}
+
+func (s *MockFoxgloveServer) findEvent(id string) (int, *EventResponseItem) {
+	for i := range s.registeredEvents {
+		if s.registeredEvents[i].ID == id {
+			return i, &s.registeredEvents[i]
+		}
+	}
+	return -1, nil
+}
+
+func (s *MockFoxgloveServer) getEvent(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	_, event := s.findEvent(id)
+	if event == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(event)
+}
+
+func (s *MockFoxgloveServer) patchEvent(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	req := UpdateEventRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	idx, event := s.findEvent(id)
+	if event == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if req.Start != "" {
+		event.Start = req.Start
+	}
+	if req.End != "" {
+		event.End = req.End
+	}
+	if req.Metadata != nil {
+		event.Metadata = req.Metadata
+	}
+	if req.EventTypeID != nil {
+		event.EventTypeID = *req.EventTypeID
+	}
+	if req.Properties != nil {
+		if event.Properties == nil {
+			event.Properties = map[string]interface{}{}
+		}
+		for key, value := range req.Properties {
+			if value == nil {
+				delete(event.Properties, key)
+				continue
+			}
+			event.Properties[key] = value
+		}
+	}
+	event.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	s.registeredEvents[idx] = *event
+	_ = json.NewEncoder(w).Encode(event)
+}
+
+func (s *MockFoxgloveServer) deleteEvent(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	idx, _ := s.findEvent(id)
+	if idx < 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	s.registeredEvents = append(s.registeredEvents[:idx], s.registeredEvents[idx+1:]...)
+	_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
+func (s *MockFoxgloveServer) eventTypesList(w http.ResponseWriter, r *http.Request) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	if err := json.NewEncoder(w).Encode(s.registeredEventTypes); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+func (s *MockFoxgloveServer) createEventType(w http.ResponseWriter, r *http.Request) {
+	req := CreateEventTypeRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if req.CustomProperties == nil {
+		req.CustomProperties = []EventTypeCustomProperty{}
+	}
+	id, _ := randomString(8)
+	eventType := EventTypeResponse{
+		ID:               "evtt_" + id,
+		Name:             req.Name,
+		ColorName:        req.ColorName,
+		CustomProperties: req.CustomProperties,
+		CreatedAt:        time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+	}
+	s.mtx.Lock()
+	s.registeredEventTypes = append(s.registeredEventTypes, eventType)
+	s.mtx.Unlock()
+	_ = json.NewEncoder(w).Encode(eventType)
+}
+
+func (s *MockFoxgloveServer) findEventType(id string) (int, *EventTypeResponse) {
+	for i := range s.registeredEventTypes {
+		if s.registeredEventTypes[i].ID == id {
+			return i, &s.registeredEventTypes[i]
+		}
+	}
+	return -1, nil
+}
+
+func (s *MockFoxgloveServer) getEventType(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	_, eventType := s.findEventType(id)
+	if eventType == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(eventType)
+}
+
+func (s *MockFoxgloveServer) patchEventType(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	req := UpdateEventTypeRequest{}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	idx, eventType := s.findEventType(id)
+	if eventType == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	if req.Name != "" {
+		eventType.Name = req.Name
+	}
+	if req.ColorName != "" {
+		eventType.ColorName = req.ColorName
+	}
+	if req.CustomProperties != nil {
+		eventType.CustomProperties = *req.CustomProperties
+	}
+	eventType.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	s.registeredEventTypes[idx] = *eventType
+	_ = json.NewEncoder(w).Encode(eventType)
+}
+
+func (s *MockFoxgloveServer) deleteEventType(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	idx, _ := s.findEventType(id)
+	if idx < 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	s.registeredEventTypes = append(s.registeredEventTypes[:idx], s.registeredEventTypes[idx+1:]...)
+	_ = json.NewEncoder(w).Encode(map[string]string{"id": id})
+}
+
 func (s *MockFoxgloveServer) deleteSession(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 	s.mtx.Lock()
@@ -486,7 +740,18 @@ func (s *MockFoxgloveServer) ValidExtensionId() string {
 func (s *MockFoxgloveServer) customProperties(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	err := json.NewEncoder(w).Encode(s.registeredProperties)
+	resourceType := r.URL.Query().Get("resourceType")
+	out := s.registeredProperties
+	if resourceType != "" {
+		filtered := make([]CustomPropertiesResponseItem, 0, len(out))
+		for _, prop := range out {
+			if prop.ResourceType == resourceType {
+				filtered = append(filtered, prop)
+			}
+		}
+		out = filtered
+	}
+	err := json.NewEncoder(w).Encode(out)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
@@ -551,11 +816,25 @@ func mockServer(port int) *MockFoxgloveServer {
 			},
 		},
 		registeredSessions: []SessionResponse{},
+		registeredEvents:   []EventResponseItem{},
+		registeredEventTypes: []EventTypeResponse{
+			{
+				ID:               "evtt_default",
+				Name:             "Incident",
+				ColorName:        "red",
+				CustomProperties: []EventTypeCustomProperty{},
+				CreatedAt:        time.Now().UTC().Format(time.RFC3339),
+				UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+			},
+		},
 		registeredProperties: []CustomPropertiesResponseItem{
-			{Key: "str", ResourceType: "devices", Label: "", ValueType: "string"},
-			{Key: "num", ResourceType: "devices", Label: "", ValueType: "number"},
-			{Key: "bool", ResourceType: "devices", Label: "", ValueType: "boolean"},
-			{Key: "enum", ResourceType: "devices", Label: "", ValueType: "enum", Values: []string{"foo", "bar"}},
+			{ID: "cprop_str", Key: "str", ResourceType: "device", Label: "", ValueType: "string"},
+			{ID: "cprop_num", Key: "num", ResourceType: "device", Label: "", ValueType: "number"},
+			{ID: "cprop_bool", Key: "bool", ResourceType: "device", Label: "", ValueType: "boolean"},
+			{ID: "cprop_enum", Key: "enum", ResourceType: "device", Label: "", ValueType: "enum", Values: []string{"foo", "bar"}},
+			{ID: "cprop_evt_str", Key: "severity", ResourceType: "event", Label: "Severity", ValueType: "string"},
+			{ID: "cprop_evt_enum", Key: "status", ResourceType: "event", Label: "Status", ValueType: "enum", Values: []string{"open", "closed"}},
+			{ID: "cprop_evt_multi", Key: "tags", ResourceType: "event", Label: "Tags", ValueType: "multi-enum", Values: []string{"a", "b", "c"}},
 		},
 	}
 }
@@ -582,6 +861,16 @@ func makeRoutes(sv *MockFoxgloveServer) *mux.Router {
 	r.HandleFunc("/v1/sessions/{id}", sv.withAuthz(sv.getSession)).Methods("GET")
 	r.HandleFunc("/v1/sessions/{id}", sv.withAuthz(sv.patchSession)).Methods("PATCH")
 	r.HandleFunc("/v1/sessions/{id}", sv.withAuthz(sv.deleteSession)).Methods("DELETE")
+	r.HandleFunc("/v1/events", sv.withAuthz(sv.eventsList)).Methods("GET")
+	r.HandleFunc("/v1/events", sv.withAuthz(sv.createEvent)).Methods("POST")
+	r.HandleFunc("/v1/events/{id}", sv.withAuthz(sv.getEvent)).Methods("GET")
+	r.HandleFunc("/v1/events/{id}", sv.withAuthz(sv.patchEvent)).Methods("PATCH")
+	r.HandleFunc("/v1/events/{id}", sv.withAuthz(sv.deleteEvent)).Methods("DELETE")
+	r.HandleFunc("/v1/event-types", sv.withAuthz(sv.eventTypesList)).Methods("GET")
+	r.HandleFunc("/v1/event-types", sv.withAuthz(sv.createEventType)).Methods("POST")
+	r.HandleFunc("/v1/event-types/{id}", sv.withAuthz(sv.getEventType)).Methods("GET")
+	r.HandleFunc("/v1/event-types/{id}", sv.withAuthz(sv.patchEventType)).Methods("PATCH")
+	r.HandleFunc("/v1/event-types/{id}", sv.withAuthz(sv.deleteEventType)).Methods("DELETE")
 	r.HandleFunc("/v1/projects", sv.withAuthz(sv.projects)).Methods("GET")
 	r.HandleFunc("/v1/extension-upload", sv.withAuthz(sv.uploadExtension)).Methods("POST")
 	r.HandleFunc("/v1/extensions", sv.withAuthz(sv.listExtensions)).Methods("GET")

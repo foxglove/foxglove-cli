@@ -175,14 +175,31 @@ $ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y \
     --metadata requires-labeling:true
 ```
 
-List all events:
+List, get, edit, and delete events:
 
 ```
-$ foxglove events list
-|          ID          |      DEVICE ID       |            START            |             END             |        CREATED AT        |        UPDATED AT        |           METADATA           |
-|----------------------|----------------------|-----------------------------|-----------------------------|--------------------------|--------------------------|------------------------------|
-| evt_N6doUtPYh8i7iZxf | dev_jCuXYeFwCkZowpHs | 2023-04-19T13:22:44.194041Z | 2023-04-19T13:22:44.194041Z | 2023-04-19T13:22:44.263Z | 2023-04-19T13:22:44.263Z | {}                           |
-| evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
+$ foxglove events list --device-id dev_mHH1Cp4gPybCPR8y --event-type-id evtt_123
+$ foxglove events get evt_idMGJImlICYP4dcy
+$ foxglove events edit evt_idMGJImlICYP4dcy --metadata note:updated
+$ foxglove events delete evt_idMGJImlICYP4dcy
+```
+
+### Event types
+
+Create event types with a color and an ordered list of custom properties:
+
+```
+$ foxglove event-types add --name "Hardware Fault" --color-name red \
+    --custom-property cprop_abc:true
+```
+
+List, get, edit, and delete event types:
+
+```
+$ foxglove event-types list
+$ foxglove event-types get evtt_123
+$ foxglove event-types edit evtt_123 --name Fault --color-name orange
+$ foxglove event-types delete evtt_123
 ```
 
 ### Extensions

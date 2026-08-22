@@ -34,6 +34,24 @@ func TestRecordingsFields(t *testing.T) {
 	})
 }
 
+func TestEventTypeResponseFields(t *testing.T) {
+	resp := EventTypeResponse{
+		ID:        "evtt_1",
+		Name:      "Incident",
+		ColorName: "red",
+		CustomProperties: []EventTypeCustomProperty{
+			{ID: "cprop_1", Required: true},
+		},
+		CreatedAt: "2024-01-01T00:00:00Z",
+		UpdatedAt: "2024-01-02T00:00:00Z",
+	}
+	assert.Equal(t, []string{"ID", "Name", "Color", "Custom Properties", "Created At", "Updated At"}, resp.Headers())
+	assert.Equal(t, "evtt_1", resp.Fields()[0])
+	assert.Equal(t, "Incident", resp.Fields()[1])
+	assert.Equal(t, "red", resp.Fields()[2])
+	assert.Contains(t, resp.Fields()[3], "cprop_1")
+}
+
 func TestStreamRequestValidate(t *testing.T) {
 	start := time.Now().Add(-time.Hour)
 	end := time.Now()

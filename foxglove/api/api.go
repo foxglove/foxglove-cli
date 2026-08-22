@@ -423,17 +423,22 @@ func (r ImportsResponse) Headers() []string {
 }
 
 type EventsRequest struct {
-	DeviceID    string   `json:"device.id" form:"device.id,omitempty"`
-	DeviceName  string   `json:"device.name" form:"device.name,omitempty"`
-	End         string   `json:"end" form:"end,omitempty"`
-	EventTypeID string   `json:"eventTypeId" form:"eventTypeId,omitempty"`
-	Limit       int      `json:"limit" form:"limit,omitempty"`
-	Offset      int      `json:"offset" form:"offset,omitempty"`
-	Query       string   `json:"query" form:"query,omitempty"`
-	QueryFields []string `json:"queryFields" form:"queryFields,omitempty"`
-	SortBy      string   `json:"sortBy" form:"sortBy,omitempty"`
-	SortOrder   string   `json:"sortOrder" form:"sortOrder,omitempty"`
-	Start       string   `json:"start" form:"start,omitempty"`
+	CreatedAfter string `json:"createdAfter" form:"createdAfter,omitempty"`
+	DeviceID     string `json:"deviceId" form:"deviceId,omitempty"`
+	DeviceName   string `json:"deviceName" form:"deviceName,omitempty"`
+	End          string `json:"end" form:"end,omitempty"`
+	EventID      string `json:"eventId" form:"eventId,omitempty"`
+	EventTypeID  string `json:"eventTypeId" form:"eventTypeId,omitempty"`
+	Limit        int    `json:"limit" form:"limit,omitempty"`
+	Offset       int    `json:"offset" form:"offset,omitempty"`
+	ProjectID    string `json:"projectId" form:"projectId,omitempty"`
+	Query        string `json:"query" form:"query,omitempty"`
+	// QueryFields is a comma-separated list of "metadata" and/or "properties".
+	QueryFields  string `json:"queryFields" form:"queryFields,omitempty"`
+	SortBy       string `json:"sortBy" form:"sortBy,omitempty"`
+	SortOrder    string `json:"sortOrder" form:"sortOrder,omitempty"`
+	Start        string `json:"start" form:"start,omitempty"`
+	UpdatedAfter string `json:"updatedAfter" form:"updatedAfter,omitempty"`
 }
 
 type EventResponseItem struct {
@@ -652,41 +657,49 @@ type PatchSessionRecordingsRequest struct {
 }
 
 type CreateEventRequest struct {
-	DeviceID    string            `json:"deviceId"`
-	End         string            `json:"end"`
-	EventTypeID string            `json:"eventTypeId,omitempty"`
-	Metadata    map[string]string `json:"metadata"`
-	Start       string            `json:"start"`
+	DeviceID    string                 `json:"deviceId,omitempty"`
+	DeviceName  string                 `json:"deviceName,omitempty"`
+	End         string                 `json:"end"`
+	EventTypeID string                 `json:"eventTypeId,omitempty"`
+	Metadata    map[string]string      `json:"metadata"`
+	ProjectID   string                 `json:"projectId,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty"`
+	Start       string                 `json:"start"`
 }
 
 type CreateEventResponse = EventResponseItem
 
+type UpdateEventRequest struct {
+	End         string                 `json:"end,omitempty"`
+	EventTypeID *string                `json:"eventTypeId,omitempty"`
+	Metadata    map[string]string      `json:"metadata,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty"`
+	Start       string                 `json:"start,omitempty"`
+}
+
 type EventTypesRequest struct{}
 
-type EventTypePropertyDefinition struct {
-	Key       string   `json:"key"`
-	Label     string   `json:"label"`
-	Required  bool     `json:"required"`
-	Values    []string `json:"values,omitempty"`
-	ValueType string   `json:"valueType"`
+type EventTypeCustomProperty struct {
+	ID       string `json:"id"`
+	Required bool   `json:"required"`
 }
 
 type EventTypeResponse struct {
-	ColorName  string                        `json:"colorName"`
-	CreatedAt  string                        `json:"createdAt"`
-	ID         string                        `json:"id"`
-	Name       string                        `json:"name"`
-	Properties []EventTypePropertyDefinition `json:"properties"`
-	UpdatedAt  string                        `json:"updatedAt"`
+	ColorName        string                    `json:"colorName"`
+	CreatedAt        string                    `json:"createdAt"`
+	CustomProperties []EventTypeCustomProperty `json:"customProperties"`
+	ID               string                    `json:"id"`
+	Name             string                    `json:"name"`
+	UpdatedAt        string                    `json:"updatedAt"`
 }
 
 func (r EventTypeResponse) Fields() []string {
-	properties, _ := json.Marshal(r.Properties)
+	customProperties, _ := json.Marshal(r.CustomProperties)
 	return []string{
 		r.ID,
 		r.Name,
 		r.ColorName,
-		string(properties),
+		string(customProperties),
 		r.CreatedAt,
 		r.UpdatedAt,
 	}
@@ -697,10 +710,22 @@ func (r EventTypeResponse) Headers() []string {
 		"ID",
 		"Name",
 		"Color",
-		"Properties",
+		"Custom Properties",
 		"Created At",
 		"Updated At",
 	}
+}
+
+type CreateEventTypeRequest struct {
+	ColorName        string                    `json:"colorName,omitempty"`
+	CustomProperties []EventTypeCustomProperty `json:"customProperties"`
+	Name             string                    `json:"name"`
+}
+
+type UpdateEventTypeRequest struct {
+	ColorName        string                     `json:"colorName,omitempty"`
+	CustomProperties *[]EventTypeCustomProperty `json:"customProperties,omitempty"`
+	Name             string                     `json:"name,omitempty"`
 }
 
 type ExtensionsRequest struct{}
@@ -720,6 +745,7 @@ type CustomPropertiesRequest struct {
 }
 
 type CustomPropertiesResponseItem struct {
+	ID           string   `json:"id"`
 	Key          string   `json:"key"`
 	Label        string   `json:"label"`
 	ResourceType string   `json:"resourceType"`
