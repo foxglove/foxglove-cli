@@ -130,6 +130,12 @@ func TestMaybeConvertToRFC3339(t *testing.T) {
 			nil,
 		},
 		{
+			"preserves subsecond precision",
+			"2021-01-01T00:00:00.123456789Z",
+			"2021-01-01T00:00:00.123456789Z",
+			nil,
+		},
+		{
 			"accepts ISO8601",
 			"2021-01-01",
 			"2021-01-01T00:00:00Z",

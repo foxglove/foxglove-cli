@@ -35,7 +35,7 @@ func TestEventTypesClient(t *testing.T) {
 	assert.NotEmpty(t, created.ID)
 	assert.Equal(t, "Hardware Fault", created.Name)
 	assert.Equal(t, "red", created.ColorName)
-	assert.Equal(t, []api.EventTypeCustomProperty{{ID: "cprop_evt_str", Required: true}}, created.CustomProperties)
+	assert.Equal(t, []api.EventTypeCustomProperty{{ID: "cprop_evt_str", Required: true}}, created.Properties)
 
 	got, err := client.GetEventType(created.ID)
 	require.NoError(t, err)
@@ -50,7 +50,7 @@ func TestEventTypesClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Fault", updated.Name)
 	assert.Equal(t, "orange", updated.ColorName)
-	assert.Equal(t, updatedProps, updated.CustomProperties)
+	assert.Equal(t, updatedProps, updated.Properties)
 
 	_, err = client.GetEventType("evtt_missing")
 	assert.ErrorIs(t, err, api.ErrNotFound)
@@ -89,8 +89,8 @@ func TestAddEventTypeCommandSendsPublicBody(t *testing.T) {
 	cmd.SetArgs([]string{
 		"--name", "Incident",
 		"--color-name", "red",
-		"--custom-property", "cprop_1:true",
-		"--custom-property", "cprop_2",
+		"--property", "cprop_1:true",
+		"--property", "cprop_2",
 	})
 	assert.NoError(t, cmd.Execute())
 }
@@ -125,7 +125,7 @@ func TestGetEditDeleteEventTypeCommands(t *testing.T) {
 	assert.NoError(t, getCmd.Execute())
 
 	editCmd := newEditEventTypeCommand(params)
-	editCmd.SetArgs([]string{"evtt_1", "--name", "Fault", "--color-name", "orange", "--custom-property", "cprop_1:true"})
+	editCmd.SetArgs([]string{"evtt_1", "--name", "Fault", "--color-name", "orange", "--property", "cprop_1:true"})
 	assert.NoError(t, editCmd.Execute())
 	assert.Equal(t, "Fault", patchBody.Name)
 	assert.Equal(t, "orange", patchBody.ColorName)
@@ -133,22 +133,22 @@ func TestGetEditDeleteEventTypeCommands(t *testing.T) {
 	assert.Equal(t, []api.EventTypeCustomProperty{{ID: "cprop_1", Required: true}}, *patchBody.CustomProperties)
 
 	clearCmd := newEditEventTypeCommand(params)
-	clearCmd.SetArgs([]string{"evtt_1", "--clear-custom-properties"})
+	clearCmd.SetArgs([]string{"evtt_1", "--clear-properties"})
 	assert.NoError(t, clearCmd.Execute())
 	require.NotNil(t, patchBody.CustomProperties)
 	assert.Empty(t, *patchBody.CustomProperties)
 
 	invalidPropertiesCmd := newEditEventTypeCommand(params)
-	invalidPropertiesCmd.SetArgs([]string{"evtt_1", "--custom-property", "cprop_1", "--clear-custom-properties"})
-	assert.EqualError(t, invalidPropertiesCmd.Execute(), "--custom-property and --clear-custom-properties cannot be used together")
+	invalidPropertiesCmd.SetArgs([]string{"evtt_1", "--property", "cprop_1", "--clear-properties"})
+	assert.EqualError(t, invalidPropertiesCmd.Execute(), "--property and --clear-properties cannot be used together")
 
 	deleteCmd := newDeleteEventTypeCommand(params)
 	deleteCmd.SetArgs([]string{"evtt_1"})
 	assert.NoError(t, deleteCmd.Execute())
 }
 
-func TestParseEventTypeCustomProperties(t *testing.T) {
-	props, err := parseEventTypeCustomProperties([]string{"cprop_1:true", "cprop_2:false", "cprop_3"})
+func TestParseEventTypeProperties(t *testing.T) {
+	props, err := parseEventTypeProperties([]string{"cprop_1:true", "cprop_2:false", "cprop_3"})
 	assert.NoError(t, err)
 	assert.Equal(t, []api.EventTypeCustomProperty{
 		{ID: "cprop_1", Required: true},
@@ -156,6 +156,6 @@ func TestParseEventTypeCustomProperties(t *testing.T) {
 		{ID: "cprop_3", Required: false},
 	}, props)
 
-	_, err = parseEventTypeCustomProperties([]string{"cprop_1:maybe"})
+	_, err = parseEventTypeProperties([]string{"cprop_1:maybe"})
 	assert.Error(t, err)
 }

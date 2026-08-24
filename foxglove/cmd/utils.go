@@ -262,7 +262,7 @@ func maybeConvertToRFC3339(timestamp string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return parsed.Format(time.RFC3339), nil
+	return parsed.Format(time.RFC3339Nano), nil
 }
 
 func TokenIsApiKey(token string) bool {

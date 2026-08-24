@@ -685,6 +685,18 @@ type EventTypeCustomProperty struct {
 }
 
 type EventTypeResponse struct {
+	ColorName  string                    `json:"colorName"`
+	CreatedAt  string                    `json:"createdAt"`
+	ID         string                    `json:"id"`
+	Name       string                    `json:"name"`
+	Properties []EventTypeCustomProperty `json:"properties"`
+	UpdatedAt  string                    `json:"updatedAt"`
+}
+
+// eventTypeAPIResponse mirrors the public API wire format. Event type
+// properties are exposed as "properties" by the CLI for backwards
+// compatibility, while the API calls the field "customProperties".
+type eventTypeAPIResponse struct {
 	ColorName        string                    `json:"colorName"`
 	CreatedAt        string                    `json:"createdAt"`
 	CustomProperties []EventTypeCustomProperty `json:"customProperties"`
@@ -693,13 +705,35 @@ type EventTypeResponse struct {
 	UpdatedAt        string                    `json:"updatedAt"`
 }
 
+func (r eventTypeAPIResponse) cliResponse() EventTypeResponse {
+	return EventTypeResponse{
+		ColorName:  r.ColorName,
+		CreatedAt:  r.CreatedAt,
+		ID:         r.ID,
+		Name:       r.Name,
+		Properties: r.CustomProperties,
+		UpdatedAt:  r.UpdatedAt,
+	}
+}
+
+func eventTypeWireResponse(r EventTypeResponse) eventTypeAPIResponse {
+	return eventTypeAPIResponse{
+		ColorName:        r.ColorName,
+		CreatedAt:        r.CreatedAt,
+		CustomProperties: r.Properties,
+		ID:               r.ID,
+		Name:             r.Name,
+		UpdatedAt:        r.UpdatedAt,
+	}
+}
+
 func (r EventTypeResponse) Fields() []string {
-	customProperties, _ := json.Marshal(r.CustomProperties)
+	properties, _ := json.Marshal(r.Properties)
 	return []string{
 		r.ID,
 		r.Name,
 		r.ColorName,
-		string(customProperties),
+		string(properties),
 		r.CreatedAt,
 		r.UpdatedAt,
 	}
@@ -710,7 +744,7 @@ func (r EventTypeResponse) Headers() []string {
 		"ID",
 		"Name",
 		"Color",
-		"Custom Properties",
+		"Properties",
 		"Created At",
 		"Updated At",
 	}

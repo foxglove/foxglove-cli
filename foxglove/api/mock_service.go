@@ -397,7 +397,7 @@ func (s *MockFoxgloveServer) createEvent(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if req.EventTypeID == "" && len(req.Properties) > 0 {
+	if len(req.Metadata) > 0 && len(req.Properties) > 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -514,7 +514,11 @@ func (s *MockFoxgloveServer) deleteEvent(w http.ResponseWriter, r *http.Request)
 func (s *MockFoxgloveServer) eventTypesList(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-	if err := json.NewEncoder(w).Encode(s.registeredEventTypes); err != nil {
+	eventTypes := make([]eventTypeAPIResponse, 0, len(s.registeredEventTypes))
+	for _, eventType := range s.registeredEventTypes {
+		eventTypes = append(eventTypes, eventTypeWireResponse(eventType))
+	}
+	if err := json.NewEncoder(w).Encode(eventTypes); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
@@ -534,17 +538,17 @@ func (s *MockFoxgloveServer) createEventType(w http.ResponseWriter, r *http.Requ
 	}
 	id, _ := randomString(8)
 	eventType := EventTypeResponse{
-		ID:               "evtt_" + id,
-		Name:             req.Name,
-		ColorName:        req.ColorName,
-		CustomProperties: req.CustomProperties,
-		CreatedAt:        time.Now().UTC().Format(time.RFC3339),
-		UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+		ID:         "evtt_" + id,
+		Name:       req.Name,
+		ColorName:  req.ColorName,
+		Properties: req.CustomProperties,
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 	}
 	s.mtx.Lock()
 	s.registeredEventTypes = append(s.registeredEventTypes, eventType)
 	s.mtx.Unlock()
-	_ = json.NewEncoder(w).Encode(eventType)
+	_ = json.NewEncoder(w).Encode(eventTypeWireResponse(eventType))
 }
 
 func (s *MockFoxgloveServer) findEventType(id string) (int, *EventTypeResponse) {
@@ -565,7 +569,7 @@ func (s *MockFoxgloveServer) getEventType(w http.ResponseWriter, r *http.Request
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(eventType)
+	_ = json.NewEncoder(w).Encode(eventTypeWireResponse(*eventType))
 }
 
 func (s *MockFoxgloveServer) patchEventType(w http.ResponseWriter, r *http.Request) {
@@ -589,11 +593,11 @@ func (s *MockFoxgloveServer) patchEventType(w http.ResponseWriter, r *http.Reque
 		eventType.ColorName = req.ColorName
 	}
 	if req.CustomProperties != nil {
-		eventType.CustomProperties = *req.CustomProperties
+		eventType.Properties = *req.CustomProperties
 	}
 	eventType.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	s.registeredEventTypes[idx] = *eventType
-	_ = json.NewEncoder(w).Encode(eventType)
+	_ = json.NewEncoder(w).Encode(eventTypeWireResponse(*eventType))
 }
 
 func (s *MockFoxgloveServer) deleteEventType(w http.ResponseWriter, r *http.Request) {
@@ -823,12 +827,12 @@ func mockServer(port int) *MockFoxgloveServer {
 		registeredEvents:   []EventResponseItem{},
 		registeredEventTypes: []EventTypeResponse{
 			{
-				ID:               "evtt_default",
-				Name:             "Incident",
-				ColorName:        "red",
-				CustomProperties: []EventTypeCustomProperty{},
-				CreatedAt:        time.Now().UTC().Format(time.RFC3339),
-				UpdatedAt:        time.Now().UTC().Format(time.RFC3339),
+				ID:         "evtt_default",
+				Name:       "Incident",
+				ColorName:  "red",
+				Properties: []EventTypeCustomProperty{},
+				CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+				UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 		registeredProperties: []CustomPropertiesResponseItem{

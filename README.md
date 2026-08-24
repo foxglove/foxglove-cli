@@ -188,11 +188,11 @@ $ foxglove events delete evt_idMGJImlICYP4dcy
 
 ### Event types
 
-Create event types with a color and an ordered list of custom properties:
+Create event types with a color and an ordered list of properties:
 
 ```
 $ foxglove event-types add --name "Hardware Fault" --color-name red \
-    --custom-property cprop_abc:true
+    --property cprop_abc:true
 ```
 
 List, get, edit, and delete event types:
@@ -201,7 +201,7 @@ List, get, edit, and delete event types:
 $ foxglove event-types list
 $ foxglove event-types get evtt_123
 $ foxglove event-types edit evtt_123 --name Fault --color-name orange
-$ foxglove event-types edit evtt_123 --clear-custom-properties
+$ foxglove event-types edit evtt_123 --clear-properties
 $ foxglove event-types delete evtt_123
 ```
 

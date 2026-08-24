@@ -245,7 +245,7 @@ func TestParseEventPropertiesToRemove(t *testing.T) {
 	}, properties)
 
 	_, err = parseEventProperties(nil, nil, []string{""})
-	assert.EqualError(t, err, "custom property key to remove cannot be empty")
+	assert.EqualError(t, err, "property key to remove cannot be empty")
 }
 
 func TestValidateCreateEventData(t *testing.T) {
@@ -254,9 +254,10 @@ func TestValidateCreateEventData(t *testing.T) {
 		"--metadata cannot be used with --event-type-id",
 	)
 	assert.EqualError(t,
-		validateCreateEventData("", nil, []string{"severity:high"}),
-		"--event-type-id is required when using --property",
+		validateCreateEventData("", []string{"note:value"}, []string{"severity:high"}),
+		"--metadata cannot be used with --property",
 	)
 	assert.NoError(t, validateCreateEventData("", []string{"note:value"}, nil))
+	assert.NoError(t, validateCreateEventData("", nil, []string{"severity:high"}))
 	assert.NoError(t, validateCreateEventData("evtt_1", nil, []string{"severity:high"}))
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -39,17 +40,29 @@ func TestEventTypeResponseFields(t *testing.T) {
 		ID:        "evtt_1",
 		Name:      "Incident",
 		ColorName: "red",
-		CustomProperties: []EventTypeCustomProperty{
+		Properties: []EventTypeCustomProperty{
 			{ID: "cprop_1", Required: true},
 		},
 		CreatedAt: "2024-01-01T00:00:00Z",
 		UpdatedAt: "2024-01-02T00:00:00Z",
 	}
-	assert.Equal(t, []string{"ID", "Name", "Color", "Custom Properties", "Created At", "Updated At"}, resp.Headers())
+	assert.Equal(t, []string{"ID", "Name", "Color", "Properties", "Created At", "Updated At"}, resp.Headers())
 	assert.Equal(t, "evtt_1", resp.Fields()[0])
 	assert.Equal(t, "Incident", resp.Fields()[1])
 	assert.Equal(t, "red", resp.Fields()[2])
 	assert.Contains(t, resp.Fields()[3], "cprop_1")
+
+	encoded, err := json.Marshal(resp)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{
+		"id": "evtt_1",
+		"name": "Incident",
+		"colorName": "red",
+		"properties": [{"id": "cprop_1", "required": true}],
+		"createdAt": "2024-01-01T00:00:00Z",
+		"updatedAt": "2024-01-02T00:00:00Z"
+	}`, string(encoded))
+	assert.NotContains(t, string(encoded), "customProperties")
 }
 
 func TestStreamRequestValidate(t *testing.T) {

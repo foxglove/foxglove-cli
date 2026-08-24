@@ -40,7 +40,7 @@ func parseEventProperties(
 	}
 	for _, key := range removeKeys {
 		if key == "" {
-			return nil, fmt.Errorf("custom property key to remove cannot be empty")
+			return nil, fmt.Errorf("property key to remove cannot be empty")
 		}
 		properties[key] = nil
 	}
@@ -60,8 +60,8 @@ func validateCreateEventData(eventTypeID string, metadataPairs, propertyPairs []
 	if eventTypeID != "" && len(metadataPairs) > 0 {
 		return fmt.Errorf("--metadata cannot be used with --event-type-id")
 	}
-	if eventTypeID == "" && len(propertyPairs) > 0 {
-		return fmt.Errorf("--event-type-id is required when using --property")
+	if len(metadataPairs) > 0 && len(propertyPairs) > 0 {
+		return fmt.Errorf("--metadata cannot be used with --property")
 	}
 	return nil
 }
@@ -130,7 +130,7 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 	addEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "End of event (inclusive), RFC 3339 or ISO 8601 format")
 	addEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Metadata colon-separated key value pair. Multiple may be specified.")
 	addEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type-id", "", "", "Event type ID to associate with this event (e.g. evtt_123)")
-	addEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Event custom property colon-separated key value pair. Multiple may be specified.")
+	addEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Event property colon-separated key value pair. Multiple may be specified.")
 	AddDeviceAutocompletion(addEventCmd, params)
 	return addEventCmd
 }
@@ -339,8 +339,8 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 	editEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Replace all event metadata with these colon-separated key value pairs. Multiple may be specified.")
 	editEventCmd.PersistentFlags().BoolVarP(&clearMetadata, "clear-metadata", "", false, "Remove all event metadata.")
 	editEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type-id", "", "", "Event type ID. Pass an empty value to remove the event type.")
-	editEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Set these event custom property keys. Other keys stay unchanged. Multiple may be specified.")
-	editEventCmd.PersistentFlags().StringArrayVarP(&removeProperties, "remove-property", "", []string{}, "Remove these event custom property keys. Multiple may be specified.")
+	editEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Set these event property keys. Other keys stay unchanged. Multiple may be specified.")
+	editEventCmd.PersistentFlags().StringArrayVarP(&removeProperties, "remove-property", "", []string{}, "Remove these event property keys. Multiple may be specified.")
 	return editEventCmd
 }
 

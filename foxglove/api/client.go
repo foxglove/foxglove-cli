@@ -475,7 +475,15 @@ func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, e
 }
 
 func (c *FoxgloveClient) EventTypes(req *EventTypesRequest) (resp []EventTypeResponse, err error) {
-	err = c.get("/v1/event-types", req, &resp)
+	var wireResp []eventTypeAPIResponse
+	err = c.get("/v1/event-types", req, &wireResp)
+	if err != nil {
+		return nil, err
+	}
+	resp = make([]EventTypeResponse, 0, len(wireResp))
+	for _, eventType := range wireResp {
+		resp = append(resp, eventType.cliResponse())
+	}
 	return resp, err
 }
 
@@ -484,13 +492,15 @@ func (c *FoxgloveClient) GetEventType(id string) (resp EventTypeResponse, err er
 	if err != nil {
 		return EventTypeResponse{}, err
 	}
-	err = c.get(path, struct{}{}, &resp)
-	return resp, err
+	var wireResp eventTypeAPIResponse
+	err = c.get(path, struct{}{}, &wireResp)
+	return wireResp.cliResponse(), err
 }
 
 func (c *FoxgloveClient) CreateEventType(req CreateEventTypeRequest) (resp EventTypeResponse, err error) {
-	err = c.post("/v1/event-types", req, &resp)
-	return resp, err
+	var wireResp eventTypeAPIResponse
+	err = c.post("/v1/event-types", req, &wireResp)
+	return wireResp.cliResponse(), err
 }
 
 func (c *FoxgloveClient) UpdateEventType(id string, req UpdateEventTypeRequest) (resp EventTypeResponse, err error) {
@@ -498,8 +508,9 @@ func (c *FoxgloveClient) UpdateEventType(id string, req UpdateEventTypeRequest) 
 	if err != nil {
 		return EventTypeResponse{}, err
 	}
-	err = c.patch(path, struct{}{}, req, &resp)
-	return resp, err
+	var wireResp eventTypeAPIResponse
+	err = c.patch(path, struct{}{}, req, &wireResp)
+	return wireResp.cliResponse(), err
 }
 
 func (c *FoxgloveClient) DeleteEventType(id string) error {
