@@ -124,6 +124,22 @@ func renderJSON[RecordType api.Record](w io.Writer, records []RecordType) error 
 	return encoder.Encode(records)
 }
 
+func renderRecord[RecordType api.Record](w io.Writer, record RecordType, format string) error {
+	switch format {
+	case "table":
+		tw.PrintTable(w, record.Headers(), [][]string{record.Fields()})
+	case "json":
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "    ")
+		return encoder.Encode(record)
+	case "csv":
+		return renderCSV(w, []RecordType{record})
+	default:
+		return fmt.Errorf("unsupported format %s", format)
+	}
+	return nil
+}
+
 func renderCSV[RecordType api.Record](w io.Writer, records []RecordType) error {
 	writer := csv.NewWriter(w)
 	err := writer.Write(records[0].Headers())
@@ -246,7 +262,7 @@ func maybeConvertToRFC3339(timestamp string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return parsed.Format(time.RFC3339), nil
+	return parsed.Format(time.RFC3339Nano), nil
 }
 
 func TokenIsApiKey(token string) bool {

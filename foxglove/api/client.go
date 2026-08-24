@@ -310,6 +310,32 @@ func (c *FoxgloveClient) CreateEvent(req CreateEventRequest) (resp CreateEventRe
 	return resp, err
 }
 
+func (c *FoxgloveClient) GetEvent(id string) (resp EventResponseItem, err error) {
+	path, err := url.JoinPath("/v1/events", id)
+	if err != nil {
+		return EventResponseItem{}, err
+	}
+	err = c.get(path, struct{}{}, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) UpdateEvent(id string, req UpdateEventRequest) (resp EventResponseItem, err error) {
+	path, err := url.JoinPath("/v1/events", id)
+	if err != nil {
+		return EventResponseItem{}, err
+	}
+	err = c.patch(path, struct{}{}, req, &resp)
+	return resp, err
+}
+
+func (c *FoxgloveClient) DeleteEvent(id string) error {
+	path, err := url.JoinPath("/v1/events", id)
+	if err != nil {
+		return err
+	}
+	return c.delete(path)
+}
+
 // UploadExtension sends the contents of a reader to the extension-upload endpoint.
 // This endpoint  can be used to create an extension, or update with a new version.
 // Extension & version information is parsed from the extension's package.json.
@@ -449,8 +475,50 @@ func (c *FoxgloveClient) Events(req *EventsRequest) (resp []EventResponseItem, e
 }
 
 func (c *FoxgloveClient) EventTypes(req *EventTypesRequest) (resp []EventTypeResponse, err error) {
-	err = c.get("/v1/event-types", req, &resp)
+	var wireResp []eventTypeAPIResponse
+	err = c.get("/v1/event-types", req, &wireResp)
+	if err != nil {
+		return nil, err
+	}
+	resp = make([]EventTypeResponse, 0, len(wireResp))
+	for _, eventType := range wireResp {
+		resp = append(resp, eventType.cliResponse())
+	}
 	return resp, err
+}
+
+func (c *FoxgloveClient) GetEventType(id string) (resp EventTypeResponse, err error) {
+	path, err := url.JoinPath("/v1/event-types", id)
+	if err != nil {
+		return EventTypeResponse{}, err
+	}
+	var wireResp eventTypeAPIResponse
+	err = c.get(path, struct{}{}, &wireResp)
+	return wireResp.cliResponse(), err
+}
+
+func (c *FoxgloveClient) CreateEventType(req CreateEventTypeRequest) (resp EventTypeResponse, err error) {
+	var wireResp eventTypeAPIResponse
+	err = c.post("/v1/event-types", req, &wireResp)
+	return wireResp.cliResponse(), err
+}
+
+func (c *FoxgloveClient) UpdateEventType(id string, req UpdateEventTypeRequest) (resp EventTypeResponse, err error) {
+	path, err := url.JoinPath("/v1/event-types", id)
+	if err != nil {
+		return EventTypeResponse{}, err
+	}
+	var wireResp eventTypeAPIResponse
+	err = c.patch(path, struct{}{}, req, &wireResp)
+	return wireResp.cliResponse(), err
+}
+
+func (c *FoxgloveClient) DeleteEventType(id string) error {
+	path, err := url.JoinPath("/v1/event-types", id)
+	if err != nil {
+		return err
+	}
+	return c.delete(path)
 }
 
 func (c *FoxgloveClient) Imports(req *ImportsRequest) (resp []ImportsResponse, err error) {
