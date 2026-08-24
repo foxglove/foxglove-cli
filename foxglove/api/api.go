@@ -693,9 +693,10 @@ type EventTypeResponse struct {
 	UpdatedAt  string                    `json:"updatedAt"`
 }
 
-// eventTypeAPIResponse mirrors the public API wire format. Event type
-// properties are exposed as "properties" by the CLI for backwards
-// compatibility, while the API calls the field "customProperties".
+// eventTypeAPIResponse is the public /v1/event-types JSON body.
+// The API field is customProperties: [{id, required}]. CLI JSON and table
+// output use the name "properties" for that same list. The name is for
+// compatibility with the previous CLI field; the item shape is not.
 type eventTypeAPIResponse struct {
 	ColorName        string                    `json:"colorName"`
 	CreatedAt        string                    `json:"createdAt"`
