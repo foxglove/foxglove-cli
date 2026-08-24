@@ -180,7 +180,9 @@ List, get, edit, and delete events:
 ```
 $ foxglove events list --device-id dev_mHH1Cp4gPybCPR8y --event-type-id evtt_123
 $ foxglove events get evt_idMGJImlICYP4dcy
-$ foxglove events edit evt_idMGJImlICYP4dcy --metadata note:updated --property severity:high
+$ foxglove events edit evt_idMGJImlICYP4dcy --property severity:high
+$ foxglove events edit evt_idMGJImlICYP4dcy --remove-property severity
+$ foxglove events edit evt_idMGJImlICYP4dcy --clear-metadata
 $ foxglove events delete evt_idMGJImlICYP4dcy
 ```
 
@@ -199,6 +201,7 @@ List, get, edit, and delete event types:
 $ foxglove event-types list
 $ foxglove event-types get evtt_123
 $ foxglove event-types edit evtt_123 --name Fault --color-name orange
+$ foxglove event-types edit evtt_123 --clear-custom-properties
 $ foxglove event-types delete evtt_123
 ```
 

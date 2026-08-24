@@ -133,10 +133,17 @@ func newEditEventTypeCommand(params *baseParams) *cobra.Command {
 	var name string
 	var colorName string
 	var customPropertyPairs []string
+	var clearCustomProperties bool
 	editCmd := &cobra.Command{
 		Use:   "edit [ID]",
 		Short: "Edit an event type",
 		Args:  cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("custom-property") && clearCustomProperties {
+				return fmt.Errorf("--custom-property and --clear-custom-properties cannot be used together")
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			req := api.UpdateEventTypeRequest{}
 			if cmd.Flags().Changed("name") {
@@ -150,6 +157,10 @@ func newEditEventTypeCommand(params *baseParams) *cobra.Command {
 				if err != nil {
 					dief("Failed to edit event type: %s", err)
 				}
+				req.CustomProperties = &customProperties
+			}
+			if clearCustomProperties {
+				customProperties := []api.EventTypeCustomProperty{}
 				req.CustomProperties = &customProperties
 			}
 			if req.Name == "" && req.ColorName == "" && req.CustomProperties == nil {
@@ -171,6 +182,7 @@ func newEditEventTypeCommand(params *baseParams) *cobra.Command {
 	editCmd.PersistentFlags().StringVarP(&name, "name", "", "", "Name of the event type")
 	editCmd.PersistentFlags().StringVarP(&colorName, "color-name", "", "", "Color name of the event type, e.g. red")
 	editCmd.PersistentFlags().StringArrayVarP(&customPropertyPairs, "custom-property", "", []string{}, "Custom property ID, or ID:true/false for required. Replaces the current list. Multiple may be specified.")
+	editCmd.PersistentFlags().BoolVarP(&clearCustomProperties, "clear-custom-properties", "", false, "Remove all custom properties from the event type.")
 	return editCmd
 }
 

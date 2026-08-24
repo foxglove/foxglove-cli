@@ -24,21 +24,20 @@ func TestEventsClient(t *testing.T) {
 		Start:       "2023-04-19T13:26:37Z",
 		End:         "2023-04-19T13:26:38Z",
 		EventTypeID: "evtt_default",
-		Metadata:    map[string]string{"requires-labeling": "true"},
 		Properties:  map[string]interface{}{"severity": "high"},
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, created.ID)
 	assert.Equal(t, "test-device", created.Device.ID)
 	assert.Equal(t, "evtt_default", created.EventTypeID)
-	assert.Equal(t, map[string]string{"requires-labeling": "true"}, created.Metadata)
+	assert.Empty(t, created.Metadata)
 
 	listed, err := client.Events(&api.EventsRequest{
 		DeviceID:    "test-device",
 		EventTypeID: "evtt_default",
 		EventID:     created.ID,
-		Query:       "requires-labeling:true",
-		QueryFields: "metadata,properties",
+		Query:       "severity:high",
+		QueryFields: "properties",
 	})
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
@@ -49,10 +48,11 @@ func TestEventsClient(t *testing.T) {
 	assert.Equal(t, created.ID, got.ID)
 
 	clearedType := ""
+	metadata := map[string]string{"note": "updated"}
 	updated, err := client.UpdateEvent(created.ID, api.UpdateEventRequest{
 		Start:       "2023-04-19T13:26:40Z",
 		End:         "2023-04-19T13:26:41Z",
-		Metadata:    map[string]string{"note": "updated"},
+		Metadata:    &metadata,
 		EventTypeID: &clearedType,
 		Properties:  map[string]interface{}{"severity": nil},
 	})
@@ -140,7 +140,7 @@ func TestAddEventCommandSendsPublicBody(t *testing.T) {
 		assert.Equal(t, "2024-01-01T00:00:00Z", req.Start)
 		assert.Equal(t, "2024-01-01T00:00:01Z", req.End)
 		assert.Equal(t, "evtt_1", req.EventTypeID)
-		assert.Equal(t, map[string]string{"k": "v"}, req.Metadata)
+		assert.Empty(t, req.Metadata)
 		_, _ = w.Write([]byte(`{"id":"evt_created","start":"2024-01-01T00:00:00Z","end":"2024-01-01T00:00:01Z","metadata":{},"createdAt":"2024-01-01T00:00:00Z","updatedAt":"2024-01-01T00:00:00Z"}`))
 	}))
 	defer server.Close()
@@ -158,7 +158,6 @@ func TestAddEventCommandSendsPublicBody(t *testing.T) {
 		"--start", "2024-01-01T00:00:00Z",
 		"--end", "2024-01-01T00:00:01Z",
 		"--event-type-id", "evtt_1",
-		"--metadata", "k:v",
 	})
 	assert.NoError(t, cmd.Execute())
 }
@@ -171,6 +170,7 @@ func TestGetEditDeleteEventCommands(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/events/evt_1":
 			_, _ = w.Write([]byte(`{"id":"evt_1","start":"2024-01-01T00:00:00Z","end":"2024-01-01T00:00:01Z","device":{"id":"dev_1","name":"RobotA"},"metadata":{},"createdAt":"2024-01-01T00:00:00Z","updatedAt":"2024-01-01T00:00:00Z"}`))
 		case r.Method == http.MethodPatch && r.URL.Path == "/v1/events/evt_1":
+			patchBody = api.UpdateEventRequest{}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&patchBody))
 			_, _ = w.Write([]byte(`{"id":"evt_1","start":"2024-01-01T00:00:10Z","end":"2024-01-01T00:00:11Z","metadata":{"k":"v"},"createdAt":"2024-01-01T00:00:00Z","updatedAt":"2024-01-01T00:00:00Z"}`))
 		case r.Method == http.MethodDelete && r.URL.Path == "/v1/events/evt_1":
@@ -192,13 +192,26 @@ func TestGetEditDeleteEventCommands(t *testing.T) {
 	assert.NoError(t, getCmd.Execute())
 
 	editCmd := newEditEventCommand(params)
-	editCmd.SetArgs([]string{"evt_1", "--start", "2024-01-01T00:00:10Z", "--end", "2024-01-01T00:00:11Z", "--metadata", "k:v", "--event-type-id", ""})
+	editCmd.SetArgs([]string{"evt_1", "--start", "2024-01-01T00:00:10Z", "--end", "2024-01-01T00:00:11Z", "--metadata", "k:v", "--event-type-id", "", "--remove-property", "severity"})
 	assert.NoError(t, editCmd.Execute())
 	assert.Equal(t, "2024-01-01T00:00:10Z", patchBody.Start)
 	assert.Equal(t, "2024-01-01T00:00:11Z", patchBody.End)
-	assert.Equal(t, map[string]string{"k": "v"}, patchBody.Metadata)
+	require.NotNil(t, patchBody.Metadata)
+	assert.Equal(t, map[string]string{"k": "v"}, *patchBody.Metadata)
 	require.NotNil(t, patchBody.EventTypeID)
 	assert.Equal(t, "", *patchBody.EventTypeID)
+	assert.Contains(t, patchBody.Properties, "severity")
+	assert.Nil(t, patchBody.Properties["severity"])
+
+	clearMetadataCmd := newEditEventCommand(params)
+	clearMetadataCmd.SetArgs([]string{"evt_1", "--clear-metadata"})
+	assert.NoError(t, clearMetadataCmd.Execute())
+	require.NotNil(t, patchBody.Metadata)
+	assert.Empty(t, *patchBody.Metadata)
+
+	invalidMetadataCmd := newEditEventCommand(params)
+	invalidMetadataCmd.SetArgs([]string{"evt_1", "--metadata", "k:v", "--clear-metadata"})
+	assert.EqualError(t, invalidMetadataCmd.Execute(), "--metadata and --clear-metadata cannot be used together")
 
 	deleteCmd := newDeleteEventCommand(params)
 	deleteCmd.SetArgs([]string{"evt_1"})
@@ -221,4 +234,29 @@ func TestParseMetadataPairs(t *testing.T) {
 
 	_, err = parseMetadataPairs([]string{"novalue"})
 	assert.Error(t, err)
+}
+
+func TestParseEventPropertiesToRemove(t *testing.T) {
+	properties, err := parseEventProperties(nil, nil, []string{"severity", "note"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{
+		"severity": nil,
+		"note":     nil,
+	}, properties)
+
+	_, err = parseEventProperties(nil, nil, []string{""})
+	assert.EqualError(t, err, "custom property key to remove cannot be empty")
+}
+
+func TestValidateCreateEventData(t *testing.T) {
+	assert.EqualError(t,
+		validateCreateEventData("evtt_1", []string{"note:value"}, nil),
+		"--metadata cannot be used with --event-type-id",
+	)
+	assert.EqualError(t,
+		validateCreateEventData("", nil, []string{"severity:high"}),
+		"--event-type-id is required when using --property",
+	)
+	assert.NoError(t, validateCreateEventData("", []string{"note:value"}, nil))
+	assert.NoError(t, validateCreateEventData("evtt_1", nil, []string{"severity:high"}))
 }

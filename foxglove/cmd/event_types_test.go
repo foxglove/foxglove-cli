@@ -103,6 +103,7 @@ func TestGetEditDeleteEventTypeCommands(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/event-types/evtt_1":
 			_, _ = w.Write([]byte(`{"id":"evtt_1","name":"Incident","colorName":"red","customProperties":[],"createdAt":"2024-01-01T00:00:00Z","updatedAt":"2024-01-01T00:00:00Z"}`))
 		case r.Method == http.MethodPatch && r.URL.Path == "/v1/event-types/evtt_1":
+			patchBody = api.UpdateEventTypeRequest{}
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&patchBody))
 			_, _ = w.Write([]byte(`{"id":"evtt_1","name":"Fault","colorName":"orange","customProperties":[{"id":"cprop_1","required":true}],"createdAt":"2024-01-01T00:00:00Z","updatedAt":"2024-01-01T00:00:00Z"}`))
 		case r.Method == http.MethodDelete && r.URL.Path == "/v1/event-types/evtt_1":
@@ -130,6 +131,16 @@ func TestGetEditDeleteEventTypeCommands(t *testing.T) {
 	assert.Equal(t, "orange", patchBody.ColorName)
 	require.NotNil(t, patchBody.CustomProperties)
 	assert.Equal(t, []api.EventTypeCustomProperty{{ID: "cprop_1", Required: true}}, *patchBody.CustomProperties)
+
+	clearCmd := newEditEventTypeCommand(params)
+	clearCmd.SetArgs([]string{"evtt_1", "--clear-custom-properties"})
+	assert.NoError(t, clearCmd.Execute())
+	require.NotNil(t, patchBody.CustomProperties)
+	assert.Empty(t, *patchBody.CustomProperties)
+
+	invalidPropertiesCmd := newEditEventTypeCommand(params)
+	invalidPropertiesCmd.SetArgs([]string{"evtt_1", "--custom-property", "cprop_1", "--clear-custom-properties"})
+	assert.EqualError(t, invalidPropertiesCmd.Execute(), "--custom-property and --clear-custom-properties cannot be used together")
 
 	deleteCmd := newDeleteEventTypeCommand(params)
 	deleteCmd.SetArgs([]string{"evtt_1"})

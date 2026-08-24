@@ -393,6 +393,14 @@ func (s *MockFoxgloveServer) createEvent(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	if req.EventTypeID != "" && len(req.Metadata) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if req.EventTypeID == "" && len(req.Properties) > 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	id, _ := randomString(8)
 	device := DeviceSummary{ID: req.DeviceID, Name: req.DeviceName}
 	if device.ID == "" && device.Name != "" {
@@ -468,7 +476,7 @@ func (s *MockFoxgloveServer) patchEvent(w http.ResponseWriter, r *http.Request) 
 		event.End = req.End
 	}
 	if req.Metadata != nil {
-		event.Metadata = req.Metadata
+		event.Metadata = *req.Metadata
 	}
 	if req.EventTypeID != nil {
 		event.EventTypeID = *req.EventTypeID
@@ -829,8 +837,8 @@ func mockServer(port int) *MockFoxgloveServer {
 			{ID: "cprop_bool", Key: "bool", ResourceType: "device", Label: "", ValueType: "boolean"},
 			{ID: "cprop_enum", Key: "enum", ResourceType: "device", Label: "", ValueType: "enum", Values: []string{"foo", "bar"}},
 			{ID: "cprop_evt_str", Key: "severity", ResourceType: "event", Label: "Severity", ValueType: "string"},
-			{ID: "cprop_evt_enum", Key: "status", ResourceType: "event", Label: "Status", ValueType: "enum", Values: []string{"open", "closed"}},
-			{ID: "cprop_evt_multi", Key: "tags", ResourceType: "event", Label: "Tags", ValueType: "multi-enum", Values: []string{"a", "b", "c"}},
+			{ID: "cprop_evt_enum", Key: "status", ResourceType: "event", Label: "Status", ValueType: "enum", EnumValues: []string{"open", "closed"}},
+			{ID: "cprop_evt_multi", Key: "tags", ResourceType: "event", Label: "Tags", ValueType: "multi-enum", EnumValues: []string{"a", "b", "c"}},
 		},
 	}
 }

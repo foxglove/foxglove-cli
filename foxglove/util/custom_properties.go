@@ -112,10 +112,14 @@ func fetchAvailableProperties(client *api.FoxgloveClient, resourceType string) (
 
 	properties := make(map[string]PropertyDefinition)
 	for _, prop := range propertiesResp {
+		enumValues := prop.EnumValues
+		if enumValues == nil {
+			enumValues = prop.Values
+		}
 		properties[prop.Key] = PropertyDefinition{
 			Key:        prop.Key,
 			ValueType:  prop.ValueType,
-			EnumValues: valueSet(prop.Values),
+			EnumValues: valueSet(enumValues),
 		}
 	}
 

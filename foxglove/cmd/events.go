@@ -23,6 +23,30 @@ func parseMetadataPairs(keyvals []string) (map[string]string, error) {
 	return metadata, nil
 }
 
+func parseEventProperties(
+	client *api.FoxgloveClient,
+	propertyPairs []string,
+	removeKeys []string,
+) (map[string]interface{}, error) {
+	properties, err := util.EventProperties(propertyPairs, client)
+	if err != nil {
+		return nil, err
+	}
+	if len(removeKeys) == 0 {
+		return properties, nil
+	}
+	if properties == nil {
+		properties = make(map[string]interface{})
+	}
+	for _, key := range removeKeys {
+		if key == "" {
+			return nil, fmt.Errorf("custom property key to remove cannot be empty")
+		}
+		properties[key] = nil
+	}
+	return properties, nil
+}
+
 func joinQueryFields(queryFields []string) (string, error) {
 	for _, qf := range queryFields {
 		if qf != "metadata" && qf != "properties" {
@@ -30,6 +54,16 @@ func joinQueryFields(queryFields []string) (string, error) {
 		}
 	}
 	return strings.Join(queryFields, ","), nil
+}
+
+func validateCreateEventData(eventTypeID string, metadataPairs, propertyPairs []string) error {
+	if eventTypeID != "" && len(metadataPairs) > 0 {
+		return fmt.Errorf("--metadata cannot be used with --event-type-id")
+	}
+	if eventTypeID == "" && len(propertyPairs) > 0 {
+		return fmt.Errorf("--event-type-id is required when using --property")
+	}
+	return nil
 }
 
 func newAddEventCommand(params *baseParams) *cobra.Command {
@@ -45,6 +79,9 @@ func newAddEventCommand(params *baseParams) *cobra.Command {
 		Use:   "add",
 		Short: "Add an event",
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := validateCreateEventData(eventTypeID, keyvals, propertyPairs); err != nil {
+				dief("Failed to add event: %s", err)
+			}
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
 				params.token,
@@ -230,10 +267,18 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 	var keyvals []string
 	var eventTypeID string
 	var propertyPairs []string
+	var removeProperties []string
+	var clearMetadata bool
 	editEventCmd := &cobra.Command{
 		Use:   "edit [ID]",
 		Short: "Edit an event",
 		Args:  cobra.ExactArgs(1),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("metadata") && clearMetadata {
+				return fmt.Errorf("--metadata and --clear-metadata cannot be used together")
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			client := api.NewRemoteFoxgloveClient(
 				params.baseURL, *params.clientID,
@@ -261,13 +306,17 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 				if err != nil {
 					dief("Failed to edit event: %s", err)
 				}
-				req.Metadata = metadata
+				req.Metadata = &metadata
+			}
+			if clearMetadata {
+				metadata := map[string]string{}
+				req.Metadata = &metadata
 			}
 			if cmd.Flags().Changed("event-type-id") {
 				req.EventTypeID = &eventTypeID
 			}
-			if cmd.Flags().Changed("property") {
-				properties, err := util.EventProperties(propertyPairs, client)
+			if cmd.Flags().Changed("property") || cmd.Flags().Changed("remove-property") {
+				properties, err := parseEventProperties(client, propertyPairs, removeProperties)
 				if err != nil {
 					dief("Failed to edit event: %s", err)
 				}
@@ -288,8 +337,10 @@ func newEditEventCommand(params *baseParams) *cobra.Command {
 	editEventCmd.PersistentFlags().StringVarP(&start, "start", "", "", "Event start time (inclusive), RFC 3339 or ISO 8601 format")
 	editEventCmd.PersistentFlags().StringVarP(&end, "end", "", "", "Event end time (inclusive), RFC 3339 or ISO 8601 format")
 	editEventCmd.PersistentFlags().StringArrayVarP(&keyvals, "metadata", "m", []string{}, "Replace all event metadata with these colon-separated key value pairs. Multiple may be specified.")
+	editEventCmd.PersistentFlags().BoolVarP(&clearMetadata, "clear-metadata", "", false, "Remove all event metadata.")
 	editEventCmd.PersistentFlags().StringVarP(&eventTypeID, "event-type-id", "", "", "Event type ID. Pass an empty value to remove the event type.")
 	editEventCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Set these event custom property keys. Other keys stay unchanged. Multiple may be specified.")
+	editEventCmd.PersistentFlags().StringArrayVarP(&removeProperties, "remove-property", "", []string{}, "Remove these event custom property keys. Multiple may be specified.")
 	return editEventCmd
 }
 

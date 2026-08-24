@@ -672,7 +672,7 @@ type CreateEventResponse = EventResponseItem
 type UpdateEventRequest struct {
 	End         string                 `json:"end,omitempty"`
 	EventTypeID *string                `json:"eventTypeId,omitempty"`
-	Metadata    map[string]string      `json:"metadata,omitempty"`
+	Metadata    *map[string]string     `json:"metadata,omitempty"`
 	Properties  map[string]interface{} `json:"properties,omitempty"`
 	Start       string                 `json:"start,omitempty"`
 }
@@ -751,6 +751,7 @@ type CustomPropertiesResponseItem struct {
 	ResourceType string   `json:"resourceType"`
 	ValueType    string   `json:"valueType"`
 	Values       []string `json:"values"`
+	EnumValues   []string `json:"enumValues"`
 }
 
 func (r ExtensionResponse) Fields() []string {
