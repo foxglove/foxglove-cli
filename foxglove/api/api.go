@@ -434,6 +434,8 @@ type EventsRequest struct {
 	ProjectID    string `json:"projectId" form:"projectId,omitempty"`
 	Query        string `json:"query" form:"query,omitempty"`
 	// QueryFields is a comma-separated list of "metadata" and/or "properties".
+	// Public GET /v1/events documents queryFields with explode: false, so the
+	// query is queryFields=metadata,properties.
 	QueryFields  string `json:"queryFields" form:"queryFields,omitempty"`
 	SortBy       string `json:"sortBy" form:"sortBy,omitempty"`
 	SortOrder    string `json:"sortOrder" form:"sortOrder,omitempty"`

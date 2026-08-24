@@ -47,6 +47,9 @@ func parseEventProperties(
 	return properties, nil
 }
 
+// joinQueryFields encodes --query-field values as the public queryFields
+// parameter. The API uses OpenAPI explode: false (comma-joined), not repeated
+// queryFields= params.
 func joinQueryFields(queryFields []string) (string, error) {
 	for _, qf := range queryFields {
 		if qf != "metadata" && qf != "properties" {
