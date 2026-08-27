@@ -142,6 +142,44 @@ func newAddSessionCommand(params *baseParams) *cobra.Command {
 	return addSessionCmd
 }
 
+func newEditSessionCommand(params *baseParams) *cobra.Command {
+	var key string
+	var projectID string
+	editSessionCmd := &cobra.Command{
+		Use:   "edit [session-id-or-key]",
+		Short: "Edit a session",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			if key == "" {
+				dief("Nothing to update. Provide --key.")
+			}
+			client := api.NewRemoteFoxgloveClient(
+				params.baseURL, *params.clientID,
+				params.token,
+				params.userAgent,
+			)
+			keyOrID := args[0]
+			resp, err := client.PatchSession(keyOrID, projectID, api.PatchSessionRequest{
+				Key: key,
+			})
+			if err != nil {
+				if err == api.ErrForbidden {
+					dief("Not authenticated. Run foxglove auth login.")
+				}
+				dief("Failed to edit session: %s", err)
+			}
+			fmt.Fprintf(os.Stderr, "Session updated: %s\n", resp.ID)
+			if resp.Key != "" {
+				fmt.Fprintf(os.Stderr, "Session key: %s\n", resp.Key)
+			}
+		},
+	}
+	editSessionCmd.InheritedFlags()
+	editSessionCmd.PersistentFlags().StringVarP(&key, "key", "", "", "New key for the session")
+	editSessionCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID (required when session-id-or-key is a session key)")
+	return editSessionCmd
+}
+
 func newSessionRecordingsCommand(params *baseParams) *cobra.Command {
 	recordingsCmd := &cobra.Command{
 		Use:   "recordings",

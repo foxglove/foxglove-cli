@@ -418,8 +418,9 @@ func (c *FoxgloveClient) ListSessionRecordings(keyOrID string, projectID string)
 	return SessionRecordingsResponse{RecordingIDs: ids}, nil
 }
 
-// PatchSessionRecordings adds or removes recordings in a session via PATCH /sessions/{keyOrId}.
-func (c *FoxgloveClient) PatchSessionRecordings(keyOrID string, projectID string, req PatchSessionRecordingsRequest) (UpdateSessionResponse, error) {
+// PatchSession updates a session through PATCH /v1/sessions/{keyOrId}.
+// You can change the key or add or remove recordings.
+func (c *FoxgloveClient) PatchSession(keyOrID string, projectID string, req PatchSessionRequest) (UpdateSessionResponse, error) {
 	path, err := url.JoinPath("/v1/sessions", keyOrID)
 	if err != nil {
 		return UpdateSessionResponse{}, err
@@ -430,14 +431,14 @@ func (c *FoxgloveClient) PatchSessionRecordings(keyOrID string, projectID string
 }
 
 func (c *FoxgloveClient) AddRecordingToSession(keyOrID string, projectID string, recordingID string) error {
-	_, err := c.PatchSessionRecordings(keyOrID, projectID, PatchSessionRecordingsRequest{
+	_, err := c.PatchSession(keyOrID, projectID, PatchSessionRequest{
 		AddRecordingIDs: []string{recordingID},
 	})
 	return err
 }
 
 func (c *FoxgloveClient) RemoveRecordingFromSession(keyOrID string, projectID string, recordingID string) error {
-	_, err := c.PatchSessionRecordings(keyOrID, projectID, PatchSessionRecordingsRequest{
+	_, err := c.PatchSession(keyOrID, projectID, PatchSessionRequest{
 		RemoveRecordingIDs: []string{recordingID},
 	})
 	return err
