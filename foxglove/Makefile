@@ -1,6 +1,8 @@
 BINARY_NAME ?= foxglove
 GOLANGCI_LINT_VERSION ?= v2.12.2
 
+.PHONY: lint test compat version build build-release install
+
 ifeq ($(GOOS), windows)
 	BINARY_NAME := $(addsuffix .exe, $(BINARY_NAME))
 endif
@@ -16,6 +18,9 @@ lint:
 
 test:
 	go test ./... -cover
+
+compat:
+	go test ./compat -count=1
 
 version: $(eval VERSION=$(shell git describe --tags 2>/dev/null || echo dev))
 version:

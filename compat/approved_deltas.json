@@ -1,0 +1,58 @@
+{
+  "baseline": "v1.0.33",
+  "deltas": {
+    "attachments-list-error": {
+      "reason": "Correct a copy/paste error that names imports instead of attachments.",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Failed to list attachments: fixture failure\n"
+    },
+    "attachment-download-404": {
+      "reason": "Reject non-success attachment responses before writing their bodies to stdout.",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Failed to fetch attachment: not found\n"
+    },
+    "devices-empty-csv": {
+      "reason": "An empty CSV result is successful and contains its header row.",
+      "exitCode": 0,
+      "stdout": "ID,Name,Custom Properties,Created At,Updated At,Project ID\n",
+      "stderr": ""
+    },
+    "device-completion-empty-filter": {
+      "reason": "Do not send an empty query parameter when dynamic device completion has no project filter.",
+      "request": {
+        "method": "GET",
+        "path": "/v1/devices",
+        "rawQuery": ""
+      }
+    },
+    "export-initial-download-error": {
+      "reason": "Fail immediately instead of printing to stdout and reindexing a failed partial response.",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Export failed: fixture export failure\n",
+      "outputFiles": {
+        "output.mcap": "{ABSENT}"
+      }
+    },
+    "http-response-lifecycle": {
+      "reason": "Every response body must be consumed or dropped on success and error paths.",
+      "invariants": [
+        "Repeated requests do not leak response resources or exhaust the connection pool.",
+        "Error responses are released after their error text is captured."
+      ]
+    },
+    "transfer-cancellation": {
+      "reason": "Propagate cancellation through active uploads, downloads, conversions, and staging cleanup.",
+      "exitCode": 130,
+      "stdout": "",
+      "invariants": [
+        "The active HTTP future is cancelled.",
+        "Temporary partial files are removed.",
+        "An existing destination file is unchanged.",
+        "No normal command-failure message is printed for Ctrl-C."
+      ]
+    }
+  }
+}

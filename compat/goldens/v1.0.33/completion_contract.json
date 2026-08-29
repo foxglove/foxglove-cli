@@ -1,0 +1,67 @@
+{
+  "bash-script": {
+    "args": [
+      "completion",
+      "bash",
+      "--no-descriptions"
+    ],
+    "exitCode": 0,
+    "stdout": "sha256:bf94d3db06b1a7a3444820b053eb74a37a652dd63807c1b324833dc436725b6b bytes:9780",
+    "stderr": ""
+  },
+  "dynamic-device-id": {
+    "args": [
+      "__complete",
+      "data",
+      "coverage",
+      "list",
+      "--device-id",
+      ""
+    ],
+    "exitCode": 0,
+    "stdout": "dev_fixture\tFixture Robot\n:0\n",
+    "stderr": "Completion ended with directive: ShellCompDirectiveDefault\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/devices",
+        "rawQuery": "=",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "fish-script": {
+    "args": [
+      "completion",
+      "fish",
+      "--no-descriptions"
+    ],
+    "exitCode": 0,
+    "stdout": "sha256:50a5eb70207521e6e7c75c0cad1bb2c5fb3f120a234f0396f1b352bd97b091e9 bytes:7041",
+    "stderr": ""
+  },
+  "powershell-script": {
+    "args": [
+      "completion",
+      "powershell",
+      "--no-descriptions"
+    ],
+    "exitCode": 0,
+    "stdout": "sha256:7d438e5f9bdb55c961de6dd5e4e4255eac4dcade0f1cde53f5af05034cb3d218 bytes:8815",
+    "stderr": ""
+  },
+  "zsh-script": {
+    "args": [
+      "completion",
+      "zsh",
+      "--no-descriptions"
+    ],
+    "exitCode": 0,
+    "stdout": "sha256:f4b452729e6cd2450aa94feb5c06bccc729a9dc7ec6afec2c5208d98dec7a339 bytes:6462",
+    "stderr": ""
+  }
+}
