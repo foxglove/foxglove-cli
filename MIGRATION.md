@@ -63,6 +63,7 @@ The machine-readable expected results live in `compat/approved_deltas.json`.
 | `export-initial-download-error` | Fail immediately, keep stdout clean, remove partials, preserve the destination. |
 | `http-response-lifecycle` | Consume or drop every HTTP response on all branches. |
 | `transfer-cancellation` | Cancel active work, clean staging files, preserve destinations, and exit 130 on Ctrl-C. |
+| `clap-parser-diagnostics` | Preserve Clap's native diagnostics and usage text for parser-level failures (for example unknown flags or missing flag values), rather than reproducing Cobra's wording. Command-specific validation errors remain compatibility-tested. |
 
 ## Preserved Go issues awaiting a decision
 
