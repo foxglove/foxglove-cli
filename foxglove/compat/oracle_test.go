@@ -25,6 +25,7 @@ const baselineVersion = "v1.0.33"
 
 var (
 	oracleBinary   string
+	rustBinary     string
 	moduleRoot     string
 	repositoryRoot string
 )
@@ -62,6 +63,7 @@ type oracleCase struct {
 	Args        []string
 	Config      string
 	Stdin       string
+	Env         map[string]string
 	Plans       []responsePlan
 	OutputFiles []string
 	HashStdout  bool
@@ -186,6 +188,19 @@ func TestMain(main *testing.M) {
 		fmt.Fprintln(os.Stderr, "failed to build oracle:", err)
 		os.Exit(1)
 	}
+	rustProjectRoot := filepath.Join(repositoryRoot, "rust")
+	rustBuild := exec.Command("cargo", "build", "--quiet", "--manifest-path", filepath.Join(rustProjectRoot, "Cargo.toml"))
+	rustBuild.Dir = rustProjectRoot
+	rustBuild.Stdout = os.Stdout
+	rustBuild.Stderr = os.Stderr
+	if err := rustBuild.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "failed to build Rust compatibility binary:", err)
+		os.Exit(1)
+	}
+	rustBinary = filepath.Join(rustProjectRoot, "target", "debug", "foxglove-rust")
+	if runtime.GOOS == "windows" {
+		rustBinary += ".exe"
+	}
 	os.Exit(main.Run())
 }
 
@@ -247,22 +262,102 @@ func TestOfflineBehaviorGolden(t *testing.T) {
 		{ID: "root-no-args"},
 		{ID: "version", Args: []string{"version"}},
 		{ID: "unknown-command", Args: []string{"not-a-command"}},
+		{ID: "help-command", Args: []string{"help", "devices"}},
+		{ID: "global-before-command", Args: []string{"--debug", "version"}},
+		{ID: "global-after-command", Args: []string{"version", "--debug"}},
+		{ID: "positional-help", Args: []string{"sessions", "get", "fixture", "--help"}},
 		{ID: "missing-positional", Args: []string{"sessions", "get"}},
+		{ID: "extra-positional", Args: []string{"config", "get", "project-id", "extra"}},
+		{ID: "equals-flag", Args: []string{"events", "list", "--query-field=invalid"}},
 		{ID: "format-conflict", Args: []string{"devices", "list", "--json", "--format", "csv"}},
 		{ID: "session-key-requires-project", Args: []string{"attachments", "list", "--session-key", "fixture"}},
 		{ID: "invalid-query-field", Args: []string{"events", "list", "--query-field", "invalid"}},
 		{ID: "config-get", Args: []string{"config", "get", "project-id"}, Config: baseConfig},
+		{ID: "config-get-environment", Args: []string{"config", "get", "project-id"}, Env: map[string]string{"DEFAULT_PROJECT_ID": "prj_environment"}},
 		{ID: "config-set", Args: []string{"config", "set", "project-id", "prj_updated"}, Config: baseConfig},
 		{ID: "config-unset", Args: []string{"config", "unset", "project-id"}, Config: baseConfig},
+		{ID: "config-unset-missing", Args: []string{"config", "unset", "project-id"}},
 		{ID: "configure-api-key", Args: []string{"auth", "configure-api-key", "--api-key", "fox_sk_fixture", "--base-url", "https://example.test"}, Config: baseConfig},
+		{ID: "configure-api-key-interactive", Args: []string{"auth", "configure-api-key"}, Config: baseConfig, Stdin: "fox_sk_interactive\n"},
 	}
 	assertGolden(t, "offline_behavior.json", cases, nil)
+}
+
+// TestRustPhase1OfflineContract runs the new binary against the shared,
+// reviewed fixtures. HTTP-backed cases intentionally remain Phase 2 work.
+func TestRustPhase1OfflineContract(t *testing.T) {
+	commandSurfacePath := filepath.Join(repositoryRoot, "compat", "goldens", baselineVersion, "command_surface.json")
+	commandSurface := map[string]commandSnapshot{}
+	bytes, err := os.ReadFile(commandSurfacePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(bytes, &commandSurface); err != nil {
+		t.Fatal(err)
+	}
+	for id, expected := range commandSurface {
+		id, expected := id, expected
+		t.Run("surface/"+id, func(t *testing.T) {
+			actual := runRustCase(t, oracleCase{Args: expected.Args})
+			if actual.ExitCode != expected.ExitCode || actual.Stdout != expected.Stdout || actual.Stderr != expected.Stderr {
+				t.Fatalf("Rust command surface differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
+
+	baseConfig := "auth_type: 1\nbearer_token: fixture-token\ndefault_project_id: prj_default\n"
+	cases := []oracleCase{
+		{ID: "root-no-args"},
+		{ID: "version", Args: []string{"version"}},
+		{ID: "unknown-command", Args: []string{"not-a-command"}},
+		{ID: "help-command", Args: []string{"help", "devices"}},
+		{ID: "global-before-command", Args: []string{"--debug", "version"}},
+		{ID: "global-after-command", Args: []string{"version", "--debug"}},
+		{ID: "positional-help", Args: []string{"sessions", "get", "fixture", "--help"}},
+		{ID: "missing-positional", Args: []string{"sessions", "get"}},
+		{ID: "extra-positional", Args: []string{"config", "get", "project-id", "extra"}},
+		{ID: "equals-flag", Args: []string{"events", "list", "--query-field=invalid"}},
+		{ID: "format-conflict", Args: []string{"devices", "list", "--json", "--format", "csv"}},
+		{ID: "session-key-requires-project", Args: []string{"attachments", "list", "--session-key", "fixture"}},
+		{ID: "invalid-query-field", Args: []string{"events", "list", "--query-field", "invalid"}},
+		{ID: "config-get", Args: []string{"config", "get", "project-id"}, Config: baseConfig},
+		{ID: "config-get-environment", Args: []string{"config", "get", "project-id"}, Env: map[string]string{"DEFAULT_PROJECT_ID": "prj_environment"}},
+		{ID: "config-set", Args: []string{"config", "set", "project-id", "prj_updated"}, Config: baseConfig},
+		{ID: "config-unset", Args: []string{"config", "unset", "project-id"}, Config: baseConfig},
+		{ID: "config-unset-missing", Args: []string{"config", "unset", "project-id"}},
+		{ID: "configure-api-key", Args: []string{"auth", "configure-api-key", "--api-key", "fox_sk_fixture", "--base-url", "https://example.test"}, Config: baseConfig},
+		{ID: "configure-api-key-interactive", Args: []string{"auth", "configure-api-key"}, Config: baseConfig, Stdin: "fox_sk_interactive\n"},
+	}
+	offlinePath := filepath.Join(repositoryRoot, "compat", "goldens", baselineVersion, "offline_behavior.json")
+	offline := map[string]commandSnapshot{}
+	bytes, err = os.ReadFile(offlinePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(bytes, &offline); err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range cases {
+		testCase := testCase
+		t.Run("offline/"+testCase.ID, func(t *testing.T) {
+			actual := runRustCase(t, testCase)
+			expected := offline[testCase.ID]
+			if !reflect.DeepEqual(expected, actual) {
+				t.Fatalf("Rust offline contract differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
 }
 
 func TestCompletionContractGolden(t *testing.T) {
 	fixture := newFixtureServer()
 	defer fixture.close()
 	cases := []oracleCase{
+		{ID: "static-command", Args: []string{"__completeNoDesc", "dev"}},
+		{ID: "global-flag", Args: []string{"__completeNoDesc", "--d"}},
+		{ID: "nested-command", Args: []string{"__completeNoDesc", "devices", "l"}},
+		{ID: "command-flag", Args: []string{"__completeNoDesc", "devices", "list", "--f"}},
+		{ID: "flag-value", Args: []string{"__completeNoDesc", "config", "get", ""}},
 		{ID: "bash-script", Args: []string{"completion", "bash", "--no-descriptions"}, HashStdout: true},
 		{ID: "fish-script", Args: []string{"completion", "fish", "--no-descriptions"}, HashStdout: true},
 		{ID: "powershell-script", Args: []string{"completion", "powershell", "--no-descriptions"}, HashStdout: true},
@@ -279,6 +374,38 @@ func TestCompletionContractGolden(t *testing.T) {
 		},
 	}
 	assertGolden(t, "completion_contract.json", cases, fixture)
+}
+
+func TestRustPhase1CompletionContract(t *testing.T) {
+	path := filepath.Join(repositoryRoot, "compat", "goldens", baselineVersion, "completion_contract.json")
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]commandSnapshot{}
+	if err := json.Unmarshal(bytes, &expected); err != nil {
+		t.Fatal(err)
+	}
+	cases := []oracleCase{
+		{ID: "static-command", Args: []string{"__completeNoDesc", "dev"}},
+		{ID: "global-flag", Args: []string{"__completeNoDesc", "--d"}},
+		{ID: "nested-command", Args: []string{"__completeNoDesc", "devices", "l"}},
+		{ID: "command-flag", Args: []string{"__completeNoDesc", "devices", "list", "--f"}},
+		{ID: "flag-value", Args: []string{"__completeNoDesc", "config", "get", ""}},
+		{ID: "bash-script", Args: []string{"completion", "bash", "--no-descriptions"}, HashStdout: true},
+		{ID: "fish-script", Args: []string{"completion", "fish", "--no-descriptions"}, HashStdout: true},
+		{ID: "powershell-script", Args: []string{"completion", "powershell", "--no-descriptions"}, HashStdout: true},
+		{ID: "zsh-script", Args: []string{"completion", "zsh", "--no-descriptions"}, HashStdout: true},
+	}
+	for _, testCase := range cases {
+		testCase := testCase
+		t.Run(testCase.ID, func(t *testing.T) {
+			actual := runRustCase(t, testCase)
+			if !reflect.DeepEqual(expected[testCase.ID], actual) {
+				t.Fatalf("Rust completion contract differs\n--- expected\n%+v\n--- actual\n%+v", expected[testCase.ID], actual)
+			}
+		})
+	}
 }
 
 func TestWireContractGolden(t *testing.T) {
@@ -395,7 +522,7 @@ func runOracleCase(t *testing.T, testCase oracleCase, fixture *fixtureServer) co
 	}
 	command := exec.Command(oracleBinary, args...)
 	command.Dir = temporaryDirectory
-	command.Env = isolatedEnvironment(homeDirectory)
+	command.Env = caseEnvironment(homeDirectory, testCase.Env)
 	command.Stdin = strings.NewReader(testCase.Stdin)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -455,6 +582,79 @@ func runOracleCase(t *testing.T, testCase oracleCase, fixture *fixtureServer) co
 		}
 	}
 	return snapshot
+}
+
+func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
+	t.Helper()
+	temporaryDirectory := t.TempDir()
+	homeDirectory := filepath.Join(temporaryDirectory, "home")
+	if err := os.MkdirAll(homeDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(homeDirectory, ".foxgloverc")
+	if testCase.Config != "" {
+		if err := os.WriteFile(configPath, []byte(testCase.Config), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command := exec.Command(rustBinary, testCase.Args...)
+	command.Dir = temporaryDirectory
+	command.Env = caseEnvironment(homeDirectory, testCase.Env)
+	command.Stdin = strings.NewReader(testCase.Stdin)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err := command.Run()
+	exitCode := 0
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			exitCode = exitError.ExitCode()
+		} else {
+			t.Fatalf("execute Rust binary: %v", err)
+		}
+	}
+	replacements := map[string]string{
+		repositoryRoot:     "{REPO}",
+		temporaryDirectory: "{TMP}",
+		homeDirectory:      "{HOME}",
+	}
+	snapshot := commandSnapshot{
+		Args:     normalizeArgs(testCase.Args),
+		ExitCode: exitCode,
+		Stdout:   normalizeText(stdout.String(), replacements),
+		Stderr:   normalizeText(stderr.String(), replacements),
+	}
+	if config, err := os.ReadFile(configPath); err == nil {
+		snapshot.Config = normalizeText(string(config), replacements)
+		if testCase.Config != "" && runtime.GOOS != "windows" {
+			info, err := os.Stat(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if actual := info.Mode().Perm(); actual != 0o600 {
+				t.Fatalf("Rust config permissions changed: got %04o, want 0600", actual)
+			}
+		}
+	}
+	if testCase.HashStdout {
+		digest := sha256.Sum256([]byte(snapshot.Stdout))
+		snapshot.Stdout = fmt.Sprintf("sha256:%s bytes:%d", hex.EncodeToString(digest[:]), len(snapshot.Stdout))
+	}
+	return snapshot
+}
+
+func caseEnvironment(home string, additions map[string]string) []string {
+	environment := isolatedEnvironment(home)
+	keys := make([]string, 0, len(additions))
+	for key := range additions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		environment = append(environment, key+"="+additions[key])
+	}
+	return environment
 }
 
 func isolatedEnvironment(home string) []string {

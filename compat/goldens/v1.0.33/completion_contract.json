@@ -9,6 +9,17 @@
     "stdout": "sha256:bf94d3db06b1a7a3444820b053eb74a37a652dd63807c1b324833dc436725b6b bytes:9780",
     "stderr": ""
   },
+  "command-flag": {
+    "args": [
+      "__completeNoDesc",
+      "devices",
+      "list",
+      "--f"
+    ],
+    "exitCode": 0,
+    "stdout": "--format\n:4\n",
+    "stderr": "Completion ended with directive: ShellCompDirectiveNoFileComp\n"
+  },
   "dynamic-device-id": {
     "args": [
       "__complete",
@@ -44,6 +55,36 @@
     "stdout": "sha256:50a5eb70207521e6e7c75c0cad1bb2c5fb3f120a234f0396f1b352bd97b091e9 bytes:7041",
     "stderr": ""
   },
+  "flag-value": {
+    "args": [
+      "__completeNoDesc",
+      "config",
+      "get",
+      ""
+    ],
+    "exitCode": 0,
+    "stdout": ":0\n",
+    "stderr": "Completion ended with directive: ShellCompDirectiveDefault\n"
+  },
+  "global-flag": {
+    "args": [
+      "__completeNoDesc",
+      "--d"
+    ],
+    "exitCode": 0,
+    "stdout": "--debug\n:4\n",
+    "stderr": "Completion ended with directive: ShellCompDirectiveNoFileComp\n"
+  },
+  "nested-command": {
+    "args": [
+      "__completeNoDesc",
+      "devices",
+      "l"
+    ],
+    "exitCode": 0,
+    "stdout": "list\n:4\n",
+    "stderr": "Completion ended with directive: ShellCompDirectiveNoFileComp\n"
+  },
   "powershell-script": {
     "args": [
       "completion",
@@ -53,6 +94,15 @@
     "exitCode": 0,
     "stdout": "sha256:7d438e5f9bdb55c961de6dd5e4e4255eac4dcade0f1cde53f5af05034cb3d218 bytes:8815",
     "stderr": ""
+  },
+  "static-command": {
+    "args": [
+      "__completeNoDesc",
+      "dev"
+    ],
+    "exitCode": 0,
+    "stdout": "devices\n:4\n",
+    "stderr": "Completion ended with directive: ShellCompDirectiveNoFileComp\n"
   },
   "zsh-script": {
     "args": [

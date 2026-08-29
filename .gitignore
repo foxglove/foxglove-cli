@@ -3,3 +3,6 @@ foxglove/foxglove
 *.swo
 tags
 .claude/
+
+**/target/
+**/*.rs.bk

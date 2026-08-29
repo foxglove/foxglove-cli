@@ -9,7 +9,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | Phase | Deliverable | Status | Gate |
 | --- | --- | --- | --- |
 | 0 | Oracle, tracker, command surface, wire fixtures, approved deltas | Complete | `make compat` and existing Go tests pass from a clean checkout |
-| 1 | Rust project and CLI/config/output core | Not started | Offline CLI contract passes |
+| 1 | Rust project and CLI/config/output core | Complete | Offline CLI contract passes |
 | 2 | Async API client, errors, streaming, cancellation | Not started | Wire contract and cancellation tests pass |
 | 3 | Read-only commands | Not started | Read command parity passes |
 | 4 | Auth, configuration, mutations, uploads/downloads | Not started | Mutation and transfer parity passes |
@@ -78,15 +78,38 @@ approval status before any Rust divergence is implemented.
 
 ## Runtime dependency ledger
 
-No Rust dependencies have landed yet. Planned candidates are not approved by
-this table until their phase PR records exact versions, feature flags,
-transitive impact, licenses, advisories, alternatives, and release-size delta.
+Phase 1 adds the following locked direct runtime dependencies. The release
+binary remains an implementation-only compatibility binary; the Go release
+path is unchanged.
+
+| Crate | Exact version and enabled features | Reason | Alternative considered |
+| --- | --- | --- | --- |
+| `clap` | `4.6.4`; `default-features = false`; `error-context`, `help`, `std`, `suggestions`, `usage` | Structured command tree and compatible validation | Continue the in-tree argument matcher; rejected because it no longer safely covered global flags, aliases, and completion. |
+| `serde` | `1.0.228`; `default-features = false`; `std` | YAML and JSON data model | Handwritten typed/config conversion; rejected for correctness and maintenance risk. |
+| `serde_json` | `1.0.151`; `default-features = false`; `std` | Stable JSON rendering | Existing narrow in-tree JSON reader; retained nowhere in production. |
+| `serde_yaml_ng` | `0.10.0` | Preserve and rewrite YAML configuration, including unknown values | In-tree YAML writer; rejected because it could not safely retain arbitrary nested YAML. |
+
+`cargo tree` on 2026-08-29 resolves these transitive runtime crates:
+`anstyle 1.0.14`, `clap_builder 4.6.2`, `clap_lex 1.1.0`, `equivalent 1.0.2`,
+`hashbrown 0.17.1`, `indexmap 2.14.1`, `itoa 1.0.18`, `memchr 2.8.3`,
+`ryu 1.0.23`, `serde_core 1.0.228`, `strsim 0.11.1`,
+`unsafe-libyaml 0.2.11`, and `zmij 1.0.23`.
+
+License review from each resolved crate manifest found only permissive terms:
+MIT (`serde_yaml_ng`, `strsim`, `unsafe-libyaml`, `zmij`); MIT or Apache-2.0
+(`anstyle`, `clap`, `clap_builder`, `clap_lex`, `hashbrown`, `itoa`, `serde`,
+`serde_core`, `serde_json`); Apache-2.0 or MIT (`equivalent`, `indexmap`);
+Unlicense or MIT (`memchr`); and Apache-2.0 or BSL-1.0 (`ryu`).
+
+`cargo-audit 0.22.2` scanned `rust/Cargo.lock` against 1,226 RustSec
+advisories on 2026-08-29 and exited successfully with no reported
+vulnerabilities. The optimized macOS arm64 `rust/foxglove-rust` artifact is
+1,366,672 bytes. It has no previous Rust artifact for a like-for-like
+comparison, so the Phase 1 release-size delta is +1,366,672 bytes relative to
+no Rust compatibility binary.
 
 | Phase | Crate/category | Reason | Status |
 | --- | --- | --- | --- |
-| 1 | `clap` | Command parsing with customized compatibility output | Planned |
-| 1 | `serde`, `serde_json` | Typed API/config data and JSON compatibility | Planned |
-| 1 | `serde_yaml_ng` | Correctly read and rewrite existing YAML config, including unknown keys | Planned |
 | 2 | `reqwest`, `tokio`, `tokio-util` | TLS HTTP, streaming, portable Ctrl-C, and cancellation tokens | Planned |
 | 2 | `time` | ISO-8601/RFC3339 compatibility | Planned |
 | 5 | `mcap` | Official Foxglove MCAP reader/writer | Planned |
@@ -107,3 +130,16 @@ that an external crate is safer or materially simpler.
 - [x] Command, completion, offline, and wire goldens generated and reviewed.
 - [x] Compatibility target wired into Makefiles.
 - [x] Existing Go tests and compatibility suite pass together.
+
+## Phase 1 acceptance checklist
+
+- [x] Standard Cargo project and `rust/foxglove-rust` compatibility binary
+  added; the Go binary and release path are unchanged.
+- [x] Root hierarchy, help text, aliases, deprecated-command notices, version,
+  configuration mutations, and offline validation match the reviewed v1.0.33
+  fixtures.
+- [x] Rust binary is exercised against every command-surface golden and every
+  applicable offline-behavior golden by `foxglove/compat`.
+- [x] No HTTP client, async runtime, or network command implementation added.
+- [x] `cargo fmt --check`, strict Clippy, `cargo test`, `make compat`, and
+  `go test ./... -count=1` pass; `cargo-audit` reports no advisories.
