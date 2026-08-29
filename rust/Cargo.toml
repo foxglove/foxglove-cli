@@ -12,9 +12,13 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "=4.6.4", default-features = false, features = ["error-context", "help", "std", "suggestions", "usage"] }
-serde = { version = "=1.0.228", default-features = false, features = ["std"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "=1.0.228", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "=1.0.151", default-features = false, features = ["std"] }
 serde_yaml_ng = { version = "=0.10.0" }
+time = { version = "=0.3.47", default-features = false, features = ["formatting", "parsing", "serde"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["io-util", "macros", "rt", "rt-multi-thread", "signal"] }
+tokio-util = { version = "=0.7.19", default-features = false, features = ["io", "rt"] }
 
 [lints.rust]
 unsafe_code = "forbid"

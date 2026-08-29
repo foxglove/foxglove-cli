@@ -10,7 +10,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | --- | --- | --- | --- |
 | 0 | Oracle, tracker, command surface, wire fixtures, approved deltas | Complete | `make compat` and existing Go tests pass from a clean checkout |
 | 1 | Rust project and CLI/config/output core | Complete | Offline CLI contract passes |
-| 2 | Async API client, errors, streaming, cancellation | Not started | Wire contract and cancellation tests pass |
+| 2 | Async API client, errors, streaming, cancellation | Complete | Wire contract and cancellation tests pass |
 | 3 | Read-only commands | Not started | Read command parity passes |
 | 4 | Auth, configuration, mutations, uploads/downloads | Not started | Mutation and transfer parity passes |
 | 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Not started | Format conformance passes |
@@ -86,7 +86,7 @@ path is unchanged.
 | Crate | Exact version and enabled features | Reason | Alternative considered |
 | --- | --- | --- | --- |
 | `clap` | `4.6.4`; `default-features = false`; `error-context`, `help`, `std`, `suggestions`, `usage` | Structured command tree and compatible validation | Continue the in-tree argument matcher; rejected because it no longer safely covered global flags, aliases, and completion. |
-| `serde` | `1.0.228`; `default-features = false`; `std` | YAML and JSON data model | Handwritten typed/config conversion; rejected for correctness and maintenance risk. |
+| `serde` | `1.0.228`; `default-features = false`; `derive`, `std` | YAML and JSON data model plus typed API payloads | Handwritten typed/config conversion; rejected for correctness and maintenance risk. |
 | `serde_json` | `1.0.151`; `default-features = false`; `std` | Stable JSON rendering | Existing narrow in-tree JSON reader; retained nowhere in production. |
 | `serde_yaml_ng` | `0.10.0` | Preserve and rewrite YAML configuration, including unknown values | In-tree YAML writer; rejected because it could not safely retain arbitrary nested YAML. |
 
@@ -109,17 +109,28 @@ vulnerabilities. The optimized macOS arm64 `rust/foxglove-rust` artifact is
 comparison, so the Phase 1 release-size delta is +1,366,672 bytes relative to
 no Rust compatibility binary.
 
-| Phase | Crate/category | Reason | Status |
-| --- | --- | --- | --- |
-| 2 | `reqwest`, `tokio`, `tokio-util` | TLS HTTP, streaming, portable Ctrl-C, and cancellation tokens | Planned |
-| 2 | `time` | ISO-8601/RFC3339 compatibility | Planned |
-| 5 | `mcap` | Official Foxglove MCAP reader/writer | Planned |
-| 5 | `prost`, `prost-reflect` | Dynamic protobuf-to-JSON conversion | Planned |
-| 5 | Pure-Rust LZ4 frame crate | ROS 1 bag chunk compatibility | Planned |
+| Phase | Crate/category and exact version/features | Reason | Alternative considered | Status |
+| --- | --- | --- | --- | --- |
+| 2 | `reqwest 0.12.28`; `default-features = false`; `json`, `rustls-tls`, `stream` | TLS HTTP, JSON API calls, and response streaming | `hyper` directly; rejected because it would duplicate HTTP policy and response/error handling. | Complete |
+| 2 | `tokio 1.53.1`; `default-features = false`; `io-util`, `macros`, `rt`, `rt-multi-thread`, `signal` | Async execution, cancellable I/O, and portable Ctrl-C handling | A synchronous client; rejected because it cannot cancel active transfers without blocking a worker. | Complete |
+| 2 | `tokio-util 0.7.19`; `default-features = false`; `io`, `rt` | `CancellationToken` and async-reader upload streams | In-tree cancellation primitives; rejected because token propagation and reader adaptation are easy to get subtly wrong. | Complete |
+| 2 | `time 0.3.47`; `default-features = false`; `formatting`, `parsing`, `serde` | ISO-8601/RFC3339 request timestamps | String-only timestamps; rejected because it would defer ordering and wire-format validation to each command. | Complete |
+| 5 | `mcap` | Official Foxglove MCAP reader/writer | To be evaluated during Phase 5 | Planned |
+| 5 | `prost`, `prost-reflect` | Dynamic protobuf-to-JSON conversion | To be evaluated during Phase 5 | Planned |
+| 5 | Pure-Rust LZ4 frame crate | ROS 1 bag chunk compatibility | To be evaluated during Phase 5 | Planned |
 
 CSV, tables, progress display, temporary guards, completion templates, and
 Foxglove-specific errors remain in-tree unless implementation evidence shows
 that an external crate is safer or materially simpler.
+
+Phase 2 dependency review: `cargo tree` resolves 155 normal crate
+dependencies. The new network path brings in the Reqwest/Hyper/Rustls stack,
+`futures-util`, and `tokio-util`; all resolved licenses are permissive or
+otherwise approved for redistribution (MIT, Apache-2.0, ISC, BSD-3-Clause,
+Unicode-3.0, CDLA-Permissive-2.0, and BSL-1.0). `cargo-audit 0.22.2` loaded
+1,226 RustSec advisories and reported no vulnerabilities for `rust/Cargo.lock`
+on 2026-08-29. The optimized macOS arm64 `rust/foxglove-rust` artifact is
+1,418,112 bytes, a +51,440 byte delta from the Phase 1 artifact.
 
 ## Phase 0 acceptance checklist
 
@@ -144,3 +155,21 @@ that an external crate is safer or materially simpler.
 - [x] No HTTP client, async runtime, or network command implementation added.
 - [x] `cargo fmt --check`, strict Clippy, `cargo test`, `make compat`, and
   `go test ./... -count=1` pass; `cargo-audit` reports no advisories.
+
+## Phase 2 acceptance checklist
+
+- [x] Async `FoxgloveClient` added with authenticated and unauthenticated
+  request paths, typed sign-in/device-code/token payloads, and generic JSON
+  GET/POST/PATCH/DELETE helpers.
+- [x] Shared HTTP status mapping returns forbidden/not-found/decoded server
+  errors consistently and consumes or drops every response body.
+- [x] Stream and attachment downloads validate status before exposing bytes;
+  signed upload and download links do not inherit API bearer credentials.
+- [x] Cancellation propagates through JSON requests, link resolution,
+  streaming reads, destination writes, uploads, and the portable Ctrl-C token
+  helper.
+- [x] Request serialization, authentication headers, link-following, and
+  cancellation behavior are covered by Rust tests; loopback wire tests pass
+  when run with local-socket access.
+- [x] `cargo fmt --check`, strict Clippy, offline Rust tests, release build,
+  and `cargo-audit 0.22.2` pass.
