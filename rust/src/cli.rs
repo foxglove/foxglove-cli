@@ -10,7 +10,10 @@ use serde_yaml_ng::Value;
 use crate::command_spec::{self, Arity, CommandSpec, COMMANDS};
 use crate::config::Config;
 use crate::help;
-use crate::output::Format;
+use crate::{
+    attachments, data, devices, event_types, events, extensions, pending_imports, projects,
+    read_helpers, recordings, sessions, topics,
+};
 
 const VERSION: &str = "v1.0.33";
 const ROOT_COMMAND: &str = "foxglove";
@@ -24,14 +27,14 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    fn success(stdout: impl Into<Vec<u8>>) -> Self {
+    pub(crate) fn success(stdout: impl Into<Vec<u8>>) -> Self {
         Self {
             stdout: stdout.into(),
             ..Self::default()
         }
     }
 
-    fn failure(stderr: impl Into<Vec<u8>>) -> Self {
+    pub(crate) fn failure(stderr: impl Into<Vec<u8>>) -> Self {
         Self {
             stderr: stderr.into(),
             exit_code: 1,
@@ -98,10 +101,60 @@ pub fn run(
         ["version"] => Outcome::success(format!("{VERSION}\n")),
         ["config", action] => run_config(action, &positionals(leaf)),
         ["auth", "configure-api-key"] => configure_api_key(leaf, stdin, prompt_writer),
-        ["devices", "list"] => validate_list_format(leaf),
-        ["events", "list"] => validate_events(leaf),
-        ["attachments", "list"] => validate_attachment_list(leaf),
+        ["devices" | "projects" | "recordings" | "attachments" | "sessions" | "events"
+        | "event-types" | "pending-imports" | "topics" | "extensions", "list"]
+        | ["data", "imports" | "coverage", "list"]
+        | ["sessions", "get"]
+        | ["sessions", "recordings", "list"] => {
+            let mut outcome = run_read(&path, leaf);
+            if path == ["data", "imports", "list"] {
+                let mut stderr =
+                    b"Command \"list\" is deprecated, use 'recordings list' instead.\n".to_vec();
+                stderr.extend_from_slice(&outcome.stderr);
+                outcome.stderr = stderr;
+            }
+            outcome
+        }
         ["completion", shell] => completion_script(shell),
+        _ => Outcome::failure(format!(
+            "This command is not implemented in the Rust migration yet: {}\n",
+            path.join(" ")
+        )),
+    }
+}
+
+fn run_read(path: &[String], matches: &ArgMatches) -> Outcome {
+    let format = match read_helpers::resolve_format(matches) {
+        Ok(format) => format,
+        Err(error) => return Outcome::failure(error),
+    };
+    let runtime = match read_helpers::runtime(matches) {
+        Ok(runtime) => runtime,
+        Err(error) => return Outcome::failure(error),
+    };
+
+    match path
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["devices", "list"] => devices::list_devices(&runtime, matches, format),
+        ["projects", "list"] => projects::list_projects(&runtime, format),
+        ["data", "imports", "list"] => data::list_imports(&runtime, matches, format),
+        ["data", "coverage", "list"] => data::list_coverage(&runtime, matches, format),
+        ["recordings", "list"] => recordings::list_recordings(&runtime, matches, format),
+        ["attachments", "list"] => attachments::list_attachments(&runtime, matches, format),
+        ["sessions", "list"] => sessions::list_sessions(&runtime, matches, format),
+        ["sessions", "get"] => sessions::get_session(&runtime, matches),
+        ["sessions", "recordings", "list"] => sessions::list_session_recordings(&runtime, matches),
+        ["events", "list"] => events::list_events(&runtime, matches, format),
+        ["event-types", "list"] => event_types::list_event_types(&runtime, format),
+        ["pending-imports", "list"] => {
+            pending_imports::list_pending_imports(&runtime, matches, format)
+        }
+        ["topics", "list"] => topics::list_topics(&runtime, matches, format),
+        ["extensions", "list"] => extensions::list_extensions(&runtime, format),
         _ => Outcome::failure(format!(
             "This command is not implemented in the Rust migration yet: {}\n",
             path.join(" ")
@@ -426,36 +479,6 @@ fn configure_api_key(
             ..Outcome::default()
         },
     }
-}
-
-fn validate_list_format(matches: &ArgMatches) -> Outcome {
-    match Format::resolve(
-        last_value(matches, "format").as_deref(),
-        matches.get_flag("json"),
-    ) {
-        Ok(_) => Outcome::failure("Phase 3 implements devices list.\n"),
-        Err(error) => Outcome::failure(error),
-    }
-}
-
-fn validate_events(matches: &ArgMatches) -> Outcome {
-    if let Some(values) = matches.get_many::<String>("query-field") {
-        for value in values {
-            if value != "metadata" && value != "properties" {
-                return Outcome::failure(format!(
-                    "Invalid --query-field value \"{value}\": must be \"metadata\" or \"properties\"\n"
-                ));
-            }
-        }
-    }
-    Outcome::failure("Phase 3 implements events list.\n")
-}
-
-fn validate_attachment_list(matches: &ArgMatches) -> Outcome {
-    if last_value(matches, "session-key").is_some() && last_value(matches, "project-id").is_none() {
-        return Outcome::failure("--project-id is required when using --session-key\n");
-    }
-    Outcome::failure("Phase 3 implements attachments list.\n")
 }
 
 fn last_value(matches: &ArgMatches, id: &str) -> Option<String> {

@@ -408,6 +408,76 @@ func TestRustPhase1CompletionContract(t *testing.T) {
 	}
 }
 
+func TestRustPhase3ReadWireContract(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+	cases := []oracleCase{
+		{ID: "devices-list", Args: []string{"devices", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/devices", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "projects-list", Args: []string{"projects", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/projects", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "imports-list", Args: []string{"data", "imports", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/imports", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "coverage-list", Args: []string{"data", "coverage", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/coverage", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "recordings-list", Args: []string{"recordings", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recordings", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "attachments-list", Args: []string{"attachments", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recording-attachments", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "sessions-list", Args: []string{"sessions", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/sessions", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "events-list", Args: []string{"events", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/events", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "event-types-list", Args: []string{"event-types", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/event-types", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "pending-imports-list", Args: []string{"pending-imports", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/pending-imports", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "topics-list", Args: []string{"topics", "list", "--recording-id", "rec_fixture", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/topics", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "extensions-list", Args: []string{"extensions", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/extensions", Body: "[]", Headers: jsonHeaders}}},
+		{ID: "session-get", Args: []string{"sessions", "get", "ses_fixture"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/sessions/ses_fixture", Body: `{"id":"ses_fixture","name":"Fixture session","key":"fixture-key","projectId":"prj_default","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T04:05:06Z","recordings":[]}`, Headers: jsonHeaders}}},
+		{ID: "session-recordings-list", Args: []string{"sessions", "recordings", "list", "ses_fixture"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/sessions/ses_fixture", Body: `{"id":"ses_fixture","name":"Fixture session","key":"fixture-key","projectId":"prj_default","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T04:05:06Z","recordings":[]}`, Headers: jsonHeaders}}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.ID, func(t *testing.T) {
+			expected := runOracleCase(t, testCase, fixture)
+			actual := runRustCaseWithFixture(t, testCase, fixture)
+			if !reflect.DeepEqual(expected, actual) {
+				t.Fatalf("Rust Phase 3 read contract differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
+
+	richCases := []oracleCase{
+		{ID: "device-rich", Args: []string{"devices", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/devices", Body: `[{"id":"dev_fixture","name":"Fixture","properties":{"site":"lab"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T04:05:06Z","projectId":"prj_default"}]`, Headers: jsonHeaders}}},
+		{ID: "project-rich", Args: []string{"projects", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/projects", Body: `[{"id":"prj_default","name":"Fixture","orgMemberCount":3,"lastSeenAt":"2024-01-02T03:04:05Z"}]`, Headers: jsonHeaders}}},
+		{ID: "import-rich", Args: []string{"data", "imports", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/imports", Body: `[{"id":"imp_fixture","deviceId":"dev_fixture","filename":"fixture.mcap","importTime":"2024-01-02T03:04:05Z","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","inputType":"mcap","outputType":"mcap","inputSize":10,"totalOutputSize":20}]`, Headers: jsonHeaders}}},
+		{ID: "coverage-rich", Args: []string{"data", "coverage", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/coverage", Body: `[{"deviceId":"dev_fixture","device":{"id":"dev_fixture","name":"Fixture"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"complete"}]`, Headers: jsonHeaders}}},
+		{ID: "recording-rich", Args: []string{"recordings", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recordings", Body: `[{"id":"rec_fixture","path":"fixture.mcap","size":1024,"messageCount":2,"createdAt":"2024-01-02T03:04:05Z","importedAt":"2024-01-02T03:04:06Z","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","importStatus":"completed","site":{"id":"site_fixture","name":"Primary"},"edgeSite":{"id":"edge_fixture","name":"Edge"},"device":{"id":"dev_fixture","name":"Fixture"},"metadata":[{"name":"source","metadata":{"robot":"one"}}],"key":"recording-key","projectId":"prj_default"}]`, Headers: jsonHeaders}}},
+		{ID: "attachment-rich", Args: []string{"attachments", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recording-attachments", Body: `[{"id":"att_fixture","recordingId":"rec_fixture","siteId":"site_fixture","name":"map.bin","mediaType":"application/octet-stream","logTime":"2024-01-02T03:04:05Z","createTime":"2024-01-02T03:04:06Z","crc":7,"size":8,"fingerprint":"abc"}]`, Headers: jsonHeaders}}},
+		{ID: "event-rich", Args: []string{"events", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/events", Body: `[{"createdAt":"2024-01-02T03:04:05Z","device":{"id":"dev_fixture","name":"Fixture"},"end":"2024-01-02T03:04:06Z","eventTypeId":"evtt_fixture","id":"evt_fixture","metadata":{"key":"value"},"properties":{"count":1},"start":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}]`, Headers: jsonHeaders}}},
+		{ID: "event-type-rich", Args: []string{"event-types", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/event-types", Body: `[{"colorName":"blue","createdAt":"2024-01-02T03:04:05Z","id":"evtt_fixture","name":"Fixture","properties":[{"key":"mode","label":"Mode","required":true,"values":["a"],"valueType":"string"}],"updatedAt":"2024-01-02T03:04:06Z"}]`, Headers: jsonHeaders}}},
+		{ID: "pending-import-rich", Args: []string{"pending-imports", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/pending-imports", Body: `[{"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","orgId":"org_fixture","filename":"fixture.mcap","pipelineStage":"parse","requestId":"req_fixture","deviceId":"dev_fixture","deviceName":"Fixture","importId":"imp_fixture","siteId":"site_fixture","projectId":"prj_default","status":"pending","error":""}]`, Headers: jsonHeaders}}},
+		{ID: "topic-rich", Args: []string{"topics", "list", "--recording-id", "rec_fixture", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/data/topics", Body: `[{"encoding":"cdr","schema":"uint32 value","schemaEncoding":"ros2msg","schemaName":"std_msgs/UInt32","topic":"/count","version":"1"}]`, Headers: jsonHeaders}}},
+		{ID: "extension-rich", Args: []string{"extensions", "list", "--format", "json"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/extensions", Body: `[{"id":"ext_fixture","name":"demo","publisher":"foxglove","displayName":"Demo","description":null,"activeVersion":null,"sha256Sum":null}]`, Headers: jsonHeaders}}},
+	}
+	for _, testCase := range richCases {
+		t.Run(testCase.ID, func(t *testing.T) {
+			expected := runOracleCase(t, testCase, fixture)
+			actual := runRustCaseWithFixture(t, testCase, fixture)
+			if !reflect.DeepEqual(expected, actual) {
+				t.Fatalf("Rust Phase 3 rich read contract differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
+
+	t.Run("attachments-list-error-approved-delta", func(t *testing.T) {
+		testCase := oracleCase{ID: "attachments-list-error", Args: []string{"attachments", "list"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recording-attachments", Status: http.StatusInternalServerError, Body: `{"message":"fixture failure"}`, Headers: jsonHeaders}}}
+		expected := runRustCaseWithFixture(t, testCase, fixture)
+		if expected.ExitCode != 1 || expected.Stdout != "" || expected.Stderr != "Failed to list attachments: fixture failure\n" {
+			t.Fatalf("unexpected approved attachment error delta: %+v", expected)
+		}
+	})
+
+	t.Run("devices-empty-csv-approved-delta", func(t *testing.T) {
+		testCase := oracleCase{ID: "devices-empty-csv", Args: []string{"devices", "list", "--format", "csv"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/devices", Body: "[]", Headers: jsonHeaders}}}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 0 || actual.Stdout != "ID,Name,Custom Properties,Created At,Updated At,Project ID\n" || actual.Stderr != "" {
+			t.Fatalf("unexpected approved empty CSV delta: %+v", actual)
+		}
+	})
+}
+
 func TestWireContractGolden(t *testing.T) {
 	fixture := newFixtureServer()
 	defer fixture.close()
@@ -585,6 +655,10 @@ func runOracleCase(t *testing.T, testCase oracleCase, fixture *fixtureServer) co
 }
 
 func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
+	return runRustCaseWithFixture(t, testCase, nil)
+}
+
+func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureServer) commandSnapshot {
 	t.Helper()
 	temporaryDirectory := t.TempDir()
 	homeDirectory := filepath.Join(temporaryDirectory, "home")
@@ -592,8 +666,17 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(homeDirectory, ".foxgloverc")
-	if testCase.Config != "" {
-		if err := os.WriteFile(configPath, []byte(testCase.Config), 0o600); err != nil {
+	baseURL := ""
+	if fixture != nil {
+		baseURL = fixture.server.URL
+		fixture.reset(testCase.Plans)
+	}
+	config := strings.ReplaceAll(testCase.Config, "{BASE_URL}", baseURL)
+	if len(testCase.Plans) > 0 && config == "" {
+		config = "auth_type: 1\nbase_url: " + baseURL + "\nbearer_token: fixture-token\ndefault_project_id: prj_default\n"
+	}
+	if config != "" {
+		if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -618,6 +701,7 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 		repositoryRoot:     "{REPO}",
 		temporaryDirectory: "{TMP}",
 		homeDirectory:      "{HOME}",
+		baseURL:            "{BASE_URL}",
 	}
 	snapshot := commandSnapshot{
 		Args:     normalizeArgs(testCase.Args),
@@ -635,6 +719,12 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 			if actual := info.Mode().Perm(); actual != 0o600 {
 				t.Fatalf("Rust config permissions changed: got %04o, want 0600", actual)
 			}
+		}
+	}
+	if fixture != nil {
+		snapshot.Requests = fixture.snapshots()
+		if remaining := fixture.remainingPlans(); len(remaining) > 0 {
+			t.Fatalf("Rust did not make %d planned request(s): %+v", len(remaining), remaining)
 		}
 	}
 	if testCase.HashStdout {

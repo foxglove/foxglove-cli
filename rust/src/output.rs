@@ -37,7 +37,7 @@ impl Format {
 /// # Errors
 ///
 /// Returns any serialization or output-write error.
-pub fn render_json(writer: &mut dyn Write, value: &impl Serialize) -> io::Result<()> {
+pub fn render_json(writer: &mut dyn Write, value: &(impl Serialize + ?Sized)) -> io::Result<()> {
     let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
     let mut serializer = serde_json::Serializer::with_formatter(&mut *writer, formatter);
     value.serialize(&mut serializer).map_err(io::Error::other)?;

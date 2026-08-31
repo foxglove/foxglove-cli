@@ -1,11 +1,23 @@
 //! Rust foundation for the Foxglove CLI migration.
 
 pub mod api;
+mod attachments;
 mod cli;
 mod command_spec;
 pub mod config;
+mod data;
+mod devices;
+mod event_types;
+mod events;
+mod extensions;
 mod help;
 pub mod output;
+mod pending_imports;
+mod projects;
+mod read_helpers;
+mod recordings;
+mod sessions;
+mod topics;
 
 use std::ffi::OsString;
 use std::io::{BufRead, Write};

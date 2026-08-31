@@ -11,7 +11,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | 0 | Oracle, tracker, command surface, wire fixtures, approved deltas | Complete | `make compat` and existing Go tests pass from a clean checkout |
 | 1 | Rust project and CLI/config/output core | Complete | Offline CLI contract passes |
 | 2 | Async API client, errors, streaming, cancellation | Complete | Wire contract and cancellation tests pass |
-| 3 | Read-only commands | Not started | Read command parity passes |
+| 3 | Read-only commands | Complete | Read command parity passes |
 | 4 | Auth, configuration, mutations, uploads/downloads | Not started | Mutation and transfer parity passes |
 | 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Not started | Format conformance passes |
 | 6 | Direct and JSON export | Not started | Direct byte and JSON parity passes |
@@ -173,3 +173,19 @@ on 2026-08-29. The optimized macOS arm64 `rust/foxglove-rust` artifact is
   when run with local-socket access.
 - [x] `cargo fmt --check`, strict Clippy, offline Rust tests, release build,
   and `cargo-audit 0.22.2` pass.
+
+## Phase 3 acceptance checklist
+
+- [x] Read-only list commands implemented for devices, projects, imports,
+  coverage, recordings, attachments, sessions, events, event types, pending
+  imports, topics, and extensions.
+- [x] Session lookup and session-recording listing implemented with the Go
+  CLI's human-readable output and not-found/authentication behavior.
+- [x] API query names, default filters, ISO-8601 conversion, authentication,
+  and user-agent behavior match the v1.0.33 wire contract.
+- [x] Table, JSON, and CSV rendering is shared across read commands, including
+  header-only CSV for empty responses.
+- [x] The Phase 3 Rust fixture contract covers every read command path and the
+  approved attachment-error and empty-CSV deltas.
+- [x] `cargo fmt --check`, strict Clippy, offline Rust tests, and
+  `go test ./compat -count=1` pass.
