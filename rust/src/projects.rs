@@ -4,7 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::output::Format;
-use crate::read_helpers::{finish_list, Record, Runtime};
+use crate::read_helpers::{
+    finish_list, format_go_timestamp, serialize_optional_go_timestamp, Record, Runtime,
+};
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -17,6 +19,7 @@ struct Project {
     #[serde(
         rename = "lastSeenAt",
         skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_go_timestamp",
         default
     )]
     last_seen_at: Option<String>,
@@ -32,7 +35,10 @@ impl Record for Project {
             self.id.clone(),
             self.name.clone(),
             self.org_member_count.to_string(),
-            self.last_seen_at.clone().unwrap_or_default(),
+            self.last_seen_at
+                .as_deref()
+                .map(format_go_timestamp)
+                .unwrap_or_default(),
         ]
     }
 }

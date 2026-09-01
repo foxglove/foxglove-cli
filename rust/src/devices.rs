@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add_str, compact_json, finish_list, query, sort_query, value, ProjectFallback, Record, Runtime,
+    add_str, compact_json, finish_list, format_go_timestamp, query, sort_query, value,
+    ProjectFallback, Record, Runtime,
 };
 use crate::Outcome;
 
@@ -43,8 +44,8 @@ impl Record for Device {
             self.id.clone(),
             self.name.clone(),
             compact_json(&self.properties),
-            self.created_at.clone(),
-            self.updated_at.clone(),
+            format_go_timestamp(&self.created_at),
+            format_go_timestamp(&self.updated_at),
             self.project_id.clone(),
         ]
     }

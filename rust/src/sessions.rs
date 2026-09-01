@@ -7,8 +7,8 @@ use std::fmt::Write as _;
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add_str, block_on, finish_list, format_output, positional, query, sort_query, value,
-    DeviceSummary, ProjectFallback, Record, Runtime,
+    add_str, block_on, finish_list, format_go_timestamp, format_output, positional, query,
+    sort_query, value, DeviceSummary, ProjectFallback, Record, Runtime,
 };
 use crate::Outcome;
 
@@ -89,8 +89,8 @@ impl Record for Session {
             self.key.clone(),
             self.project_id.clone(),
             device,
-            self.created_at.clone(),
-            self.updated_at.clone(),
+            format_go_timestamp(&self.created_at),
+            format_go_timestamp(&self.updated_at),
         ]
     }
 }
@@ -153,7 +153,8 @@ fn session_outcome(session: &Session) -> Outcome {
     };
     Outcome::success(format!(
         "ID:         {}\nName:       {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
-        session.id, session.name, session.key, session.project_id, device, session.created_at, session.updated_at, recordings
+        session.id, session.name, session.key, session.project_id, device,
+        format_go_timestamp(&session.created_at), format_go_timestamp(&session.updated_at), recordings
     ))
 }
 

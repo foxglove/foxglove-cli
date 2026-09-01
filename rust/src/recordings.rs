@@ -2,7 +2,7 @@
 #![allow(clippy::struct_field_names)]
 
 use clap::ArgMatches;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::output::Format;
@@ -16,6 +16,14 @@ use crate::Outcome;
 struct Site {
     name: String,
     id: String,
+}
+
+fn null_to_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Option::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -39,15 +47,16 @@ struct Recording {
     end: String,
     #[serde(rename = "importStatus")]
     import_status: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     site: Site,
     #[serde(rename = "edgeSite")]
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     edge_site: Site,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     device: DeviceSummary,
     #[serde(default)]
     metadata: Option<Vec<MetadataRecord>>,
+    #[serde(default, deserialize_with = "null_to_default")]
     key: String,
     #[serde(rename = "projectId")]
     project_id: String,
@@ -158,5 +167,21 @@ pub(crate) fn delete_recording(runtime: &Runtime, matches: &ArgMatches) -> Outco
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Failed to delete recording: {error}\n")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Recording;
+
+    #[test]
+    fn recording_accepts_nullable_api_reference_fields_like_go() {
+        let recording: Recording = serde_json::from_str(
+            r#"{"id":"rec","path":"fixture.mcap","size":1,"messageCount":0,"createdAt":"2024-01-01T00:00:00Z","importedAt":"2024-01-01T00:00:00Z","start":"2024-01-01T00:00:00Z","end":"2024-01-01T00:00:00Z","importStatus":"complete","site":{"id":"site","name":"Site"},"edgeSite":null,"device":null,"metadata":null,"key":null,"projectId":"prj"}"#,
+        )
+        .unwrap();
+        assert!(recording.edge_site.id.is_empty());
+        assert!(recording.device.id.is_empty());
+        assert!(recording.key.is_empty());
     }
 }

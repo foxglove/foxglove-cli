@@ -29,6 +29,8 @@ pub enum ApiError {
     },
     /// The API rejected the credentials with HTTP 401 or 403.
     Forbidden,
+    /// The API rejected the credentials and supplied additional detail.
+    ForbiddenWithMessage(String),
     /// The requested resource does not exist.
     NotFound,
     /// The server returned a non-success response with its decoded message.
@@ -68,7 +70,7 @@ impl ApiError {
     /// Whether the server rejected the current authentication.
     #[must_use]
     pub const fn is_forbidden(&self) -> bool {
-        matches!(self, Self::Forbidden)
+        matches!(self, Self::Forbidden | Self::ForbiddenWithMessage(_))
     }
 
     /// Whether the requested resource was not found.
@@ -89,6 +91,9 @@ impl fmt::Display for ApiError {
         match self {
             Self::Context { context, source } => write!(formatter, "{context}: {source}"),
             Self::Forbidden => formatter.write_str(FORBIDDEN_MESSAGE),
+            Self::ForbiddenWithMessage(message) => {
+                write!(formatter, "{FORBIDDEN_MESSAGE}\n{message}")
+            }
             Self::NotFound => formatter.write_str("not found"),
             Self::Response { message, .. } => formatter.write_str(message),
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
@@ -111,6 +116,7 @@ impl std::error::Error for ApiError {
             Self::Serialization(error) => Some(error),
             Self::Write(error) => Some(error),
             Self::Forbidden
+            | Self::ForbiddenWithMessage(_)
             | Self::NotFound
             | Self::Response { .. }
             | Self::Cancelled
@@ -1007,7 +1013,15 @@ async fn error_from_response(response: Response) -> ApiError {
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
     match status {
-        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ApiError::Forbidden,
+        StatusCode::UNAUTHORIZED => ApiError::Forbidden,
+        StatusCode::FORBIDDEN => {
+            let message = response_message(&body);
+            if message.is_empty() {
+                ApiError::Forbidden
+            } else {
+                ApiError::ForbiddenWithMessage(message)
+            }
+        }
         StatusCode::NOT_FOUND => ApiError::NotFound,
         _ => ApiError::Response {
             status: status.as_u16(),
@@ -1132,6 +1146,12 @@ mod tests {
     #[test]
     fn status_helpers_are_available_without_string_matching() {
         assert!(ApiError::Forbidden.is_forbidden());
+        let forbidden = ApiError::ForbiddenWithMessage("requires capability".to_owned());
+        assert!(forbidden.is_forbidden());
+        assert_eq!(
+            forbidden.to_string(),
+            "forbidden: have you signed in with `foxglove auth login`?\nrequires capability"
+        );
         assert!(ApiError::NotFound.is_not_found());
         assert!(ApiError::Cancelled.is_cancelled());
     }

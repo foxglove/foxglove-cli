@@ -1,6 +1,7 @@
 //! Shared infrastructure for read-only commands.
 
 use clap::ArgMatches;
+use serde::Serializer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Display;
@@ -203,6 +204,35 @@ pub(crate) fn compact_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
+/// Render an API timestamp the way Go's `time.Time.Format(time.RFC3339)` does.
+pub(crate) fn format_go_timestamp(raw: &str) -> String {
+    OffsetDateTime::parse(raw, &Rfc3339)
+        .ok()
+        .and_then(|value| value.replace_nanosecond(0).ok())
+        .and_then(|value| value.format(&Rfc3339).ok())
+        .unwrap_or_else(|| raw.to_owned())
+}
+
+/// Serialize an API timestamp the way Go's `time.Time.MarshalJSON` does.
+#[allow(clippy::ref_option)] // Required by Serde's `serialize_with` callback signature.
+pub(crate) fn serialize_optional_go_timestamp<S>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(raw) => serializer.serialize_some(
+            &OffsetDateTime::parse(raw, &Rfc3339)
+                .ok()
+                .and_then(|value| value.format(&Rfc3339).ok())
+                .unwrap_or_else(|| raw.clone()),
+        ),
+        None => serializer.serialize_none(),
+    }
+}
+
 #[allow(clippy::cast_precision_loss)]
 pub(crate) fn human_readable_bytes(bytes: i64) -> String {
     if bytes < 1024 {
@@ -229,5 +259,34 @@ impl ProjectFallback for String {
         } else {
             self
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_go_timestamp, serialize_optional_go_timestamp};
+
+    #[test]
+    fn go_timestamp_formatting_uses_second_precision_for_display() {
+        assert_eq!(
+            format_go_timestamp("2026-07-10T21:15:34.229Z"),
+            "2026-07-10T21:15:34Z"
+        );
+    }
+
+    #[test]
+    fn go_timestamp_json_trims_only_trailing_fractional_zeroes() {
+        #[derive(serde::Serialize)]
+        struct Fixture {
+            #[serde(serialize_with = "serialize_optional_go_timestamp")]
+            value: Option<String>,
+        }
+        assert_eq!(
+            serde_json::to_string(&Fixture {
+                value: Some("2026-06-30T22:21:49.140Z".to_owned()),
+            })
+            .unwrap(),
+            r#"{"value":"2026-06-30T22:21:49.14Z"}"#
+        );
     }
 }
