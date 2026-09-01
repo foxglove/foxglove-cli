@@ -148,3 +148,15 @@ pub(crate) fn list_recordings(runtime: &Runtime, matches: &ArgMatches, format: F
         },
     )
 }
+
+pub(crate) fn delete_recording(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let id = crate::read_helpers::positional(matches, 0);
+    match crate::read_helpers::block_on(runtime.client.delete(&format!("/v1/recordings/{id}"))) {
+        Ok(()) => Outcome::default(),
+        Err(error) if error.is_not_found() => Outcome {
+            stderr: b"Not found. The resource may have already been deleted.\n".to_vec(),
+            ..Outcome::default()
+        },
+        Err(error) => Outcome::failure(format!("Failed to delete recording: {error}\n")),
+    }
+}

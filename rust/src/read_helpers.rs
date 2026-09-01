@@ -12,9 +12,9 @@ use crate::config::Config;
 use crate::output::{self, Format};
 use crate::Outcome;
 
-const DEFAULT_CLIENT_ID: &str = "d51173be08ed4cf7a734aed9ac30afd0";
-const DEFAULT_BASE_URL: &str = "https://api.foxglove.dev";
-const USER_AGENT: &str = "foxglove-cli/v1.0.33";
+pub(crate) const DEFAULT_CLIENT_ID: &str = "d51173be08ed4cf7a734aed9ac30afd0";
+pub(crate) const DEFAULT_BASE_URL: &str = "https://api.foxglove.dev";
+pub(crate) const USER_AGENT: &str = "foxglove-cli/v1.0.33";
 
 #[derive(Debug)]
 pub(crate) struct Runtime {
@@ -36,10 +36,7 @@ pub(crate) trait Record: Serialize {
 pub(crate) fn runtime(matches: &ArgMatches) -> Result<Runtime, String> {
     let config = Config::load_default().map_err(|error| error.clone())?;
     let project_id = config.get_string("default_project_id").unwrap_or_default();
-    let client_id = matches
-        .get_one::<String>("client-id")
-        .cloned()
-        .unwrap_or_else(|| DEFAULT_CLIENT_ID.to_owned());
+    let client_id = client_id(matches);
     let base_url = config
         .get_string("base_url")
         .filter(|value| !value.is_empty())
@@ -48,6 +45,13 @@ pub(crate) fn runtime(matches: &ArgMatches) -> Result<Runtime, String> {
     let client = FoxgloveClient::new(&base_url, client_id, token, USER_AGENT)
         .map_err(|error| error.to_string())?;
     Ok(Runtime { client, project_id })
+}
+
+pub(crate) fn client_id(matches: &ArgMatches) -> String {
+    matches
+        .get_one::<String>("client-id")
+        .cloned()
+        .unwrap_or_else(|| DEFAULT_CLIENT_ID.to_owned())
 }
 
 pub(crate) fn resolve_format(matches: &ArgMatches) -> Result<Format, String> {

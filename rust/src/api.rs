@@ -22,6 +22,11 @@ const FORBIDDEN_MESSAGE: &str = "forbidden: have you signed in with `foxglove au
 /// Errors returned by the API client.
 #[derive(Debug)]
 pub enum ApiError {
+    /// Context retained by an endpoint-specific operation around a typed error.
+    Context {
+        context: &'static str,
+        source: Box<ApiError>,
+    },
     /// The API rejected the credentials with HTTP 401 or 403.
     Forbidden,
     /// The requested resource does not exist.
@@ -40,9 +45,24 @@ pub enum ApiError {
     InvalidUrl(String),
     /// A streamed destination rejected a chunk.
     Write(io::Error),
+    /// A signed storage upload did not return the required HTTP 200 response.
+    UnexpectedUploadStatus(u16),
 }
 
 impl ApiError {
+    fn contextualize(self, transport: &'static str, decode: &'static str) -> Self {
+        match self {
+            Self::Transport(_) => Self::Context {
+                context: transport,
+                source: Box::new(self),
+            },
+            Self::Decode(_) => Self::Context {
+                context: decode,
+                source: Box::new(self),
+            },
+            _ => self,
+        }
+    }
     /// Whether the server rejected the current authentication.
     #[must_use]
     pub const fn is_forbidden(&self) -> bool {
@@ -65,6 +85,7 @@ impl ApiError {
 impl fmt::Display for ApiError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Context { context, source } => write!(formatter, "{context}: {source}"),
             Self::Forbidden => formatter.write_str(FORBIDDEN_MESSAGE),
             Self::NotFound => formatter.write_str("not found"),
             Self::Response { message, .. } => formatter.write_str(message),
@@ -73,6 +94,9 @@ impl fmt::Display for ApiError {
             Self::Cancelled => formatter.write_str("operation cancelled"),
             Self::InvalidUrl(error) => formatter.write_str(error),
             Self::Write(error) => error.fmt(formatter),
+            Self::UnexpectedUploadStatus(status) => {
+                write!(formatter, "unexpected {status} on upload request")
+            }
         }
     }
 }
@@ -80,6 +104,7 @@ impl fmt::Display for ApiError {
 impl std::error::Error for ApiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Context { source, .. } => Some(source),
             Self::Transport(error) | Self::Decode(error) => Some(error),
             Self::Serialization(error) => Some(error),
             Self::Write(error) => Some(error),
@@ -87,7 +112,8 @@ impl std::error::Error for ApiError {
             | Self::NotFound
             | Self::Response { .. }
             | Self::Cancelled
-            | Self::InvalidUrl(_) => None,
+            | Self::InvalidUrl(_)
+            | Self::UnexpectedUploadStatus(_) => None,
         }
     }
 }
@@ -231,10 +257,15 @@ pub struct UploadRequest {
 #[serde(rename_all = "camelCase")]
 pub struct DeviceCodeResponse {
     pub device_code: String,
+    #[serde(default)]
     pub user_code: String,
+    #[serde(default)]
     pub expires_in: u64,
+    #[serde(default)]
     pub interval: u64,
+    #[serde(default)]
     pub verification_uri: String,
+    #[serde(default)]
     pub verification_uri_complete: String,
 }
 
@@ -334,7 +365,10 @@ impl FoxgloveClient {
                 false,
                 None,
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                error.contextualize("sign in failure", "failed to decode sign in response")
+            })?;
         self.set_token(response.token.clone());
         Ok(response.token)
     }
@@ -360,6 +394,9 @@ impl FoxgloveClient {
             None,
         )
         .await
+        .map_err(|error| {
+            error.contextualize("failed to fetch device code", "failed to decode response")
+        })
     }
 
     /// Poll for the ID token associated with a device code.
@@ -379,19 +416,41 @@ impl FoxgloveClient {
         struct TokenResponse {
             id_token: String,
         }
-        let response: TokenResponse = self
-            .send_json(
-                Method::POST,
-                "/v1/auth/token",
-                &TokenRequest {
-                    client_id: &self.client_id,
-                    device_code,
-                },
-                false,
-                None,
-            )
-            .await?;
-        Ok(response.id_token)
+        let request = self
+            .request_with_auth(Method::POST, "/v1/auth/token", false)?
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(encode_json(&TokenRequest {
+                client_id: &self.client_id,
+                device_code,
+            })?);
+        let response = request
+            .send()
+            .await
+            .map_err(ApiError::Transport)
+            .map_err(|error| {
+                error.contextualize("token request failure", "failed to parse response body")
+            })?;
+        match response.status() {
+            StatusCode::OK => response
+                .json::<TokenResponse>()
+                .await
+                .map(|response| response.id_token)
+                .map_err(ApiError::Decode)
+                .map_err(|error| {
+                    error.contextualize("token request failure", "failed to parse response body")
+                }),
+            StatusCode::FORBIDDEN => {
+                drop(response);
+                Err(ApiError::Forbidden)
+            }
+            status => {
+                let _ = response.text().await;
+                Err(ApiError::Response {
+                    status: status.as_u16(),
+                    message: format!("unexpected status {}", status.as_u16()),
+                })
+            }
+        }
     }
 
     /// Execute an authenticated GET and decode its JSON response.
@@ -521,6 +580,21 @@ impl FoxgloveClient {
             .await
     }
 
+    /// Execute an authenticated DELETE with query parameters and consume its
+    /// response body.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, serialization, or transport error.
+    pub async fn delete_with_query<Q>(&self, endpoint: &str, query: &Q) -> Result<(), ApiError>
+    where
+        Q: Serialize + ?Sized,
+    {
+        let request = self.request(Method::DELETE, endpoint)?.query(query);
+        let response = send_with_cancellation(request, &CancellationToken::new()).await?;
+        ensure_ok(response).await
+    }
+
     /// Execute an authenticated DELETE with cancellation support.
     ///
     /// # Errors
@@ -534,7 +608,7 @@ impl FoxgloveClient {
     ) -> Result<(), ApiError> {
         let response =
             send_with_cancellation(self.request(Method::DELETE, endpoint)?, cancellation).await?;
-        ensure_success(response).await
+        ensure_ok(response).await
     }
 
     /// Request a streamed data download.
@@ -592,6 +666,23 @@ impl FoxgloveClient {
             .await
     }
 
+    /// Upload an extension package directly to the authenticated API.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API or transport error.
+    pub async fn upload_extension<R>(&self, reader: R) -> Result<(), ApiError>
+    where
+        R: AsyncRead + Send + 'static,
+    {
+        let request = self
+            .request(Method::POST, "/v1/extension-upload")?
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .body(reqwest::Body::wrap_stream(ReaderStream::new(reader)));
+        let response = send_with_cancellation(request, &CancellationToken::new()).await?;
+        ensure_ok(response).await
+    }
+
     /// Upload a reader and cancel the active HTTP future when requested.
     ///
     /// # Errors
@@ -623,11 +714,15 @@ impl FoxgloveClient {
             self.http
                 .put(url)
                 .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+                // Signed storage links are followed outside the authenticated
+                // API client. The Go oracle uses the standard net/http user
+                // agent on this request.
+                .header(reqwest::header::USER_AGENT, "Go-http-client/1.1")
                 .body(body),
             cancellation,
         )
         .await?;
-        ensure_success(response).await
+        ensure_upload_success(response).await
     }
 
     /// Download an attachment through the authenticated API.
@@ -677,9 +772,10 @@ impl FoxgloveClient {
     {
         let request = self
             .request_with_auth(method, endpoint, authenticated)?
-            .json(body);
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(encode_json(body)?);
         let response = send_with_optional_cancellation(request, cancellation).await?;
-        let response = ensure_success_response(response).await?;
+        let response = ensure_ok_response(response).await?;
         response.json::<T>().await.map_err(ApiError::Decode)
     }
 
@@ -698,10 +794,12 @@ impl FoxgloveClient {
     {
         let mut request = self.request_with_auth(method, endpoint, true)?.query(query);
         if let Some(body) = body {
-            request = request.json(body);
+            request = request
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(encode_json(body)?);
         }
         let response = send_with_optional_cancellation(request, cancellation).await?;
-        let response = ensure_success_response(response).await?;
+        let response = ensure_ok_response(response).await?;
         response.json::<T>().await.map_err(ApiError::Decode)
     }
 
@@ -734,6 +832,15 @@ impl FoxgloveClient {
             Ok(request.bearer_auth(token))
         }
     }
+}
+
+fn encode_json<T>(body: &T) -> Result<Vec<u8>, ApiError>
+where
+    T: Serialize + ?Sized,
+{
+    let mut encoded = serde_json::to_vec(body).map_err(ApiError::Serialization)?;
+    encoded.push(b'\n');
+    Ok(encoded)
 }
 
 /// A response body that can be consumed incrementally and cancelled safely.
@@ -852,12 +959,31 @@ async fn send_with_cancellation(
     }
 }
 
-async fn ensure_success(response: Response) -> Result<(), ApiError> {
-    ensure_success_response(response).await.map(|_| ())
+async fn ensure_ok(response: Response) -> Result<(), ApiError> {
+    ensure_ok_response(response).await.map(|_| ())
+}
+
+async fn ensure_upload_success(response: Response) -> Result<(), ApiError> {
+    if response.status() == StatusCode::OK {
+        drop(response);
+        Ok(())
+    } else {
+        let status = response.status().as_u16();
+        let _ = response.text().await;
+        Err(ApiError::UnexpectedUploadStatus(status))
+    }
 }
 
 async fn ensure_success_response(response: Response) -> Result<Response, ApiError> {
     if response.status().is_success() {
+        Ok(response)
+    } else {
+        Err(error_from_response(response).await)
+    }
+}
+
+async fn ensure_ok_response(response: Response) -> Result<Response, ApiError> {
+    if response.status() == StatusCode::OK {
         Ok(response)
     } else {
         Err(error_from_response(response).await)

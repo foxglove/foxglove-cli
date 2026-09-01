@@ -189,7 +189,7 @@ func TestMain(main *testing.M) {
 		os.Exit(1)
 	}
 	rustProjectRoot := filepath.Join(repositoryRoot, "rust")
-	rustBuild := exec.Command("cargo", "build", "--quiet", "--manifest-path", filepath.Join(rustProjectRoot, "Cargo.toml"))
+	rustBuild := exec.Command("cargo", "build", "--quiet", "--features", "compat-test", "--manifest-path", filepath.Join(rustProjectRoot, "Cargo.toml"))
 	rustBuild.Dir = rustProjectRoot
 	rustBuild.Stdout = os.Stdout
 	rustBuild.Stderr = os.Stderr
@@ -478,6 +478,168 @@ func TestRustPhase3ReadWireContract(t *testing.T) {
 	})
 }
 
+func TestRustPhase4MutationWireContract(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+	cases := []oracleCase{
+		{ID: "auth-info-api-key", Args: []string{"auth", "info"}, Config: "auth_type: 2\nbearer_token: fox_sk_fixture\n"},
+		{ID: "auth-info-session", Args: []string{"auth", "info"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/me", Body: `{"email":"fixture@example.com","emailVerified":true,"orgId":"org_fixture","orgSlug":"fixture","admin":false}`, Headers: jsonHeaders}}},
+		{ID: "attachment-download", Args: []string{"attachments", "download", "att_fixture"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recording-attachments/att_fixture/download", Body: "fixture attachment", Headers: map[string]string{"Content-Type": "application/octet-stream"}}}},
+		{ID: "extension-publish", Args: []string{"extensions", "publish", "{REPO}/foxglove/testdata/fg.mock-0.0.0.foxe"}, Plans: []responsePlan{{Method: http.MethodPost, Path: "/v1/extension-upload", Body: "", Headers: jsonHeaders}}},
+		{ID: "data-import", Args: []string{"data", "import", "{REPO}/foxglove/testdata/gps.bag", "--device-id", "dev_fixture"}, Plans: []responsePlan{
+			{Method: http.MethodPost, Path: "/v1/data/upload", Body: `{"link":"{BASE_URL}/storage/import-fixture"}`, Headers: jsonHeaders},
+			{Method: http.MethodPut, Path: "/storage/import-fixture", Body: "", Headers: map[string]string{"Content-Type": "application/octet-stream"}},
+		}},
+		{ID: "device-add", Args: []string{"devices", "add", "--name", "Fixture", "--property", "mode:auto", "--property", "count:7", "--property", "enabled:1"}, Plans: []responsePlan{
+			{Method: http.MethodGet, Path: "/v1/custom-properties", Body: `[ {"key":"mode","valueType":"enum","values":["auto"]}, {"key":"count","valueType":"number","values":[]}, {"key":"enabled","valueType":"boolean","values":[]} ]`, Headers: jsonHeaders},
+			{Method: http.MethodPost, Path: "/v1/devices", Body: `{"id":"dev_fixture","name":"Fixture"}`, Headers: jsonHeaders},
+		}},
+		{ID: "device-edit", Args: []string{"devices", "edit", "dev_fixture", "--name", "Updated"}, Plans: []responsePlan{{Method: http.MethodPatch, Path: "/v1/devices/dev_fixture", Body: `{"id":"dev_fixture","name":"Updated"}`, Headers: jsonHeaders}}},
+		{ID: "event-add", Args: []string{"events", "add", "--device-id", "dev_fixture", "--start", "2024-01-02T03:04:05Z", "--end", "2024-01-02T03:04:06Z", "--event-type-id", "evtt_fixture", "--metadata", "mode:auto", "--metadata", "note:fixture"}, Plans: []responsePlan{{Method: http.MethodPost, Path: "/v1/events", Body: `{"id":"evt_fixture"}`, Headers: jsonHeaders}}},
+		{ID: "edge-recording-import", Args: []string{"data", "imports", "add", "fixture.mcap", "--edge-recording-id", "edge_fixture"}, Plans: []responsePlan{{Method: http.MethodPost, Path: "/v1/recordings/edge_fixture/import", Body: `{"id":"imp_fixture"}`, Headers: jsonHeaders}}},
+		{ID: "extension-unpublish", Args: []string{"extensions", "unpublish", "ext_fixture"}, Plans: []responsePlan{{Method: http.MethodDelete, Path: "/v1/extensions/ext_fixture", Body: "", Headers: jsonHeaders}}},
+		{ID: "extension-unpublish-not-found", Args: []string{"extensions", "unpublish", "ext_fixture"}, Plans: []responsePlan{{Method: http.MethodDelete, Path: "/v1/extensions/ext_fixture", Status: http.StatusNotFound, Body: "", Headers: jsonHeaders}}},
+		{ID: "recording-delete", Args: []string{"recordings", "delete", "rec_fixture"}, Plans: []responsePlan{{Method: http.MethodDelete, Path: "/v1/recordings/rec_fixture", Body: "", Headers: jsonHeaders}}},
+		{ID: "recording-delete-not-found", Args: []string{"recordings", "delete", "rec_fixture"}, Plans: []responsePlan{{Method: http.MethodDelete, Path: "/v1/recordings/rec_fixture", Status: http.StatusNotFound, Body: "", Headers: jsonHeaders}}},
+		{ID: "session-add", Args: []string{"sessions", "add", "--name", "Fixture session", "--device-id", "dev_fixture"}, Plans: []responsePlan{{Method: http.MethodPost, Path: "/v1/sessions", Body: `{"id":"ses_fixture","key":"fixture-key"}`, Headers: jsonHeaders}}},
+		{ID: "session-delete", Args: []string{"sessions", "delete", "ses_fixture"}, Plans: []responsePlan{{Method: http.MethodDelete, Path: "/v1/sessions/ses_fixture", Body: "", Headers: jsonHeaders}}},
+		{ID: "session-delete-not-found", Args: []string{"sessions", "delete", "ses_fixture"}, Plans: []responsePlan{{Method: http.MethodDelete, Path: "/v1/sessions/ses_fixture", Status: http.StatusNotFound, Body: "", Headers: jsonHeaders}}},
+		{ID: "session-recording-add", Args: []string{"sessions", "recordings", "add", "ses_fixture", "rec_fixture"}, Plans: []responsePlan{{Method: http.MethodPatch, Path: "/v1/sessions/ses_fixture", Body: `{}`, Headers: jsonHeaders}}},
+		{ID: "session-recording-remove", Args: []string{"sessions", "recordings", "remove", "ses_fixture", "rec_fixture"}, Plans: []responsePlan{{Method: http.MethodPatch, Path: "/v1/sessions/ses_fixture", Body: `{}`, Headers: jsonHeaders}}},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.ID, func(t *testing.T) {
+			expected := runOracleCase(t, testCase, fixture)
+			actual := runRustCaseWithFixture(t, testCase, fixture)
+			if testCase.ID == "extension-publish" {
+				expected.Stderr = stripProgressPrefix(expected.Stderr, "Extension published\n")
+				actual.Stderr = stripProgressPrefix(actual.Stderr, "Extension published\n")
+			}
+			if testCase.ID == "data-import" {
+				expected.Stderr = ""
+				actual.Stderr = ""
+			}
+			if !reflect.DeepEqual(expected, actual) {
+				t.Fatalf("Rust Phase 4 mutation contract differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
+
+	t.Run("attachment-download-404-approved-delta", func(t *testing.T) {
+		testCase := oracleCase{ID: "attachment-download-404", Args: []string{"attachments", "download", "att_fixture"}, Plans: []responsePlan{{Method: http.MethodGet, Path: "/v1/recording-attachments/att_fixture/download", Status: http.StatusNotFound, Body: `{"message":"missing"}`, Headers: jsonHeaders}}}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 1 || actual.Stdout != "" || actual.Stderr != "Failed to fetch attachment: not found\n" {
+			t.Fatalf("unexpected approved attachment download delta: %+v", actual)
+		}
+	})
+
+	t.Run("data-import-requires-http-200", func(t *testing.T) {
+		testCase := oracleCase{ID: "data-import-created", Args: []string{"data", "import", "{REPO}/foxglove/testdata/gps.bag", "--device-id", "dev_fixture"}, Plans: []responsePlan{
+			{Method: http.MethodPost, Path: "/v1/data/upload", Body: `{"link":"{BASE_URL}/storage/import-created"}`, Headers: jsonHeaders},
+			{Method: http.MethodPut, Path: "/storage/import-created", Status: http.StatusCreated, Body: "", Headers: map[string]string{"Content-Type": "application/octet-stream"}},
+		}}
+		expected := runOracleCase(t, testCase, fixture)
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		expected.Stderr = stripProgressToError(expected.Stderr, "Failed to import")
+		actual.Stderr = stripProgressToError(actual.Stderr, "Failed to import")
+		if !reflect.DeepEqual(expected, actual) {
+			t.Fatalf("Rust upload status handling differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+		}
+	})
+}
+
+func TestRustAuthLoginWireContract(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+	testCase := oracleCase{
+		ID:   "auth-login",
+		Args: []string{"auth", "login", "--base-url", "{BASE_URL}"},
+		Plans: []responsePlan{
+			{Method: http.MethodPost, Path: "/v1/auth/device-code", Body: `{"deviceCode":"device_fixture","userCode":"ABCD-1234","expiresIn":600,"interval":5,"verificationUri":"https://fixture.example/verify","verificationUriComplete":"https://fixture.example/verify?code=ABCD-1234"}`, Headers: jsonHeaders},
+			{Method: http.MethodPost, Path: "/v1/auth/token", Status: http.StatusForbidden, Body: `{"message":"pending"}`, Headers: jsonHeaders},
+			{Method: http.MethodPost, Path: "/v1/auth/token", Body: `{"idToken":"id-token-fixture"}`, Headers: jsonHeaders},
+			{Method: http.MethodPost, Path: "/v1/signin", Body: `{"bearerToken":"bearer-fixture"}`, Headers: jsonHeaders},
+		},
+	}
+	actual := runRustCaseWithFixture(t, testCase, fixture)
+	expected := commandSnapshot{
+		Args:     testCase.Args,
+		ExitCode: 0,
+		Stdout: "copy/paste the following link into your browser:\n\nhttps://fixture.example/verify?code=ABCD-1234\n\n" +
+			"Verify this code and click 'Authorize' to complete login:  ABCD-1234\n",
+		Config: "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: bearer-fixture\ndefault_project_id: prj_default\n",
+		Requests: []requestSnapshot{
+			{Method: http.MethodPost, Path: "/v1/auth/device-code", Headers: map[string]string{"Content-Type": "application/json", "User-Agent": "foxglove-cli/v1.0.33"}, Body: "{\"clientId\":\"d51173be08ed4cf7a734aed9ac30afd0\"}\n", BodyLength: 48},
+			{Method: http.MethodPost, Path: "/v1/auth/token", Headers: map[string]string{"Content-Type": "application/json", "User-Agent": "foxglove-cli/v1.0.33"}, Body: "{\"clientId\":\"d51173be08ed4cf7a734aed9ac30afd0\",\"deviceCode\":\"device_fixture\"}\n", BodyLength: 78},
+			{Method: http.MethodPost, Path: "/v1/auth/token", Headers: map[string]string{"Content-Type": "application/json", "User-Agent": "foxglove-cli/v1.0.33"}, Body: "{\"clientId\":\"d51173be08ed4cf7a734aed9ac30afd0\",\"deviceCode\":\"device_fixture\"}\n", BodyLength: 78},
+			{Method: http.MethodPost, Path: "/v1/signin", Headers: map[string]string{"Content-Type": "application/json", "User-Agent": "foxglove-cli/v1.0.33"}, Body: "{\"idToken\":\"id-token-fixture\"}\n", BodyLength: 31},
+		},
+	}
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatalf("Rust auth login wire contract differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+	}
+}
+
+func TestRustAuthLoginErrorContexts(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+	validDeviceCode := responsePlan{Method: http.MethodPost, Path: "/v1/auth/device-code", Body: `{"deviceCode":"device_fixture","userCode":"ABCD-1234","verificationUriComplete":"https://fixture.example/verify"}`, Headers: jsonHeaders}
+	validToken := responsePlan{Method: http.MethodPost, Path: "/v1/auth/token", Body: `{"idToken":"id-token-fixture"}`, Headers: jsonHeaders}
+	baseCase := oracleCase{Args: []string{"auth", "login", "--base-url", "{BASE_URL}"}}
+
+	t.Run("device-code-decode", func(t *testing.T) {
+		testCase := baseCase
+		testCase.Plans = []responsePlan{{Method: http.MethodPost, Path: "/v1/auth/device-code", Body: `{`}}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 1 || !strings.Contains(actual.Stderr, "Login failed: failed to fetch device code: failed to decode response:") {
+			t.Fatalf("missing device-code decode context: %+v", actual)
+		}
+	})
+
+	t.Run("token-unexpected-status", func(t *testing.T) {
+		testCase := baseCase
+		testCase.Plans = []responsePlan{validDeviceCode, responsePlan{Method: http.MethodPost, Path: "/v1/auth/token", Status: http.StatusUnauthorized, Body: `{"message":"unauthorized"}`, Headers: jsonHeaders}}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 1 || actual.Stderr != "Login failed: failed to request token: unexpected status 401\n" || len(actual.Requests) != 2 {
+			t.Fatalf("unexpected token-status result: %+v", actual)
+		}
+	})
+
+	t.Run("sign-in-decode", func(t *testing.T) {
+		testCase := baseCase
+		testCase.Plans = []responsePlan{validDeviceCode, validToken, responsePlan{Method: http.MethodPost, Path: "/v1/signin", Body: `{`}}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 1 || !strings.Contains(actual.Stderr, "Login failed: failed to sign in: failed to decode sign in response:") {
+			t.Fatalf("missing sign-in decode context: %+v", actual)
+		}
+	})
+
+	t.Run("device-code-transport", func(t *testing.T) {
+		testCase := oracleCase{Args: []string{"auth", "login", "--base-url", "http://127.0.0.1:1"}}
+		actual := runRustCase(t, testCase)
+		if actual.ExitCode != 1 || !strings.Contains(actual.Stderr, "Login failed: failed to fetch device code: failed to fetch device code:") {
+			t.Fatalf("missing device-code transport context: %+v", actual)
+		}
+	})
+}
+
+func stripProgressPrefix(stderr, finalLine string) string {
+	if index := strings.LastIndex(stderr, finalLine); index >= 0 {
+		return stderr[index:]
+	}
+	return stderr
+}
+
+func stripProgressToError(stderr, prefix string) string {
+	if index := strings.LastIndex(stderr, prefix); index >= 0 {
+		return stderr[index:]
+	}
+	return stderr
+}
+
 func TestWireContractGolden(t *testing.T) {
 	fixture := newFixtureServer()
 	defer fixture.close()
@@ -588,6 +750,7 @@ func runOracleCase(t *testing.T, testCase oracleCase, fixture *fixtureServer) co
 	for index, arg := range testCase.Args {
 		arg = strings.ReplaceAll(arg, "{TMP}", temporaryDirectory)
 		arg = strings.ReplaceAll(arg, "{REPO}", repositoryRoot)
+		arg = strings.ReplaceAll(arg, "{BASE_URL}", baseURL)
 		args[index] = arg
 	}
 	command := exec.Command(oracleBinary, args...)
@@ -680,7 +843,14 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 			t.Fatal(err)
 		}
 	}
-	command := exec.Command(rustBinary, testCase.Args...)
+	args := make([]string, len(testCase.Args))
+	for index, arg := range testCase.Args {
+		arg = strings.ReplaceAll(arg, "{TMP}", temporaryDirectory)
+		arg = strings.ReplaceAll(arg, "{REPO}", repositoryRoot)
+		arg = strings.ReplaceAll(arg, "{BASE_URL}", baseURL)
+		args[index] = arg
+	}
+	command := exec.Command(rustBinary, args...)
 	command.Dir = temporaryDirectory
 	command.Env = caseEnvironment(homeDirectory, testCase.Env)
 	command.Stdin = strings.NewReader(testCase.Stdin)

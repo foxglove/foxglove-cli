@@ -1,6 +1,8 @@
 //! Attachment commands.
 #![allow(clippy::struct_field_names)]
 
+use std::io::Write;
+
 use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 
@@ -83,4 +85,25 @@ pub(crate) fn list_attachments(runtime: &Runtime, matches: &ArgMatches, format: 
                 .await
         },
     )
+}
+
+pub(crate) fn download_attachment(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    stdout_writer: &mut dyn Write,
+) -> Outcome {
+    let id = crate::read_helpers::positional(matches, 0);
+    let result = crate::read_helpers::block_on(async {
+        let mut response = runtime.client.attachment(&id).await?;
+        while let Some(chunk) = response.next_chunk().await? {
+            stdout_writer
+                .write_all(&chunk)
+                .map_err(crate::api::ApiError::Write)?;
+        }
+        Ok::<(), crate::api::ApiError>(())
+    });
+    match result {
+        Ok(()) => Outcome::default(),
+        Err(error) => Outcome::failure(format!("Failed to fetch attachment: {error}\n")),
+    }
 }

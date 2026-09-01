@@ -111,3 +111,52 @@ pub(crate) fn list_events(runtime: &Runtime, matches: &ArgMatches, format: Forma
         move |client| async move { client.get::<_, Vec<Event>>("/v1/events", &query).await },
     )
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateEventRequest {
+    device_id: String,
+    end: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    event_type_id: String,
+    metadata: std::collections::BTreeMap<String, String>,
+    start: String,
+}
+
+#[derive(Deserialize)]
+struct CreateEventResponse {
+    id: String,
+}
+
+pub(crate) fn add_event(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let mut metadata = std::collections::BTreeMap::new();
+    if let Some(values) = matches.get_many::<String>("metadata") {
+        for pair in values {
+            let Some((key, value)) = pair.split_once(':') else {
+                return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
+            };
+            if key.is_empty() {
+                return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
+            }
+            metadata.insert(key.to_owned(), value.to_owned());
+        }
+    }
+    let request = CreateEventRequest {
+        device_id: value(matches, "device-id"),
+        end: value(matches, "end"),
+        event_type_id: value(matches, "event-type-id"),
+        metadata,
+        start: value(matches, "start"),
+    };
+    match crate::read_helpers::block_on(
+        runtime
+            .client
+            .post::<_, CreateEventResponse>("/v1/events", &request),
+    ) {
+        Ok(response) => Outcome {
+            stderr: format!("Created event: {}\n", response.id).into_bytes(),
+            ..Outcome::default()
+        },
+        Err(error) => Outcome::failure(format!("Failed to add event: {error}\n")),
+    }
+}

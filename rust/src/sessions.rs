@@ -3,6 +3,7 @@
 
 use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write as _;
 
 use crate::output::Format;
 use crate::read_helpers::{
@@ -176,5 +177,139 @@ pub(crate) fn list_session_recordings(runtime: &Runtime, matches: &ArgMatches) -
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }
         Err(error) => Outcome::failure(format!("Failed to list session recordings: {error}\n")),
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateSessionRequest {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+    device_id: String,
+}
+
+#[derive(Deserialize)]
+struct CreateSessionResponse {
+    id: String,
+    #[serde(default)]
+    key: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PatchSessionRecordingsRequest {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    add_recording_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    remove_recording_ids: Vec<String>,
+}
+
+pub(crate) fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let device_id = value(matches, "device-id");
+    if device_id.is_empty() {
+        return Outcome::failure("--device-id is required when creating a session\n");
+    }
+    let request = CreateSessionRequest {
+        name: value(matches, "name"),
+        project_id: value(matches, "project-id").or_project(&runtime.project_id),
+        device_id,
+    };
+    match block_on(
+        runtime
+            .client
+            .post::<_, CreateSessionResponse>("/v1/sessions", &request),
+    ) {
+        Ok(response) => {
+            let mut stderr = format!("Session created: {}\n", response.id);
+            if !response.key.is_empty() {
+                let _ = writeln!(stderr, "Session key: {}", response.key);
+            }
+            Outcome {
+                stderr: stderr.into_bytes(),
+                ..Outcome::default()
+            }
+        }
+        Err(error) if error.is_forbidden() => {
+            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
+        }
+        Err(error) => Outcome::failure(format!("Failed to create session: {error}\n")),
+    }
+}
+
+pub(crate) fn delete_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let key = positional(matches, 0);
+    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
+    let mut query = query();
+    add_str(&mut query, "projectId", &project_id);
+    sort_query(&mut query);
+    match block_on(
+        runtime
+            .client
+            .delete_with_query(&format!("/v1/sessions/{key}"), &query),
+    ) {
+        Ok(()) => Outcome {
+            stderr: format!("Session deleted: {key}\n").into_bytes(),
+            ..Outcome::default()
+        },
+        Err(error) if error.is_not_found() => Outcome {
+            stderr: format!(
+                "Not found. The resource may have already been deleted.\nSession deleted: {key}\n"
+            )
+            .into_bytes(),
+            ..Outcome::default()
+        },
+        Err(error) if error.is_forbidden() => {
+            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
+        }
+        Err(error) => Outcome::failure(format!("Failed to delete session: {error}\n")),
+    }
+}
+
+pub(crate) fn patch_session_recordings(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    add: bool,
+) -> Outcome {
+    let key = positional(matches, 0);
+    let recording_id = positional(matches, 1);
+    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
+    let mut query = query();
+    add_str(&mut query, "projectId", &project_id);
+    sort_query(&mut query);
+    let request = PatchSessionRecordingsRequest {
+        add_recording_ids: if add {
+            vec![recording_id.clone()]
+        } else {
+            Vec::new()
+        },
+        remove_recording_ids: if add {
+            Vec::new()
+        } else {
+            vec![recording_id.clone()]
+        },
+    };
+    match block_on(runtime.client.patch::<_, _, serde_json::Value>(
+        &format!("/v1/sessions/{key}"),
+        &query,
+        &request,
+    )) {
+        Ok(_) => Outcome {
+            stderr: format!(
+                "Recording {recording_id} {} session\n",
+                if add { "added to" } else { "removed from" }
+            )
+            .into_bytes(),
+            ..Outcome::default()
+        },
+        Err(error) if error.is_forbidden() => {
+            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
+        }
+        Err(error) => Outcome::failure(format!(
+            "Failed to {} recording {} session: {error}\n",
+            if add { "add" } else { "remove" },
+            if add { "to" } else { "from" }
+        )),
     }
 }

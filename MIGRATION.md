@@ -12,7 +12,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | 1 | Rust project and CLI/config/output core | Complete | Offline CLI contract passes |
 | 2 | Async API client, errors, streaming, cancellation | Complete | Wire contract and cancellation tests pass |
 | 3 | Read-only commands | Complete | Read command parity passes |
-| 4 | Auth, configuration, mutations, uploads/downloads | Not started | Mutation and transfer parity passes |
+| 4 | Auth, configuration, mutations, uploads/downloads | Complete | Mutation and transfer parity passes |
 | 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Not started | Format conformance passes |
 | 6 | Direct and JSON export | Not started | Direct byte and JSON parity passes |
 | 7 | Resumable export, reindex, merge | Not started | Resilient export conformance passes |
@@ -112,7 +112,7 @@ no Rust compatibility binary.
 | Phase | Crate/category and exact version/features | Reason | Alternative considered | Status |
 | --- | --- | --- | --- | --- |
 | 2 | `reqwest 0.12.28`; `default-features = false`; `json`, `rustls-tls`, `stream` | TLS HTTP, JSON API calls, and response streaming | `hyper` directly; rejected because it would duplicate HTTP policy and response/error handling. | Complete |
-| 2 | `tokio 1.53.1`; `default-features = false`; `io-util`, `macros`, `rt`, `rt-multi-thread`, `signal` | Async execution, cancellable I/O, and portable Ctrl-C handling | A synchronous client; rejected because it cannot cancel active transfers without blocking a worker. | Complete |
+| 2 | `tokio 1.53.1`; `default-features = false`; `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `signal`, `time` | Async execution, cancellable I/O, portable Ctrl-C handling, and device-code polling | A synchronous client; rejected because it cannot cancel active transfers or poll without blocking a worker. | Complete |
 | 2 | `tokio-util 0.7.19`; `default-features = false`; `io`, `rt` | `CancellationToken` and async-reader upload streams | In-tree cancellation primitives; rejected because token propagation and reader adaptation are easy to get subtly wrong. | Complete |
 | 2 | `time 0.3.47`; `default-features = false`; `formatting`, `parsing`, `serde` | ISO-8601/RFC3339 request timestamps | String-only timestamps; rejected because it would defer ordering and wire-format validation to each command. | Complete |
 | 5 | `mcap` | Official Foxglove MCAP reader/writer | To be evaluated during Phase 5 | Planned |
@@ -189,3 +189,14 @@ on 2026-08-29. The optimized macOS arm64 `rust/foxglove-rust` artifact is
   approved attachment-error and empty-CSV deltas.
 - [x] `cargo fmt --check`, strict Clippy, offline Rust tests, and
   `go test ./compat -count=1` pass.
+
+## Phase 4 acceptance checklist
+
+- [x] Browser device-code login persists a session token and uses the selected
+  API base URL; API-key configuration and auth inspection remain compatible.
+- [x] Mutation commands cover devices, events, recordings, sessions,
+  extensions, edge imports, and normal data imports.
+- [x] Uploads, downloads, error handling, and cancellation follow the Go
+  client's HTTP and file-safety behavior.
+- [x] Focused compatibility fixtures cover mutation, transfer, and login wire
+  contracts, including device-code polling and persisted configuration.

@@ -2,6 +2,7 @@
 
 pub mod api;
 mod attachments;
+mod auth;
 mod cli;
 mod command_spec;
 pub mod config;

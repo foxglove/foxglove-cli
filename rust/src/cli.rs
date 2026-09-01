@@ -11,7 +11,7 @@ use crate::command_spec::{self, Arity, CommandSpec, COMMANDS};
 use crate::config::Config;
 use crate::help;
 use crate::{
-    attachments, data, devices, event_types, events, extensions, pending_imports, projects,
+    attachments, auth, data, devices, event_types, events, extensions, pending_imports, projects,
     read_helpers, recordings, sessions, topics,
 };
 
@@ -101,6 +101,7 @@ pub fn run(
         ["version"] => Outcome::success(format!("{VERSION}\n")),
         ["config", action] => run_config(action, &positionals(leaf)),
         ["auth", "configure-api-key"] => configure_api_key(leaf, stdin, prompt_writer),
+        ["auth", "login"] => auth::login(leaf, prompt_writer),
         ["devices" | "projects" | "recordings" | "attachments" | "sessions" | "events"
         | "event-types" | "pending-imports" | "topics" | "extensions", "list"]
         | ["data", "imports" | "coverage", "list"]
@@ -115,7 +116,78 @@ pub fn run(
             }
             outcome
         }
+        ["events" | "sessions", "add"]
+        | ["recordings" | "sessions", "delete"]
+        | ["devices", "add" | "edit"]
+        | ["extensions", "publish" | "unpublish"]
+        | ["attachments", "download"]
+        | ["auth", "info"]
+        | ["data", "import"]
+        | ["data", "imports", "add"]
+        | ["sessions", "recordings", "add" | "remove"] => run_mutation(&path, leaf, prompt_writer),
         ["completion", shell] => completion_script(shell),
+        _ => Outcome::failure(format!(
+            "This command is not implemented in the Rust migration yet: {}\n",
+            path.join(" ")
+        )),
+    }
+}
+
+fn run_mutation(
+    path: &[String],
+    matches: &ArgMatches,
+    stdout_writer: &mut dyn std::io::Write,
+) -> Outcome {
+    let runtime = match read_helpers::runtime(matches) {
+        Ok(runtime) => runtime,
+        Err(error) => return Outcome::failure(error),
+    };
+    match path
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["events", "add"] => events::add_event(&runtime, matches),
+        ["auth", "info"] => auth::info(&runtime),
+        ["attachments", "download"] => {
+            attachments::download_attachment(&runtime, matches, stdout_writer)
+        }
+        ["extensions", "publish"] => extensions::publish_extension(&runtime, matches),
+        ["devices", "add"] => devices::add_device(&runtime, matches),
+        ["devices", "edit"] => devices::edit_device(&runtime, matches),
+        ["data", "import"] if !read_helpers::value(matches, "edge-recording-id").is_empty() => {
+            data::import_from_edge(&runtime, matches)
+        }
+        ["data", "import"] => data::import_file(&runtime, matches),
+        ["data", "imports", "add"]
+            if !read_helpers::value(matches, "edge-recording-id").is_empty() =>
+        {
+            let mut outcome = data::import_from_edge(&runtime, matches);
+            let mut stderr =
+                b"Command \"add\" is deprecated, use 'data import' instead.\n".to_vec();
+            stderr.extend_from_slice(&outcome.stderr);
+            outcome.stderr = stderr;
+            outcome
+        }
+        ["data", "imports", "add"] => {
+            let mut outcome = data::import_file(&runtime, matches);
+            let mut stderr =
+                b"Command \"add\" is deprecated, use 'data import' instead.\n".to_vec();
+            stderr.extend_from_slice(&outcome.stderr);
+            outcome.stderr = stderr;
+            outcome
+        }
+        ["extensions", "unpublish"] => extensions::unpublish_extension(&runtime, matches),
+        ["recordings", "delete"] => recordings::delete_recording(&runtime, matches),
+        ["sessions", "add"] => sessions::add_session(&runtime, matches),
+        ["sessions", "delete"] => sessions::delete_session(&runtime, matches),
+        ["sessions", "recordings", "add"] => {
+            sessions::patch_session_recordings(&runtime, matches, true)
+        }
+        ["sessions", "recordings", "remove"] => {
+            sessions::patch_session_recordings(&runtime, matches, false)
+        }
         _ => Outcome::failure(format!(
             "This command is not implemented in the Rust migration yet: {}\n",
             path.join(" ")
