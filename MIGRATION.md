@@ -15,7 +15,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | 4 | Auth, configuration, mutations, uploads/downloads | Complete | Mutation and transfer parity passes |
 | 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Complete | Format conformance passes |
 | 6 | Direct and JSON export | Complete | Direct byte and JSON parity passes |
-| 7 | Resumable export, reindex, merge | Not started | Resilient export conformance passes |
+| 7 | Resumable export, reindex, merge | Complete | Resilient export conformance passes |
 | 8 | Six-platform prerelease and cutover | Not started | Release candidate is approved |
 
 ## Compatibility rules
@@ -234,3 +234,16 @@ on 2026-08-29. The optimized macOS arm64 `rust/foxglove-rust` artifact is
 - [x] `cargo fmt --check`, strict Clippy, Rust tests, release build,
   `make compat`, and full Go tests pass. Non-JSON `--output-file` recovery,
   reindexing, and merging are explicitly Phase 7 work.
+
+## Phase 7 acceptance checklist
+
+- [x] Non-JSON `--output-file` exports stage beside the destination, preserve
+  an existing destination on failure or cancellation, and replace it only on
+  successful completion.
+- [x] Interrupted MCAP and ROS 1 bag downloads are rewritten from complete
+  records, retried from their last recovered timestamp, and merged without
+  duplicate boundary messages.
+- [x] Focused fixture coverage exercises successful file output, partial
+  MCAP/bag recovery, overlap merging, initial failures, and cancellation.
+- [x] `cargo fmt --check`, strict Clippy, Rust tests, release build,
+  `make compat`, and full Go tests pass.

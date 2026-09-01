@@ -3,17 +3,17 @@
 
 use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fs::{self, File};
 use std::io::{IsTerminal, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use time::format_description::well_known::Rfc3339;
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
 use crate::api::{self, StreamRequest, UploadRequest};
 use crate::format::{
-    Attachment, Channel, Error as FormatError, Message, ProtobufDecoder, RecordSink,
-    Ros1DecoderCache, Schema,
+    Attachment, Channel, Error as FormatError, McapWriter, Message, ProtobufDecoder, RecordSink,
+    Ros1DecoderCache, RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
 };
 use crate::output::Format;
 use crate::read_helpers::{
@@ -121,16 +121,28 @@ pub(crate) fn export_data(
         return Outcome::failure("Export failed: invalid format: supply mcap0, bag1, or json\n");
     }
     if !value(matches, "output-file").is_empty() && request.output_format != "json" {
-        return Outcome::failure(
-            "Export failed: resumable --output-file exports are not implemented yet\n",
-        );
+        let destination = PathBuf::from(value(matches, "output-file"));
+        return match crate::read_helpers::block_on(async {
+            let cancellation = api::ctrl_c_cancellation_token();
+            resumable_export(runtime, request, &destination, &cancellation).await
+        }) {
+            Ok(()) => Outcome {
+                stderr: b"\n".to_vec(),
+                ..Outcome::default()
+            },
+            Err(api::ApiError::Cancelled) => Outcome {
+                exit_code: 130,
+                ..Outcome::default()
+            },
+            Err(error) => Outcome::failure(format!("Export failed: {error}\n")),
+        };
     }
     if request.output_format != "json" && std::io::stdout().is_terminal() {
         return Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n"));
     }
 
-    let cancellation = api::ctrl_c_cancellation_token();
     let result = crate::read_helpers::block_on(async {
+        let cancellation = api::ctrl_c_cancellation_token();
         let mut stream_request = request.clone();
         if stream_request.output_format == "json" {
             stream_request.output_format = "mcap0".into();
@@ -196,6 +208,407 @@ fn stream_request(matches: &ArgMatches) -> Result<StreamRequest, String> {
     };
     request.validate()?;
     Ok(request)
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ExportInfo {
+    max_time: u64,
+    message_count: u64,
+}
+
+struct PartialExport {
+    path: PathBuf,
+    info: ExportInfo,
+}
+
+/// Download into a private sibling directory, repair each interrupted response,
+/// and replace the requested destination only after the complete result exists.
+async fn resumable_export(
+    runtime: &Runtime,
+    mut request: StreamRequest,
+    destination: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), api::ApiError> {
+    let staging = create_export_staging(destination).map_err(api::ApiError::Write)?;
+    let result =
+        resumable_export_inner(runtime, &mut request, destination, &staging, cancellation).await;
+    let _ = fs::remove_dir_all(&staging);
+    result
+}
+
+async fn resumable_export_inner(
+    runtime: &Runtime,
+    request: &mut StreamRequest,
+    destination: &Path,
+    staging: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), api::ApiError> {
+    let mut partials = Vec::new();
+    let mut empty_downloads = 0_u8;
+    let mut repeated_starts = 0_u8;
+    loop {
+        let path = staging.join(format!("export-{}", partials.len()));
+        let mut output = tokio::fs::File::create(&path)
+            .await
+            .map_err(api::ApiError::Write)?;
+        let mut stream = runtime
+            .client
+            .stream_with_cancellation(request, cancellation)
+            .await?;
+        let mut bytes = 0_u64;
+        let download = async {
+            while let Some(chunk) = stream.next_chunk().await? {
+                bytes += u64::try_from(chunk.len()).expect("chunk length fits u64");
+                output
+                    .write_all(&chunk)
+                    .await
+                    .map_err(api::ApiError::Write)?;
+            }
+            output.flush().await.map_err(api::ApiError::Write)
+        }
+        .await;
+        drop(output);
+        // A failure before any bytes are received is an initial-download
+        // failure: do not manufacture an output file from an empty partial.
+        if let Err(error) = download {
+            if bytes == 0 {
+                return Err(error);
+            }
+        }
+        let (complete, info) = reindex_partial(&path, &request.output_format).map_err(|error| {
+            api::ApiError::Conversion(format!("failed to reindex partial export: {error}"))
+        })?;
+        partials.push(PartialExport { path, info });
+        if complete {
+            break;
+        }
+        if info.message_count == 0 {
+            empty_downloads += 1;
+            if empty_downloads > 1 {
+                break;
+            }
+            continue;
+        }
+        empty_downloads = 0;
+        let start = OffsetDateTime::from_unix_timestamp_nanos(i128::from(info.max_time)).map_err(
+            |error| api::ApiError::Conversion(format!("invalid recovered timestamp: {error}")),
+        )?;
+        if request.start == Some(start) {
+            repeated_starts += 1;
+            if repeated_starts > 1 {
+                break;
+            }
+        } else {
+            repeated_starts = 0;
+        }
+        request.start = Some(start);
+        if request.end.is_none() {
+            request.end = Some(OffsetDateTime::now_utc());
+        }
+    }
+    let merged = staging.join("complete");
+    if partials.len() == 1 {
+        fs::rename(&partials[0].path, &merged).map_err(api::ApiError::Write)?;
+    } else {
+        merge_partials(&partials, &merged, &request.output_format).map_err(|error| {
+            api::ApiError::Conversion(format!("failed to merge partial exports: {error}"))
+        })?;
+    }
+    fs::rename(&merged, destination).map_err(api::ApiError::Write)
+}
+
+fn create_export_staging(destination: &Path) -> std::io::Result<PathBuf> {
+    let parent = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    for attempt in 0..100_u32 {
+        let path = parent.join(format!(".foxglove-export-{}-{attempt}", std::process::id()));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not create export staging directory",
+    ))
+}
+
+fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
+    match format {
+        "mcap0" => reindex_mcap(path),
+        "bag1" => reindex_bag(path),
+        other => Err(FormatError::Invalid(format!(
+            "unrecognized export format: {other}"
+        ))),
+    }
+}
+
+fn reindex_mcap(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
+    let mut input = File::open(path)?;
+    let mut info = McapInfoSink::default();
+    match crate::format::read_mcap(&mut input, &mut info) {
+        Ok(()) => return Ok((true, info.info)),
+        Err(FormatError::TruncatedMcap) => {}
+        Err(error) => return Err(error),
+    }
+    let recovered = path.with_extension("reindexed");
+    input = File::open(path)?;
+    let output = File::create(&recovered)?;
+    let mut sink = McapFileSink {
+        writer: McapWriter::new(output)?,
+        info: ExportInfo::default(),
+    };
+    let complete = crate::format::read_mcap_recover(&mut input, &mut sink)?;
+    sink.writer.finish()?;
+    fs::rename(recovered, path)?;
+    Ok((complete, sink.info))
+}
+
+#[derive(Default)]
+struct McapInfoSink {
+    info: ExportInfo,
+}
+
+impl RecordSink for McapInfoSink {
+    fn schema(&mut self, _: Schema) -> Result<(), FormatError> {
+        Ok(())
+    }
+    fn channel(&mut self, _: Channel) -> Result<(), FormatError> {
+        Ok(())
+    }
+    fn message(&mut self, message: Message) -> Result<(), FormatError> {
+        self.info.message_count += 1;
+        self.info.max_time = self.info.max_time.max(message.log_time);
+        Ok(())
+    }
+    fn metadata(&mut self, _: String, _: BTreeMap<String, String>) -> Result<(), FormatError> {
+        Ok(())
+    }
+    fn attachment(&mut self, _: Attachment) -> Result<(), FormatError> {
+        Ok(())
+    }
+}
+
+fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
+    let recovered = path.with_extension("reindexed");
+    let mut input = File::open(path)?;
+    let output = File::create(&recovered)?;
+    let mut sink = BagFileSink {
+        writer: RosbagWriter::new(output)?,
+        info: ExportInfo::default(),
+        connections: HashSet::new(),
+    };
+    let _ = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
+    sink.writer.finish()?;
+    fs::rename(recovered, path)?;
+    Ok((false, sink.info))
+}
+
+struct McapFileSink {
+    writer: McapWriter<File>,
+    info: ExportInfo,
+}
+
+impl RecordSink for McapFileSink {
+    fn schema(&mut self, schema: Schema) -> Result<(), FormatError> {
+        self.writer.schema(&schema)
+    }
+    fn channel(&mut self, channel: Channel) -> Result<(), FormatError> {
+        self.writer.channel(&channel)
+    }
+    fn message(&mut self, message: Message) -> Result<(), FormatError> {
+        self.info.message_count += 1;
+        self.info.max_time = self.info.max_time.max(message.log_time);
+        self.writer.message(&message)
+    }
+    fn metadata(
+        &mut self,
+        name: String,
+        metadata: BTreeMap<String, String>,
+    ) -> Result<(), FormatError> {
+        self.writer.metadata(name, metadata)
+    }
+    fn attachment(&mut self, attachment: Attachment) -> Result<(), FormatError> {
+        self.writer.attachment(&attachment)
+    }
+}
+
+struct BagFileSink {
+    writer: RosbagWriter<File>,
+    info: ExportInfo,
+    connections: HashSet<u32>,
+}
+
+impl RosbagSink for BagFileSink {
+    fn connection(&mut self, connection: RosbagConnection) -> Result<(), FormatError> {
+        if !self.connections.insert(connection.id) {
+            return Ok(());
+        }
+        self.writer.connection(connection)
+    }
+    fn message(&mut self, message: RosbagMessage) -> Result<(), FormatError> {
+        self.info.message_count += 1;
+        self.info.max_time = self.info.max_time.max(message.time);
+        self.writer.message(&message)
+    }
+}
+
+fn merge_partials(
+    partials: &[PartialExport],
+    output: &Path,
+    format: &str,
+) -> Result<(), FormatError> {
+    match format {
+        "mcap0" => merge_mcap_partials(partials, output),
+        "bag1" => merge_bag_partials(partials, output),
+        other => Err(FormatError::Invalid(format!(
+            "unrecognized export format: {other}"
+        ))),
+    }
+}
+
+fn scan_through(index: usize, partials: &[PartialExport]) -> u64 {
+    if index + 1 == partials.len() {
+        partials[index].info.max_time
+    } else {
+        partials[index].info.max_time.saturating_sub(1)
+    }
+}
+
+fn merge_mcap_partials(partials: &[PartialExport], output: &Path) -> Result<(), FormatError> {
+    let file = File::create(output)?;
+    let mut sink = McapMergeSink {
+        writer: McapWriter::new(file)?,
+        schema_offset: 0,
+        channel_offset: 0,
+        max_schema: 0,
+        max_channel: 0,
+        scan_through: 0,
+    };
+    for (index, partial) in partials.iter().enumerate() {
+        if partial.info.message_count == 0 {
+            continue;
+        }
+        sink.schema_offset = sink.max_schema;
+        sink.channel_offset = sink.max_channel.saturating_add(1);
+        sink.scan_through = scan_through(index, partials);
+        let mut input = File::open(&partial.path)?;
+        crate::format::read_mcap(&mut input, &mut sink)?;
+    }
+    sink.writer.finish()
+}
+
+struct McapMergeSink {
+    writer: McapWriter<File>,
+    schema_offset: u16,
+    channel_offset: u16,
+    max_schema: u16,
+    max_channel: u16,
+    scan_through: u64,
+}
+
+impl RecordSink for McapMergeSink {
+    fn schema(&mut self, mut schema: Schema) -> Result<(), FormatError> {
+        schema.id = schema
+            .id
+            .checked_add(self.schema_offset)
+            .ok_or_else(|| FormatError::Invalid("too many MCAP schemas while merging".into()))?;
+        self.max_schema = self.max_schema.max(schema.id);
+        self.writer.schema(&schema)
+    }
+    fn channel(&mut self, mut channel: Channel) -> Result<(), FormatError> {
+        channel.id = channel
+            .id
+            .checked_add(self.channel_offset)
+            .ok_or_else(|| FormatError::Invalid("too many MCAP channels while merging".into()))?;
+        channel.schema_id = channel
+            .schema_id
+            .checked_add(self.schema_offset)
+            .ok_or_else(|| FormatError::Invalid("too many MCAP schemas while merging".into()))?;
+        self.max_channel = self.max_channel.max(channel.id);
+        self.writer.channel(&channel)
+    }
+    fn message(&mut self, mut message: Message) -> Result<(), FormatError> {
+        if message.log_time > self.scan_through {
+            return Ok(());
+        }
+        message.channel_id = message
+            .channel_id
+            .checked_add(self.channel_offset)
+            .ok_or_else(|| FormatError::Invalid("too many MCAP channels while merging".into()))?;
+        self.writer.message(&message)
+    }
+    fn metadata(
+        &mut self,
+        name: String,
+        metadata: BTreeMap<String, String>,
+    ) -> Result<(), FormatError> {
+        self.writer.metadata(name, metadata)
+    }
+    fn attachment(&mut self, attachment: Attachment) -> Result<(), FormatError> {
+        self.writer.attachment(&attachment)
+    }
+}
+
+fn merge_bag_partials(partials: &[PartialExport], output: &Path) -> Result<(), FormatError> {
+    let file = File::create(output)?;
+    let mut sink = BagMergeSink {
+        writer: RosbagWriter::new(file)?,
+        connection_offset: 0,
+        max_connection: 0,
+        scan_through: 0,
+        connections: HashSet::new(),
+    };
+    for (index, partial) in partials.iter().enumerate() {
+        if partial.info.message_count == 0 {
+            continue;
+        }
+        sink.connection_offset = sink.max_connection.saturating_add(1);
+        sink.scan_through = scan_through(index, partials);
+        sink.connections.clear();
+        let mut input = File::open(&partial.path)?;
+        let _ = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
+    }
+    sink.writer.finish()
+}
+
+struct BagMergeSink {
+    writer: RosbagWriter<File>,
+    connection_offset: u32,
+    max_connection: u32,
+    scan_through: u64,
+    connections: HashSet<u32>,
+}
+
+impl RosbagSink for BagMergeSink {
+    fn connection(&mut self, mut connection: RosbagConnection) -> Result<(), FormatError> {
+        if !self.connections.insert(connection.id) {
+            return Ok(());
+        }
+        connection.id = connection
+            .id
+            .checked_add(self.connection_offset)
+            .ok_or_else(|| {
+                FormatError::Invalid("too many ROS bag connections while merging".into())
+            })?;
+        self.max_connection = self.max_connection.max(connection.id);
+        self.writer.connection(connection)
+    }
+    fn message(&mut self, mut message: RosbagMessage) -> Result<(), FormatError> {
+        if message.time > self.scan_through {
+            return Ok(());
+        }
+        message.connection_id = message
+            .connection_id
+            .checked_add(self.connection_offset)
+            .ok_or_else(|| {
+                FormatError::Invalid("too many ROS bag connections while merging".into())
+            })?;
+        self.writer.message(&message)
+    }
 }
 
 fn parse_replay_lookback(matches: &ArgMatches) -> Result<f64, String> {

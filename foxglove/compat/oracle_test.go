@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/foxglove/mcap/go/mcap"
 )
@@ -53,11 +54,13 @@ type commandSnapshot struct {
 }
 
 type responsePlan struct {
-	Method  string
-	Path    string
-	Status  int
-	Body    string
-	Headers map[string]string
+	Method        string
+	Path          string
+	Status        int
+	Body          string
+	TruncateBytes int
+	DelayMillis   int
+	Headers       map[string]string
 }
 
 type oracleCase struct {
@@ -157,7 +160,14 @@ func (fixture *fixtureServer) serveHTTP(writer http.ResponseWriter, request *htt
 		status = http.StatusOK
 	}
 	writer.WriteHeader(status)
-	_, _ = writer.Write([]byte(strings.ReplaceAll(plan.Body, "{BASE_URL}", fixture.server.URL)))
+	if plan.DelayMillis > 0 {
+		time.Sleep(time.Duration(plan.DelayMillis) * time.Millisecond)
+	}
+	response := []byte(strings.ReplaceAll(plan.Body, "{BASE_URL}", fixture.server.URL))
+	if plan.TruncateBytes > 0 && plan.TruncateBytes < len(response) {
+		response = response[:len(response)-plan.TruncateBytes]
+	}
+	_, _ = writer.Write(response)
 }
 
 func TestMain(main *testing.M) {
@@ -677,6 +687,126 @@ func TestRustPhase6ExportErrorsAndOptions(t *testing.T) {
 	}
 }
 
+func TestRustPhase7ResilientExportContract(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+	readFixture := func(filename string) []byte {
+		t.Helper()
+		payload, err := os.ReadFile(filepath.Join(moduleRoot, "testdata", filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return payload
+	}
+	streamPlans := func(payload []byte, truncate int) []responsePlan {
+		return []responsePlan{
+			{Method: http.MethodPost, Path: "/v1/data/stream", Body: `{"link":"{BASE_URL}/streamed-export"}`, Headers: jsonHeaders},
+			{Method: http.MethodGet, Path: "/streamed-export", Body: string(payload), TruncateBytes: truncate},
+		}
+	}
+
+	t.Run("complete-mcap-preserves-server-bytes", func(t *testing.T) {
+		testCase := oracleCase{
+			Args:        []string{"data", "export", "--recording-id", "rec_fixture", "--output-file", "{TMP}/output.mcap"},
+			Plans:       streamPlans(readFixture("gps.mcap"), 0),
+			OutputFiles: []string{"output.mcap"},
+		}
+		expected := runOracleCase(t, testCase, fixture)
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if expected.ExitCode != actual.ExitCode || expected.Stdout != actual.Stdout || expected.Stderr != actual.Stderr || !reflect.DeepEqual(expected.OutputFiles, actual.OutputFiles) || !reflect.DeepEqual(expected.Requests, actual.Requests) {
+			t.Fatalf("Rust Phase 7 complete MCAP export differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+		}
+	})
+
+	t.Run("truncated-mcap-retries-and-produces-output", func(t *testing.T) {
+		payload := readFixture("gps.mcap")
+		testCase := oracleCase{
+			Args: []string{"data", "export", "--recording-id", "rec_fixture", "--output-file", "{TMP}/output.mcap"},
+			Plans: append(
+				streamPlans(payload, 4),
+				streamPlans(payload, 0)...,
+			),
+			OutputFiles: []string{"output.mcap"},
+		}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 0 || actual.OutputFiles["output.mcap"] == "{ABSENT}" || len(actual.Requests) != 4 || !strings.Contains(actual.Requests[2].Body, `"start"`) {
+			t.Fatalf("Rust did not recover and retry a truncated MCAP export: %+v", actual)
+		}
+	})
+
+	t.Run("bag-retries-until-the-boundary-stops-advancing", func(t *testing.T) {
+		payload := readFixture("gps.bag")
+		testCase := oracleCase{
+			Args: []string{"data", "export", "--recording-id", "rec_fixture", "--output-format", "bag1", "--output-file", "{TMP}/output.bag"},
+			Plans: append(append(
+				streamPlans(payload, 0),
+				streamPlans(payload, 0)...,
+			), streamPlans(payload, 0)...),
+			OutputFiles: []string{"output.bag"},
+		}
+		actual := runRustCaseWithFixture(t, testCase, fixture)
+		if actual.ExitCode != 0 || actual.OutputFiles["output.bag"] == "{ABSENT}" || len(actual.Requests) != 6 {
+			t.Fatalf("Rust did not complete the bounded ROS bag recovery loop: %+v", actual)
+		}
+	})
+
+	t.Run("cancellation-preserves-destination-and-cleans-staging", func(t *testing.T) {
+		temporaryDirectory := t.TempDir()
+		homeDirectory := filepath.Join(temporaryDirectory, "home")
+		if err := os.MkdirAll(homeDirectory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		config := "auth_type: 1\nbase_url: " + fixture.server.URL + "\nbearer_token: fixture-token\ndefault_project_id: prj_default\n"
+		if err := os.WriteFile(filepath.Join(homeDirectory, ".foxgloverc"), []byte(config), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		output := filepath.Join(temporaryDirectory, "output.mcap")
+		if err := os.WriteFile(output, []byte("original destination"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fixture.reset([]responsePlan{
+			{Method: http.MethodPost, Path: "/v1/data/stream", Body: `{"link":"{BASE_URL}/slow-export"}`, Headers: jsonHeaders},
+			{Method: http.MethodGet, Path: "/slow-export", Body: string(readFixture("gps.mcap")), DelayMillis: 1_000},
+		})
+		command := exec.Command(rustBinary, "data", "export", "--recording-id", "rec_fixture", "--output-file", output)
+		command.Dir = temporaryDirectory
+		command.Env = isolatedEnvironment(homeDirectory)
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(2 * time.Second)
+		for len(fixture.snapshots()) < 2 && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if len(fixture.snapshots()) < 2 {
+			t.Fatal("export did not begin before cancellation")
+		}
+		if err := command.Process.Signal(os.Interrupt); err != nil {
+			t.Fatal(err)
+		}
+		err := command.Wait()
+		exitError, ok := err.(*exec.ExitError)
+		if !ok || exitError.ExitCode() != 130 {
+			t.Fatalf("cancellation exit status: %v", err)
+		}
+		contents, err := os.ReadFile(output)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(contents) != "original destination" {
+			t.Fatalf("cancellation replaced destination: %q", contents)
+		}
+		staging, err := filepath.Glob(filepath.Join(temporaryDirectory, ".foxglove-export-*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(staging) != 0 {
+			t.Fatalf("cancellation left staging directories: %v", staging)
+		}
+	})
+}
+
 func TestRustAuthLoginWireContract(t *testing.T) {
 	fixture := newFixtureServer()
 	defer fixture.close()
@@ -1028,6 +1158,22 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 	if testCase.HashStdout {
 		digest := sha256.Sum256([]byte(snapshot.Stdout))
 		snapshot.Stdout = fmt.Sprintf("sha256:%s bytes:%d", hex.EncodeToString(digest[:]), len(snapshot.Stdout))
+	}
+	if len(testCase.OutputFiles) > 0 {
+		snapshot.OutputFiles = map[string]string{}
+		for _, name := range testCase.OutputFiles {
+			path := filepath.Join(temporaryDirectory, name)
+			bytes, err := os.ReadFile(path)
+			if os.IsNotExist(err) {
+				snapshot.OutputFiles[name] = "{ABSENT}"
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := sha256.Sum256(bytes)
+			snapshot.OutputFiles[name] = fmt.Sprintf("sha256:%s bytes:%d", hex.EncodeToString(digest[:]), len(bytes))
+		}
 	}
 	return snapshot
 }

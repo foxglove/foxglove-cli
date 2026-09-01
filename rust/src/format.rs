@@ -102,6 +102,16 @@ pub trait RecordSink {
     fn attachment(&mut self, attachment: Attachment) -> Result<(), Error>;
 }
 
+/// A streaming sink for the connection and message records in a ROS 1 bag.
+///
+/// Unlike [`RecordSink`], this deliberately omits index records: callers use
+/// it to rebuild a canonical indexed bag from both complete and interrupted
+/// downloads.
+pub trait RosbagSink {
+    fn connection(&mut self, connection: RosbagConnection) -> Result<(), Error>;
+    fn message(&mut self, message: RosbagMessage) -> Result<(), Error>;
+}
+
 pub fn validate_import<R: Read + Seek>(reader: &mut R) -> Result<(), Error> {
     let mut magic = [0_u8; 8];
     reader
@@ -124,6 +134,24 @@ pub fn validate_import<R: Read + Seek>(reader: &mut R) -> Result<(), Error> {
 
 /// Validate and emit an MCAP stream without buffering the entire input.
 pub fn read_mcap<R: Read, S: RecordSink>(reader: &mut R, sink: &mut S) -> Result<(), Error> {
+    read_mcap_inner(reader, sink, false).map(|_| ())
+}
+
+/// Emit every complete MCAP record before a truncated tail. The return value
+/// is `true` if the input had a valid closing magic and `false` if recovery
+/// stopped at a malformed or incomplete tail.
+pub fn read_mcap_recover<R: Read, S: RecordSink>(
+    reader: &mut R,
+    sink: &mut S,
+) -> Result<bool, Error> {
+    read_mcap_inner(reader, sink, true)
+}
+
+fn read_mcap_inner<R: Read, S: RecordSink>(
+    reader: &mut R,
+    sink: &mut S,
+    recover: bool,
+) -> Result<bool, Error> {
     let options = LinearReaderOptions::default()
         .with_check_finishes_after_end_magic(true)
         .with_validate_chunk_crcs(true)
@@ -133,15 +161,30 @@ pub fn read_mcap<R: Read, S: RecordSink>(reader: &mut R, sink: &mut S) -> Result
     let mut in_data_section = true;
     loop {
         let Some(event) = linear.next_event() else {
-            return Ok(());
+            return Ok(true);
         };
-        match event.map_err(map_mcap_error)? {
+        let event = match event.map_err(map_mcap_error) {
+            Ok(event) => event,
+            Err(Error::TruncatedMcap) if recover => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        match event {
             LinearReadEvent::ReadRequest(length) => {
-                let read = reader.read(linear.insert(length)).map_err(Error::Io)?;
+                let read = match reader.read(linear.insert(length)) {
+                    Ok(read) => read,
+                    Err(error) if recover && error.kind() == io::ErrorKind::UnexpectedEof => {
+                        return Ok(false)
+                    }
+                    Err(error) => return Err(Error::Io(error)),
+                };
                 linear.notify_read(read);
             }
             LinearReadEvent::Record { opcode, data } => {
-                let record = mcap::parse_record(opcode, data).map_err(map_mcap_error)?;
+                let record = match mcap::parse_record(opcode, data).map_err(map_mcap_error) {
+                    Ok(record) => record,
+                    Err(Error::TruncatedMcap) if recover => return Ok(false),
+                    Err(error) => return Err(error),
+                };
                 if matches!(record, Record::DataEnd(_)) {
                     in_data_section = false;
                 } else if in_data_section {
@@ -863,7 +906,7 @@ impl<W: Write + Seek> RosbagWriter<W> {
         let header = bag_header(&[
             ("op", vec![2]),
             ("conn", message.connection_id.to_le_bytes().to_vec()),
-            ("time", message.time.to_le_bytes().to_vec()),
+            ("time", ros_time_bytes(message.time)?.to_vec()),
         ]);
         write_bag_record(&mut self.chunk, &header, &message.data)?;
         *self
@@ -1008,8 +1051,8 @@ fn write_chunk_info(
         ("op", vec![6]),
         ("ver", 1_u32.to_le_bytes().to_vec()),
         ("chunk_pos", chunk_pos.to_le_bytes().to_vec()),
-        ("start_time", start_time.to_le_bytes().to_vec()),
-        ("end_time", end_time.to_le_bytes().to_vec()),
+        ("start_time", ros_time_bytes(start_time)?.to_vec()),
+        ("end_time", ros_time_bytes(end_time)?.to_vec()),
         (
             "count",
             u32::try_from(counts.len())
@@ -1026,6 +1069,16 @@ fn write_chunk_info(
     write_bag_record(writer, &header, &data)
 }
 
+fn ros_time_bytes(time: u64) -> Result<[u8; 8], Error> {
+    let seconds = u32::try_from(time / 1_000_000_000)
+        .map_err(|_| Error::Invalid("rosbag timestamp exceeds u32 seconds".into()))?;
+    let nanoseconds = u32::try_from(time % 1_000_000_000).expect("nanoseconds remainder fits u32");
+    let mut output = [0; 8];
+    output[..4].copy_from_slice(&seconds.to_le_bytes());
+    output[4..].copy_from_slice(&nanoseconds.to_le_bytes());
+    Ok(output)
+}
+
 // ROS bag v2.0 uses the same length-prefixed field framing both at top level and inside chunks.
 fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
     let mut magic = [0_u8; ROSBAG_MAGIC.len()];
@@ -1034,6 +1087,162 @@ fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
         return Err(Error::InvalidMagic);
     }
     validate_bag_records(reader)
+}
+
+/// Emit all complete connection and message records from a ROS bag. A bag has
+/// no closing magic, so this always returns `false` after an otherwise valid
+/// stream; callers use the recovered records to write a fresh indexed bag.
+/// A truncated final record or chunk is treated as the end of a recoverable
+/// download, while an invalid initial magic remains an error.
+pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
+    reader: &mut R,
+    sink: &mut S,
+) -> Result<bool, Error> {
+    let mut magic = [0_u8; ROSBAG_MAGIC.len()];
+    reader.read_exact(&mut magic)?;
+    if magic != ROSBAG_MAGIC {
+        return Err(Error::InvalidMagic);
+    }
+    read_rosbag_records_recover(reader, sink, false)
+}
+
+fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
+    reader: &mut R,
+    sink: &mut S,
+    eof_complete: bool,
+) -> Result<bool, Error> {
+    loop {
+        let (header, data) = match read_bag_record(reader) {
+            Ok(Some(record)) => record,
+            Ok(None) => return Ok(eof_complete),
+            Err(Error::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                return Ok(false)
+            }
+            Err(error) => return Err(error),
+        };
+        match header.get("op").and_then(|value| value.first()).copied() {
+            Some(0x05) => {
+                let compression = header
+                    .get("compression")
+                    .and_then(|value| std::str::from_utf8(value).ok())
+                    .unwrap_or("none");
+                let size = header_u32(&header, "size")? as usize;
+                if size > MAX_RECORD_LEN {
+                    return Err(Error::Invalid(
+                        "rosbag chunk exceeds configured limit".into(),
+                    ));
+                }
+                let complete = match compression {
+                    "none" => read_rosbag_records_recover(&mut Cursor::new(data), sink, true)?,
+                    "lz4" => {
+                        let mut decompressed = Vec::with_capacity(size);
+                        let limit = u64::try_from(size + 1).expect("configured size fits u64");
+                        match FrameDecoder::new(Cursor::new(data))
+                            .take(limit)
+                            .read_to_end(&mut decompressed)
+                        {
+                            Ok(_) if decompressed.len() == size => read_rosbag_records_recover(
+                                &mut Cursor::new(decompressed),
+                                sink,
+                                true,
+                            )?,
+                            Ok(_) | Err(_) => false,
+                        }
+                    }
+                    other => return Err(Error::UnsupportedCompression(other.to_owned())),
+                };
+                if !complete {
+                    return Ok(false);
+                }
+            }
+            Some(0x07) => sink.connection(parse_rosbag_connection(&header, &data)?)?,
+            Some(0x02) => sink.message(parse_rosbag_message(&header, data)?)?,
+            Some(_) => {}
+            None => return Err(Error::Invalid("rosbag record is missing op field".into())),
+        }
+    }
+}
+
+fn parse_rosbag_connection(
+    header: &BTreeMap<String, Vec<u8>>,
+    data: &[u8],
+) -> Result<RosbagConnection, Error> {
+    let metadata = parse_bag_fields(data)?;
+    Ok(RosbagConnection {
+        id: header_u32(header, "conn")?,
+        topic: header_string(header, "topic")?,
+        type_name: field_string(&metadata, "type")?,
+        md5sum: field_string(&metadata, "md5sum")?,
+        message_definition: metadata
+            .get("message_definition")
+            .cloned()
+            .unwrap_or_default(),
+        caller_id: metadata
+            .get("callerid")
+            .map(|value| std::str::from_utf8(value).map(str::to_owned))
+            .transpose()
+            .map_err(|_| Error::Invalid("invalid rosbag callerid".into()))?,
+        latching: metadata.get("latching").map(|value| value == b"1"),
+    })
+}
+
+fn parse_rosbag_message(
+    header: &BTreeMap<String, Vec<u8>>,
+    data: Vec<u8>,
+) -> Result<RosbagMessage, Error> {
+    let time = header
+        .get("time")
+        .ok_or_else(|| Error::Invalid("rosbag record is missing time field".into()))?;
+    if time.len() != 8 {
+        return Err(Error::Invalid("rosbag time field has invalid size".into()));
+    }
+    let seconds = u32::from_le_bytes(time[..4].try_into().expect("checked length"));
+    let nanoseconds = u32::from_le_bytes(time[4..].try_into().expect("checked length"));
+    if nanoseconds >= 1_000_000_000 {
+        return Err(Error::Invalid(
+            "rosbag time nanoseconds are out of range".into(),
+        ));
+    }
+    Ok(RosbagMessage {
+        connection_id: header_u32(header, "conn")?,
+        time: u64::from(seconds) * 1_000_000_000 + u64::from(nanoseconds),
+        data,
+    })
+}
+
+fn parse_bag_fields(data: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, Error> {
+    let mut cursor = Cursor::new(data);
+    let mut fields = BTreeMap::new();
+    while (cursor.position() as usize) < data.len() {
+        let len = checked_len(read_u32(&mut cursor)?)?;
+        let mut field = vec![0; len];
+        cursor.read_exact(&mut field)?;
+        let Some(separator) = field.iter().position(|byte| *byte == b'=') else {
+            return Err(Error::Invalid("invalid rosbag header field".into()));
+        };
+        let key = std::str::from_utf8(&field[..separator])
+            .map_err(|_| Error::Invalid("invalid rosbag header key".into()))?
+            .to_owned();
+        if fields
+            .insert(key, field[separator + 1..].to_vec())
+            .is_some()
+        {
+            return Err(Error::Invalid("duplicate rosbag header field".into()));
+        }
+    }
+    Ok(fields)
+}
+
+fn header_string(header: &BTreeMap<String, Vec<u8>>, name: &str) -> Result<String, Error> {
+    field_string(header, name)
+}
+
+fn field_string(fields: &BTreeMap<String, Vec<u8>>, name: &str) -> Result<String, Error> {
+    let value = fields
+        .get(name)
+        .ok_or_else(|| Error::Invalid(format!("rosbag record is missing {name} field")))?;
+    String::from_utf8(value.clone())
+        .map_err(|_| Error::Invalid(format!("invalid rosbag {name} field")))
 }
 
 fn validate_bag_records<R: Read>(reader: &mut R) -> Result<(), Error> {
@@ -1200,11 +1409,97 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct CollectBagSink {
+        connections: Vec<RosbagConnection>,
+        messages: Vec<RosbagMessage>,
+    }
+
+    impl RosbagSink for CollectBagSink {
+        fn connection(&mut self, connection: RosbagConnection) -> Result<(), Error> {
+            self.connections.push(connection);
+            Ok(())
+        }
+
+        fn message(&mut self, message: RosbagMessage) -> Result<(), Error> {
+            self.messages.push(message);
+            Ok(())
+        }
+    }
+
     #[test]
     fn rejects_truncated_mcap() {
         let mut bytes = Cursor::new([MCAP_MAGIC, b"not complete"].concat());
         let outcome = validate_import(&mut bytes);
         assert!(matches!(outcome, Err(Error::TruncatedMcap)), "{outcome:?}");
+    }
+
+    #[test]
+    fn recovers_complete_records_before_a_truncated_mcap_tail() {
+        let mut writer = McapWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer
+            .schema(&Schema {
+                id: 1,
+                name: "example/Message".into(),
+                encoding: "ros1msg".into(),
+                data: b"uint8 value\n".to_vec(),
+            })
+            .expect("schema");
+        writer
+            .channel(&Channel {
+                id: 1,
+                schema_id: 1,
+                topic: "/example".into(),
+                message_encoding: "ros1".into(),
+                metadata: BTreeMap::new(),
+            })
+            .expect("channel");
+        writer
+            .message(&Message {
+                channel_id: 1,
+                sequence: 0,
+                log_time: 10,
+                publish_time: 10,
+                data: vec![1],
+            })
+            .expect("message");
+        let mut bytes = writer.finish_into().expect("finish").into_inner();
+        bytes.truncate(bytes.len() - 4);
+        let mut sink = CollectSink::default();
+        assert!(!read_mcap_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert_eq!(sink.messages.len(), 1);
+    }
+
+    #[test]
+    fn recovers_rosbag_messages_with_canonical_timestamps() {
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer
+            .connection(RosbagConnection {
+                id: 7,
+                topic: "/example".into(),
+                type_name: "example/Message".into(),
+                md5sum: "abc".into(),
+                message_definition: b"uint8 value\n".to_vec(),
+                caller_id: None,
+                latching: None,
+            })
+            .expect("connection");
+        writer
+            .message(&RosbagMessage {
+                connection_id: 7,
+                time: 1_700_000_000_123_456_789,
+                data: vec![3],
+            })
+            .expect("message");
+        let bytes = writer.finish_into().expect("finish").into_inner();
+        let mut sink = CollectBagSink::default();
+        assert!(!read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert_eq!(
+            sink.connections.len(),
+            2,
+            "index and chunk connection records"
+        );
+        assert_eq!(sink.messages[0].time, 1_700_000_000_123_456_789);
     }
 
     #[test]
