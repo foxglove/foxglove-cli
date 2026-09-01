@@ -14,7 +14,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | 3 | Read-only commands | Complete | Read command parity passes |
 | 4 | Auth, configuration, mutations, uploads/downloads | Complete | Mutation and transfer parity passes |
 | 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Complete | Format conformance passes |
-| 6 | Direct and JSON export | Not started | Direct byte and JSON parity passes |
+| 6 | Direct and JSON export | Complete | Direct byte and JSON parity passes |
 | 7 | Resumable export, reindex, merge | Not started | Resilient export conformance passes |
 | 8 | Six-platform prerelease and cutover | Not started | Release candidate is approved |
 
@@ -218,3 +218,19 @@ on 2026-08-29. The optimized macOS arm64 `rust/foxglove-rust` artifact is
   procedural macro pulled in only by `mcap 0.25.0`; no runtime code invokes it
   directly and RustSec provides no fixed version. Reassess this exception when
   upgrading `mcap`.
+
+## Phase 6 acceptance checklist
+
+- [x] `data export` builds the reviewed stream request, including source
+  selection, timestamp normalization, explicit compression, topic filtering,
+  replay settings, and JSON alias behavior.
+- [x] Direct MCAP and ROS 1 bag exports stream signed-link bytes to redirected
+  stdout, reject terminal binary output, and propagate Ctrl-C as exit 130.
+- [x] JSON exports request MCAP, decode ROS 1 and dynamic protobuf payloads,
+  and emit Go-compatible NDJSON with fixed nine-digit decimal timestamps.
+- [x] The Go/Rust local-fixture contract compares direct MCAP and bag bytes,
+  ROS 1 and protobuf JSON output, signed-link headers, validation, full option
+  serialization, and initial stream failures.
+- [x] `cargo fmt --check`, strict Clippy, Rust tests, release build,
+  `make compat`, and full Go tests pass. Non-JSON `--output-file` recovery,
+  reindexing, and merging are explicitly Phase 7 work.

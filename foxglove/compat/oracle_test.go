@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/foxglove/mcap/go/mcap"
 )
 
 const baselineVersion = "v1.0.33"
@@ -547,6 +549,132 @@ func TestRustPhase4MutationWireContract(t *testing.T) {
 			t.Fatalf("Rust upload status handling differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
 		}
 	})
+}
+
+func TestRustPhase6DirectExportContract(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+
+	streamPlans := func(payload []byte) []responsePlan {
+		t.Helper()
+		return []responsePlan{
+			{
+				Method:  http.MethodPost,
+				Path:    "/v1/data/stream",
+				Body:    `{"link":"{BASE_URL}/streamed-export"}`,
+				Headers: map[string]string{"Content-Type": "application/json"},
+			},
+			{Method: http.MethodGet, Path: "/streamed-export", Body: string(payload)},
+		}
+	}
+	readFixture := func(filename string) []byte {
+		t.Helper()
+		bytes, err := os.ReadFile(filepath.Join(moduleRoot, "testdata", filename))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bytes
+	}
+	protobufMcap := func() []byte {
+		var output bytes.Buffer
+		writer, err := mcap.NewWriter(&output, &mcap.WriterOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteHeader(&mcap.Header{}); err != nil {
+			t.Fatal(err)
+		}
+		// FileDescriptorSet for `syntax = "proto3"; package fixture;
+		// message Message { uint32 value = 1; }`.
+		descriptor := []byte{0x0a, 0x38, 0x0a, 0x0d, 'f', 'i', 'x', 't', 'u', 'r', 'e', '.', 'p', 'r', 'o', 't', 'o', 0x12, 0x07, 'f', 'i', 'x', 't', 'u', 'r', 'e', 0x22, 0x16, 0x0a, 0x07, 'M', 'e', 's', 's', 'a', 'g', 'e', 0x12, 0x0d, 0x0a, 0x05, 'v', 'a', 'l', 'u', 'e', 0x18, 0x01, 0x20, 0x01, 0x28, 0x0d, 0x62, 0x06, 'p', 'r', 'o', 't', 'o', '3'}
+		if err := writer.WriteSchema(&mcap.Schema{ID: 1, Name: "fixture.Message", Encoding: "protobuf", Data: descriptor}); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteChannel(&mcap.Channel{ID: 1, SchemaID: 1, Topic: "/fixture", MessageEncoding: "protobuf"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteMessage(&mcap.Message{ChannelID: 1, LogTime: 4_000_000_005, PublishTime: 6_000_000_007, Data: []byte{0x08, 0x2a}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return output.Bytes()
+	}
+
+	cases := []struct {
+		name    string
+		args    []string
+		payload []byte
+	}{
+		{"mcap", []string{"data", "export", "--recording-id", "rec_fixture", "--output-format", "mcap0"}, readFixture("gps.mcap")},
+		{"bag", []string{"data", "export", "--recording-id", "rec_fixture", "--output-format", "bag1"}, readFixture("gps.bag")},
+		{"json-ros1", []string{"data", "export", "--recording-id", "rec_fixture", "--json"}, readFixture("gps.mcap")},
+		{"json-protobuf", []string{"data", "export", "--recording-id", "rec_fixture", "--json"}, protobufMcap()},
+	}
+	for _, testCase := range cases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			fixtureCase := oracleCase{
+				Args:       testCase.args,
+				Plans:      streamPlans(testCase.payload),
+				HashStdout: true,
+			}
+			expected := runOracleCase(t, fixtureCase, fixture)
+			actual := runRustCaseWithFixture(t, fixtureCase, fixture)
+			if expected.ExitCode != actual.ExitCode || expected.Stdout != actual.Stdout || !reflect.DeepEqual(expected.Requests, actual.Requests) {
+				t.Fatalf("Rust Phase 6 direct export differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
+}
+
+func TestRustPhase6ExportErrorsAndOptions(t *testing.T) {
+	fixture := newFixtureServer()
+	defer fixture.close()
+	jsonHeaders := map[string]string{"Content-Type": "application/json"}
+	cases := []oracleCase{
+		{
+			ID:   "invalid-output-format",
+			Args: []string{"data", "export", "--recording-id", "rec_fixture", "--output-format", "mcap"},
+		},
+		{
+			ID:   "initial-stream-error",
+			Args: []string{"data", "export", "--recording-id", "rec_fixture"},
+			Plans: []responsePlan{{
+				Method:  http.MethodPost,
+				Path:    "/v1/data/stream",
+				Status:  http.StatusInternalServerError,
+				Body:    `{"message":"fixture export failure"}`,
+				Headers: jsonHeaders,
+			}},
+		},
+		{
+			ID: "all-stream-options",
+			Args: []string{
+				"data", "export", "--device-id", "dev_fixture",
+				"--start", "2024-01-02T03:04:05.123456789Z",
+				"--end", "2024-01-02T04:05:06.987654321Z",
+				"--output-format", "mcap0", "--compression", "zstd",
+				"--include-attachments", "--topics", "/one,,/two",
+				"--replay-policy", "lastPerChannel", "--replay-lookback-seconds", "2.5",
+			},
+			Plans: []responsePlan{
+				{Method: http.MethodPost, Path: "/v1/data/stream", Body: `{"link":"{BASE_URL}/empty-stream"}`, Headers: jsonHeaders},
+				{Method: http.MethodGet, Path: "/empty-stream"},
+			},
+		},
+	}
+	for _, testCase := range cases {
+		testCase := testCase
+		t.Run(testCase.ID, func(t *testing.T) {
+			expected := runOracleCase(t, testCase, fixture)
+			actual := runRustCaseWithFixture(t, testCase, fixture)
+			if expected.ExitCode != actual.ExitCode || expected.Stdout != actual.Stdout || expected.Stderr != actual.Stderr || !reflect.DeepEqual(expected.Requests, actual.Requests) {
+				t.Fatalf("Rust Phase 6 export contract differs\n--- expected\n%+v\n--- actual\n%+v", expected, actual)
+			}
+		})
+	}
 }
 
 func TestRustAuthLoginWireContract(t *testing.T) {

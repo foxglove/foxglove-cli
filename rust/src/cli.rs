@@ -122,7 +122,7 @@ pub fn run(
         | ["extensions", "publish" | "unpublish"]
         | ["attachments", "download"]
         | ["auth", "info"]
-        | ["data", "import"]
+        | ["data", "export" | "import"]
         | ["data", "imports", "add"]
         | ["sessions", "recordings", "add" | "remove"] => run_mutation(&path, leaf, prompt_writer),
         ["completion", shell] => completion_script(shell),
@@ -150,6 +150,7 @@ fn run_mutation(
     {
         ["events", "add"] => events::add_event(&runtime, matches),
         ["auth", "info"] => auth::info(&runtime),
+        ["data", "export"] => data::export_data(&runtime, matches, stdout_writer),
         ["attachments", "download"] => {
             attachments::download_attachment(&runtime, matches, stdout_writer)
         }

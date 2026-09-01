@@ -43,6 +43,8 @@ pub enum ApiError {
     Cancelled,
     /// A base URL or redirect URL was invalid.
     InvalidUrl(String),
+    /// A streamed export could not be converted to the requested local form.
+    Conversion(String),
     /// A streamed destination rejected a chunk.
     Write(io::Error),
     /// A signed storage upload did not return the required HTTP 200 response.
@@ -92,7 +94,7 @@ impl fmt::Display for ApiError {
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
             Self::Serialization(error) => error.fmt(formatter),
             Self::Cancelled => formatter.write_str("operation cancelled"),
-            Self::InvalidUrl(error) => formatter.write_str(error),
+            Self::InvalidUrl(error) | Self::Conversion(error) => formatter.write_str(error),
             Self::Write(error) => error.fmt(formatter),
             Self::UnexpectedUploadStatus(status) => {
                 write!(formatter, "unexpected {status} on upload request")
@@ -113,6 +115,7 @@ impl std::error::Error for ApiError {
             | Self::Response { .. }
             | Self::Cancelled
             | Self::InvalidUrl(_)
+            | Self::Conversion(_)
             | Self::UnexpectedUploadStatus(_) => None,
         }
     }
@@ -644,7 +647,17 @@ impl FoxgloveClient {
             .await?;
         let url = Url::parse(&link.link)
             .map_err(|error| ApiError::InvalidUrl(format!("invalid stream URL: {error}")))?;
-        let response = send_with_cancellation(self.http.get(url), cancellation).await?;
+        // The Go client uses the standard library's default user agent for a
+        // signed storage URL. It must not inherit our API bearer token or API
+        // user agent, but retaining this default header is part of the wire
+        // contract.
+        let response = send_with_cancellation(
+            self.http
+                .get(url)
+                .header(reqwest::header::USER_AGENT, "Go-http-client/1.1"),
+            cancellation,
+        )
+        .await?;
         ensure_success_response(response)
             .await
             .map(|response| ResponseStream {

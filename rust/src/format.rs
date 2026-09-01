@@ -22,6 +22,7 @@ use mcap::records::{self, Record};
 use mcap::sans_io::linear_reader::{LinearReadEvent, LinearReader, LinearReaderOptions};
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use serde_json::Value;
+use tokio::io::AsyncRead;
 
 pub const MCAP_MAGIC: &[u8] = mcap::MAGIC;
 pub const ROSBAG_MAGIC: &[u8] = b"#ROSBAG V2.0\n";
@@ -137,6 +138,46 @@ pub fn read_mcap<R: Read, S: RecordSink>(reader: &mut R, sink: &mut S) -> Result
         match event.map_err(map_mcap_error)? {
             LinearReadEvent::ReadRequest(length) => {
                 let read = reader.read(linear.insert(length)).map_err(Error::Io)?;
+                linear.notify_read(read);
+            }
+            LinearReadEvent::Record { opcode, data } => {
+                let record = mcap::parse_record(opcode, data).map_err(map_mcap_error)?;
+                if matches!(record, Record::DataEnd(_)) {
+                    in_data_section = false;
+                } else if in_data_section {
+                    emit_mcap_record(record, sink)?;
+                }
+            }
+        }
+    }
+}
+
+/// Asynchronously validate and emit an MCAP stream without retaining its
+/// contents in memory.
+///
+/// This is the counterpart to [`read_mcap`] for network-backed readers. The
+/// parser still processes records as soon as enough bytes arrive, while the
+/// async reader supplies additional input only when requested.
+pub async fn read_mcap_async<R: AsyncRead + Unpin, S: RecordSink>(
+    reader: &mut R,
+    sink: &mut S,
+) -> Result<(), Error> {
+    let options = LinearReaderOptions::default()
+        .with_check_finishes_after_end_magic(true)
+        .with_validate_chunk_crcs(true)
+        .with_validate_data_section_crc(true)
+        .with_record_length_limit(MAX_RECORD_LEN);
+    let mut linear = LinearReader::new_with_options(options);
+    let mut in_data_section = true;
+    loop {
+        let Some(event) = linear.next_event() else {
+            return Ok(());
+        };
+        match event.map_err(map_mcap_error)? {
+            LinearReadEvent::ReadRequest(length) => {
+                let read = tokio::io::AsyncReadExt::read(reader, linear.insert(length))
+                    .await
+                    .map_err(Error::Io)?;
                 linear.notify_read(read);
             }
             LinearReadEvent::Record { opcode, data } => {
@@ -354,8 +395,8 @@ impl Ros1Decoder {
         let mut flush = |name: &str, lines: &mut Vec<String>| -> Result<(), Error> {
             let mut fields = Vec::new();
             for line in lines.drain(..) {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') || line.contains('=') {
+                let line = line.split('#').next().unwrap_or_default().trim();
+                if line.is_empty() || line.contains('=') {
                     continue;
                 }
                 let mut parts = line.split_whitespace();
@@ -508,6 +549,14 @@ impl Ros1Decoder {
                     .definitions
                     .get(name)
                     .or_else(|| self.definitions.get(&full_name))
+                    .or_else(|| {
+                        self.definitions.iter().find_map(|(candidate, fields)| {
+                            candidate
+                                .rsplit_once('/')
+                                .is_some_and(|(_, short)| short == name)
+                                .then_some(fields)
+                        })
+                    })
                     .ok_or_else(|| Error::Invalid(format!("unknown ros1 message type: {name}")))?;
                 output.push(b'{');
                 for (index, field) in fields.iter().enumerate() {
@@ -607,6 +656,14 @@ impl Ros1Decoder {
                     .definitions
                     .get(name)
                     .or_else(|| self.definitions.get(&full_name))
+                    .or_else(|| {
+                        self.definitions.iter().find_map(|(candidate, fields)| {
+                            candidate
+                                .rsplit_once('/')
+                                .is_some_and(|(_, short)| short == name)
+                                .then_some(fields)
+                        })
+                    })
                     .ok_or_else(|| Error::Invalid(format!("unknown ros1 message type: {name}")))?;
                 let mut object = serde_json::Map::new();
                 for field in fields {
