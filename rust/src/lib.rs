@@ -11,6 +11,7 @@ mod devices;
 mod event_types;
 mod events;
 mod extensions;
+pub mod format;
 mod help;
 pub mod output;
 mod pending_imports;

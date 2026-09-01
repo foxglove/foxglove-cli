@@ -4,7 +4,6 @@
 use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use crate::api::UploadRequest;
@@ -200,34 +199,9 @@ pub(crate) fn import_from_edge(runtime: &Runtime, matches: &ArgMatches) -> Outco
     }
 }
 
-const MCAP_MAGIC: &[u8] = b"\x89MCAP0\r\n";
-const BAG_MAGIC: &[u8] = b"#ROSBAG V2.0\n";
-
 fn validate_import(path: &Path) -> Result<(), String> {
     let mut file = File::open(path).map_err(|error| error.to_string())?;
-    let mut magic = vec![0_u8; MCAP_MAGIC.len()];
-    file.read_exact(&mut magic)
-        .map_err(|error| format!("failed to read magic bytes: {error}"))?;
-    if magic == MCAP_MAGIC {
-        file.seek(SeekFrom::End(-8))
-            .map_err(|error| format!("failed to seek to file end: {error}"))?;
-        file.read_exact(&mut magic)
-            .map_err(|error| format!("failed to read trailing mcap magic bytes: {error}"))?;
-        if magic == MCAP_MAGIC {
-            return Ok(());
-        }
-        return Err("truncated mcap file".to_owned());
-    }
-    file.seek(SeekFrom::Start(0))
-        .map_err(|error| error.to_string())?;
-    let mut magic = vec![0_u8; BAG_MAGIC.len()];
-    file.read_exact(&mut magic)
-        .map_err(|error| format!("failed to read magic bytes: {error}"))?;
-    if magic == BAG_MAGIC {
-        Ok(())
-    } else {
-        Err("magic bytes do not match bag or mcap format".to_owned())
-    }
+    crate::format::validate_import(&mut file).map_err(|error| error.to_string())
 }
 
 pub(crate) fn import_file(runtime: &Runtime, matches: &ArgMatches) -> Outcome {

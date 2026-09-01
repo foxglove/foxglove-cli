@@ -13,7 +13,7 @@ passes every gate. Unlisted behavior changes are not permitted.
 | 2 | Async API client, errors, streaming, cancellation | Complete | Wire contract and cancellation tests pass |
 | 3 | Read-only commands | Complete | Read command parity passes |
 | 4 | Auth, configuration, mutations, uploads/downloads | Complete | Mutation and transfer parity passes |
-| 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Not started | Format conformance passes |
+| 5 | MCAP, ROS 1 bag, ROS 1 message, protobuf foundation | Complete | Format conformance passes |
 | 6 | Direct and JSON export | Not started | Direct byte and JSON parity passes |
 | 7 | Resumable export, reindex, merge | Not started | Resilient export conformance passes |
 | 8 | Six-platform prerelease and cutover | Not started | Release candidate is approved |
@@ -115,9 +115,9 @@ no Rust compatibility binary.
 | 2 | `tokio 1.53.1`; `default-features = false`; `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `signal`, `time` | Async execution, cancellable I/O, portable Ctrl-C handling, and device-code polling | A synchronous client; rejected because it cannot cancel active transfers or poll without blocking a worker. | Complete |
 | 2 | `tokio-util 0.7.19`; `default-features = false`; `io`, `rt` | `CancellationToken` and async-reader upload streams | In-tree cancellation primitives; rejected because token propagation and reader adaptation are easy to get subtly wrong. | Complete |
 | 2 | `time 0.3.47`; `default-features = false`; `formatting`, `parsing`, `serde` | ISO-8601/RFC3339 request timestamps | String-only timestamps; rejected because it would defer ordering and wire-format validation to each command. | Complete |
-| 5 | `mcap` | Official Foxglove MCAP reader/writer | To be evaluated during Phase 5 | Planned |
-| 5 | `prost`, `prost-reflect` | Dynamic protobuf-to-JSON conversion | To be evaluated during Phase 5 | Planned |
-| 5 | Pure-Rust LZ4 frame crate | ROS 1 bag chunk compatibility | To be evaluated during Phase 5 | Planned |
+| 5 | `mcap 0.25.0`; `default-features = false`; `lz4`, `zstd` | Official Foxglove MCAP reader/writer, including streaming chunk validation | Handwritten MCAP parser/writer; rejected because the official implementation already provides bounded streaming parsing and conformance coverage. | In progress |
+| 5 | `prost 0.14.1`; `default-features = false`; `std`; `prost-reflect 0.16.5`; `default-features = false`; `serde` | Dynamic protobuf descriptor/message decoding and canonical JSON conversion | Generated message types; rejected because MCAP schemas are dynamic. | In progress |
+| 5 | `lz4_flex 0.14.0`; `default-features = false`; `frame`, `safe-decode`, `safe-encode`, `std` | Pure-Rust ROS 1 bag LZ4-frame chunk compatibility | Native LZ4 bindings; rejected for a portable runtime dependency. | In progress |
 
 CSV, tables, progress display, temporary guards, completion templates, and
 Foxglove-specific errors remain in-tree unless implementation evidence shows
@@ -200,3 +200,21 @@ on 2026-08-29. The optimized macOS arm64 `rust/foxglove-rust` artifact is
   client's HTTP and file-safety behavior.
 - [x] Focused compatibility fixtures cover mutation, transfer, and login wire
   contracts, including device-code polling and persisted configuration.
+
+## Phase 5 acceptance checklist
+
+- [x] The format module provides bounded MCAP validation/record emission and
+  an ID-preserving MCAP writer for the export phases.
+- [x] ROS 1 bag validation accepts uncompressed and LZ4-frame chunks and
+  rejects unsupported compression without panicking.
+- [x] ROS 1 message and dynamic protobuf decoders are cached by MCAP schema ID
+  and cover the Phase 5 conformance corpus.
+- [x] The corpus compares semantic MCAP/bag content with the Go oracle,
+  including metadata, attachments, and malformed-input cases.
+- [x] `cargo fmt --check`, strict Clippy, Rust tests, `make compat`, full Go
+  tests, release build, and advisory review pass. `cargo audit` on 2026-09-01
+  found no vulnerabilities and one explicitly accepted warning for unmaintained
+  transitive crate `paste 1.0.15` (RUSTSEC-2024-0436). `paste` is a build-time
+  procedural macro pulled in only by `mcap 0.25.0`; no runtime code invokes it
+  directly and RustSec provides no fixed version. Reassess this exception when
+  upgrading `mcap`.
