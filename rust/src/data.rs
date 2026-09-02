@@ -268,12 +268,13 @@ async fn resumable_export_inner(
         }
         .await;
         drop(output);
-        // A failure before any bytes are received is an initial-download
-        // failure: do not manufacture an output file from an empty partial.
-        if let Err(error) = download {
-            if bytes == 0 {
-                return Err(error);
-            }
+        // A transport error after receiving bytes is a recoverable truncated
+        // download. Local write failures and cancellation must preserve the
+        // destination rather than being mistaken for a partial response.
+        match download {
+            Ok(()) => {}
+            Err(api::ApiError::Transport(_)) if bytes > 0 => {}
+            Err(error) => return Err(error),
         }
         let (complete, info) = reindex_partial(&path, &request.output_format).map_err(|error| {
             api::ApiError::Conversion(format!("failed to reindex partial export: {error}"))

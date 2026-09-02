@@ -156,7 +156,10 @@ async fn complete_login(
             if cancellation.is_cancelled() {
                 return Err("context canceled".to_owned());
             }
-            match client.token(&device_code.device_code).await {
+            match client
+                .token_with_cancellation(&device_code.device_code, &cancellation)
+                .await
+            {
                 Ok(token) => break Ok(token),
                 Err(error) if error.is_forbidden() => {
                     tokio::select! {

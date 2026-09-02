@@ -414,6 +414,21 @@ impl FoxgloveClient {
     ///
     /// Returns the mapped API, transport, or response-decoding error.
     pub async fn token(&self, device_code: &str) -> Result<String, ApiError> {
+        self.token_with_cancellation(device_code, &CancellationToken::new())
+            .await
+    }
+
+    /// Poll for an ID token, aborting the active HTTP request on cancellation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Cancelled`] when cancellation wins, or the mapped
+    /// API, transport, or response-decoding error.
+    pub async fn token_with_cancellation(
+        &self,
+        device_code: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<String, ApiError> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct TokenRequest<'a> {
@@ -432,10 +447,8 @@ impl FoxgloveClient {
                 client_id: &self.client_id,
                 device_code,
             })?);
-        let response = request
-            .send()
+        let response = send_with_cancellation(request, cancellation)
             .await
-            .map_err(ApiError::Transport)
             .map_err(|error| {
                 error.contextualize("token request failure", "failed to parse response body")
             })?;
