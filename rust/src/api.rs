@@ -707,11 +707,30 @@ impl FoxgloveClient {
     where
         R: AsyncRead + Send + 'static,
     {
+        self.upload_extension_with_cancellation(reader, &CancellationToken::new())
+            .await
+    }
+
+    /// Upload an extension package, cancelling the active HTTP request when
+    /// the supplied token is cancelled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Cancelled`] when cancellation wins, or the mapped
+    /// API or transport error.
+    pub async fn upload_extension_with_cancellation<R>(
+        &self,
+        reader: R,
+        cancellation: &CancellationToken,
+    ) -> Result<(), ApiError>
+    where
+        R: AsyncRead + Send + 'static,
+    {
         let request = self
             .request(Method::POST, "/v1/extension-upload")?
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
             .body(reqwest::Body::wrap_stream(ReaderStream::new(reader)));
-        let response = send_with_cancellation(request, &CancellationToken::new()).await?;
+        let response = send_with_cancellation(request, cancellation).await?;
         ensure_ok(response).await
     }
 

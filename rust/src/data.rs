@@ -106,8 +106,8 @@ impl Record for Coverage {
 
 /// Execute the Phase 6 single-request export path.
 ///
-/// Non-JSON `--output-file` exports deliberately remain in Phase 7 because
-/// they require recovery, reindexing, and atomic destination handling.
+/// Binary `--output-file` exports use recovery, reindexing, and atomic
+/// destination handling. JSON exports are rendered directly to their file.
 pub(crate) fn export_data(
     runtime: &Runtime,
     matches: &ArgMatches,
@@ -141,6 +141,23 @@ pub(crate) fn export_data(
         return Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n"));
     }
 
+    let mut output_file = if request.output_format == "json" {
+        let path = value(matches, "output-file");
+        if path.is_empty() {
+            None
+        } else {
+            match File::create(path) {
+                Ok(file) => Some(file),
+                Err(error) => return Outcome::failure(format!("Export failed: {error}\n")),
+            }
+        }
+    } else {
+        None
+    };
+    let output: &mut dyn Write = output_file
+        .as_mut()
+        .map_or(stdout, |file| file as &mut dyn Write);
+
     let result = crate::read_helpers::block_on(async {
         let cancellation = api::ctrl_c_cancellation_token();
         let mut stream_request = request.clone();
@@ -152,10 +169,10 @@ pub(crate) fn export_data(
             .stream_with_cancellation(&stream_request, &cancellation)
             .await?;
         if request.output_format == "json" {
-            render_mcap_json_stream(&mut stream, stdout).await
+            render_mcap_json_stream(&mut stream, output).await
         } else {
             while let Some(chunk) = stream.next_chunk().await? {
-                stdout.write_all(&chunk).map_err(api::ApiError::Write)?;
+                output.write_all(&chunk).map_err(api::ApiError::Write)?;
             }
             Ok(())
         }
@@ -216,6 +233,14 @@ struct ExportInfo {
     message_count: u64,
 }
 
+impl ExportInfo {
+    fn record(&mut self, time: u64) {
+        self.message_count += 1;
+        self.max_time = self.max_time.max(time);
+    }
+}
+
+#[derive(Clone)]
 struct PartialExport {
     path: PathBuf,
     info: ExportInfo,
@@ -276,9 +301,20 @@ async fn resumable_export_inner(
             Err(api::ApiError::Transport(_)) if bytes > 0 => {}
             Err(error) => return Err(error),
         }
-        let (complete, info) = reindex_partial(&path, &request.output_format).map_err(|error| {
-            api::ApiError::Conversion(format!("failed to reindex partial export: {error}"))
-        })?;
+        let reindex_path = path.clone();
+        let reindex_format = request.output_format.clone();
+        let (complete, info) =
+            tokio::task::spawn_blocking(move || reindex_partial(&reindex_path, &reindex_format))
+                .await
+                .map_err(|error| {
+                    api::ApiError::Conversion(format!("failed to join reindex task: {error}"))
+                })?
+                .map_err(|error| {
+                    api::ApiError::Conversion(format!("failed to reindex partial export: {error}"))
+                })?;
+        if cancellation.is_cancelled() {
+            return Err(api::ApiError::Cancelled);
+        }
         partials.push(PartialExport { path, info });
         if complete {
             break;
@@ -311,9 +347,20 @@ async fn resumable_export_inner(
     if partials.len() == 1 {
         fs::rename(&partials[0].path, &merged).map_err(api::ApiError::Write)?;
     } else {
-        merge_partials(&partials, &merged, &request.output_format).map_err(|error| {
+        let partials_to_merge = partials.clone();
+        let merge_format = request.output_format.clone();
+        let merge_output = merged.clone();
+        tokio::task::spawn_blocking(move || {
+            merge_partials(&partials_to_merge, &merge_output, &merge_format)
+        })
+        .await
+        .map_err(|error| api::ApiError::Conversion(format!("failed to join merge task: {error}")))?
+        .map_err(|error| {
             api::ApiError::Conversion(format!("failed to merge partial exports: {error}"))
         })?;
+        if cancellation.is_cancelled() {
+            return Err(api::ApiError::Cancelled);
+        }
     }
     fs::rename(&merged, destination).map_err(api::ApiError::Write)
 }
@@ -348,15 +395,8 @@ fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), Form
 }
 
 fn reindex_mcap(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
-    let mut input = File::open(path)?;
-    let mut info = McapInfoSink::default();
-    match crate::format::read_mcap(&mut input, &mut info) {
-        Ok(()) => return Ok((true, info.info)),
-        Err(FormatError::TruncatedMcap) => {}
-        Err(error) => return Err(error),
-    }
     let recovered = path.with_extension("reindexed");
-    input = File::open(path)?;
+    let mut input = File::open(path)?;
     let output = File::create(&recovered)?;
     let mut sink = McapFileSink {
         writer: McapWriter::new(output)?,
@@ -364,33 +404,12 @@ fn reindex_mcap(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
     };
     let complete = crate::format::read_mcap_recover(&mut input, &mut sink)?;
     sink.writer.finish()?;
-    fs::rename(recovered, path)?;
+    if complete {
+        fs::remove_file(recovered)?;
+    } else {
+        fs::rename(recovered, path)?;
+    }
     Ok((complete, sink.info))
-}
-
-#[derive(Default)]
-struct McapInfoSink {
-    info: ExportInfo,
-}
-
-impl RecordSink for McapInfoSink {
-    fn schema(&mut self, _: Schema) -> Result<(), FormatError> {
-        Ok(())
-    }
-    fn channel(&mut self, _: Channel) -> Result<(), FormatError> {
-        Ok(())
-    }
-    fn message(&mut self, message: Message) -> Result<(), FormatError> {
-        self.info.message_count += 1;
-        self.info.max_time = self.info.max_time.max(message.log_time);
-        Ok(())
-    }
-    fn metadata(&mut self, _: String, _: BTreeMap<String, String>) -> Result<(), FormatError> {
-        Ok(())
-    }
-    fn attachment(&mut self, _: Attachment) -> Result<(), FormatError> {
-        Ok(())
-    }
 }
 
 fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
@@ -402,10 +421,10 @@ fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
         info: ExportInfo::default(),
         connections: HashSet::new(),
     };
-    let _ = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
+    let complete = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
     sink.writer.finish()?;
     fs::rename(recovered, path)?;
-    Ok((false, sink.info))
+    Ok((complete, sink.info))
 }
 
 struct McapFileSink {
@@ -421,8 +440,7 @@ impl RecordSink for McapFileSink {
         self.writer.channel(&channel)
     }
     fn message(&mut self, message: Message) -> Result<(), FormatError> {
-        self.info.message_count += 1;
-        self.info.max_time = self.info.max_time.max(message.log_time);
+        self.info.record(message.log_time);
         self.writer.message(&message)
     }
     fn metadata(
@@ -451,8 +469,7 @@ impl RosbagSink for BagFileSink {
         self.writer.connection(connection)
     }
     fn message(&mut self, message: RosbagMessage) -> Result<(), FormatError> {
-        self.info.message_count += 1;
-        self.info.max_time = self.info.max_time.max(message.time);
+        self.info.record(message.time);
         self.writer.message(&message)
     }
 }
@@ -472,7 +489,10 @@ fn merge_partials(
 }
 
 fn scan_through(index: usize, partials: &[PartialExport]) -> u64 {
-    if index + 1 == partials.len() {
+    if partials[index + 1..]
+        .iter()
+        .all(|partial| partial.info.message_count == 0)
+    {
         partials[index].info.max_time
     } else {
         partials[index].info.max_time.saturating_sub(1)
@@ -900,17 +920,16 @@ pub(crate) fn import_file(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     let result = crate::read_helpers::block_on(async {
         let file = tokio::fs::File::open(path)
             .await
-            .map_err(|error| format!("failed to open input file: {error}"))?;
+            .map_err(api::ApiError::Write)?;
         let cancellation = crate::api::ctrl_c_cancellation_token();
         runtime
             .client
             .upload_with_cancellation(file, &request, &cancellation)
             .await
-            .map_err(|error| error.to_string())
     });
     match result {
         Ok(()) => Outcome::default(),
-        Err(error) if error == "operation cancelled" => Outcome {
+        Err(error) if error.is_cancelled() => Outcome {
             exit_code: 130,
             ..Outcome::default()
         },
@@ -970,5 +989,24 @@ mod tests {
             .expect("timestamp")
             .expect("value");
         assert_eq!(value.nanosecond(), 0);
+    }
+
+    #[test]
+    fn scan_through_keeps_the_last_non_empty_partial_boundary() {
+        let partials = vec![
+            PartialExport {
+                path: PathBuf::new(),
+                info: ExportInfo {
+                    max_time: 42,
+                    message_count: 1,
+                },
+            },
+            PartialExport {
+                path: PathBuf::new(),
+                info: ExportInfo::default(),
+            },
+        ];
+
+        assert_eq!(scan_through(0, &partials), 42);
     }
 }

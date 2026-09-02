@@ -94,7 +94,11 @@ pub(crate) fn download_attachment(
 ) -> Outcome {
     let id = crate::read_helpers::positional(matches, 0);
     let result = crate::read_helpers::block_on(async {
-        let mut response = runtime.client.attachment(&id).await?;
+        let cancellation = crate::api::ctrl_c_cancellation_token();
+        let mut response = runtime
+            .client
+            .attachment_with_cancellation(&id, &cancellation)
+            .await?;
         while let Some(chunk) = response.next_chunk().await? {
             stdout_writer
                 .write_all(&chunk)
@@ -104,6 +108,10 @@ pub(crate) fn download_attachment(
     });
     match result {
         Ok(()) => Outcome::default(),
+        Err(error) if error.is_cancelled() => Outcome {
+            exit_code: 130,
+            ..Outcome::default()
+        },
         Err(error) => Outcome::failure(format!("Failed to fetch attachment: {error}\n")),
     }
 }

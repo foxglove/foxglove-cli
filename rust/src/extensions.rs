@@ -109,9 +109,20 @@ pub(crate) fn publish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outc
     };
     let file = tokio::fs::File::from_std(file);
     let reader = ProgressReader::new(file, metadata.len());
-    match crate::read_helpers::block_on(runtime.client.upload_extension(reader)) {
+    let result = crate::read_helpers::block_on(async {
+        let cancellation = crate::api::ctrl_c_cancellation_token();
+        runtime
+            .client
+            .upload_extension_with_cancellation(reader, &cancellation)
+            .await
+    });
+    match result {
         Ok(()) => Outcome {
             stderr: b"Extension published\n".to_vec(),
+            ..Outcome::default()
+        },
+        Err(error) if error.is_cancelled() => Outcome {
+            exit_code: 130,
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Extension upload failed: {error}\n")),

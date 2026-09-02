@@ -781,12 +781,8 @@ fn parse_ros_type(source: &str) -> Result<RosType, Error> {
     })
 }
 fn json_float(value: f64) -> Result<Value, Error> {
-    if value.is_nan() {
-        Ok(Value::String("NaN".into()))
-    } else if value == f64::INFINITY {
-        Ok(Value::String("Infinity".into()))
-    } else if value == f64::NEG_INFINITY {
-        Ok(Value::String("-Infinity".into()))
+    if let Some(value) = json_float_sentinel(value) {
+        Ok(Value::String(value.into()))
     } else {
         serde_json::Number::from_f64(value)
             .map(Value::Number)
@@ -794,20 +790,24 @@ fn json_float(value: f64) -> Result<Value, Error> {
     }
 }
 fn write_json_float(value: f64, output: &mut Vec<u8>) -> Result<(), Error> {
-    if value.is_nan() {
-        return serde_json::to_writer(output, "NaN")
-            .map_err(|error| Error::Invalid(error.to_string()));
-    }
-    if value == f64::INFINITY {
-        return serde_json::to_writer(output, "Infinity")
-            .map_err(|error| Error::Invalid(error.to_string()));
-    }
-    if value == f64::NEG_INFINITY {
-        return serde_json::to_writer(output, "-Infinity")
+    if let Some(value) = json_float_sentinel(value) {
+        return serde_json::to_writer(output, value)
             .map_err(|error| Error::Invalid(error.to_string()));
     }
     output.extend_from_slice(value.to_string().as_bytes());
     Ok(())
+}
+
+fn json_float_sentinel(value: f64) -> Option<&'static str> {
+    if value.is_nan() {
+        Some("NaN")
+    } else if value == f64::INFINITY {
+        Some("Infinity")
+    } else if value == f64::NEG_INFINITY {
+        Some("-Infinity")
+    } else {
+        None
+    }
 }
 fn base64(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

@@ -540,7 +540,7 @@ fn configure_api_key(
     };
     let base_url = last_value(matches, "base-url")
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "https://api.foxglove.dev".to_owned());
+        .unwrap_or_else(|| crate::read_helpers::DEFAULT_BASE_URL.to_owned());
     config.set("auth_type", Value::Number(2.into()));
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(token));
