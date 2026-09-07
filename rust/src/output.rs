@@ -1,8 +1,7 @@
 //! Shared output-format parsing and deterministic renderers.
 
-use std::io::{self, Write};
-
 use serde::Serialize;
+use std::io::{self, Write};
 
 /// Supported list-command output formats.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -14,16 +13,13 @@ pub enum Format {
 }
 
 impl Format {
-    /// Resolve the `--format` value and deprecated `--json` alias.
+    /// Resolve the `--format` value.
     ///
     /// # Errors
     ///
-    /// Returns the compatible conflict or unknown-format message.
-    pub fn resolve(format: Option<&str>, json: bool) -> Result<Self, String> {
-        if json && format.is_some_and(|value| value != "json") {
-            return Err("Command failed. Output format conflict: --json, --format\n".to_owned());
-        }
-        match format.unwrap_or(if json { "json" } else { "table" }) {
+    /// Returns an unknown-format message when the value is unsupported.
+    pub fn resolve(format: Option<&str>) -> Result<Self, String> {
+        match format.unwrap_or("table") {
             "table" => Ok(Self::Table),
             "json" => Ok(Self::Json),
             "csv" => Ok(Self::Csv),
@@ -32,15 +28,13 @@ impl Format {
     }
 }
 
-/// Render a JSON value with the Go CLI's four-space indentation and final newline.
+/// Render a JSON value using `serde_json`'s normal compact representation.
 ///
 /// # Errors
 ///
 /// Returns any serialization or output-write error.
 pub fn render_json(writer: &mut dyn Write, value: &(impl Serialize + ?Sized)) -> io::Result<()> {
-    let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
-    let mut serializer = serde_json::Serializer::with_formatter(&mut *writer, formatter);
-    value.serialize(&mut serializer).map_err(io::Error::other)?;
+    serde_json::to_writer(&mut *writer, value).map_err(io::Error::other)?;
     writer.write_all(b"\n")
 }
 
@@ -54,21 +48,23 @@ pub fn render_csv(
     headers: &[&str],
     rows: &[Vec<String>],
 ) -> io::Result<()> {
-    write_csv_row(writer, headers.iter().copied())?;
+    let mut csv = csv::WriterBuilder::new()
+        .has_headers(false)
+        .from_writer(&mut *writer);
+    csv.write_record(headers).map_err(io::Error::other)?;
     for row in rows {
-        write_csv_row(writer, row.iter().map(String::as_str))?;
+        csv.write_record(row).map_err(io::Error::other)?;
     }
-    Ok(())
+    csv.flush().map_err(io::Error::other)
 }
 
-/// Render the Go CLI table layout for a known terminal width.
+/// Render a simple, pipe-delimited table.
 ///
 /// # Errors
 ///
 /// Returns invalid-row or output-write errors.
 pub fn render_table(
     writer: &mut dyn Write,
-    terminal_width: usize,
     headers: &[&str],
     rows: &[Vec<String>],
 ) -> io::Result<()> {
@@ -76,42 +72,27 @@ pub fn render_table(
         return writer.write_all(b"No records found\n");
     }
     validate_rows(headers, rows)?;
-    let widths = cell_widths(headers, rows);
-    let table_width = headers.len() + 1 + widths.iter().sum::<usize>();
-    if terminal_width < table_width {
-        render_hamburger(writer, terminal_width, headers, rows)
-    } else {
-        render_hotdog(writer, headers, rows, &widths)
+    writeln!(writer, "{}", headers.join(" | "))?;
+    writeln!(
+        writer,
+        "{}",
+        headers
+            .iter()
+            .map(|_| "---")
+            .collect::<Vec<_>>()
+            .join(" | ")
+    )?;
+    for row in rows {
+        writeln!(
+            writer,
+            "{}",
+            row.iter()
+                .map(|cell| cell.replace('|', "\\|").replace(['\r', '\n'], "\\n"))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        )?;
     }
-}
-
-fn write_csv_row<'a>(
-    writer: &mut dyn Write,
-    fields: impl IntoIterator<Item = &'a str>,
-) -> io::Result<()> {
-    let mut first = true;
-    for field in fields {
-        if !first {
-            writer.write_all(b",")?;
-        }
-        first = false;
-        if field
-            .bytes()
-            .any(|byte| matches!(byte, b',' | b'"' | b'\r' | b'\n'))
-        {
-            writer.write_all(b"\"")?;
-            for part in field.split_inclusive('"') {
-                writer.write_all(part.as_bytes())?;
-                if part.ends_with('"') {
-                    writer.write_all(b"\"")?;
-                }
-            }
-            writer.write_all(b"\"")?;
-        } else {
-            writer.write_all(field.as_bytes())?;
-        }
-    }
-    writer.write_all(b"\n")
+    Ok(())
 }
 
 fn validate_rows(headers: &[&str], rows: &[Vec<String>]) -> io::Result<()> {
@@ -124,107 +105,13 @@ fn validate_rows(headers: &[&str], rows: &[Vec<String>]) -> io::Result<()> {
     Ok(())
 }
 
-fn cell_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<usize> {
-    let mut widths = headers
-        .iter()
-        .map(|header| header.len() + 4)
-        .collect::<Vec<_>>();
-    for row in rows {
-        for (index, column) in row.iter().enumerate() {
-            widths[index] = widths[index].max(column.len() + 2);
-        }
-    }
-    for (width, header) in widths.iter_mut().zip(headers) {
-        if (*width - header.len()) % 2 == 1 {
-            *width += 1;
-        }
-    }
-    widths
-}
-
-fn render_hotdog(
-    writer: &mut dyn Write,
-    headers: &[&str],
-    rows: &[Vec<String>],
-    widths: &[usize],
-) -> io::Result<()> {
-    writer.write_all(b"|")?;
-    for (header, width) in headers.iter().zip(widths) {
-        let padding = (width - header.len()) / 2;
-        write!(
-            writer,
-            "{}{}{}|",
-            " ".repeat(padding),
-            header,
-            " ".repeat(padding)
-        )?;
-    }
-    writer.write_all(b"\n|")?;
-    for width in widths {
-        write!(writer, "{}|", "-".repeat(*width))?;
-    }
-    writer.write_all(b"\n")?;
-    for row in rows {
-        writer.write_all(b"|")?;
-        for (column, width) in row.iter().zip(widths) {
-            write!(writer, " {column}{}|", " ".repeat(width - column.len() - 1))?;
-        }
-        writer.write_all(b"\n")?;
-    }
-    Ok(())
-}
-
-fn render_hamburger(
-    writer: &mut dyn Write,
-    terminal_width: usize,
-    headers: &[&str],
-    rows: &[Vec<String>],
-) -> io::Result<()> {
-    let longest_record_header = format!("-[ RECORD {} ]", rows.len() + 1);
-    let header_width = headers
-        .iter()
-        .map(|header| header.len())
-        .max()
-        .unwrap_or_default()
-        .max(longest_record_header.len());
-    let record_width = rows
-        .iter()
-        .flatten()
-        .map(String::len)
-        .max()
-        .unwrap_or_default();
-    let right_extent = (record_width + 15).min(terminal_width.saturating_sub(header_width + 1));
-    let right_dashes = "-".repeat(right_extent);
-    for (index, row) in rows.iter().enumerate() {
-        let record_header = format!("-[ RECORD {} ]", index + 1);
-        writeln!(
-            writer,
-            "{}{}+{}",
-            record_header,
-            "-".repeat(header_width - record_header.len()),
-            right_dashes
-        )?;
-        for (header, column) in headers.iter().zip(row) {
-            writeln!(
-                writer,
-                "{header:<header_width$}| {column:<value_width$}",
-                value_width = right_extent.saturating_sub(1)
-            )?;
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::{render_csv, render_json, render_table, Format};
 
     #[test]
-    fn format_alias_conflicts_are_rejected() {
-        assert_eq!(
-            Format::resolve(Some("csv"), true),
-            Err("Command failed. Output format conflict: --json, --format\n".into())
-        );
+    fn parses_requested_format() {
+        assert_eq!(Format::resolve(Some("csv")), Ok(Format::Csv));
     }
 
     #[test]
@@ -242,25 +129,34 @@ mod tests {
     }
 
     #[test]
-    fn json_uses_four_spaces() {
+    fn json_uses_serde_json_output() {
         let mut output = Vec::new();
         render_json(&mut output, &vec![serde_json::json!({"id": "one"})]).unwrap();
-        assert_eq!(output, b"[\n    {\n        \"id\": \"one\"\n    }\n]\n");
+        assert_eq!(output, b"[{\"id\":\"one\"}]\n");
     }
 
     #[test]
-    fn table_matches_the_wide_go_layout() {
+    fn table_is_pipe_delimited() {
         let mut output = Vec::new();
         render_table(
             &mut output,
-            80,
             &["ID", "Name"],
             &[vec!["dev_1".into(), "Robot".into()]],
         )
         .unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            "|   ID   |  Name  |\n|--------|--------|\n| dev_1  | Robot  |\n"
+            "ID | Name\n--- | ---\ndev_1 | Robot\n"
+        );
+    }
+
+    #[test]
+    fn table_escapes_cell_delimiters_and_newlines() {
+        let mut output = Vec::new();
+        render_table(&mut output, &["Value"], &[vec!["left|right\nnext".into()]]).unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Value\n---\nleft\\|right\\nnext\n"
         );
     }
 }

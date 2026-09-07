@@ -21,10 +21,16 @@ Download the latest release for your OS and architecture:
 
 To install a specific release, see the [releases page](https://github.com/foxglove/foxglove-cli/releases).
 
-Alternatively, install the CLI tool from source (requires Go >= 1.21) – this will install it to `$GOPATH/bin`:
+Alternatively, build the Rust CLI from source. Rust 1.98.1 is pinned in
+`rust-toolchain.toml`; [rustup](https://rustup.rs/) installs it automatically
+when you run Cargo in this checkout:
 
     $ git clone git@github.com:foxglove/foxglove-cli.git
-    $ make install
+    $ make build
+    $ ./rust/target/release/foxglove-rust --help
+
+`make install` copies that source build to `foxglove` in Cargo's bin directory
+(`$CARGO_HOME/bin`, or `~/.cargo/bin` by default) on Unix-like systems.
 
 ## Getting started
 
@@ -230,29 +236,47 @@ $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 
 ## Shell autocompletion
 
-Certain shells (bash, zsh, fish, and PowerShell) support autocompletion for subcommands and certain parameters (like device IDs).
+Certain shells (bash, zsh, fish, and PowerShell) support generated
+autocompletion for commands, flags, and file paths.
 
 To enable this, consult your shell instructions under `$ foxglove completion <shell> -h`.
 
 ## Development
 
-To build and test locally
+The release CLI is the Rust implementation. Rust 1.98.1 is selected by
+`rust-toolchain.toml`; the full compatibility workflow also requires Go 1.25
+(from `foxglove/go.mod`). From the repository root:
 
 ```sh
-cd foxglove
-make build
-
-# run tests
-make test
-# or run the local version of the cli
-./foxglove --help
+# Formatting, linting, tests, and a locked optimized build
+make rust-fmt
+make rust-lint
+make rust-test
+make rust-doc
+make rust-audit # requires: cargo install cargo-audit --locked --version 0.22.2
+make rust-build
+./rust/target/release/foxglove-rust --help
 ```
 
-To release a new version
- 1. Draft a new [release](https://github.com/foxglove/foxglove-cli/releases)
- 2. Create a new tag via the UI following the `v1.0.31` format
- 3. Auto generate release notes and review them
- 4. Publish the release. An action will build the assets
+`make lint` runs the pinned Go and Rust linters, installing golangci-lint
+v2.12.2 into the active Go bin directory when necessary. `make test` runs the
+normal Rust and Go oracle suites. The compatibility suite
+builds both implementations and compares the Rust CLI with the v1.0.33 Go
+oracle; run it before changing behavior:
+
+```sh
+make compat
+# Run the loopback HTTP contracts when the local environment permits sockets.
+make rust-test-ignored
+```
+
+The Go implementation remains only as this compatibility oracle. It is not a
+release fallback. See [MIGRATION.md](MIGRATION.md) for accepted differences and
+[RELEASE.md](RELEASE.md) for the release-candidate checklist.
+
+To release a new version, create and publish a `v*` tag. GitHub Actions builds
+and smoke-tests six native Rust binaries, attaches SHA-256 checksums, and
+publishes the release after every required gate succeeds.
 
 ## Stay in touch
 

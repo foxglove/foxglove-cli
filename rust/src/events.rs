@@ -7,8 +7,8 @@ use serde_json::Value;
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add, add_str, compact_json, finish_list, last_value, parse_i64, query, sort_query, value,
-    DeviceSummary, Record, Runtime,
+    add, add_str, compact_json, finish_list, last_value, parse_i64, query, value, DeviceSummary,
+    Record, Runtime,
 };
 use crate::Outcome;
 
@@ -62,7 +62,11 @@ impl Record for Event {
         ]
     }
 }
-pub(crate) fn list_events(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_events(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     if let Some(values) = matches.get_many::<String>("query-field") {
         for field in values {
             if field != "metadata" && field != "properties" {
@@ -103,13 +107,13 @@ pub(crate) fn list_events(runtime: &Runtime, matches: &ArgMatches, format: Forma
         },
     );
     add_str(&mut query, "start", &value(matches, "start"));
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
         "Failed to list events",
         move |client| async move { client.get::<_, Vec<Event>>("/v1/events", &query).await },
     )
+    .await
 }
 
 #[derive(Serialize)]
@@ -128,7 +132,7 @@ struct CreateEventResponse {
     id: String,
 }
 
-pub(crate) fn add_event(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+pub(crate) async fn add_event(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     let mut metadata = std::collections::BTreeMap::new();
     if let Some(values) = matches.get_many::<String>("metadata") {
         for pair in values {
@@ -148,11 +152,11 @@ pub(crate) fn add_event(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
         metadata,
         start: value(matches, "start"),
     };
-    match crate::read_helpers::block_on(
-        runtime
-            .client
-            .post::<_, CreateEventResponse>("/v1/events", &request),
-    ) {
+    match runtime
+        .client
+        .post::<_, CreateEventResponse>("/v1/events", &request)
+        .await
+    {
         Ok(response) => Outcome {
             stderr: format!("Created event: {}\n", response.id).into_bytes(),
             ..Outcome::default()

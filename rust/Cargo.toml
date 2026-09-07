@@ -2,7 +2,7 @@
 name = "foxglove-rust"
 version = "1.0.33"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.98"
 license = "MIT"
 description = "Rust compatibility implementation of the Foxglove CLI"
 
@@ -16,7 +16,10 @@ path = "src/main.rs"
 compat-test = []
 
 [dependencies]
-clap = { version = "=4.6.4", default-features = false, features = ["error-context", "help", "std", "suggestions", "usage"] }
+base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
+clap = { version = "=4.6.4", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
+clap_complete = { version = "=4.6.9", default-features = false }
+csv = { version = "=1.4.0", default-features = false }
 lz4_flex = { version = "=0.14.0", default-features = false, features = ["frame", "safe-decode", "safe-encode", "std"] }
 mcap = { version = "=0.25.0", default-features = false, features = ["lz4", "zstd"] }
 prost = { version = "=0.14.1", default-features = false, features = ["std"] }

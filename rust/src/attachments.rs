@@ -7,9 +7,7 @@ use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 
 use crate::output::Format;
-use crate::read_helpers::{
-    add_str, finish_list, query, session_key_error, sort_query, value, Record, Runtime,
-};
+use crate::read_helpers::{add_str, finish_list, query, session_key_error, value, Record, Runtime};
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -62,7 +60,11 @@ impl Record for Attachment {
         ]
     }
 }
-pub(crate) fn list_attachments(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_attachments(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     let session_key = value(matches, "session-key");
     let project_id = value(matches, "project-id");
     if let Some(error) = session_key_error(matches, &project_id) {
@@ -74,7 +76,6 @@ pub(crate) fn list_attachments(runtime: &Runtime, matches: &ArgMatches, format: 
     add_str(&mut query, "recordingId", &value(matches, "recording-id"));
     add_str(&mut query, "sessionId", &value(matches, "session-id"));
     add_str(&mut query, "sessionKey", &session_key);
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
@@ -85,15 +86,16 @@ pub(crate) fn list_attachments(runtime: &Runtime, matches: &ArgMatches, format: 
                 .await
         },
     )
+    .await
 }
 
-pub(crate) fn download_attachment(
+pub(crate) async fn download_attachment(
     runtime: &Runtime,
     matches: &ArgMatches,
     stdout_writer: &mut dyn Write,
 ) -> Outcome {
-    let id = crate::read_helpers::positional(matches, 0);
-    let result = crate::read_helpers::block_on(async {
+    let id = crate::read_helpers::value(matches, "attachment-id");
+    let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
         let mut response = runtime
             .client
@@ -105,7 +107,8 @@ pub(crate) fn download_attachment(
                 .map_err(crate::api::ApiError::Write)?;
         }
         Ok::<(), crate::api::ApiError>(())
-    });
+    }
+    .await;
     match result {
         Ok(()) => Outcome::default(),
         Err(error) if error.is_cancelled() => Outcome {

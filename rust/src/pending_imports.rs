@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add, add_str, finish_list, parse_timestamp, query, session_key_error, sort_query, value,
-    ProjectFallback, Record, Runtime,
+    add, add_str, finish_list, parse_timestamp, query, session_key_error, value, ProjectFallback,
+    Record, Runtime,
 };
 use crate::Outcome;
 
@@ -76,7 +76,7 @@ impl Record for PendingImport {
     }
 }
 
-pub(crate) fn list_pending_imports(
+pub(crate) async fn list_pending_imports(
     runtime: &Runtime,
     matches: &ArgMatches,
     format: Format,
@@ -123,7 +123,6 @@ pub(crate) fn list_pending_imports(
         matches.get_flag("show-quarantined"),
     );
     add_str(&mut query, "updatedSince", &updated_since);
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
@@ -134,4 +133,5 @@ pub(crate) fn list_pending_imports(
                 .await
         },
     )
+    .await
 }

@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add, add_str, finish_list, parse_i64, parse_timestamp, query, session_key_error, sort_query,
-    value, ProjectFallback, Record, Runtime,
+    add, add_str, finish_list, parse_i64, parse_timestamp, query, session_key_error, value,
+    ProjectFallback, Record, Runtime,
 };
 use crate::Outcome;
 
@@ -47,7 +47,11 @@ impl Record for Topic {
         ]
     }
 }
-pub(crate) fn list_topics(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_topics(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     let source_flags = [
         "device-id",
         "device-name",
@@ -99,11 +103,11 @@ pub(crate) fn list_topics(runtime: &Runtime, matches: &ArgMatches, format: Forma
     add_str(&mut query, "sortBy", &value(matches, "sort-by"));
     add_str(&mut query, "sortOrder", &value(matches, "sort-order"));
     add_str(&mut query, "start", &start);
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
         "Failed to list topics",
         move |client| async move { client.get::<_, Vec<Topic>>("/v1/data/topics", &query).await },
     )
+    .await
 }

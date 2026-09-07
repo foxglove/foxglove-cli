@@ -666,14 +666,12 @@ impl FoxgloveClient {
             .await?;
         let url = Url::parse(&link.link)
             .map_err(|error| ApiError::InvalidUrl(format!("invalid stream URL: {error}")))?;
-        // The Go client uses the standard library's default user agent for a
-        // signed storage URL. It must not inherit our API bearer token or API
-        // user agent, but retaining this default header is part of the wire
-        // contract.
+        // Signed storage URLs must not inherit the API bearer token, but they
+        // use the same CLI identity as ordinary requests.
         let response = send_with_cancellation(
             self.http
                 .get(url)
-                .header(reqwest::header::USER_AGENT, "Go-http-client/1.1"),
+                .header(reqwest::header::USER_AGENT, &self.user_agent),
             cancellation,
         )
         .await?;
@@ -766,9 +764,8 @@ impl FoxgloveClient {
                 .put(url)
                 .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
                 // Signed storage links are followed outside the authenticated
-                // API client. The Go oracle uses the standard net/http user
-                // agent on this request.
-                .header(reqwest::header::USER_AGENT, "Go-http-client/1.1")
+                // API client, without its bearer token but with its identity.
+                .header(reqwest::header::USER_AGENT, &self.user_agent)
                 .body(body),
             cancellation,
         )
@@ -1257,6 +1254,7 @@ mod tests {
             let request = request_head(&mut stream).await.to_ascii_lowercase();
             assert!(request.contains("get /storage/fixture "));
             assert!(!request.contains("authorization:"));
+            assert!(request.contains("user-agent: foxglove-cli/test"));
             let body = b"fixture stream";
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",

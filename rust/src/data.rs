@@ -5,8 +5,11 @@ use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{IsTerminal, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 use time::format_description::well_known::Rfc3339;
 use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
 
@@ -17,66 +20,16 @@ use crate::format::{
 };
 use crate::output::Format;
 use crate::read_helpers::{
-    add, add_str, finish_list, parse_i64, parse_timestamp, query, session_key_error, sort_query,
-    value, DeviceSummary, ProjectFallback, Record, Runtime,
+    add, add_str, finish_list, parse_i64, parse_timestamp, query, session_key_error, value,
+    DeviceSummary, ProjectFallback, Record, Runtime,
 };
 use crate::Outcome;
-use tokio::io::{AsyncWriteExt, DuplexStream};
+use tokio::io::{AsyncRead, AsyncWriteExt, DuplexStream, ReadBuf};
 
 const BINARY_OUTPUT_TERMINAL_ERROR: &str =
     "Binary output may screw up your terminal. Please redirect to a pipe or file.";
+const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct Import {
-    id: String,
-    #[serde(rename = "deviceId")]
-    device_id: String,
-    filename: String,
-    #[serde(rename = "importTime")]
-    import_time: String,
-    start: String,
-    end: String,
-    #[serde(rename = "inputType")]
-    input_type: String,
-    #[serde(rename = "outputType")]
-    output_type: String,
-    #[serde(rename = "inputSize")]
-    input_size: i64,
-    #[serde(rename = "totalOutputSize")]
-    total_output_size: i64,
-}
-
-impl Record for Import {
-    fn headers() -> &'static [&'static str] {
-        &[
-            "Import ID",
-            "Device ID",
-            "Filename",
-            "Import Time",
-            "Start",
-            "End",
-            "Input Type",
-            "Output Type",
-            "Input Size",
-            "Total Output Size",
-        ]
-    }
-
-    fn fields(&self) -> Vec<String> {
-        vec![
-            self.id.clone(),
-            self.device_id.clone(),
-            self.filename.clone(),
-            self.import_time.clone(),
-            self.start.clone(),
-            self.end.clone(),
-            self.input_type.clone(),
-            self.output_type.clone(),
-            self.input_size.to_string(),
-            self.total_output_size.to_string(),
-        ]
-    }
-}
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Coverage {
     #[serde(rename = "deviceId")]
@@ -106,9 +59,9 @@ impl Record for Coverage {
 
 /// Execute the Phase 6 single-request export path.
 ///
-/// Binary `--output-file` exports use recovery, reindexing, and atomic
-/// destination handling. JSON exports are rendered directly to their file.
-pub(crate) fn export_data(
+/// Binary exports use recovery, reindexing, and atomic destination handling.
+/// JSON exports are likewise staged before replacing their destination.
+pub(crate) async fn export_data(
     runtime: &Runtime,
     matches: &ArgMatches,
     stdout: &mut dyn Write,
@@ -122,10 +75,12 @@ pub(crate) fn export_data(
     }
     if !value(matches, "output-file").is_empty() && request.output_format != "json" {
         let destination = PathBuf::from(value(matches, "output-file"));
-        return match crate::read_helpers::block_on(async {
+        return match async {
             let cancellation = api::ctrl_c_cancellation_token();
             resumable_export(runtime, request, &destination, &cancellation).await
-        }) {
+        }
+        .await
+        {
             Ok(()) => Outcome {
                 stderr: b"\n".to_vec(),
                 ..Outcome::default()
@@ -137,28 +92,27 @@ pub(crate) fn export_data(
             Err(error) => Outcome::failure(format!("Export failed: {error}\n")),
         };
     }
+    if request.output_format == "json" && !value(matches, "output-file").is_empty() {
+        let destination = PathBuf::from(value(matches, "output-file"));
+        return match async {
+            let cancellation = api::ctrl_c_cancellation_token();
+            staged_json_export(runtime, &request, &destination, &cancellation).await
+        }
+        .await
+        {
+            Ok(()) => Outcome::default(),
+            Err(api::ApiError::Cancelled) => Outcome {
+                exit_code: 130,
+                ..Outcome::default()
+            },
+            Err(error) => Outcome::failure(format!("Export failed: {error}\n")),
+        };
+    }
     if request.output_format != "json" && std::io::stdout().is_terminal() {
         return Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n"));
     }
 
-    let mut output_file = if request.output_format == "json" {
-        let path = value(matches, "output-file");
-        if path.is_empty() {
-            None
-        } else {
-            match File::create(path) {
-                Ok(file) => Some(file),
-                Err(error) => return Outcome::failure(format!("Export failed: {error}\n")),
-            }
-        }
-    } else {
-        None
-    };
-    let output: &mut dyn Write = output_file
-        .as_mut()
-        .map_or(stdout, |file| file as &mut dyn Write);
-
-    let result = crate::read_helpers::block_on(async {
+    let result = async {
         let cancellation = api::ctrl_c_cancellation_token();
         let mut stream_request = request.clone();
         if stream_request.output_format == "json" {
@@ -169,14 +123,22 @@ pub(crate) fn export_data(
             .stream_with_cancellation(&stream_request, &cancellation)
             .await?;
         if request.output_format == "json" {
-            render_mcap_json_stream(&mut stream, output).await
-        } else {
-            while let Some(chunk) = stream.next_chunk().await? {
-                output.write_all(&chunk).map_err(api::ApiError::Write)?;
+            if std::io::stdout().is_terminal() {
+                render_mcap_json_stream(&mut stream, stdout, &mut NoopProgress).await?;
+            } else {
+                let mut progress = ExportProgress::new();
+                render_mcap_json_stream(&mut stream, stdout, &mut progress).await?;
             }
-            Ok(())
+        } else {
+            let mut progress = ExportProgress::new();
+            while let Some(chunk) = stream.next_chunk().await? {
+                stdout.write_all(&chunk).map_err(api::ApiError::Write)?;
+                progress.advance(chunk.len());
+            }
         }
-    });
+        Ok(())
+    }
+    .await;
     match result {
         Ok(()) => Outcome::default(),
         Err(api::ApiError::Cancelled) => Outcome {
@@ -187,16 +149,49 @@ pub(crate) fn export_data(
     }
 }
 
+/// Render JSON to a private sibling staging directory. The old destination is
+/// left untouched when the request, conversion, cancellation, or local write
+/// fails.
+async fn staged_json_export(
+    runtime: &Runtime,
+    request: &StreamRequest,
+    destination: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), api::ApiError> {
+    let staging = create_export_staging(destination).map_err(api::ApiError::Write)?;
+    let staged = staging.join("complete");
+    let result = async {
+        let mut output = create_export_file(&staged).map_err(api::ApiError::Write)?;
+        let mut stream_request = request.clone();
+        stream_request.output_format = "mcap0".into();
+        let mut stream = runtime
+            .client
+            .stream_with_cancellation(&stream_request, cancellation)
+            .await?;
+        render_mcap_json_stream(&mut stream, &mut output, &mut NoopProgress).await?;
+        output.flush().map_err(api::ApiError::Write)?;
+        drop(output);
+        crate::config::replace_file(&staged, destination).map_err(api::ApiError::Write)
+    }
+    .await;
+    let _ = fs::remove_dir_all(staging);
+    result
+}
+
+/// Render an opt-in export request diagnostic while keeping normal command
+/// stderr unchanged.
+pub(crate) fn export_debug_request(matches: &ArgMatches) -> Option<String> {
+    stream_request(matches)
+        .ok()
+        .map(|request| format!("[DEBUG] exporting with request: {request:#?}\n"))
+}
+
 fn stream_request(matches: &ArgMatches) -> Result<StreamRequest, String> {
-    let output_format = if matches.get_flag("json") {
-        "json".to_owned()
+    let output_format_value = value(matches, "output-format");
+    let output_format = if output_format_value.is_empty() {
+        "mcap0".to_owned()
     } else {
-        let value = value(matches, "output-format");
-        if value.is_empty() {
-            "mcap0".to_owned()
-        } else {
-            value
-        }
+        output_format_value
     };
     let request = StreamRequest {
         recording_id: value(matches, "recording-id"),
@@ -273,14 +268,14 @@ async fn resumable_export_inner(
     let mut repeated_starts = 0_u8;
     loop {
         let path = staging.join(format!("export-{}", partials.len()));
-        let mut output = tokio::fs::File::create(&path)
-            .await
-            .map_err(api::ApiError::Write)?;
+        let mut output =
+            tokio::fs::File::from_std(create_export_file(&path).map_err(api::ApiError::Write)?);
         let mut stream = runtime
             .client
             .stream_with_cancellation(request, cancellation)
             .await?;
         let mut bytes = 0_u64;
+        let mut progress = ExportProgress::new();
         let download = async {
             while let Some(chunk) = stream.next_chunk().await? {
                 bytes += u64::try_from(chunk.len()).expect("chunk length fits u64");
@@ -288,6 +283,7 @@ async fn resumable_export_inner(
                     .write_all(&chunk)
                     .await
                     .map_err(api::ApiError::Write)?;
+                progress.advance(chunk.len());
             }
             output.flush().await.map_err(api::ApiError::Write)
         }
@@ -362,7 +358,7 @@ async fn resumable_export_inner(
             return Err(api::ApiError::Cancelled);
         }
     }
-    fs::rename(&merged, destination).map_err(api::ApiError::Write)
+    crate::config::replace_file(&merged, destination).map_err(api::ApiError::Write)
 }
 
 fn create_export_staging(destination: &Path) -> std::io::Result<PathBuf> {
@@ -372,7 +368,13 @@ fn create_export_staging(destination: &Path) -> std::io::Result<PathBuf> {
         .unwrap_or(Path::new("."));
     for attempt in 0..100_u32 {
         let path = parent.join(format!(".foxglove-export-{}-{attempt}", std::process::id()));
-        match fs::create_dir(&path) {
+        let mut builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        match builder.create(&path) {
             Ok(()) => return Ok(path),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error),
@@ -382,6 +384,19 @@ fn create_export_staging(destination: &Path) -> std::io::Result<PathBuf> {
         std::io::ErrorKind::AlreadyExists,
         "could not create export staging directory",
     ))
+}
+
+/// Staged exports may contain private recording data, so their mode must not
+/// depend on the caller's umask.
+fn create_export_file(path: &Path) -> io::Result<File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
 }
 
 fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
@@ -397,25 +412,28 @@ fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), Form
 fn reindex_mcap(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
     let recovered = path.with_extension("reindexed");
     let mut input = File::open(path)?;
-    let output = File::create(&recovered)?;
+    let output = create_export_file(&recovered)?;
     let mut sink = McapFileSink {
         writer: McapWriter::new(output)?,
         info: ExportInfo::default(),
     };
     let complete = crate::format::read_mcap_recover(&mut input, &mut sink)?;
     sink.writer.finish()?;
+    let info = sink.info;
+    drop(sink);
+    drop(input);
     if complete {
         fs::remove_file(recovered)?;
     } else {
-        fs::rename(recovered, path)?;
+        crate::config::replace_file(&recovered, path)?;
     }
-    Ok((complete, sink.info))
+    Ok((complete, info))
 }
 
 fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
     let recovered = path.with_extension("reindexed");
     let mut input = File::open(path)?;
-    let output = File::create(&recovered)?;
+    let output = create_export_file(&recovered)?;
     let mut sink = BagFileSink {
         writer: RosbagWriter::new(output)?,
         info: ExportInfo::default(),
@@ -423,8 +441,11 @@ fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
     };
     let complete = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
     sink.writer.finish()?;
-    fs::rename(recovered, path)?;
-    Ok((complete, sink.info))
+    let info = sink.info;
+    drop(sink);
+    drop(input);
+    crate::config::replace_file(&recovered, path)?;
+    Ok((complete, info))
 }
 
 struct McapFileSink {
@@ -500,7 +521,7 @@ fn scan_through(index: usize, partials: &[PartialExport]) -> u64 {
 }
 
 fn merge_mcap_partials(partials: &[PartialExport], output: &Path) -> Result<(), FormatError> {
-    let file = File::create(output)?;
+    let file = create_export_file(output)?;
     let mut sink = McapMergeSink {
         writer: McapWriter::new(file)?,
         schema_offset: 0,
@@ -575,7 +596,7 @@ impl RecordSink for McapMergeSink {
 }
 
 fn merge_bag_partials(partials: &[PartialExport], output: &Path) -> Result<(), FormatError> {
-    let file = File::create(output)?;
+    let file = create_export_file(output)?;
     let mut sink = BagMergeSink {
         writer: RosbagWriter::new(file)?,
         connection_offset: 0,
@@ -662,11 +683,13 @@ fn parse_export_timestamp(raw: &str, label: &str) -> Result<Option<OffsetDateTim
 async fn render_mcap_json_stream(
     stream: &mut api::ResponseStream,
     stdout: &mut dyn Write,
+    progress: &mut dyn DownloadProgress,
 ) -> Result<(), api::ApiError> {
     // The duplex buffer bounds memory use and provides backpressure: the
     // network reader only advances as the MCAP decoder consumes records.
     let (mut reader, mut writer) = tokio::io::duplex(64 * 1024);
-    let mut sink = JsonSink::new(stdout);
+    let mut output = ProgressWriter::new(stdout, progress);
+    let mut sink = JsonSink::new(&mut output);
     let download = async { copy_stream_to_duplex(stream, &mut writer).await };
     let convert = async {
         crate::format::read_mcap_async(&mut reader, &mut sink)
@@ -687,6 +710,31 @@ async fn copy_stream_to_duplex(
             .map_err(api::ApiError::Write)?;
     }
     writer.shutdown().await.map_err(api::ApiError::Write)
+}
+
+/// JSON progress measures emitted NDJSON bytes rather than the larger
+/// downloaded MCAP stream.
+struct ProgressWriter<'a> {
+    inner: &'a mut dyn Write,
+    progress: &'a mut dyn DownloadProgress,
+}
+
+impl<'a> ProgressWriter<'a> {
+    fn new(inner: &'a mut dyn Write, progress: &'a mut dyn DownloadProgress) -> Self {
+        Self { inner, progress }
+    }
+}
+
+impl Write for ProgressWriter<'_> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        let written = self.inner.write(buffer)?;
+        self.progress.advance(written);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 #[cfg(test)]
@@ -780,49 +828,11 @@ fn write_decimal_time(stdout: &mut dyn Write, value: u64) -> Result<(), FormatEr
     Ok(())
 }
 
-pub(crate) fn list_imports(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
-    let mut query = query();
-    let start = match parse_timestamp(&value(matches, "start"), "start") {
-        Ok(value) => value,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
-    };
-    let end = match parse_timestamp(&value(matches, "end"), "end") {
-        Ok(value) => value,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
-    };
-    let data_start = match parse_timestamp(&value(matches, "data-start"), "data start") {
-        Ok(value) => value,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
-    };
-    let data_end = match parse_timestamp(&value(matches, "data-end"), "data end") {
-        Ok(value) => value,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
-    };
-    add_str(&mut query, "dataEnd", &data_end);
-    add_str(&mut query, "dataStart", &data_start);
-    add_str(&mut query, "deviceId", &value(matches, "device-id"));
-    add(
-        &mut query,
-        "includeDeleted",
-        "true",
-        matches.get_flag("include-deleted"),
-    );
-    add_str(&mut query, "end", &end);
-    add_str(&mut query, "start", &start);
-    sort_query(&mut query);
-    finish_list(
-        runtime,
-        format,
-        "Failed to list imports",
-        move |client| async move {
-            client
-                .get::<_, Vec<Import>>("/v1/data/imports", &query)
-                .await
-        },
-    )
-}
-
-pub(crate) fn list_coverage(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_coverage(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     if let Some(error) = session_key_error(matches, &project_id) {
         return Outcome::failure(error);
@@ -855,7 +865,6 @@ pub(crate) fn list_coverage(runtime: &Runtime, matches: &ArgMatches, format: For
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
     add(&mut query, "tolerance", tolerance, tolerance != 0);
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
@@ -866,6 +875,7 @@ pub(crate) fn list_coverage(runtime: &Runtime, matches: &ArgMatches, format: For
                 .await
         },
     )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -877,12 +887,13 @@ struct ImportFromEdgeResponse {
 #[derive(Serialize)]
 struct EmptyRequest {}
 
-pub(crate) fn import_from_edge(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+pub(crate) async fn import_from_edge(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     let id = value(matches, "edge-recording-id");
-    match crate::read_helpers::block_on(runtime.client.post::<_, ImportFromEdgeResponse>(
-        &format!("/v1/recordings/{id}/import"),
-        &EmptyRequest {},
-    )) {
+    match runtime
+        .client
+        .post::<_, ImportFromEdgeResponse>(&format!("/v1/recordings/{id}/import"), &EmptyRequest {})
+        .await
+    {
         Ok(_) => Outcome::default(),
         Err(error) => Outcome::failure(format!("Failed to import edge recording: {error}\n")),
     }
@@ -893,8 +904,8 @@ fn validate_import(path: &Path) -> Result<(), String> {
     crate::format::validate_import(&mut file).map_err(|error| error.to_string())
 }
 
-pub(crate) fn import_file(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let filename = crate::read_helpers::positional(matches, 0);
+pub(crate) async fn import_file(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let filename = crate::read_helpers::value(matches, "file");
     let path = Path::new(&filename);
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     if let Some(error) = session_key_error(matches, &project_id) {
@@ -917,16 +928,25 @@ pub(crate) fn import_file(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
         session_id: value(matches, "session-id"),
         session_key: value(matches, "session-key"),
     };
-    let result = crate::read_helpers::block_on(async {
-        let file = tokio::fs::File::open(path)
-            .await
-            .map_err(api::ApiError::Write)?;
+    let input = match File::open(path) {
+        Ok(file) => file,
+        Err(error) => return Outcome::failure(format!("Failed to import {filename}: {error}\n")),
+    };
+    let total = match input.metadata() {
+        Ok(metadata) => metadata.len(),
+        Err(error) => return Outcome::failure(format!("Failed to import {filename}: {error}\n")),
+    };
+    let result = async {
+        // Keep stdout reserved for command output. Because the progress reader
+        // is the HTTP body, cancellation naturally stops reporting as well.
+        let file = UploadProgressReader::new(tokio::fs::File::from_std(input), total);
         let cancellation = crate::api::ctrl_c_cancellation_token();
         runtime
             .client
             .upload_with_cancellation(file, &request, &cancellation)
             .await
-    });
+    }
+    .await;
     match result {
         Ok(()) => Outcome::default(),
         Err(error) if error.is_cancelled() => Outcome {
@@ -937,15 +957,242 @@ pub(crate) fn import_file(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     }
 }
 
+/// A small stderr-only progress reader. Because it wraps the HTTP body, its
+/// byte count is exactly the amount the client has requested from the file.
+pub(crate) struct UploadProgressReader<R, W: Write> {
+    inner: R,
+    total: u64,
+    uploaded: u64,
+    finished: bool,
+    last_report: Instant,
+    writer: Option<W>,
+}
+
+impl<R> UploadProgressReader<R, io::Stderr> {
+    pub(crate) fn new(inner: R, total: u64) -> Self {
+        Self::new_with_writer(inner, total, io::stderr())
+    }
+}
+
+impl<R, W: Write> UploadProgressReader<R, W> {
+    fn new_with_writer(inner: R, total: u64, writer: W) -> Self {
+        Self {
+            inner,
+            total,
+            uploaded: 0,
+            finished: false,
+            last_report: Instant::now(),
+            writer: Some(writer),
+        }
+    }
+
+    fn report(&mut self, newline: bool) {
+        if let Some(writer) = self.writer.as_mut() {
+            let percent = self.uploaded.saturating_mul(100) / self.total.max(1);
+            let _ = write!(
+                writer,
+                "\ruploading: {}/{} bytes ({percent}%)",
+                self.uploaded, self.total
+            );
+            if newline {
+                let _ = writeln!(writer);
+            }
+        }
+        self.last_report = Instant::now();
+    }
+
+    fn finish(&mut self) {
+        if !self.finished {
+            self.finished = true;
+            if self.total != 0 {
+                self.report(true);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn into_writer(mut self) -> W {
+        self.finish();
+        self.writer.take().expect("progress writer is present")
+    }
+}
+
+impl<R: AsyncRead + Unpin, W: Write + Unpin> AsyncRead for UploadProgressReader<R, W> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        let before = buffer.filled().len();
+        match Pin::new(&mut this.inner).poll_read(context, buffer) {
+            Poll::Ready(Ok(())) => {
+                let read = buffer.filled().len().saturating_sub(before);
+                this.uploaded = this.uploaded.saturating_add(read as u64);
+                if this.uploaded >= this.total || read == 0 {
+                    this.finish();
+                } else if Instant::now().saturating_duration_since(this.last_report)
+                    >= PROGRESS_REPORT_INTERVAL
+                {
+                    this.report(false);
+                }
+                Poll::Ready(Ok(()))
+            }
+            pending => pending,
+        }
+    }
+}
+
+impl<R, W: Write> Drop for UploadProgressReader<R, W> {
+    fn drop(&mut self) {
+        // Close the progress line on every return path, including failures and
+        // cancellation where reqwest stops reading before EOF.
+        self.finish();
+    }
+}
+
+/// Stderr progress for downloads with no known total.
+struct ExportProgress<W: Write> {
+    downloaded: u64,
+    last_report: Instant,
+    writer: Option<W>,
+}
+
+trait DownloadProgress {
+    fn advance(&mut self, bytes: usize);
+}
+
+struct NoopProgress;
+
+impl DownloadProgress for NoopProgress {
+    fn advance(&mut self, _bytes: usize) {}
+}
+
+impl ExportProgress<io::Stderr> {
+    fn new() -> Self {
+        Self::new_with_writer(io::stderr())
+    }
+}
+
+impl<W: Write> ExportProgress<W> {
+    fn new_with_writer(writer: W) -> Self {
+        Self {
+            downloaded: 0,
+            last_report: Instant::now(),
+            writer: Some(writer),
+        }
+    }
+
+    fn advance(&mut self, bytes: usize) {
+        self.downloaded = self.downloaded.saturating_add(bytes as u64);
+        if Instant::now().saturating_duration_since(self.last_report) >= PROGRESS_REPORT_INTERVAL {
+            self.report();
+        }
+    }
+
+    fn report(&mut self) {
+        if let Some(writer) = self.writer.as_mut() {
+            let _ = write!(writer, "\rexporting: {} bytes", self.downloaded);
+        }
+        self.last_report = Instant::now();
+    }
+
+    fn finish(&mut self) {
+        if self.downloaded == 0 {
+            return;
+        }
+        if let Some(writer) = self.writer.as_mut() {
+            let _ = writeln!(writer, "\rexporting: {} bytes", self.downloaded);
+        }
+        self.downloaded = 0;
+    }
+
+    #[cfg(test)]
+    fn into_writer(mut self) -> W {
+        self.finish();
+        self.writer.take().expect("progress writer is present")
+    }
+}
+
+impl<W: Write> Drop for ExportProgress<W> {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
+impl<W: Write> DownloadProgress for ExportProgress<W> {
+    fn advance(&mut self, bytes: usize) {
+        Self::advance(self, bytes);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_progress_reports_actual_bytes_and_completes_once() {
+        let mut reader = UploadProgressReader::new_with_writer((), 1_024, Vec::new());
+        assert!(reader.writer.as_ref().expect("writer").is_empty());
+        reader.uploaded = 512;
+        reader.last_report = Instant::now()
+            .checked_sub(PROGRESS_REPORT_INTERVAL)
+            .expect("test instant supports 100ms subtraction");
+        reader.report(false);
+        reader.finish();
+        reader.finish();
+
+        let output = String::from_utf8(reader.into_writer()).expect("utf8 progress");
+        assert!(output.contains("uploading: 512/1024 bytes (50%)"));
+        assert_eq!(output.matches("uploading: 512/1024 bytes (50%)").count(), 2);
+        assert_eq!(output.matches('\n').count(), 1);
+    }
+
+    #[test]
+    fn upload_progress_finishes_on_final_read_without_duplicate_drop_line() {
+        use tokio::io::AsyncReadExt;
+
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        let mut reader =
+            UploadProgressReader::new_with_writer(Cursor::new(vec![1_u8, 2, 3]), 3, Vec::new());
+        let mut data = Vec::new();
+        runtime
+            .block_on(reader.read_to_end(&mut data))
+            .expect("read input");
+        assert_eq!(data, vec![1, 2, 3]);
+
+        let output = String::from_utf8(reader.into_writer()).expect("utf8 progress");
+        assert!(output.contains("uploading: 3/3 bytes (100%)"));
+        assert_eq!(output.matches('\n').count(), 1);
+    }
+
+    #[test]
+    fn upload_progress_zero_size_is_quiet() {
+        let reader = UploadProgressReader::new_with_writer((), 0, Vec::new());
+        let output = String::from_utf8(reader.into_writer()).expect("utf8 progress");
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn export_progress_reports_downloaded_bytes() {
+        let mut progress = ExportProgress::new_with_writer(Vec::new());
+        progress.advance(1_024);
+        assert!(progress.writer.as_ref().expect("writer").is_empty());
+        progress.last_report = Instant::now()
+            .checked_sub(PROGRESS_REPORT_INTERVAL)
+            .expect("test instant supports 100ms subtraction");
+        progress.advance(1);
+
+        let output = String::from_utf8(progress.into_writer()).expect("utf8 progress");
+        assert!(output.contains("exporting: 1025 bytes"));
+        assert_eq!(output.matches('\n').count(), 1);
+    }
     use std::io::Cursor;
 
     use crate::format::McapWriter;
 
     #[test]
-    fn renders_ros1_mcap_as_go_compatible_ndjson() {
+    fn renders_ros1_mcap_as_ndjson() {
         let mut writer = McapWriter::new(Cursor::new(Vec::new())).expect("writer");
         writer
             .schema(&Schema {
@@ -1008,5 +1255,81 @@ mod tests {
         ];
 
         assert_eq!(scan_through(0, &partials), 42);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staged_export_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory =
+            std::env::temp_dir().join(format!("foxglove-rust-export-test-{}", std::process::id()));
+        fs::create_dir_all(&directory).expect("temp directory");
+        let path = directory.join("export");
+        let file = create_export_file(&path).expect("staged file");
+        drop(file);
+        assert_eq!(
+            fs::metadata(path).expect("metadata").permissions().mode() & 0o777,
+            0o600
+        );
+        fs::remove_dir_all(directory).expect("remove temp directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_directory_and_reindexed_export_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = std::env::temp_dir().join(format!(
+            "foxglove-rust-reindex-permissions-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).expect("test directory");
+        let destination = directory.join("output.bag");
+        let staging = create_export_staging(&destination).expect("staging directory");
+        assert_eq!(
+            fs::metadata(&staging)
+                .expect("staging metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+
+        let partial = staging.join("partial.bag");
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("bag writer");
+        writer
+            .connection(RosbagConnection {
+                id: 0,
+                topic: "/example".into(),
+                type_name: "example/Message".into(),
+                md5sum: "fixture".into(),
+                message_definition: Vec::new(),
+                caller_id: None,
+                latching: None,
+            })
+            .expect("connection");
+        writer
+            .message(&RosbagMessage {
+                connection_id: 0,
+                time: 1,
+                data: vec![1],
+            })
+            .expect("message");
+        let bytes = writer.finish_into().expect("finish bag").into_inner();
+        fs::write(&partial, bytes).expect("partial bag");
+        fs::set_permissions(&partial, fs::Permissions::from_mode(0o644))
+            .expect("make regression observable");
+
+        reindex_bag(&partial).expect("reindex bag");
+        assert_eq!(
+            fs::metadata(&partial)
+                .expect("reindexed metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        fs::remove_dir_all(directory).expect("remove test directory");
     }
 }

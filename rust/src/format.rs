@@ -13,10 +13,11 @@
 //! This module deliberately has no CLI entrypoint.  It validates import files today and
 //! exposes the decoded record model that direct export and recovery will use later.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 
+use base64::Engine;
 use lz4_flex::frame::FrameDecoder;
 use mcap::records::{self, Record};
 use mcap::sans_io::linear_reader::{LinearReadEvent, LinearReader, LinearReaderOptions};
@@ -27,6 +28,10 @@ use tokio::io::AsyncRead;
 pub const MCAP_MAGIC: &[u8] = mcap::MAGIC;
 pub const ROSBAG_MAGIC: &[u8] = b"#ROSBAG V2.0\n";
 const MAX_RECORD_LEN: usize = 64 * 1024 * 1024;
+// Keep both the chunk payload and its per-connection index in bounded memory. A
+// single record can exceed this target (ROS bags cannot split a record), but
+// ordinary exports never accumulate an unbounded number of records in a chunk.
+const ROSBAG_CHUNK_TARGET_SIZE: usize = 768 * 1024;
 
 #[derive(Debug)]
 pub enum Error {
@@ -409,7 +414,7 @@ impl ProtobufDecoder {
 }
 
 /// A compiled ROS 1 message definition. `transcode_json` preserves ROS's binary
-/// field order and emits the same JSON representation used by the Go CLI.
+/// field order and renders values according to their declared ROS types.
 #[derive(Clone, Debug)]
 pub struct Ros1Decoder {
     root: RosType,
@@ -534,15 +539,30 @@ impl Ros1Decoder {
                 1 => output.extend_from_slice(b"true"),
                 _ => return Err(Error::Invalid("invalid ros1 bool".into())),
             },
-            "int8" | "uint8" | "byte" | "char" => {
+            "int8" => output.extend_from_slice(
+                i8::from_le_bytes(scalar(1)?.try_into().expect("size"))
+                    .to_string()
+                    .as_bytes(),
+            ),
+            "uint8" | "byte" | "char" => {
                 output.extend_from_slice(scalar(1)?[0].to_string().as_bytes());
             }
-            "int16" | "uint16" => output.extend_from_slice(
+            "int16" => output.extend_from_slice(
+                i16::from_le_bytes(scalar(2)?.try_into().expect("size"))
+                    .to_string()
+                    .as_bytes(),
+            ),
+            "uint16" => output.extend_from_slice(
                 u16::from_le_bytes(scalar(2)?.try_into().expect("size"))
                     .to_string()
                     .as_bytes(),
             ),
-            "int32" | "uint32" => output.extend_from_slice(
+            "int32" => output.extend_from_slice(
+                i32::from_le_bytes(scalar(4)?.try_into().expect("size"))
+                    .to_string()
+                    .as_bytes(),
+            ),
+            "uint32" => output.extend_from_slice(
                 u32::from_le_bytes(scalar(4)?.try_into().expect("size"))
                     .to_string()
                     .as_bytes(),
@@ -577,10 +597,25 @@ impl Ros1Decoder {
                 serde_json::to_writer(output, &String::from_utf8_lossy(&bytes))
                     .map_err(|error| Error::Invalid(error.to_string()))?;
             }
-            "time" | "duration" => {
+            "time" => {
                 let secs = read_u32(input)?;
                 let nanos = read_u32(input)?;
                 output.extend_from_slice(format!("{secs}.{nanos:09}").as_bytes());
+            }
+            "duration" => {
+                let secs = i32::from_le_bytes(scalar(4)?.try_into().expect("size"));
+                let nanos = i32::from_le_bytes(scalar(4)?.try_into().expect("size"));
+                let total_nanos = i64::from(secs) * 1_000_000_000 + i64::from(nanos);
+                let sign = if total_nanos < 0 { "-" } else { "" };
+                let magnitude = total_nanos.unsigned_abs();
+                output.extend_from_slice(
+                    format!(
+                        "{sign}{}.{:09}",
+                        magnitude / 1_000_000_000,
+                        magnitude % 1_000_000_000
+                    )
+                    .as_bytes(),
+                );
             }
             name => {
                 let full_name = if name.contains('/') {
@@ -616,106 +651,6 @@ impl Ros1Decoder {
         }
         Ok(())
     }
-
-    #[allow(dead_code)]
-    fn read_type(&self, ty: &RosType, input: &mut Cursor<&[u8]>) -> Result<Value, Error> {
-        if let Some(array) = ty.array {
-            let count = match array {
-                Some(count) => count,
-                None => read_u32(input)? as usize,
-            };
-            if count > MAX_RECORD_LEN {
-                return Err(Error::Invalid("ros1 array exceeds configured limit".into()));
-            }
-            if ty.name == "uint8" || ty.name == "byte" || ty.name == "char" {
-                let mut bytes = vec![0; count];
-                input.read_exact(&mut bytes)?;
-                return Ok(Value::String(base64(&bytes)));
-            }
-            let item = RosType {
-                name: ty.name.clone(),
-                array: None,
-            };
-            return (0..count)
-                .map(|_| self.read_type(&item, input))
-                .collect::<Result<Vec<_>, _>>()
-                .map(Value::Array);
-        }
-        let mut scalar = |size: usize| -> Result<Vec<u8>, Error> {
-            let mut bytes = vec![0; size];
-            input.read_exact(&mut bytes)?;
-            Ok(bytes)
-        };
-        let number = |number: serde_json::Number| Ok(Value::Number(number));
-        match ty.name.as_str() {
-            "bool" => match scalar(1)?[0] {
-                0 => Ok(Value::Bool(false)),
-                1 => Ok(Value::Bool(true)),
-                _ => Err(Error::Invalid("invalid ros1 bool".into())),
-            },
-            // Preserve the v1.0.33 Go transcoder's historic rendering of signed
-            // integer fields (it reads these values as unsigned little-endian).
-            "int8" | "uint8" | "byte" | "char" => number(scalar(1)?[0].into()),
-            "int16" | "uint16" => {
-                number(u16::from_le_bytes(scalar(2)?.try_into().expect("size")).into())
-            }
-            "int32" | "uint32" => {
-                number(u32::from_le_bytes(scalar(4)?.try_into().expect("size")).into())
-            }
-            "int64" => number(i64::from_le_bytes(scalar(8)?.try_into().expect("size")).into()),
-            "uint64" => Ok(Value::String(
-                u64::from_le_bytes(scalar(8)?.try_into().expect("size")).to_string(),
-            )),
-            "float32" => {
-                json_float(f32::from_le_bytes(scalar(4)?.try_into().expect("size")) as f64)
-            }
-            "float64" => json_float(f64::from_le_bytes(scalar(8)?.try_into().expect("size"))),
-            "string" => {
-                let length = read_u32(input)? as usize;
-                if length > MAX_RECORD_LEN {
-                    return Err(Error::Invalid(
-                        "ros1 string exceeds configured limit".into(),
-                    ));
-                }
-                let mut bytes = vec![0; length];
-                input.read_exact(&mut bytes)?;
-                Ok(Value::String(String::from_utf8_lossy(&bytes).into_owned()))
-            }
-            "time" | "duration" => {
-                let secs = read_u32(input)?;
-                let nanos = read_u32(input)?;
-                Ok(Value::Number(
-                    serde_json::Number::from_f64(secs as f64 + nanos as f64 / 1_000_000_000.0)
-                        .expect("finite"),
-                ))
-            }
-            name => {
-                let full_name = if name.contains('/') {
-                    name.to_owned()
-                } else {
-                    format!("{}/{}", self.package, name)
-                };
-                let fields = self
-                    .definitions
-                    .get(name)
-                    .or_else(|| self.definitions.get(&full_name))
-                    .or_else(|| {
-                        self.definitions.iter().find_map(|(candidate, fields)| {
-                            candidate
-                                .rsplit_once('/')
-                                .is_some_and(|(_, short)| short == name)
-                                .then_some(fields)
-                        })
-                    })
-                    .ok_or_else(|| Error::Invalid(format!("unknown ros1 message type: {name}")))?;
-                let mut object = serde_json::Map::new();
-                for field in fields {
-                    object.insert(field.name.clone(), self.read_type(&field.ty, input)?);
-                }
-                Ok(Value::Object(object))
-            }
-        }
-    }
 }
 
 /// ROS 1 message decoders, compiled once per MCAP schema ID.
@@ -729,7 +664,7 @@ pub struct Ros1DecoderCache {
 }
 
 impl Ros1DecoderCache {
-    /// Decode one ROS 1 payload to the Go-compatible JSON representation.
+    /// Decode one ROS 1 payload to JSON.
     ///
     /// # Errors
     ///
@@ -780,15 +715,6 @@ fn parse_ros_type(source: &str) -> Result<RosType, Error> {
         array: None,
     })
 }
-fn json_float(value: f64) -> Result<Value, Error> {
-    if let Some(value) = json_float_sentinel(value) {
-        Ok(Value::String(value.into()))
-    } else {
-        serde_json::Number::from_f64(value)
-            .map(Value::Number)
-            .ok_or_else(|| Error::Invalid("invalid ros1 float".into()))
-    }
-}
 fn write_json_float(value: f64, output: &mut Vec<u8>) -> Result<(), Error> {
     if let Some(value) = json_float_sentinel(value) {
         return serde_json::to_writer(output, value)
@@ -810,26 +736,7 @@ fn json_float_sentinel(value: f64) -> Option<&'static str> {
     }
 }
 fn base64(data: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let word = (u32::from(chunk[0]) << 16)
-            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        out.push(TABLE[((word >> 18) & 63) as usize] as char);
-        out.push(TABLE[((word >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            TABLE[((word >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            TABLE[(word & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    out
+    base64::engine::general_purpose::STANDARD.encode(data)
 }
 
 /// ROS 1 bag connection metadata.
@@ -851,15 +758,24 @@ pub struct RosbagMessage {
     pub data: Vec<u8>,
 }
 
-/// Writes a seekable, indexed ROS bag v2.0 with one uncompressed chunk.
-/// Later phases may split/merge chunks without changing this public record model.
+/// Writes a seekable, indexed ROS bag v2.0 using bounded-size uncompressed chunks.
 pub struct RosbagWriter<W: Write + Seek> {
     output: W,
     chunk: Vec<u8>,
     connections: Vec<RosbagConnection>,
-    connection_counts: BTreeMap<u32, u32>,
-    start_time: Option<u64>,
-    end_time: Option<u64>,
+    chunk_connection_counts: BTreeMap<u32, u32>,
+    chunk_indexes: BTreeMap<u32, Vec<(u64, u32)>>,
+    chunk_start_time: Option<u64>,
+    chunk_end_time: Option<u64>,
+    chunks: Vec<RosbagChunkInfo>,
+}
+
+#[derive(Debug)]
+struct RosbagChunkInfo {
+    position: u64,
+    start_time: u64,
+    end_time: u64,
+    counts: BTreeMap<u32, u32>,
 }
 
 impl<W: Write + Seek> RosbagWriter<W> {
@@ -870,9 +786,11 @@ impl<W: Write + Seek> RosbagWriter<W> {
             output,
             chunk: Vec::new(),
             connections: Vec::new(),
-            connection_counts: BTreeMap::new(),
-            start_time: None,
-            end_time: None,
+            chunk_connection_counts: BTreeMap::new(),
+            chunk_indexes: BTreeMap::new(),
+            chunk_start_time: None,
+            chunk_end_time: None,
+            chunks: Vec::new(),
         })
     }
 
@@ -887,6 +805,17 @@ impl<W: Write + Seek> RosbagWriter<W> {
                 connection.id
             )));
         }
+        // Linear readers and recovery need the connection before the messages
+        // it describes inside the chunk. `finish` writes the required second
+        // copy in the post-chunk index section.
+        self.flush_before_record(bag_record_len(
+            &bag_header(&[
+                ("op", vec![7]),
+                ("conn", connection.id.to_le_bytes().to_vec()),
+                ("topic", connection.topic.as_bytes().to_vec()),
+            ]),
+            connection_record_data_len(&connection),
+        )?)?;
         write_connection_record(&mut self.chunk, &connection)?;
         self.connections.push(connection);
         Ok(())
@@ -908,45 +837,42 @@ impl<W: Write + Seek> RosbagWriter<W> {
             ("conn", message.connection_id.to_le_bytes().to_vec()),
             ("time", ros_time_bytes(message.time)?.to_vec()),
         ]);
+        self.flush_before_record(bag_record_len(&header, message.data.len())?)?;
+        let offset = u32::try_from(self.chunk.len())
+            .map_err(|_| Error::Invalid("rosbag chunk exceeds u32 length".into()))?;
         write_bag_record(&mut self.chunk, &header, &message.data)?;
         *self
-            .connection_counts
+            .chunk_connection_counts
             .entry(message.connection_id)
             .or_default() += 1;
-        self.start_time = Some(
-            self.start_time
+        self.chunk_indexes
+            .entry(message.connection_id)
+            .or_default()
+            .push((message.time, offset));
+        self.chunk_start_time = Some(
+            self.chunk_start_time
                 .map_or(message.time, |time| time.min(message.time)),
         );
-        self.end_time = Some(
-            self.end_time
+        self.chunk_end_time = Some(
+            self.chunk_end_time
                 .map_or(message.time, |time| time.max(message.time)),
         );
         Ok(())
     }
 
     pub fn finish(&mut self) -> Result<(), Error> {
-        let chunk_pos = self.output.stream_position()?;
-        if !self.chunk.is_empty() {
-            let chunk_size = u32::try_from(self.chunk.len())
-                .map_err(|_| Error::Invalid("rosbag chunk exceeds u32 length".into()))?;
-            let header = bag_header(&[
-                ("op", vec![5]),
-                ("compression", b"none".to_vec()),
-                ("size", chunk_size.to_le_bytes().to_vec()),
-            ]);
-            write_bag_record(&mut self.output, &header, &self.chunk)?;
-        }
+        self.flush_chunk()?;
         let index_pos = self.output.stream_position()?;
         for connection in &self.connections {
             write_connection_record(&mut self.output, connection)?;
         }
-        if !self.chunk.is_empty() {
+        for chunk in &self.chunks {
             write_chunk_info(
                 &mut self.output,
-                chunk_pos,
-                self.start_time.unwrap_or(0),
-                self.end_time.unwrap_or(0),
-                &self.connection_counts,
+                chunk.position,
+                chunk.start_time,
+                chunk.end_time,
+                &chunk.counts,
             )?;
         }
         self.output
@@ -958,7 +884,8 @@ impl<W: Write + Seek> RosbagWriter<W> {
             index_pos,
             u32::try_from(self.connections.len())
                 .map_err(|_| Error::Invalid("too many rosbag connections".into()))?,
-            u32::from(!self.chunk.is_empty()),
+            u32::try_from(self.chunks.len())
+                .map_err(|_| Error::Invalid("too many rosbag chunks".into()))?,
         )?;
         Ok(())
     }
@@ -967,6 +894,75 @@ impl<W: Write + Seek> RosbagWriter<W> {
         self.finish()?;
         Ok(self.output)
     }
+
+    fn flush_before_record(&mut self, record_len: usize) -> Result<(), Error> {
+        if !self.chunk.is_empty()
+            && self
+                .chunk
+                .len()
+                .checked_add(record_len)
+                .is_none_or(|size| size > ROSBAG_CHUNK_TARGET_SIZE)
+        {
+            self.flush_chunk()?;
+        }
+        Ok(())
+    }
+
+    fn flush_chunk(&mut self) -> Result<(), Error> {
+        if self.chunk.is_empty() {
+            return Ok(());
+        }
+        let chunk_pos = self.output.stream_position()?;
+        let chunk = std::mem::take(&mut self.chunk);
+        let chunk_size = u32::try_from(chunk.len())
+            .map_err(|_| Error::Invalid("rosbag chunk exceeds u32 length".into()))?;
+        let header = bag_header(&[
+            ("op", vec![5]),
+            ("compression", b"none".to_vec()),
+            ("size", chunk_size.to_le_bytes().to_vec()),
+        ]);
+        write_bag_record(&mut self.output, &header, &chunk)?;
+        for (connection_id, entries) in &self.chunk_indexes {
+            write_index_data(&mut self.output, *connection_id, entries)?;
+        }
+        self.chunks.push(RosbagChunkInfo {
+            position: chunk_pos,
+            start_time: self.chunk_start_time.unwrap_or(0),
+            end_time: self.chunk_end_time.unwrap_or(0),
+            counts: std::mem::take(&mut self.chunk_connection_counts),
+        });
+        self.chunk_indexes.clear();
+        self.chunk_start_time = None;
+        self.chunk_end_time = None;
+        Ok(())
+    }
+}
+
+fn bag_record_len(header: &[u8], data_len: usize) -> Result<usize, Error> {
+    header
+        .len()
+        .checked_add(data_len)
+        .and_then(|length| length.checked_add(8))
+        .ok_or_else(|| Error::Invalid("rosbag record length overflows usize".into()))
+}
+
+fn connection_record_data_len(connection: &RosbagConnection) -> usize {
+    let mut length = bag_field_len("topic", connection.topic.len())
+        + bag_field_len("type", connection.type_name.len())
+        + bag_field_len("md5sum", connection.md5sum.len())
+        + bag_field_len("message_definition", connection.message_definition.len());
+    if let Some(caller_id) = &connection.caller_id {
+        length += bag_field_len("callerid", caller_id.len());
+    }
+    if connection.latching.is_some() {
+        length += bag_field_len("latching", 1);
+    }
+    length
+}
+
+const fn bag_field_len(key: &str, value_len: usize) -> usize {
+    // Field framing is: u32(field length), key, '=', value.
+    4 + key.len() + 1 + value_len
 }
 
 fn bag_header(fields: &[(&str, Vec<u8>)]) -> Vec<u8> {
@@ -1069,6 +1065,31 @@ fn write_chunk_info(
     write_bag_record(writer, &header, &data)
 }
 
+fn write_index_data(
+    writer: &mut impl Write,
+    connection_id: u32,
+    entries: &[(u64, u32)],
+) -> Result<(), Error> {
+    let header = bag_header(&[
+        ("op", vec![4]),
+        ("ver", 1_u32.to_le_bytes().to_vec()),
+        ("conn", connection_id.to_le_bytes().to_vec()),
+        (
+            "count",
+            u32::try_from(entries.len())
+                .map_err(|_| Error::Invalid("too many rosbag index entries".into()))?
+                .to_le_bytes()
+                .to_vec(),
+        ),
+    ]);
+    let mut data = Vec::with_capacity(entries.len() * 12);
+    for (time, offset) in entries {
+        data.extend_from_slice(&ros_time_bytes(*time)?);
+        data.extend_from_slice(&offset.to_le_bytes());
+    }
+    write_bag_record(writer, &header, &data)
+}
+
 fn ros_time_bytes(time: u64) -> Result<[u8; 8], Error> {
     let seconds = u32::try_from(time / 1_000_000_000)
         .map_err(|_| Error::Invalid("rosbag timestamp exceeds u32 seconds".into()))?;
@@ -1089,11 +1110,11 @@ fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
     validate_bag_records(reader)
 }
 
-/// Emit all complete connection and message records from a ROS bag. A bag has
-/// no closing magic, so this always returns `false` after an otherwise valid
-/// stream; callers use the recovered records to write a fresh indexed bag.
-/// A truncated final record or chunk is treated as the end of a recoverable
-/// download, while an invalid initial magic remains an error.
+/// Emit all complete connection and message records from a ROS bag. An indexed
+/// bag is complete only after the counts declared in its bag header are matched
+/// by complete chunks, post-chunk connections, and chunk-info records. This
+/// prevents a record-boundary truncation from being mistaken for a finished
+/// indexed download.
 pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
     reader: &mut R,
     sink: &mut S,
@@ -1103,18 +1124,70 @@ pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
     if magic != ROSBAG_MAGIC {
         return Err(Error::InvalidMagic);
     }
-    read_rosbag_records_recover(reader, sink, false)
+    let Some((header, _)) = read_bag_record(reader)? else {
+        return Ok(false);
+    };
+    if header.get("op").and_then(|value| value.first()) != Some(&0x03) {
+        return Err(Error::Invalid("rosbag stream is missing bag header".into()));
+    }
+    let indexed = header_u64(&header, "index_pos")? != 0;
+    let declared_connections = header_u32(&header, "conn_count")?;
+    let declared_chunks = header_u32(&header, "chunk_count")?;
+    read_rosbag_records_recover(
+        reader,
+        sink,
+        RosbagRecoveryState::new(indexed, declared_connections, declared_chunks),
+    )
+}
+
+#[derive(Debug)]
+struct RosbagRecoveryState {
+    indexed: bool,
+    declared_connections: u32,
+    declared_chunks: u32,
+    chunks: u32,
+    post_chunk_connections: u32,
+    chunk_infos: u32,
+    pending_indexes: BTreeSet<u32>,
+    in_post_chunk_index: bool,
+}
+
+impl RosbagRecoveryState {
+    const fn new(indexed: bool, declared_connections: u32, declared_chunks: u32) -> Self {
+        Self {
+            indexed,
+            declared_connections,
+            declared_chunks,
+            chunks: 0,
+            post_chunk_connections: 0,
+            chunk_infos: 0,
+            pending_indexes: BTreeSet::new(),
+            in_post_chunk_index: false,
+        }
+    }
+
+    fn complete(&self) -> bool {
+        self.indexed
+            && self.chunks == self.declared_chunks
+            && self.post_chunk_connections == self.declared_connections
+            && self.chunk_infos == self.declared_chunks
+            && self.pending_indexes.is_empty()
+    }
+
+    fn before_non_index_record(&mut self) -> bool {
+        self.pending_indexes.is_empty()
+    }
 }
 
 fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
     reader: &mut R,
     sink: &mut S,
-    eof_complete: bool,
+    mut state: RosbagRecoveryState,
 ) -> Result<bool, Error> {
     loop {
         let (header, data) = match read_bag_record(reader) {
             Ok(Some(record)) => record,
-            Ok(None) => return Ok(eof_complete),
+            Ok(None) => return Ok(state.complete()),
             Err(Error::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof => {
                 return Ok(false)
             }
@@ -1122,6 +1195,9 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
         };
         match header.get("op").and_then(|value| value.first()).copied() {
             Some(0x05) => {
+                if !state.before_non_index_record() || state.in_post_chunk_index {
+                    return Ok(false);
+                }
                 let compression = header
                     .get("compression")
                     .and_then(|value| std::str::from_utf8(value).ok())
@@ -1132,8 +1208,13 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
                         "rosbag chunk exceeds configured limit".into(),
                     ));
                 }
+                let mut indexed_connections = BTreeSet::new();
                 let complete = match compression {
-                    "none" => read_rosbag_records_recover(&mut Cursor::new(data), sink, true)?,
+                    "none" => read_rosbag_chunk_recover(
+                        &mut Cursor::new(data),
+                        sink,
+                        &mut indexed_connections,
+                    )?,
                     "lz4" => {
                         let mut decompressed = Vec::with_capacity(size);
                         let limit = u64::try_from(size + 1).expect("configured size fits u64");
@@ -1141,10 +1222,10 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
                             .take(limit)
                             .read_to_end(&mut decompressed)
                         {
-                            Ok(_) if decompressed.len() == size => read_rosbag_records_recover(
+                            Ok(_) if decompressed.len() == size => read_rosbag_chunk_recover(
                                 &mut Cursor::new(decompressed),
                                 sink,
-                                true,
+                                &mut indexed_connections,
                             )?,
                             Ok(_) | Err(_) => false,
                         }
@@ -1154,9 +1235,63 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
                 if !complete {
                     return Ok(false);
                 }
+                state.chunks = state.chunks.saturating_add(1);
+                if state.indexed {
+                    state.pending_indexes = indexed_connections;
+                }
             }
-            Some(0x07) => sink.connection(parse_rosbag_connection(&header, &data)?)?,
+            Some(0x04) => {
+                if !state.indexed || state.in_post_chunk_index {
+                    return Ok(false);
+                }
+                let connection_id = header_u32(&header, "conn")?;
+                if !state.pending_indexes.remove(&connection_id) {
+                    return Ok(false);
+                }
+            }
+            Some(0x07) => {
+                if !state.before_non_index_record() {
+                    return Ok(false);
+                }
+                state.in_post_chunk_index = true;
+                state.post_chunk_connections = state.post_chunk_connections.saturating_add(1);
+                sink.connection(parse_rosbag_connection(&header, &data)?)?;
+            }
+            Some(0x06) => {
+                if !state.before_non_index_record() {
+                    return Ok(false);
+                }
+                state.in_post_chunk_index = true;
+                state.chunk_infos = state.chunk_infos.saturating_add(1);
+            }
             Some(0x02) => sink.message(parse_rosbag_message(&header, data)?)?,
+            Some(_) => {}
+            None => return Err(Error::Invalid("rosbag record is missing op field".into())),
+        }
+    }
+}
+
+fn read_rosbag_chunk_recover<R: Read, S: RosbagSink>(
+    reader: &mut R,
+    sink: &mut S,
+    indexed_connections: &mut BTreeSet<u32>,
+) -> Result<bool, Error> {
+    loop {
+        let (header, data) = match read_bag_record(reader) {
+            Ok(Some(record)) => record,
+            Ok(None) => return Ok(true),
+            Err(Error::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                return Ok(false)
+            }
+            Err(error) => return Err(error),
+        };
+        match header.get("op").and_then(|value| value.first()).copied() {
+            Some(0x07) => sink.connection(parse_rosbag_connection(&header, &data)?)?,
+            Some(0x02) => {
+                let message = parse_rosbag_message(&header, data)?;
+                indexed_connections.insert(message.connection_id);
+                sink.message(message)?;
+            }
             Some(_) => {}
             None => return Err(Error::Invalid("rosbag record is missing op field".into())),
         }
@@ -1337,6 +1472,19 @@ fn header_u32(header: &BTreeMap<String, Vec<u8>>, name: &str) -> Result<u32, Err
         value.clone().try_into().expect("checked length"),
     ))
 }
+fn header_u64(header: &BTreeMap<String, Vec<u8>>, name: &str) -> Result<u64, Error> {
+    let value = header
+        .get(name)
+        .ok_or_else(|| Error::Invalid(format!("rosbag record is missing {name} field")))?;
+    if value.len() != 8 {
+        return Err(Error::Invalid(format!(
+            "rosbag {name} field has invalid size"
+        )));
+    }
+    Ok(u64::from_le_bytes(
+        value.clone().try_into().expect("checked length"),
+    ))
+}
 fn checked_len(length: u32) -> Result<usize, Error> {
     let length = length as usize;
     if length > MAX_RECORD_LEN {
@@ -1493,13 +1641,174 @@ mod tests {
             .expect("message");
         let bytes = writer.finish_into().expect("finish").into_inner();
         let mut sink = CollectBagSink::default();
-        assert!(!read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
-        assert_eq!(
-            sink.connections.len(),
-            2,
-            "index and chunk connection records"
-        );
+        assert!(read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert_eq!(sink.connections.len(), 2, "chunk and index connections");
         assert_eq!(sink.messages[0].time, 1_700_000_000_123_456_789);
+    }
+
+    #[test]
+    fn reports_truncated_indexed_rosbag_as_incomplete() {
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer
+            .connection(RosbagConnection {
+                id: 1,
+                topic: "/example".into(),
+                type_name: "example/Message".into(),
+                md5sum: "abc".into(),
+                message_definition: vec![],
+                caller_id: None,
+                latching: None,
+            })
+            .expect("connection");
+        writer
+            .message(&RosbagMessage {
+                connection_id: 1,
+                time: 1,
+                data: vec![1],
+            })
+            .expect("message");
+        let mut bytes = writer.finish_into().expect("finish").into_inner();
+        bytes.pop();
+        let mut sink = CollectBagSink::default();
+        assert!(!read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+    }
+
+    #[test]
+    fn treats_unindexed_rosbags_as_recoverable_but_incomplete() {
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer.connection(rosbag_connection()).expect("connection");
+        writer
+            .message(&RosbagMessage {
+                connection_id: 1,
+                time: 1,
+                data: vec![1],
+            })
+            .expect("message");
+        let bytes = writer.finish_into().expect("finish").into_inner();
+        let mut cursor = Cursor::new(bytes);
+        cursor
+            .seek(SeekFrom::Start(ROSBAG_MAGIC.len() as u64))
+            .expect("seek to header");
+        write_bag_header(&mut cursor, 0, 1, 1).expect("rewrite unindexed header");
+        let mut sink = CollectBagSink::default();
+        assert!(
+            !read_rosbag_recover(&mut Cursor::new(cursor.into_inner()), &mut sink)
+                .expect("recover")
+        );
+        assert_eq!(sink.messages.len(), 1);
+    }
+
+    fn rosbag_connection() -> RosbagConnection {
+        RosbagConnection {
+            id: 1,
+            topic: "/example".into(),
+            type_name: "example/Message".into(),
+            md5sum: "abc".into(),
+            message_definition: vec![],
+            caller_id: None,
+            latching: None,
+        }
+    }
+
+    fn rosbag_record_boundaries(bytes: &[u8]) -> Vec<(u8, usize)> {
+        let mut cursor = Cursor::new(bytes);
+        cursor
+            .seek(SeekFrom::Start(ROSBAG_MAGIC.len() as u64))
+            .expect("seek past magic");
+        let _ = read_bag_record(&mut cursor).expect("bag header");
+        let mut records = Vec::new();
+        while (cursor.position() as usize) < bytes.len() {
+            let (header, _) = read_bag_record(&mut cursor)
+                .expect("record")
+                .expect("record before EOF");
+            records.push((
+                *header
+                    .get("op")
+                    .and_then(|op| op.first())
+                    .expect("operation"),
+                cursor.position() as usize,
+            ));
+        }
+        records
+    }
+
+    #[test]
+    fn writes_large_rosbags_as_multiple_indexed_chunks() {
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer.connection(rosbag_connection()).expect("connection");
+        for time in 0..3 {
+            writer
+                .message(&RosbagMessage {
+                    connection_id: 1,
+                    time,
+                    data: vec![u8::try_from(time).expect("small timestamp"); 400 * 1024],
+                })
+                .expect("message");
+        }
+        let bytes = writer.finish_into().expect("finish").into_inner();
+        let records = rosbag_record_boundaries(&bytes);
+        let mut cursor = Cursor::new(&bytes);
+        cursor
+            .seek(SeekFrom::Start(ROSBAG_MAGIC.len() as u64))
+            .expect("seek past magic");
+        let (header, _) = read_bag_record(&mut cursor)
+            .expect("bag header")
+            .expect("bag header before EOF");
+        assert_eq!(header_u32(&header, "chunk_count").expect("chunk count"), 3);
+        assert_eq!(
+            header_u32(&header, "conn_count").expect("connection count"),
+            1
+        );
+        assert_eq!(
+            records.iter().filter(|(op, _)| *op == 0x05).count(),
+            3,
+            "each 400 KiB message should flush a bounded chunk"
+        );
+        assert_eq!(records.iter().filter(|(op, _)| *op == 0x04).count(), 3);
+        assert_eq!(records.iter().filter(|(op, _)| *op == 0x06).count(), 3);
+
+        let mut sink = CollectBagSink::default();
+        assert!(read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert_eq!(sink.messages.len(), 3);
+    }
+
+    #[test]
+    fn detects_exact_boundary_rosbag_truncation_before_indexes_and_chunk_infos() {
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer.connection(rosbag_connection()).expect("connection");
+        for time in 0..3 {
+            writer
+                .message(&RosbagMessage {
+                    connection_id: 1,
+                    time,
+                    data: vec![0; 400 * 1024],
+                })
+                .expect("message");
+        }
+        let bytes = writer.finish_into().expect("finish").into_inner();
+        let records = rosbag_record_boundaries(&bytes);
+
+        let first_chunk_end = records
+            .iter()
+            .find_map(|(op, end)| (*op == 0x05).then_some(*end))
+            .expect("chunk record");
+        let mut sink = CollectBagSink::default();
+        assert!(
+            !read_rosbag_recover(&mut Cursor::new(&bytes[..first_chunk_end]), &mut sink)
+                .expect("recover")
+        );
+        assert_eq!(sink.messages.len(), 1);
+
+        let first_chunk_info_end = records
+            .iter()
+            .find_map(|(op, end)| (*op == 0x06).then_some(*end))
+            .expect("chunk info record");
+        let mut sink = CollectBagSink::default();
+        assert!(
+            !read_rosbag_recover(&mut Cursor::new(&bytes[..first_chunk_info_end]), &mut sink)
+                .expect("recover")
+        );
+        assert_eq!(sink.messages.len(), 3);
     }
 
     #[test]
@@ -1543,14 +1852,25 @@ mod tests {
     }
 
     #[test]
-    fn preserves_go_signed_integer_rendering() {
+    fn decodes_signed_ros1_integers() {
         let decoder =
             Ros1Decoder::new("example", b"int8 a\nint16 b\nint32 c\n").expect("valid schema");
         assert_eq!(
             decoder
                 .transcode_json(&[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
                 .expect("valid payload"),
-            br#"{"a":255,"b":65535,"c":4294967295}"#
+            br#"{"a":-1,"b":-1,"c":-1}"#
+        );
+    }
+
+    #[test]
+    fn decodes_signed_ros1_duration() {
+        let decoder = Ros1Decoder::new("example", b"duration value\n").expect("valid schema");
+        let mut bytes = (-1_i32).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&500_000_000_i32.to_le_bytes());
+        assert_eq!(
+            decoder.transcode_json(&bytes).expect("valid payload"),
+            br#"{"value":-0.500000000}"#
         );
     }
 

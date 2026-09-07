@@ -7,8 +7,8 @@ use std::fmt::Write as _;
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add_str, block_on, finish_list, format_go_timestamp, format_output, positional, query,
-    sort_query, value, DeviceSummary, ProjectFallback, Record, Runtime,
+    add_str, finish_list, format_output, query, value, DeviceSummary, ProjectFallback, Record,
+    Runtime,
 };
 use crate::Outcome;
 
@@ -89,12 +89,16 @@ impl Record for Session {
             self.key.clone(),
             self.project_id.clone(),
             device,
-            format_go_timestamp(&self.created_at),
-            format_go_timestamp(&self.updated_at),
+            self.created_at.clone(),
+            self.updated_at.clone(),
         ]
     }
 }
-pub(crate) fn list_sessions(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_sessions(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     let mut query = query();
     add_str(&mut query, "deviceId", &value(matches, "device-id"));
     add_str(&mut query, "deviceName", &value(matches, "device-name"));
@@ -103,26 +107,24 @@ pub(crate) fn list_sessions(runtime: &Runtime, matches: &ArgMatches, format: For
         "projectId",
         &value(matches, "project-id").or_project(&runtime.project_id),
     );
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
         "Failed to list sessions",
         move |client| async move { client.get::<_, Vec<Session>>("/v1/sessions", &query).await },
     )
+    .await
 }
 
-pub(crate) fn get_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let key = positional(matches, 0);
+pub(crate) async fn get_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let key = value(matches, "session");
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     let mut query = query();
     add_str(&mut query, "projectId", &project_id);
-    sort_query(&mut query);
-    let result = block_on(
-        runtime
-            .client
-            .get::<_, Session>(&format!("/v1/sessions/{key}"), &query),
-    );
+    let result = runtime
+        .client
+        .get::<_, Session>(&format!("/v1/sessions/{key}"), &query)
+        .await;
     match result {
         Ok(session) => session_outcome(&session),
         Err(error) if error.is_forbidden() => {
@@ -153,22 +155,26 @@ fn session_outcome(session: &Session) -> Outcome {
     };
     Outcome::success(format!(
         "ID:         {}\nName:       {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
-        session.id, session.name, session.key, session.project_id, device,
-        format_go_timestamp(&session.created_at), format_go_timestamp(&session.updated_at), recordings
+        session.id,
+        session.name,
+        session.key,
+        session.project_id,
+        device,
+        session.created_at,
+        session.updated_at,
+        recordings
     ))
 }
 
-pub(crate) fn list_session_recordings(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let key = positional(matches, 0);
+pub(crate) async fn list_session_recordings(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let key = value(matches, "session");
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     let mut query = query();
     add_str(&mut query, "projectId", &project_id);
-    sort_query(&mut query);
-    let result = block_on(
-        runtime
-            .client
-            .get::<_, Session>(&format!("/v1/sessions/{key}"), &query),
-    );
+    let result = runtime
+        .client
+        .get::<_, Session>(&format!("/v1/sessions/{key}"), &query)
+        .await;
     match result {
         Ok(session) if session.recordings.is_empty() => {
             Outcome::success("No recordings in this session.\n")
@@ -207,7 +213,7 @@ struct PatchSessionRecordingsRequest {
     remove_recording_ids: Vec<String>,
 }
 
-pub(crate) fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+pub(crate) async fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     let device_id = value(matches, "device-id");
     if device_id.is_empty() {
         return Outcome::failure("--device-id is required when creating a session\n");
@@ -217,11 +223,11 @@ pub(crate) fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
         project_id: value(matches, "project-id").or_project(&runtime.project_id),
         device_id,
     };
-    match block_on(
-        runtime
-            .client
-            .post::<_, CreateSessionResponse>("/v1/sessions", &request),
-    ) {
+    match runtime
+        .client
+        .post::<_, CreateSessionResponse>("/v1/sessions", &request)
+        .await
+    {
         Ok(response) => {
             let mut stderr = format!("Session created: {}\n", response.id);
             if !response.key.is_empty() {
@@ -239,17 +245,16 @@ pub(crate) fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     }
 }
 
-pub(crate) fn delete_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let key = positional(matches, 0);
+pub(crate) async fn delete_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let key = value(matches, "session");
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     let mut query = query();
     add_str(&mut query, "projectId", &project_id);
-    sort_query(&mut query);
-    match block_on(
-        runtime
-            .client
-            .delete_with_query(&format!("/v1/sessions/{key}"), &query),
-    ) {
+    match runtime
+        .client
+        .delete_with_query(&format!("/v1/sessions/{key}"), &query)
+        .await
+    {
         Ok(()) => Outcome {
             stderr: format!("Session deleted: {key}\n").into_bytes(),
             ..Outcome::default()
@@ -268,17 +273,16 @@ pub(crate) fn delete_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome
     }
 }
 
-pub(crate) fn patch_session_recordings(
+pub(crate) async fn patch_session_recordings(
     runtime: &Runtime,
     matches: &ArgMatches,
     add: bool,
 ) -> Outcome {
-    let key = positional(matches, 0);
-    let recording_id = positional(matches, 1);
+    let key = value(matches, "session");
+    let recording_id = value(matches, "recording");
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     let mut query = query();
     add_str(&mut query, "projectId", &project_id);
-    sort_query(&mut query);
     let request = PatchSessionRecordingsRequest {
         add_recording_ids: if add {
             vec![recording_id.clone()]
@@ -291,11 +295,11 @@ pub(crate) fn patch_session_recordings(
             vec![recording_id.clone()]
         },
     };
-    match block_on(runtime.client.patch::<_, _, serde_json::Value>(
-        &format!("/v1/sessions/{key}"),
-        &query,
-        &request,
-    )) {
+    match runtime
+        .client
+        .patch::<_, _, serde_json::Value>(&format!("/v1/sessions/{key}"), &query, &request)
+        .await
+    {
         Ok(_) => Outcome {
             stderr: format!(
                 "Recording {recording_id} {} session\n",

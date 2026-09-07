@@ -3,11 +3,12 @@
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
+#[tokio::main]
+async fn main() -> ExitCode {
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     let mut stdin = io::stdin().lock();
     let mut stdout = io::stdout().lock();
-    let outcome = foxglove_rust::run_with_prompt_writer(&args, &mut stdin, &mut stdout);
+    let outcome = foxglove_rust::run_with_prompt_writer_async(&args, &mut stdin, &mut stdout).await;
 
     if let Err(error) = stdout.write_all(&outcome.stdout) {
         if error.kind() != io::ErrorKind::BrokenPipe {

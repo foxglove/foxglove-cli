@@ -4,11 +4,7 @@
 use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{self, Write};
 use std::path::Path;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::output::Format;
 use crate::read_helpers::{finish_list, Record, Runtime};
@@ -53,7 +49,7 @@ impl Record for Extension {
         ]
     }
 }
-pub(crate) fn list_extensions(runtime: &Runtime, format: Format) -> Outcome {
+pub(crate) async fn list_extensions(runtime: &Runtime, format: Format) -> Outcome {
     finish_list(
         runtime,
         format,
@@ -64,11 +60,12 @@ pub(crate) fn list_extensions(runtime: &Runtime, format: Format) -> Outcome {
                 .await
         },
     )
+    .await
 }
 
-pub(crate) fn unpublish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let id = crate::read_helpers::positional(matches, 0);
-    match crate::read_helpers::block_on(runtime.client.delete(&format!("/v1/extensions/{id}"))) {
+pub(crate) async fn unpublish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let id = crate::read_helpers::value(matches, "extension-id");
+    match runtime.client.delete(&format!("/v1/extensions/{id}")).await {
         Ok(()) => Outcome {
             stderr: b"Extension deleted\n".to_vec(),
             ..Outcome::default()
@@ -82,8 +79,8 @@ pub(crate) fn unpublish_extension(runtime: &Runtime, matches: &ArgMatches) -> Ou
     }
 }
 
-pub(crate) fn publish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let filename = crate::read_helpers::positional(matches, 0);
+pub(crate) async fn publish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let filename = crate::read_helpers::value(matches, "file");
     let path = Path::new(&filename);
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
@@ -108,14 +105,15 @@ pub(crate) fn publish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outc
         }
     };
     let file = tokio::fs::File::from_std(file);
-    let reader = ProgressReader::new(file, metadata.len());
-    let result = crate::read_helpers::block_on(async {
+    let reader = crate::data::UploadProgressReader::new(file, metadata.len());
+    let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
         runtime
             .client
             .upload_extension_with_cancellation(reader, &cancellation)
             .await
-    });
+    }
+    .await;
     match result {
         Ok(()) => Outcome {
             stderr: b"Extension published\n".to_vec(),
@@ -126,60 +124,5 @@ pub(crate) fn publish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outc
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Extension upload failed: {error}\n")),
-    }
-}
-
-/// An asynchronous reader that reports extension-upload progress to stderr.
-struct ProgressReader<R> {
-    inner: R,
-    total: u64,
-    uploaded: u64,
-    complete: bool,
-}
-
-impl<R> ProgressReader<R> {
-    const fn new(inner: R, total: u64) -> Self {
-        Self {
-            inner,
-            total,
-            uploaded: 0,
-            complete: false,
-        }
-    }
-
-    fn report(&self, finished: bool) {
-        let _ = write!(
-            io::stderr(),
-            "\ruploading {}/{} bytes",
-            self.uploaded,
-            self.total
-        );
-        if finished {
-            let _ = writeln!(io::stderr());
-        }
-    }
-}
-
-impl<R: AsyncRead + Unpin> AsyncRead for ProgressReader<R> {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        context: &mut Context<'_>,
-        buffer: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let before = buffer.filled().len();
-        match Pin::new(&mut self.inner).poll_read(context, buffer) {
-            Poll::Ready(Ok(())) => {
-                let read = buffer.filled().len().saturating_sub(before);
-                self.uploaded = self.uploaded.saturating_add(read as u64);
-                if read > 0 {
-                    self.report(false);
-                } else if !self.complete {
-                    self.complete = true;
-                    self.report(true);
-                }
-                Poll::Ready(Ok(()))
-            }
-            pending => pending,
-        }
     }
 }

@@ -13,7 +13,7 @@ use clap::ArgMatches;
 use crate::api::{self, FoxgloveClient};
 use crate::config::Config;
 use crate::output;
-use crate::read_helpers::{self, block_on, last_value, Runtime};
+use crate::read_helpers::{self, last_value, Runtime};
 use crate::Outcome;
 
 #[derive(Deserialize)]
@@ -28,28 +28,28 @@ struct MeResponse {
     admin: bool,
 }
 
-pub(crate) fn info(runtime: &Runtime) -> Outcome {
-    let config = match Config::load_default() {
-        Ok(config) => config,
-        Err(error) => return Outcome::failure(error),
-    };
-    let token = config.get_string("bearer_token").unwrap_or_default();
+pub(crate) async fn info(runtime: &Runtime) -> Outcome {
+    let token = runtime
+        .config
+        .get_string("bearer_token")
+        .unwrap_or_default();
     if token.is_empty() {
         return Outcome::failure(
             "Not signed in. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.\n",
         );
     }
-    let auth_type = config
+    let auth_type = runtime
+        .config
         .get_string("auth_type")
         .and_then(|value| value.parse::<i32>().ok());
     if auth_type == Some(2) || (auth_type != Some(1) && token.starts_with("fox_sk_")) {
         return Outcome::success("Authenticated with API key\n");
     }
-    match block_on(
-        runtime
-            .client
-            .get::<_, MeResponse>("/v1/me", &Vec::<(String, String)>::new()),
-    ) {
+    match runtime
+        .client
+        .get::<_, MeResponse>("/v1/me", &Vec::<(String, String)>::new())
+        .await
+    {
         Ok(me) => {
             let mut stdout = b"Authenticated with session token\n".to_vec();
             let headers = ["Email", "Email verified", "Org ID", "Org Slug", "Admin"];
@@ -60,7 +60,7 @@ pub(crate) fn info(runtime: &Runtime) -> Outcome {
                 me.org_slug,
                 me.admin.to_string(),
             ]];
-            match output::render_table(&mut stdout, 80, &headers, &rows) {
+            match output::render_table(&mut stdout, &headers, &rows) {
                 Ok(()) => Outcome::success(stdout),
                 Err(error) => Outcome::failure(format!("Info command failed: {error}\n")),
             }
@@ -70,7 +70,7 @@ pub(crate) fn info(runtime: &Runtime) -> Outcome {
 }
 
 /// Run the browser-based device-code login flow and persist its session token.
-pub(crate) fn login(matches: &ArgMatches, prompt_writer: &mut dyn Write) -> Outcome {
+pub(crate) async fn login(matches: &ArgMatches, prompt_writer: &mut dyn Write) -> Outcome {
     let base_url = last_value(matches, "base-url")
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| read_helpers::DEFAULT_BASE_URL.to_owned());
@@ -78,13 +78,13 @@ pub(crate) fn login(matches: &ArgMatches, prompt_writer: &mut dyn Write) -> Outc
         &base_url,
         read_helpers::client_id(matches),
         "",
-        read_helpers::USER_AGENT,
+        read_helpers::user_agent(),
     ) {
         Ok(client) => client,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
 
-    let (instructions, device_code, browser) = match block_on(start_login(&client)) {
+    let (instructions, device_code, browser) = match start_login(&client).await {
         Ok(result) => result,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
@@ -95,11 +95,11 @@ pub(crate) fn login(matches: &ArgMatches, prompt_writer: &mut dyn Write) -> Outc
         stop_browser(browser);
         return Outcome::failure(format!("failed to write login instructions: {error}\n"));
     }
-    let bearer_token = match block_on(complete_login(&client, &device_code, browser)) {
+    let bearer_token = match complete_login(&client, &device_code, browser).await {
         Ok(token) => token,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
-    let mut config = match Config::load_default() {
+    let mut config = match Config::load_from_path(read_helpers::config_path(matches)) {
         Ok(config) => config,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };

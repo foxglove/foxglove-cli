@@ -17,7 +17,14 @@ git diff -- ../compat/goldens
 Do not accept a changed golden merely because the generator produced it.
 Explain the contract change in `MIGRATION.md`. Rust behavior may differ from
 the Go goldens only where `approved_deltas.json` explicitly defines the new
-contract.
+contract. Deprecated commands omitted from the Rust release CLI are listed
+there and excluded from the Rust command-surface check.
+
+The Rust command tree is maintained directly with normal Clap definitions in
+`rust/src/cli.rs`. Help is rendered by Clap from that tree, and completion
+scripts are generated from the same tree by `clap_complete`. The Go help and
+completion fixtures remain a historical behavioral baseline; their exact text
+and script bytes are not Rust release requirements.
 
 All harness runs use an isolated home directory and a deterministic local HTTP
 server. Dynamic paths, fixture ports, and the known Go empty-CSV stack trace

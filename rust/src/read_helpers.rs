@@ -1,10 +1,10 @@
 //! Shared infrastructure for read-only commands.
 
 use clap::ArgMatches;
-use serde::Serializer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Display;
+use std::path::Path;
 use time::format_description::well_known::Rfc3339;
 use time::{Date, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
@@ -15,12 +15,18 @@ use crate::Outcome;
 
 pub(crate) const DEFAULT_CLIENT_ID: &str = "d51173be08ed4cf7a734aed9ac30afd0";
 pub(crate) const DEFAULT_BASE_URL: &str = "https://api.foxglove.dev";
-pub(crate) const USER_AGENT: &str = "foxglove-cli/v1.0.33";
+pub(crate) fn version() -> &'static str {
+    env!("FOXGLOVE_VERSION")
+}
 
-#[derive(Debug)]
+pub(crate) fn user_agent() -> String {
+    format!("foxglove-cli/{}", version())
+}
+
 pub(crate) struct Runtime {
     pub(crate) client: FoxgloveClient,
     pub(crate) project_id: String,
+    pub(crate) config: Config,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -35,7 +41,7 @@ pub(crate) trait Record: Serialize {
 }
 
 pub(crate) fn runtime(matches: &ArgMatches) -> Result<Runtime, String> {
-    let config = Config::load_default().map_err(|error| error.clone())?;
+    let config = Config::load_from_path(config_path(matches)).map_err(|error| error.clone())?;
     let project_id = config.get_string("default_project_id").unwrap_or_default();
     let client_id = client_id(matches);
     let base_url = config
@@ -43,9 +49,19 @@ pub(crate) fn runtime(matches: &ArgMatches) -> Result<Runtime, String> {
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned());
     let token = config.get_string("bearer_token").unwrap_or_default();
-    let client = FoxgloveClient::new(&base_url, client_id, token, USER_AGENT)
+    let client = FoxgloveClient::new(&base_url, client_id, token, user_agent())
         .map_err(|error| error.to_string())?;
-    Ok(Runtime { client, project_id })
+    Ok(Runtime {
+        client,
+        project_id,
+        config,
+    })
+}
+
+pub(crate) fn config_path(matches: &ArgMatches) -> Option<&Path> {
+    matches
+        .get_one::<std::path::PathBuf>("config")
+        .map(std::path::PathBuf::as_path)
 }
 
 pub(crate) fn client_id(matches: &ArgMatches) -> String {
@@ -64,12 +80,6 @@ pub(crate) fn resolve_format(matches: &ArgMatches) -> Result<Format, String> {
             .and_then(|mut values| values.next_back().cloned())
             .filter(|value| !value.is_empty())
             .as_deref(),
-        matches
-            .try_get_one::<bool>("json")
-            .ok()
-            .flatten()
-            .copied()
-            .unwrap_or(false),
     )
 }
 
@@ -132,16 +142,11 @@ pub(crate) fn add_str(query: &mut Vec<(String, String)>, key: &str, value: &str)
     add(query, key, value, !value.is_empty());
 }
 
-pub(crate) fn sort_query(query: &mut [(String, String)]) {
-    query.sort_by(|left, right| left.0.cmp(&right.0));
-}
-
 pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome {
     let mut stdout = Vec::new();
     let result = match format {
         Format::Table => output::render_table(
             &mut stdout,
-            80,
             T::headers(),
             &records.iter().map(Record::fields).collect::<Vec<_>>(),
         ),
@@ -158,7 +163,7 @@ pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome
     }
 }
 
-pub(crate) fn finish_list<T, F, Fut>(
+pub(crate) async fn finish_list<T, F, Fut>(
     runtime: &Runtime,
     format: Format,
     prefix: &str,
@@ -169,27 +174,10 @@ where
     F: FnOnce(FoxgloveClient) -> Fut,
     Fut: std::future::Future<Output = Result<Vec<T>, ApiError>>,
 {
-    match block_on(operation(runtime.client.clone())) {
+    match operation(runtime.client.clone()).await {
         Ok(records) => format_output(&records, format),
         Err(error) => Outcome::failure(format!("{prefix}: {error}\n")),
     }
-}
-
-pub(crate) fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("build Tokio runtime")
-        .block_on(future)
-}
-
-pub(crate) fn positional(matches: &ArgMatches, index: usize) -> String {
-    matches
-        .try_get_many::<String>("positionals")
-        .ok()
-        .flatten()
-        .and_then(|mut values| values.nth(index).cloned())
-        .unwrap_or_default()
 }
 
 pub(crate) fn session_key_error(matches: &ArgMatches, project_id: &str) -> Option<String> {
@@ -204,50 +192,6 @@ pub(crate) fn compact_json(value: &Value) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 
-/// Render an API timestamp the way Go's `time.Time.Format(time.RFC3339)` does.
-pub(crate) fn format_go_timestamp(raw: &str) -> String {
-    OffsetDateTime::parse(raw, &Rfc3339)
-        .ok()
-        .and_then(|value| value.replace_nanosecond(0).ok())
-        .and_then(|value| value.format(&Rfc3339).ok())
-        .unwrap_or_else(|| raw.to_owned())
-}
-
-/// Serialize an API timestamp the way Go's `time.Time.MarshalJSON` does.
-#[allow(clippy::ref_option)] // Required by Serde's `serialize_with` callback signature.
-pub(crate) fn serialize_optional_go_timestamp<S>(
-    value: &Option<String>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match value {
-        Some(raw) => serializer.serialize_some(
-            &OffsetDateTime::parse(raw, &Rfc3339)
-                .ok()
-                .and_then(|value| value.format(&Rfc3339).ok())
-                .unwrap_or_else(|| raw.clone()),
-        ),
-        None => serializer.serialize_none(),
-    }
-}
-
-#[allow(clippy::cast_precision_loss)]
-pub(crate) fn human_readable_bytes(bytes: i64) -> String {
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    let mut divisor = 1024_i64;
-    let mut exponent = 0_usize;
-    while bytes / divisor >= 1024 {
-        divisor *= 1024;
-        exponent += 1;
-    }
-    let suffix = "KMGTPE".as_bytes().get(exponent).copied().unwrap_or(b'E') as char;
-    format!("{:.1} {suffix}iB", bytes as f64 / divisor as f64)
-}
-
 pub(crate) trait ProjectFallback {
     fn or_project(self, project_id: &str) -> String;
 }
@@ -259,34 +203,5 @@ impl ProjectFallback for String {
         } else {
             self
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{format_go_timestamp, serialize_optional_go_timestamp};
-
-    #[test]
-    fn go_timestamp_formatting_uses_second_precision_for_display() {
-        assert_eq!(
-            format_go_timestamp("2026-07-10T21:15:34.229Z"),
-            "2026-07-10T21:15:34Z"
-        );
-    }
-
-    #[test]
-    fn go_timestamp_json_trims_only_trailing_fractional_zeroes() {
-        #[derive(serde::Serialize)]
-        struct Fixture {
-            #[serde(serialize_with = "serialize_optional_go_timestamp")]
-            value: Option<String>,
-        }
-        assert_eq!(
-            serde_json::to_string(&Fixture {
-                value: Some("2026-06-30T22:21:49.140Z".to_owned()),
-            })
-            .unwrap(),
-            r#"{"value":"2026-06-30T22:21:49.14Z"}"#
-        );
     }
 }

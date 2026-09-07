@@ -8,8 +8,7 @@ use std::collections::BTreeMap;
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add_str, compact_json, finish_list, format_go_timestamp, query, sort_query, value,
-    ProjectFallback, Record, Runtime,
+    add_str, compact_json, finish_list, query, value, ProjectFallback, Record, Runtime,
 };
 use crate::Outcome;
 
@@ -44,26 +43,30 @@ impl Record for Device {
             self.id.clone(),
             self.name.clone(),
             compact_json(&self.properties),
-            format_go_timestamp(&self.created_at),
-            format_go_timestamp(&self.updated_at),
+            self.created_at.clone(),
+            self.updated_at.clone(),
             self.project_id.clone(),
         ]
     }
 }
-pub(crate) fn list_devices(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_devices(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     let mut query = query();
     add_str(
         &mut query,
         "projectId",
         &value(matches, "project-id").or_project(&runtime.project_id),
     );
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
         "Failed to list devices",
         move |client| async move { client.get::<_, Vec<Device>>("/v1/devices", &query).await },
     )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -90,7 +93,7 @@ struct DeviceResponse {
     name: String,
 }
 
-fn device_properties(
+async fn device_properties(
     runtime: &Runtime,
     matches: &ArgMatches,
 ) -> Result<Option<BTreeMap<String, Value>>, String> {
@@ -104,12 +107,11 @@ fn device_properties(
     // The Go form encoder uses the exported Go field name here because this
     // request type has no form tag; preserve that wire spelling.
     let query = vec![("ResourceType".to_owned(), "device".to_owned())];
-    let definitions = crate::read_helpers::block_on(
-        runtime
-            .client
-            .get::<_, Vec<CustomPropertyDefinition>>("/v1/custom-properties", &query),
-    )
-    .map_err(|error| format!("failed to load custom properties: {error}"))?;
+    let definitions = runtime
+        .client
+        .get::<_, Vec<CustomPropertyDefinition>>("/v1/custom-properties", &query)
+        .await
+        .map_err(|error| format!("failed to load custom properties: {error}"))?;
     let definitions = definitions
         .into_iter()
         .map(|definition| (definition.key.clone(), definition))
@@ -150,14 +152,8 @@ fn device_properties(
     Ok(Some(properties))
 }
 
-pub(crate) fn add_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let mut stderr = Vec::new();
-    if !value(matches, "serial-number").is_empty() {
-        stderr.extend_from_slice(
-            b"Warning: serial-number is deprecated and will be removed in the next release\n",
-        );
-    }
-    let properties = match device_properties(runtime, matches) {
+pub(crate) async fn add_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let properties = match device_properties(runtime, matches).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to create device: {error}\n")),
     };
@@ -166,24 +162,21 @@ pub(crate) fn add_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
         project_id: value(matches, "project-id").or_project(&runtime.project_id),
         properties,
     };
-    match crate::read_helpers::block_on(
-        runtime
-            .client
-            .post::<_, DeviceResponse>("/v1/devices", &request),
-    ) {
-        Ok(response) => {
-            stderr.extend_from_slice(format!("Device created: {}\n", response.id).as_bytes());
-            Outcome {
-                stderr,
-                ..Outcome::default()
-            }
-        }
+    match runtime
+        .client
+        .post::<_, DeviceResponse>("/v1/devices", &request)
+        .await
+    {
+        Ok(response) => Outcome {
+            stderr: format!("Device created: {}\n", response.id).into_bytes(),
+            ..Outcome::default()
+        },
         Err(error) => Outcome::failure(format!("Failed to create device: {error}\n")),
     }
 }
 
-pub(crate) fn edit_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let properties = match device_properties(runtime, matches) {
+pub(crate) async fn edit_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let properties = match device_properties(runtime, matches).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
     };
@@ -191,24 +184,23 @@ pub(crate) fn edit_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
     if name.is_empty() && properties.is_none() {
         return Outcome::failure("Nothing to update\n");
     }
-    let id = crate::read_helpers::positional(matches, 0);
+    let id = crate::read_helpers::value(matches, "device-id-arg");
     let mut query = query();
     add_str(
         &mut query,
         "projectId",
         &value(matches, "project-id").or_project(&runtime.project_id),
     );
-    sort_query(&mut query);
     let request = DeviceRequest {
         name,
         project_id: String::new(),
         properties,
     };
-    match crate::read_helpers::block_on(runtime.client.patch::<_, _, DeviceResponse>(
-        &format!("/v1/devices/{id}"),
-        &query,
-        &request,
-    )) {
+    match runtime
+        .client
+        .patch::<_, _, DeviceResponse>(&format!("/v1/devices/{id}"), &query, &request)
+        .await
+    {
         Ok(response) => Outcome {
             stderr: format!("Device updated: {}\n", response.name).into_bytes(),
             ..Outcome::default()

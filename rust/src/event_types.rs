@@ -56,7 +56,7 @@ impl Record for EventType {
         ]
     }
 }
-pub(crate) fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
+pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
     finish_list(
         runtime,
         format,
@@ -67,4 +67,5 @@ pub(crate) fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
                 .await
         },
     )
+    .await
 }

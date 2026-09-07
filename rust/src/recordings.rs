@@ -7,8 +7,8 @@ use serde_json::Value;
 
 use crate::output::Format;
 use crate::read_helpers::{
-    add, add_str, compact_json, finish_list, human_readable_bytes, parse_i64, parse_timestamp,
-    query, session_key_error, sort_query, value, DeviceSummary, ProjectFallback, Record, Runtime,
+    add, add_str, compact_json, finish_list, parse_i64, parse_timestamp, query, session_key_error,
+    value, DeviceSummary, ProjectFallback, Record, Runtime,
 };
 use crate::Outcome;
 
@@ -89,7 +89,7 @@ impl Record for Recording {
         vec![
             self.id.clone(),
             self.path.clone(),
-            human_readable_bytes(self.size),
+            format!("{} B", self.size),
             self.message_count.to_string(),
             self.created_at.clone(),
             self.imported_at.clone(),
@@ -108,7 +108,11 @@ impl Record for Recording {
         ]
     }
 }
-pub(crate) fn list_recordings(runtime: &Runtime, matches: &ArgMatches, format: Format) -> Outcome {
+pub(crate) async fn list_recordings(
+    runtime: &Runtime,
+    matches: &ArgMatches,
+    format: Format,
+) -> Outcome {
     let project_id = value(matches, "project-id").or_project(&runtime.project_id);
     if let Some(error) = session_key_error(matches, &project_id) {
         return Outcome::failure(error);
@@ -145,7 +149,6 @@ pub(crate) fn list_recordings(runtime: &Runtime, matches: &ArgMatches, format: F
     add_str(&mut query, "sortBy", &value(matches, "sort-by"));
     add_str(&mut query, "sortOrder", &value(matches, "sort-order"));
     add_str(&mut query, "start", &start);
-    sort_query(&mut query);
     finish_list(
         runtime,
         format,
@@ -156,11 +159,12 @@ pub(crate) fn list_recordings(runtime: &Runtime, matches: &ArgMatches, format: F
                 .await
         },
     )
+    .await
 }
 
-pub(crate) fn delete_recording(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let id = crate::read_helpers::positional(matches, 0);
-    match crate::read_helpers::block_on(runtime.client.delete(&format!("/v1/recordings/{id}"))) {
+pub(crate) async fn delete_recording(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+    let id = crate::read_helpers::value(matches, "recording-id-arg");
+    match runtime.client.delete(&format!("/v1/recordings/{id}")).await {
         Ok(()) => Outcome::default(),
         Err(error) if error.is_not_found() => Outcome {
             stderr: b"Not found. The resource may have already been deleted.\n".to_vec(),
