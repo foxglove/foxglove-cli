@@ -1,15 +1,13 @@
 //! Device commands.
-#![allow(clippy::struct_field_names)]
 
-use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+use crate::cli::{DeviceEditArgs, DeviceListArgs, DeviceWriteArgs};
 use crate::output::Format;
-use crate::read_helpers::{
-    add_str, compact_json, finish_list, query, value, ProjectFallback, Record, Runtime,
-};
+use crate::records::{compact_json, fetch_list, ProjectFallback, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -49,22 +47,32 @@ impl Record for Device {
         ]
     }
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceListQuery {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+}
+
 pub(crate) async fn list_devices(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &DeviceListArgs,
     format: Format,
 ) -> Outcome {
-    let mut query = query();
-    add_str(
-        &mut query,
-        "projectId",
-        &value(matches, "project-id").or_project(&runtime.project_id),
-    );
-    finish_list(
+    let query = DeviceListQuery {
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
+    fetch_list::<Device, _>(
         runtime,
         format,
         "Failed to list devices",
-        move |client| async move { client.get::<_, Vec<Device>>("/v1/devices", &query).await },
+        "/v1/devices",
+        &query,
     )
     .await
 }
@@ -95,12 +103,8 @@ struct DeviceResponse {
 
 async fn device_properties(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    pairs: &[String],
 ) -> Result<Option<BTreeMap<String, Value>>, String> {
-    let Some(pairs) = matches.get_many::<String>("property") else {
-        return Ok(None);
-    };
-    let pairs = pairs.cloned().collect::<Vec<_>>();
     if pairs.is_empty() {
         return Ok(None);
     }
@@ -152,14 +156,18 @@ async fn device_properties(
     Ok(Some(properties))
 }
 
-pub(crate) async fn add_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let properties = match device_properties(runtime, matches).await {
+pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceWriteArgs) -> Outcome {
+    let properties = match device_properties(runtime, &args.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to create device: {error}\n")),
     };
     let request = DeviceRequest {
-        name: value(matches, "name"),
-        project_id: value(matches, "project-id").or_project(&runtime.project_id),
+        name: args.name.clone().unwrap_or_default(),
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
         properties,
     };
     match runtime
@@ -175,22 +183,23 @@ pub(crate) async fn add_device(runtime: &Runtime, matches: &ArgMatches) -> Outco
     }
 }
 
-pub(crate) async fn edit_device(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let properties = match device_properties(runtime, matches).await {
+pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Outcome {
+    let properties = match device_properties(runtime, &args.update.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
     };
-    let name = value(matches, "name");
+    let name = args.update.name.clone().unwrap_or_default();
     if name.is_empty() && properties.is_none() {
         return Outcome::failure("Nothing to update\n");
     }
-    let id = crate::read_helpers::value(matches, "device-id-arg");
-    let mut query = query();
-    add_str(
-        &mut query,
-        "projectId",
-        &value(matches, "project-id").or_project(&runtime.project_id),
-    );
+    let query = DeviceListQuery {
+        project_id: args
+            .update
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
     let request = DeviceRequest {
         name,
         project_id: String::new(),
@@ -198,7 +207,7 @@ pub(crate) async fn edit_device(runtime: &Runtime, matches: &ArgMatches) -> Outc
     };
     match runtime
         .client
-        .patch::<_, _, DeviceResponse>(&format!("/v1/devices/{id}"), &query, &request)
+        .patch::<_, _, DeviceResponse>(&format!("/v1/devices/{}", args.id), &query, &request)
         .await
     {
         Ok(response) => Outcome {

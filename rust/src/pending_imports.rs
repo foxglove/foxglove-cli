@@ -1,14 +1,11 @@
 //! Pending import commands.
-#![allow(clippy::struct_field_names)]
 
-use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 
+use crate::cli::PendingImportListArgs;
 use crate::output::Format;
-use crate::read_helpers::{
-    add, add_str, finish_list, parse_timestamp, query, session_key_error, value, ProjectFallback,
-    Record, Runtime,
-};
+use crate::records::{fetch_list, is_false, parse_timestamp, ProjectFallback, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -76,16 +73,57 @@ impl Record for PendingImport {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PendingImportListQuery {
+    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
+    device_id: String,
+    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
+    device_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    error: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_project_id: Option<bool>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    key: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    request_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    session_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    session_key: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    site_id: String,
+    #[serde(skip_serializing_if = "is_false")]
+    show_completed: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    show_quarantined: bool,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    updated_since: String,
+}
+
 pub(crate) async fn list_pending_imports(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &PendingImportListArgs,
     format: Format,
 ) -> Outcome {
-    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
-    if let Some(error) = session_key_error(matches, &project_id) {
-        return Outcome::failure(error);
+    let project_id = args
+        .project_id
+        .clone()
+        .unwrap_or_default()
+        .or_project(&runtime.project_id);
+    let session_key = args.session_key.clone().unwrap_or_default();
+    if !session_key.is_empty() && project_id.is_empty() {
+        return Outcome::failure("--project-id is required when using --session-key\n");
     }
-    let updated_since = match parse_timestamp(&value(matches, "updated-since"), "updated since") {
+    let updated_since = match parse_timestamp(
+        args.updated_since.as_deref().unwrap_or_default(),
+        "updated since",
+    ) {
         Ok(value) => value,
         Err(error) => {
             return Outcome::failure(format!(
@@ -93,45 +131,28 @@ pub(crate) async fn list_pending_imports(
             ))
         }
     };
-    let mut query = query();
-    add_str(&mut query, "device.id", &value(matches, "device-id"));
-    add_str(&mut query, "device.name", &value(matches, "device-name"));
-    add_str(&mut query, "error", &value(matches, "error"));
-    add_str(&mut query, "filename", &value(matches, "filename"));
-    add(
-        &mut query,
-        "hasProjectId",
-        "false",
-        matches.get_flag("without-project"),
-    );
-    add_str(&mut query, "key", &value(matches, "key"));
-    add_str(&mut query, "projectId", &project_id);
-    add_str(&mut query, "requestId", &value(matches, "request-id"));
-    add_str(&mut query, "sessionId", &value(matches, "session-id"));
-    add_str(&mut query, "sessionKey", &value(matches, "session-key"));
-    add_str(&mut query, "siteId", &value(matches, "site-id"));
-    add(
-        &mut query,
-        "showCompleted",
-        "true",
-        matches.get_flag("show-completed"),
-    );
-    add(
-        &mut query,
-        "showQuarantined",
-        "true",
-        matches.get_flag("show-quarantined"),
-    );
-    add_str(&mut query, "updatedSince", &updated_since);
-    finish_list(
+    let query = PendingImportListQuery {
+        device_id: args.device_id.clone().unwrap_or_default(),
+        device_name: args.device_name.clone().unwrap_or_default(),
+        error: args.error.clone().unwrap_or_default(),
+        filename: args.filename.clone().unwrap_or_default(),
+        has_project_id: args.without_project.then_some(false),
+        key: args.key.clone().unwrap_or_default(),
+        project_id,
+        request_id: args.request_id.clone().unwrap_or_default(),
+        session_id: args.session_id.clone().unwrap_or_default(),
+        session_key,
+        site_id: args.site_id.clone().unwrap_or_default(),
+        show_completed: args.show_completed,
+        show_quarantined: args.show_quarantined,
+        updated_since,
+    };
+    fetch_list::<PendingImport, _>(
         runtime,
         format,
         "Failed to list pending imports",
-        move |client| async move {
-            client
-                .get::<_, Vec<PendingImport>>("/v1/data/pending-imports", &query)
-                .await
-        },
+        "/v1/data/pending-imports",
+        &query,
     )
     .await
 }

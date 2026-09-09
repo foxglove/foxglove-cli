@@ -1,15 +1,14 @@
 //! Session commands.
-#![allow(clippy::struct_field_names)]
 
-use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
 
-use crate::output::Format;
-use crate::read_helpers::{
-    add_str, finish_list, format_output, query, value, DeviceSummary, ProjectFallback, Record,
-    Runtime,
+use crate::cli::{
+    SessionAddArgs, SessionListArgs, SessionLookupArgs, SessionRecordingMutationArgs,
 };
+use crate::output::Format;
+use crate::records::{fetch_list, format_output, DeviceSummary, ProjectFallback, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -45,6 +44,7 @@ struct Session {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     recordings: Vec<SessionRecording>,
 }
+
 impl Record for SessionRecording {
     fn headers() -> &'static [&'static str] {
         &["ID", "Start", "End", "Path"]
@@ -59,6 +59,7 @@ impl Record for SessionRecording {
         ]
     }
 }
+
 impl Record for Session {
     fn headers() -> &'static [&'static str] {
         &[
@@ -94,36 +95,60 @@ impl Record for Session {
         ]
     }
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionListQuery {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    device_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    device_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectQuery {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+}
+
 pub(crate) async fn list_sessions(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &SessionListArgs,
     format: Format,
 ) -> Outcome {
-    let mut query = query();
-    add_str(&mut query, "deviceId", &value(matches, "device-id"));
-    add_str(&mut query, "deviceName", &value(matches, "device-name"));
-    add_str(
-        &mut query,
-        "projectId",
-        &value(matches, "project-id").or_project(&runtime.project_id),
-    );
-    finish_list(
+    let query = SessionListQuery {
+        device_id: args.device_id.clone().unwrap_or_default(),
+        device_name: args.device_name.clone().unwrap_or_default(),
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
+    fetch_list::<Session, _>(
         runtime,
         format,
         "Failed to list sessions",
-        move |client| async move { client.get::<_, Vec<Session>>("/v1/sessions", &query).await },
+        "/v1/sessions",
+        &query,
     )
     .await
 }
 
-pub(crate) async fn get_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let key = value(matches, "session");
-    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
-    let mut query = query();
-    add_str(&mut query, "projectId", &project_id);
+pub(crate) async fn get_session(runtime: &Runtime, args: &SessionLookupArgs) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
     let result = runtime
         .client
-        .get::<_, Session>(&format!("/v1/sessions/{key}"), &query)
+        .get::<_, Session>(&format!("/v1/sessions/{}", args.session), &query)
         .await;
     match result {
         Ok(session) => session_outcome(&session),
@@ -131,7 +156,7 @@ pub(crate) async fn get_session(runtime: &Runtime, matches: &ArgMatches) -> Outc
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }
         Err(error) if error.is_not_found() => {
-            Outcome::failure(format!("Session not found: {key}\n"))
+            Outcome::failure(format!("Session not found: {}\n", args.session))
         }
         Err(error) => Outcome::failure(format!("Failed to get session: {error}\n")),
     }
@@ -166,14 +191,20 @@ fn session_outcome(session: &Session) -> Outcome {
     ))
 }
 
-pub(crate) async fn list_session_recordings(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let key = value(matches, "session");
-    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
-    let mut query = query();
-    add_str(&mut query, "projectId", &project_id);
+pub(crate) async fn list_session_recordings(
+    runtime: &Runtime,
+    args: &SessionLookupArgs,
+) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
     let result = runtime
         .client
-        .get::<_, Session>(&format!("/v1/sessions/{key}"), &query)
+        .get::<_, Session>(&format!("/v1/sessions/{}", args.session), &query)
         .await;
     match result {
         Ok(session) if session.recordings.is_empty() => {
@@ -213,14 +244,18 @@ struct PatchSessionRecordingsRequest {
     remove_recording_ids: Vec<String>,
 }
 
-pub(crate) async fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let device_id = value(matches, "device-id");
+pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Outcome {
+    let device_id = args.device_id.clone().unwrap_or_default();
     if device_id.is_empty() {
         return Outcome::failure("--device-id is required when creating a session\n");
     }
     let request = CreateSessionRequest {
-        name: value(matches, "name"),
-        project_id: value(matches, "project-id").or_project(&runtime.project_id),
+        name: args.name.clone().unwrap_or_default(),
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
         device_id,
     };
     match runtime
@@ -245,23 +280,27 @@ pub(crate) async fn add_session(runtime: &Runtime, matches: &ArgMatches) -> Outc
     }
 }
 
-pub(crate) async fn delete_session(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let key = value(matches, "session");
-    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
-    let mut query = query();
-    add_str(&mut query, "projectId", &project_id);
+pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
     match runtime
         .client
-        .delete_with_query(&format!("/v1/sessions/{key}"), &query)
+        .delete_with_query(&format!("/v1/sessions/{}", args.session), &query)
         .await
     {
         Ok(()) => Outcome {
-            stderr: format!("Session deleted: {key}\n").into_bytes(),
+            stderr: format!("Session deleted: {}\n", args.session).into_bytes(),
             ..Outcome::default()
         },
         Err(error) if error.is_not_found() => Outcome {
             stderr: format!(
-                "Not found. The resource may have already been deleted.\nSession deleted: {key}\n"
+                "Not found. The resource may have already been deleted.\nSession deleted: {}\n",
+                args.session
             )
             .into_bytes(),
             ..Outcome::default()
@@ -275,34 +314,41 @@ pub(crate) async fn delete_session(runtime: &Runtime, matches: &ArgMatches) -> O
 
 pub(crate) async fn patch_session_recordings(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &SessionRecordingMutationArgs,
     add: bool,
 ) -> Outcome {
-    let key = value(matches, "session");
-    let recording_id = value(matches, "recording");
-    let project_id = value(matches, "project-id").or_project(&runtime.project_id);
-    let mut query = query();
-    add_str(&mut query, "projectId", &project_id);
+    let query = ProjectQuery {
+        project_id: args
+            .project_id
+            .clone()
+            .unwrap_or_default()
+            .or_project(&runtime.project_id),
+    };
     let request = PatchSessionRecordingsRequest {
         add_recording_ids: if add {
-            vec![recording_id.clone()]
+            vec![args.recording.clone()]
         } else {
             Vec::new()
         },
         remove_recording_ids: if add {
             Vec::new()
         } else {
-            vec![recording_id.clone()]
+            vec![args.recording.clone()]
         },
     };
     match runtime
         .client
-        .patch::<_, _, serde_json::Value>(&format!("/v1/sessions/{key}"), &query, &request)
+        .patch::<_, _, serde_json::Value>(
+            &format!("/v1/sessions/{}", args.session),
+            &query,
+            &request,
+        )
         .await
     {
         Ok(_) => Outcome {
             stderr: format!(
-                "Recording {recording_id} {} session\n",
+                "Recording {} {} session\n",
+                args.recording,
                 if add { "added to" } else { "removed from" }
             )
             .into_bytes(),

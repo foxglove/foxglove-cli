@@ -1,10 +1,10 @@
 //! Project commands.
-#![allow(clippy::struct_field_names)]
 
 use serde::{Deserialize, Serialize};
 
 use crate::output::Format;
-use crate::read_helpers::{finish_list, Record, Runtime};
+use crate::records::{fetch_list, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -36,16 +36,14 @@ impl Record for Project {
         ]
     }
 }
+
 pub(crate) async fn list_projects(runtime: &Runtime, format: Format) -> Outcome {
-    finish_list(
+    fetch_list::<Project, _>(
         runtime,
         format,
         "Failed to list projects",
-        |client| async move {
-            client
-                .get::<_, Vec<Project>>("/v1/projects", &Vec::<(String, String)>::new())
-                .await
-        },
+        "/v1/projects",
+        &(),
     )
     .await
 }

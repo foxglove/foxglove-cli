@@ -1,11 +1,11 @@
 //! Event type commands.
-#![allow(clippy::struct_field_names)]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::output::Format;
-use crate::read_helpers::{compact_json, finish_list, Record, Runtime};
+use crate::records::{compact_json, fetch_list, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -56,16 +56,14 @@ impl Record for EventType {
         ]
     }
 }
+
 pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
-    finish_list(
+    fetch_list::<EventType, _>(
         runtime,
         format,
         "Failed to list event types",
-        |client| async move {
-            client
-                .get::<_, Vec<EventType>>("/v1/event-types", &Vec::<(String, String)>::new())
-                .await
-        },
+        "/v1/event-types",
+        &(),
     )
     .await
 }

@@ -8,12 +8,11 @@ use std::process::Child;
 use std::process::Command;
 use std::time::Duration;
 
-use clap::ArgMatches;
-
 use crate::api::{self, FoxgloveClient};
+use crate::cli::LoginArgs;
 use crate::config::Config;
 use crate::output;
-use crate::read_helpers::{self, last_value, Runtime};
+use crate::runtime::{self, Runtime};
 use crate::Outcome;
 
 #[derive(Deserialize)]
@@ -70,15 +69,22 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
 }
 
 /// Run the browser-based device-code login flow and persist its session token.
-pub(crate) async fn login(matches: &ArgMatches, prompt_writer: &mut dyn Write) -> Outcome {
-    let base_url = last_value(matches, "base-url")
+pub(crate) async fn login(
+    args: &LoginArgs,
+    config_path: Option<&std::path::Path>,
+    client_id: Option<&str>,
+    prompt_writer: &mut dyn Write,
+) -> Outcome {
+    let base_url = args
+        .base_url
+        .clone()
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| read_helpers::DEFAULT_BASE_URL.to_owned());
+        .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
     let client = match FoxgloveClient::new(
         &base_url,
-        read_helpers::client_id(matches),
+        client_id.unwrap_or(runtime::DEFAULT_CLIENT_ID),
         "",
-        read_helpers::user_agent(),
+        runtime::user_agent(),
     ) {
         Ok(client) => client,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
@@ -99,7 +105,7 @@ pub(crate) async fn login(matches: &ArgMatches, prompt_writer: &mut dyn Write) -
         Ok(token) => token,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
-    let mut config = match Config::load_from_path(read_helpers::config_path(matches)) {
+    let mut config = match Config::load_from_path(config_path) {
         Ok(config) => config,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };

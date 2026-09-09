@@ -1,13 +1,13 @@
 //! Attachment commands.
-#![allow(clippy::struct_field_names)]
 
 use std::io::Write;
 
-use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 
+use crate::cli::{AttachmentDownloadArgs, AttachmentListArgs};
 use crate::output::Format;
-use crate::read_helpers::{add_str, finish_list, query, session_key_error, value, Record, Runtime};
+use crate::records::{fetch_list, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -60,46 +60,57 @@ impl Record for Attachment {
         ]
     }
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AttachmentListQuery {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    import_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    recording_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    session_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    session_key: String,
+}
+
 pub(crate) async fn list_attachments(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &AttachmentListArgs,
     format: Format,
 ) -> Outcome {
-    let session_key = value(matches, "session-key");
-    let project_id = value(matches, "project-id");
-    if let Some(error) = session_key_error(matches, &project_id) {
-        return Outcome::failure(error);
+    let query = AttachmentListQuery {
+        import_id: args.import_id.clone().unwrap_or_default(),
+        project_id: args.project_id.clone().unwrap_or_default(),
+        recording_id: args.recording_id.clone().unwrap_or_default(),
+        session_id: args.session_id.clone().unwrap_or_default(),
+        session_key: args.session_key.clone().unwrap_or_default(),
+    };
+    if !query.session_key.is_empty() && query.project_id.is_empty() {
+        return Outcome::failure("--project-id is required when using --session-key\n");
     }
-    let mut query = query();
-    add_str(&mut query, "importId", &value(matches, "import-id"));
-    add_str(&mut query, "projectId", &project_id);
-    add_str(&mut query, "recordingId", &value(matches, "recording-id"));
-    add_str(&mut query, "sessionId", &value(matches, "session-id"));
-    add_str(&mut query, "sessionKey", &session_key);
-    finish_list(
+    fetch_list::<Attachment, _>(
         runtime,
         format,
         "Failed to list attachments",
-        move |client| async move {
-            client
-                .get::<_, Vec<Attachment>>("/v1/recording-attachments", &query)
-                .await
-        },
+        "/v1/recording-attachments",
+        &query,
     )
     .await
 }
 
 pub(crate) async fn download_attachment(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &AttachmentDownloadArgs,
     stdout_writer: &mut dyn Write,
 ) -> Outcome {
-    let id = crate::read_helpers::value(matches, "attachment-id");
     let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
         let mut response = runtime
             .client
-            .attachment_with_cancellation(&id, &cancellation)
+            .attachment_with_cancellation(&args.attachment_id, &cancellation)
             .await?;
         while let Some(chunk) = response.next_chunk().await? {
             stdout_writer

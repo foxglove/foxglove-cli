@@ -8,10 +8,10 @@
     clippy::too_many_lines,
     clippy::type_complexity
 )]
-//! Streaming file-format primitives shared by export phases.
+//! Streaming MCAP and ROS 1 primitives used by import, export, and recovery.
 //!
-//! This module deliberately has no CLI entrypoint.  It validates import files today and
-//! exposes the decoded record model that direct export and recovery will use later.
+//! The module owns format-level validation, decoding, transcoding, and canonical
+//! writing. Command orchestration and destination staging live in `data`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;

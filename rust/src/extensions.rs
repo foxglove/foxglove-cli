@@ -1,13 +1,13 @@
 //! Extension commands.
-#![allow(clippy::struct_field_names)]
 
-use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+use crate::cli::{ExtensionIdArgs, FileArgs};
 use crate::output::Format;
-use crate::read_helpers::{finish_list, Record, Runtime};
+use crate::records::{fetch_list, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -49,23 +49,24 @@ impl Record for Extension {
         ]
     }
 }
+
 pub(crate) async fn list_extensions(runtime: &Runtime, format: Format) -> Outcome {
-    finish_list(
+    fetch_list::<Extension, _>(
         runtime,
         format,
         "Failed to list extensions",
-        |client| async move {
-            client
-                .get::<_, Vec<Extension>>("/v1/extensions", &Vec::<(String, String)>::new())
-                .await
-        },
+        "/v1/extensions",
+        &(),
     )
     .await
 }
 
-pub(crate) async fn unpublish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let id = crate::read_helpers::value(matches, "extension-id");
-    match runtime.client.delete(&format!("/v1/extensions/{id}")).await {
+pub(crate) async fn unpublish_extension(runtime: &Runtime, args: &ExtensionIdArgs) -> Outcome {
+    match runtime
+        .client
+        .delete(&format!("/v1/extensions/{}", args.extension_id))
+        .await
+    {
         Ok(()) => Outcome {
             stderr: b"Extension deleted\n".to_vec(),
             ..Outcome::default()
@@ -79,9 +80,8 @@ pub(crate) async fn unpublish_extension(runtime: &Runtime, matches: &ArgMatches)
     }
 }
 
-pub(crate) async fn publish_extension(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
-    let filename = crate::read_helpers::value(matches, "file");
-    let path = Path::new(&filename);
+pub(crate) async fn publish_extension(runtime: &Runtime, args: &FileArgs) -> Outcome {
+    let path = Path::new(&args.file);
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) => {

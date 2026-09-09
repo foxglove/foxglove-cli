@@ -1,18 +1,16 @@
 //! Event commands.
-#![allow(clippy::struct_field_names)]
 
-use clap::ArgMatches;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::cli::{EventAddArgs, EventListArgs};
 use crate::output::Format;
-use crate::read_helpers::{
-    add, add_str, compact_json, finish_list, last_value, parse_i64, query, value, DeviceSummary,
-    Record, Runtime,
-};
+use crate::records::{compact_json, fetch_list, is_zero, DeviceSummary, Record};
+use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[allow(clippy::struct_field_names)]
 struct Event {
     #[serde(rename = "createdAt")]
     created_at: String,
@@ -62,56 +60,67 @@ impl Record for Event {
         ]
     }
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EventListQuery {
+    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
+    device_id: String,
+    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
+    device_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    end: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    event_type_id: String,
+    #[serde(skip_serializing_if = "is_zero")]
+    limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    query: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    query_fields: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_order: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    start: String,
+}
+
 pub(crate) async fn list_events(
     runtime: &Runtime,
-    matches: &ArgMatches,
+    args: &EventListArgs,
     format: Format,
 ) -> Outcome {
-    if let Some(values) = matches.get_many::<String>("query-field") {
-        for field in values {
-            if field != "metadata" && field != "properties" {
-                return Outcome::failure(format!("Invalid --query-field value \"{field}\": must be \"metadata\" or \"properties\"\n"));
-            }
+    for field in &args.query_field {
+        if field != "metadata" && field != "properties" {
+            return Outcome::failure(format!(
+                "Invalid --query-field value \"{field}\": must be \"metadata\" or \"properties\"\n"
+            ));
         }
     }
-    let mut query = query();
-    add_str(&mut query, "device.id", &value(matches, "device-id"));
-    add_str(&mut query, "device.name", &value(matches, "device-name"));
-    add_str(&mut query, "end", &value(matches, "end"));
-    add_str(&mut query, "eventTypeId", &value(matches, "event-type-id"));
-    let limit = match parse_i64(matches, "limit", 100) {
-        Ok(value) => value,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
+    let limit = args.limit.unwrap_or(100);
+    let offset = args.offset.unwrap_or_default();
+    let query = EventListQuery {
+        device_id: args.device_id.clone().unwrap_or_default(),
+        device_name: args.device_name.clone().unwrap_or_default(),
+        end: args.end.clone().unwrap_or_default(),
+        event_type_id: args.event_type_id.clone().unwrap_or_default(),
+        limit,
+        offset,
+        query: args.query.clone().unwrap_or_default(),
+        query_fields: args.query_field.clone(),
+        sort_by: args.sort_by.clone().unwrap_or_default(),
+        sort_order: args.sort_order.clone().unwrap_or_else(|| "asc".to_owned()),
+        start: args.start.clone().unwrap_or_default(),
     };
-    let offset = match parse_i64(matches, "offset", 0) {
-        Ok(value) => value,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
-    };
-    add(&mut query, "limit", limit, limit != 0);
-    add(&mut query, "offset", offset, offset != 0);
-    add_str(&mut query, "query", &value(matches, "query"));
-    if let Some(values) = matches.get_many::<String>("query-field") {
-        for field in values {
-            query.push(("queryFields".to_owned(), field.clone()));
-        }
-    }
-    add_str(&mut query, "sortBy", &value(matches, "sort-by"));
-    let sort_order = last_value(matches, "sort-order");
-    add_str(
-        &mut query,
-        "sortOrder",
-        if sort_order.is_none() {
-            "asc"
-        } else {
-            sort_order.as_deref().unwrap_or_default()
-        },
-    );
-    add_str(&mut query, "start", &value(matches, "start"));
-    finish_list(
+    fetch_list::<Event, _>(
         runtime,
         format,
         "Failed to list events",
-        move |client| async move { client.get::<_, Vec<Event>>("/v1/events", &query).await },
+        "/v1/events",
+        &query,
     )
     .await
 }
@@ -132,25 +141,23 @@ struct CreateEventResponse {
     id: String,
 }
 
-pub(crate) async fn add_event(runtime: &Runtime, matches: &ArgMatches) -> Outcome {
+pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome {
     let mut metadata = std::collections::BTreeMap::new();
-    if let Some(values) = matches.get_many::<String>("metadata") {
-        for pair in values {
-            let Some((key, value)) = pair.split_once(':') else {
-                return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
-            };
-            if key.is_empty() {
-                return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
-            }
-            metadata.insert(key.to_owned(), value.to_owned());
+    for pair in &args.metadata {
+        let Some((key, value)) = pair.split_once(':') else {
+            return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
+        };
+        if key.is_empty() {
+            return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
         }
+        metadata.insert(key.to_owned(), value.to_owned());
     }
     let request = CreateEventRequest {
-        device_id: value(matches, "device-id"),
-        end: value(matches, "end"),
-        event_type_id: value(matches, "event-type-id"),
+        device_id: args.device_id.clone().unwrap_or_default(),
+        end: args.end.clone().unwrap_or_default(),
+        event_type_id: args.event_type_id.clone().unwrap_or_default(),
         metadata,
-        start: value(matches, "start"),
+        start: args.start.clone().unwrap_or_default(),
     };
     match runtime
         .client

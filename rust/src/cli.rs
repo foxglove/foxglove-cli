@@ -6,125 +6,678 @@ use std::path::PathBuf;
 
 use clap::builder::Resettable;
 use clap::error::ErrorKind;
-use clap::{
-    Arg, ArgAction, ArgMatches, Command, FromArgMatches, Parser, Subcommand, ValueEnum, ValueHint,
-};
+use clap::{Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::{generate, Shell};
 use serde_yaml_ng::Value;
 
 use crate::config::Config;
 use crate::{
     attachments, auth, data, devices, event_types, events, extensions, pending_imports, projects,
-    read_helpers, recordings, sessions, topics,
+    recordings, runtime, sessions, topics,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
 
-/// The command hierarchy used for type-directed dispatch. Option and argument
-/// metadata lives in the Clap builder below so help and completions share the
-/// same source as parsing.
+/// The complete command hierarchy. Parsing, help, dispatch metadata, and shell
+/// completions are all generated from these types.
 #[derive(Debug, Parser)]
-#[command(name = ROOT_COMMAND)]
+#[command(
+    name = ROOT_COMMAND,
+    about = "Command line client for the Foxglove data platform",
+    disable_version_flag = true,
+    subcommand_precedence_over_arg = true,
+    args_override_self = true
+)]
 struct Cli {
+    #[arg(
+        long,
+        global = true,
+        help = "Foxglove client ID",
+        allow_hyphen_values = true
+    )]
+    client_id: Option<String>,
+    #[arg(long, global = true, help = "Config file", value_hint = ValueHint::FilePath)]
+    config: Option<PathBuf>,
+    #[arg(long, global = true, help = "Enable debug logging")]
+    debug: bool,
     #[command(subcommand)]
     command: Option<CliCommand>,
 }
 
 #[derive(Debug, Subcommand)]
 enum CliCommand {
-    #[command(subcommand)]
+    #[command(about = "Query and modify data attachments", subcommand)]
     Attachments(AttachmentsCommand),
-    #[command(subcommand)]
+    #[command(about = "Manage authentication", subcommand)]
     Auth(AuthCommand),
-    #[command(subcommand)]
+    #[command(about = "Generate a shell completion script", subcommand)]
     Completion(CompletionCommand),
-    #[command(subcommand)]
+    #[command(about = "Manage CLI configuration values", subcommand)]
     Config(ConfigCommand),
-    #[command(subcommand)]
+    #[command(about = "Data access and management", subcommand)]
     Data(DataCommand),
-    #[command(subcommand)]
+    #[command(about = "List and manage devices", subcommand)]
     Devices(DevicesCommand),
-    #[command(name = "event-types")]
-    #[command(subcommand)]
+    #[command(name = "event-types", about = "List event types", subcommand)]
     EventTypes(EventTypesCommand),
-    #[command(subcommand)]
+    #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
-    #[command(subcommand)]
+    #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
-    #[command(name = "pending-imports")]
-    #[command(subcommand)]
+    #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
-    #[command(subcommand)]
+    #[command(about = "List and manage projects", subcommand)]
     Projects(ProjectsCommand),
-    #[command(subcommand)]
+    #[command(about = "Query recordings", subcommand)]
     Recordings(RecordingsCommand),
-    #[command(subcommand)]
+    #[command(about = "List and manage sessions", subcommand)]
     Sessions(SessionsCommand),
-    #[command(subcommand)]
+    #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
+    #[command(about = "Print Foxglove CLI version")]
     Version,
 }
 
-macro_rules! command_group {
-    ($name:ident { $($variant:ident),+ $(,)? }) => {
-        #[derive(Debug, Subcommand)]
-        enum $name { $($variant),+ }
-    };
+#[derive(Debug, Subcommand)]
+enum AttachmentsCommand {
+    #[command(about = "Download an MCAP attachment by ID")]
+    Download(AttachmentDownloadArgs),
+    #[command(about = "List MCAP attachments")]
+    List(AttachmentListArgs),
 }
 
-command_group!(AttachmentsCommand { Download, List });
-command_group!(AuthCommand {
-    ConfigureApiKey,
+#[derive(Debug, Args)]
+pub(crate) struct AttachmentDownloadArgs {
+    #[arg(value_name = "ATTACHMENT_ID")]
+    pub(crate) attachment_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AttachmentListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Import ID", allow_hyphen_values = true)]
+    pub(crate) import_id: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
+    pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum AuthCommand {
+    #[command(about = "Configure an API key")]
+    ConfigureApiKey(ConfigureApiKeyArgs),
+    #[command(about = "Display information about the currently authenticated user")]
     Info,
-    Login
-});
-command_group!(CompletionCommand {
-    Bash,
-    Fish,
-    Powershell,
-    Zsh
-});
+    #[command(about = "Log in to Foxglove Data Platform")]
+    Login(LoginArgs),
+}
+
+#[derive(Debug, Args)]
+struct ConfigureApiKeyArgs {
+    #[arg(
+        long,
+        help = "API key for non-interactive use",
+        allow_hyphen_values = true
+    )]
+    api_key: Option<String>,
+    #[arg(
+        long,
+        help = "API server (default: https://api.foxglove.dev)",
+        allow_hyphen_values = true
+    )]
+    base_url: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LoginArgs {
+    #[arg(
+        long,
+        help = "API server (default: https://api.foxglove.dev)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) base_url: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum CompletionCommand {
+    #[command(about = "Generate completions for Bash")]
+    Bash(CompletionArgs),
+    #[command(about = "Generate completions for Fish")]
+    Fish(CompletionArgs),
+    #[command(about = "Generate completions for PowerShell")]
+    Powershell(CompletionArgs),
+    #[command(about = "Generate completions for Zsh")]
+    Zsh(CompletionArgs),
+}
+
+#[derive(Debug, Args)]
+struct CompletionArgs {
+    #[arg(long, help = "Disable completion descriptions")]
+    no_descriptions: bool,
+}
+
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
-    Get,
-    Set,
-    Unset,
+    #[command(about = "Get a configuration value")]
+    Get(ConfigKeyArgs),
+    #[command(about = "Set a configuration value")]
+    Set(ConfigSetArgs),
+    #[command(about = "Remove a configuration value")]
+    Unset(ConfigKeyArgs),
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ConfigKey {
     ProjectId,
 }
+
+#[derive(Debug, Args)]
+struct ConfigKeyArgs {
+    #[arg(value_name = "KEY")]
+    key: ConfigKey,
+}
+
+#[derive(Debug, Args)]
+struct ConfigSetArgs {
+    #[arg(value_name = "KEY")]
+    key: ConfigKey,
+    #[arg(value_name = "VALUE")]
+    value: String,
+}
+
 #[derive(Debug, Subcommand)]
 enum DataCommand {
-    #[command(subcommand)]
+    #[command(about = "List coverage ranges", subcommand)]
     Coverage(CoverageCommand),
-    Export,
-    Import,
+    #[command(about = "Export data by recording, import, session, or device and time range")]
+    Export(DataExportArgs),
+    #[command(about = "Import a data file to Foxglove Data Platform")]
+    Import(DataImportArgs),
 }
-command_group!(CoverageCommand { List });
-command_group!(DevicesCommand { Add, Edit, List });
-command_group!(EventTypesCommand { List });
-command_group!(EventsCommand { Add, List });
-command_group!(ExtensionsCommand {
-    List,
-    Publish,
-    Unpublish
-});
-command_group!(PendingImportsCommand { List });
-command_group!(ProjectsCommand { List });
-command_group!(RecordingsCommand { Delete, List });
+
+#[derive(Debug, Subcommand)]
+enum CoverageCommand {
+    #[command(about = "List coverage ranges")]
+    List(CoverageListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CoverageListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "End of coverage time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Include edge recordings")]
+    pub(crate) include_edge_recordings: bool,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
+    pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+    #[arg(
+        long,
+        help = "Start of coverage time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+    #[arg(
+        long,
+        help = "Coverage separation tolerance in seconds",
+        allow_hyphen_values = true
+    )]
+    pub(crate) tolerance: Option<i64>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DataExportArgs {
+    #[arg(
+        long,
+        help = "MCAP chunk compression: empty, zstd, or lz4 (default: lz4)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) compression: Option<String>,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(long, help = "End time (ISO 8601)", allow_hyphen_values = true)]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Import ID", allow_hyphen_values = true)]
+    pub(crate) import_id: Option<String>,
+    #[arg(long, help = "Include MCAP attachments")]
+    pub(crate) include_attachments: bool,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true)]
+    pub(crate) key: Option<String>,
+    #[arg(long, short = 'o', help = "Output file", value_hint = ValueHint::FilePath, allow_hyphen_values = true)]
+    pub(crate) output_file: Option<String>,
+    #[arg(
+        long,
+        help = "Output format: mcap0, bag1, or json (default: mcap0)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) output_format: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
+    pub(crate) recording_id: Option<String>,
+    #[arg(
+        long,
+        help = "Maximum replay lookback in seconds",
+        allow_hyphen_values = true
+    )]
+    pub(crate) replay_lookback_seconds: Option<f64>,
+    #[arg(long, help = "Replay policy", allow_hyphen_values = true)]
+    pub(crate) replay_policy: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, help = "Start time (ISO 8601)", allow_hyphen_values = true)]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "Comma-separated topic list", allow_hyphen_values = true)]
+    pub(crate) topics: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DataImportArgs {
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(long, help = "Edge recording ID", allow_hyphen_values = true)]
+    pub(crate) edge_recording_id: Option<String>,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true)]
+    pub(crate) key: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+    pub(crate) file: String,
+}
+
+#[derive(Debug, Subcommand)]
+enum DevicesCommand {
+    #[command(about = "Add a device for your organization")]
+    Add(DeviceWriteArgs),
+    #[command(about = "Edit a device")]
+    Edit(DeviceEditArgs),
+    #[command(about = "List devices registered to your organization")]
+    List(DeviceListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceWriteArgs {
+    #[arg(long, help = "Name of the device", allow_hyphen_values = true)]
+    pub(crate) name: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, short = 'p', help = "Custom property colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceEditArgs {
+    #[command(flatten)]
+    pub(crate) update: DeviceWriteArgs,
+    #[arg(value_name = "DEVICE_ID")]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EventTypesCommand {
+    #[command(about = "List event types")]
+    List(FormatArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum EventsCommand {
+    #[command(about = "Add an event")]
+    Add(EventAddArgs),
+    #[command(about = "List events")]
+    List(EventListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventAddArgs {
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(
+        long,
+        help = "End of event (inclusive), RFC 3339",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Associated event type ID", allow_hyphen_values = true)]
+    pub(crate) event_type_id: Option<String>,
+    #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) metadata: Vec<String>,
+    #[arg(long, help = "Start of event, RFC 3339", allow_hyphen_values = true)]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "Exclude events after this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Event type ID", allow_hyphen_values = true)]
+    pub(crate) event_type_id: Option<String>,
+    #[arg(long, help = "Result limit (default: 100)", allow_hyphen_values = true)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Result offset", allow_hyphen_values = true)]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Property or metadata query", allow_hyphen_values = true)]
+    pub(crate) query: Option<String>,
+    #[arg(long, help = "Fields to query by", allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) query_field: Vec<String>,
+    #[arg(long, help = "Sort column", allow_hyphen_values = true)]
+    pub(crate) sort_by: Option<String>,
+    #[arg(long, help = "Sort order (default: asc)", allow_hyphen_values = true)]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Exclude events before this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum ExtensionsCommand {
+    #[command(about = "List Studio extensions created for your organization")]
+    List(FormatArgs),
+    #[command(about = "Publish a Studio extension (.foxe) to your organization")]
+    Publish(FileArgs),
+    #[command(about = "Delete and unpublish a Studio extension from your organization")]
+    Unpublish(ExtensionIdArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FileArgs {
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+    pub(crate) file: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ExtensionIdArgs {
+    #[arg(value_name = "EXTENSION_ID")]
+    pub(crate) extension_id: String,
+}
+
+#[derive(Debug, Subcommand)]
+enum PendingImportsCommand {
+    #[command(about = "List pending and errored import jobs for uploaded recordings")]
+    List(PendingImportListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PendingImportListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(long, help = "Filter by error message", allow_hyphen_values = true)]
+    pub(crate) error: Option<String>,
+    #[arg(long, help = "Filename", allow_hyphen_values = true)]
+    pub(crate) filename: Option<String>,
+    #[arg(long, help = "Key", allow_hyphen_values = true)]
+    pub(crate) key: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Request ID", allow_hyphen_values = true)]
+    pub(crate) request_id: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, help = "Show completed requests")]
+    pub(crate) show_completed: bool,
+    #[arg(long, help = "Show quarantined requests")]
+    pub(crate) show_quarantined: bool,
+    #[arg(long, help = "Site ID", allow_hyphen_values = true)]
+    pub(crate) site_id: Option<String>,
+    #[arg(
+        long,
+        help = "Only imports updated since this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) updated_since: Option<String>,
+    #[arg(long, help = "Only imports without a project")]
+    pub(crate) without_project: bool,
+}
+
+#[derive(Debug, Subcommand)]
+enum ProjectsCommand {
+    #[command(about = "List projects")]
+    List(FormatArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum RecordingsCommand {
+    #[command(about = "Delete a recording from your organization")]
+    Delete(RecordingDeleteArgs),
+    #[command(about = "List recordings")]
+    List(Box<RecordingListArgs>),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RecordingDeleteArgs {
+    #[arg(value_name = "RECORDING_ID")]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RecordingListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(long, help = "Edge site ID", allow_hyphen_values = true)]
+    pub(crate) edge_site_id: Option<String>,
+    #[arg(
+        long,
+        help = "End of data range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Import status", allow_hyphen_values = true)]
+    pub(crate) import_status: Option<String>,
+    #[arg(
+        long,
+        help = "Maximum result count (default: 2000)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of recordings to skip",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Recording file path", allow_hyphen_values = true)]
+    pub(crate) path: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, help = "Primary site ID", allow_hyphen_values = true)]
+    pub(crate) site_id: Option<String>,
+    #[arg(long, help = "Sort field", allow_hyphen_values = true)]
+    pub(crate) sort_by: Option<String>,
+    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Start of data range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
 #[derive(Debug, Subcommand)]
 enum SessionsCommand {
-    Add,
-    Delete,
-    Get,
-    List,
-    #[command(subcommand)]
+    #[command(about = "Create a session")]
+    Add(SessionAddArgs),
+    #[command(about = "Delete a session")]
+    Delete(SessionLookupArgs),
+    #[command(about = "Get a session by ID or key")]
+    Get(SessionLookupArgs),
+    #[command(about = "List sessions in your organization")]
+    List(SessionListArgs),
+    #[command(about = "List, add, or remove recordings in a session", subcommand)]
     Recordings(SessionRecordingsCommand),
 }
-command_group!(SessionRecordingsCommand { Add, List, Remove });
-command_group!(TopicsCommand { List });
+
+#[derive(Debug, Args)]
+pub(crate) struct SessionAddArgs {
+    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Session name", allow_hyphen_values = true)]
+    pub(crate) name: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SessionLookupArgs {
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "SESSION_ID_OR_KEY")]
+    pub(crate) session: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SessionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Filter by device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Filter by device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum SessionRecordingsCommand {
+    #[command(about = "Assign a recording to a session")]
+    Add(SessionRecordingMutationArgs),
+    #[command(about = "List recording IDs in a session")]
+    List(SessionLookupArgs),
+    #[command(about = "Remove a recording from a session")]
+    Remove(SessionRecordingMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SessionRecordingMutationArgs {
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "SESSION")]
+    pub(crate) session: String,
+    #[arg(value_name = "RECORDING")]
+    pub(crate) recording: String,
+}
+
+#[derive(Debug, Subcommand)]
+enum TopicsCommand {
+    #[command(about = "List topics")]
+    List(TopicListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct TopicListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "End of topic time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Include full topic schemas")]
+    pub(crate) include_schemas: bool,
+    #[arg(long, help = "Maximum number of topics", allow_hyphen_values = true)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Number of topics to skip", allow_hyphen_values = true)]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
+    pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true)]
+    pub(crate) recording_key: Option<String>,
+    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, help = "Sort by topic or version", allow_hyphen_values = true)]
+    pub(crate) sort_by: Option<String>,
+    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Start of topic time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct FormatArgs {
+    #[arg(
+        long,
+        help = "Render output in table, JSON, or CSV format",
+        allow_hyphen_values = true
+    )]
+    format: Option<String>,
+}
 
 /// Captured process output and status for one invocation.
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -167,601 +720,195 @@ pub async fn run_async(
         }
         argv.push(argument.clone());
     }
-    let matches = match command().try_get_matches_from(argv) {
-        Ok(matches) => matches,
+    let cli = match Cli::try_parse_from(argv) {
+        Ok(cli) => cli,
         Err(error) if error.kind() == ErrorKind::DisplayHelp => {
             return Outcome::success(error.to_string())
         }
         Err(error) => return Outcome::failure(error.to_string()),
     };
-    let cli = match Cli::from_arg_matches(&matches) {
-        Ok(cli) => cli,
-        Err(error) => return Outcome::failure(error.to_string()),
-    };
-    let leaf = deepest_matches(&matches);
-    dispatch(
-        cli.command,
-        read_helpers::config_path(leaf),
-        leaf,
-        stdin,
-        prompt_writer,
-    )
-    .await
+    dispatch(cli, stdin, prompt_writer).await
 }
 
-fn deepest_matches(mut matches: &ArgMatches) -> &ArgMatches {
-    while let Some((_, child)) = matches.subcommand() {
-        matches = child;
-    }
-    matches
-}
-
-async fn dispatch(
-    command: Option<CliCommand>,
-    config_path: Option<&std::path::Path>,
-    leaf: &ArgMatches,
-    stdin: &mut dyn BufRead,
-    writer: &mut dyn Write,
-) -> Outcome {
+async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> Outcome {
+    let Cli {
+        client_id,
+        config,
+        debug,
+        command,
+    } = cli;
     let Some(command) = command else {
         return root_help_outcome();
     };
     match command {
-        CliCommand::Version => Outcome::success(format!("{}\n", read_helpers::version())),
-        CliCommand::Config(ConfigCommand::Get) => run_config_get(leaf, config_path),
-        CliCommand::Config(ConfigCommand::Set) => run_config_set(leaf, config_path),
-        CliCommand::Config(ConfigCommand::Unset) => run_config_unset(leaf, config_path),
-        CliCommand::Auth(AuthCommand::ConfigureApiKey) => configure_api_key(leaf, stdin, writer),
-        CliCommand::Auth(AuthCommand::Login) => auth::login(leaf, writer).await,
-        CliCommand::Completion(shell) => completion_script(
-            match shell {
-                CompletionCommand::Bash => "bash",
-                CompletionCommand::Fish => "fish",
-                CompletionCommand::Powershell => "powershell",
-                CompletionCommand::Zsh => "zsh",
-            },
-            leaf.get_flag("no-descriptions"),
-        ),
-        other => dispatch_api_command(other, leaf, writer).await,
+        CliCommand::Version => Outcome::success(format!("{}\n", runtime::version())),
+        CliCommand::Config(ConfigCommand::Get(args)) => run_config_get(args.key, config.as_deref()),
+        CliCommand::Config(ConfigCommand::Set(args)) => run_config_set(&args, config.as_deref()),
+        CliCommand::Config(ConfigCommand::Unset(args)) => {
+            run_config_unset(args.key, config.as_deref())
+        }
+        CliCommand::Auth(AuthCommand::ConfigureApiKey(args)) => {
+            configure_api_key(&args, config.as_deref(), stdin, writer)
+        }
+        CliCommand::Auth(AuthCommand::Login(args)) => {
+            auth::login(&args, config.as_deref(), client_id.as_deref(), writer).await
+        }
+        CliCommand::Completion(shell) => {
+            let (shell, no_descriptions) = match shell {
+                CompletionCommand::Bash(args) => ("bash", args.no_descriptions),
+                CompletionCommand::Fish(args) => ("fish", args.no_descriptions),
+                CompletionCommand::Powershell(args) => ("powershell", args.no_descriptions),
+                CompletionCommand::Zsh(args) => ("zsh", args.no_descriptions),
+            };
+            completion_script(shell, no_descriptions)
+        }
+        other => {
+            dispatch_api_command(
+                other,
+                config.as_deref(),
+                client_id.as_deref(),
+                debug,
+                writer,
+            )
+            .await
+        }
     }
 }
 
 async fn dispatch_api_command(
     command: CliCommand,
-    matches: &ArgMatches,
+    config_path: Option<&std::path::Path>,
+    client_id: Option<&str>,
+    debug: bool,
     writer: &mut dyn Write,
 ) -> Outcome {
-    let runtime = match read_helpers::runtime(matches) {
+    let runtime = match runtime::load(config_path, client_id) {
         Ok(runtime) => runtime,
         Err(error) => return Outcome::failure(error),
     };
-    let format = match read_helpers::resolve_format(matches) {
+    let format = match crate::output::Format::resolve(command.format_value()) {
         Ok(format) => format,
         Err(error) => return Outcome::failure(error),
     };
     match command {
-        CliCommand::Attachments(AttachmentsCommand::Download) => {
-            attachments::download_attachment(&runtime, matches, writer).await
+        CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
+            attachments::download_attachment(&runtime, &args, writer).await
         }
-        CliCommand::Attachments(AttachmentsCommand::List) => {
-            attachments::list_attachments(&runtime, matches, format).await
+        CliCommand::Attachments(AttachmentsCommand::List(args)) => {
+            attachments::list_attachments(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
-        CliCommand::Data(DataCommand::Coverage(CoverageCommand::List)) => {
-            data::list_coverage(&runtime, matches, format).await
+        CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => {
+            data::list_coverage(&runtime, &args, format).await
         }
-        CliCommand::Data(DataCommand::Export) => {
-            let diagnostic = matches
-                .get_flag("debug")
-                .then(|| data::export_debug_request(matches))
-                .flatten();
+        CliCommand::Data(DataCommand::Export(args)) => {
+            let diagnostic = debug.then(|| data::export_debug_request(&args)).flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }
-            data::export_data(&runtime, matches, writer).await
+            data::export_data(&runtime, &args, writer).await
         }
-        CliCommand::Data(DataCommand::Import)
-            if !read_helpers::value(matches, "edge-recording-id").is_empty() =>
+        CliCommand::Data(DataCommand::Import(args))
+            if args
+                .edge_recording_id
+                .as_deref()
+                .is_some_and(|id| !id.is_empty()) =>
         {
-            data::import_from_edge(&runtime, matches).await
+            data::import_from_edge(&runtime, &args).await
         }
-        CliCommand::Data(DataCommand::Import) => data::import_file(&runtime, matches).await,
-        CliCommand::Devices(DevicesCommand::Add) => devices::add_device(&runtime, matches).await,
-        CliCommand::Devices(DevicesCommand::Edit) => devices::edit_device(&runtime, matches).await,
-        CliCommand::Devices(DevicesCommand::List) => {
-            devices::list_devices(&runtime, matches, format).await
+        CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
+        CliCommand::Devices(DevicesCommand::Add(args)) => {
+            devices::add_device(&runtime, &args).await
         }
-        CliCommand::EventTypes(EventTypesCommand::List) => {
+        CliCommand::Devices(DevicesCommand::Edit(args)) => {
+            devices::edit_device(&runtime, &args).await
+        }
+        CliCommand::Devices(DevicesCommand::List(args)) => {
+            devices::list_devices(&runtime, &args, format).await
+        }
+        CliCommand::EventTypes(EventTypesCommand::List(_)) => {
             event_types::list_event_types(&runtime, format).await
         }
-        CliCommand::Events(EventsCommand::Add) => events::add_event(&runtime, matches).await,
-        CliCommand::Events(EventsCommand::List) => {
-            events::list_events(&runtime, matches, format).await
+        CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
+        CliCommand::Events(EventsCommand::List(args)) => {
+            events::list_events(&runtime, &args, format).await
         }
-        CliCommand::Extensions(ExtensionsCommand::List) => {
+        CliCommand::Extensions(ExtensionsCommand::List(_)) => {
             extensions::list_extensions(&runtime, format).await
         }
-        CliCommand::Extensions(ExtensionsCommand::Publish) => {
-            extensions::publish_extension(&runtime, matches).await
+        CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
+            extensions::publish_extension(&runtime, &args).await
         }
-        CliCommand::Extensions(ExtensionsCommand::Unpublish) => {
-            extensions::unpublish_extension(&runtime, matches).await
+        CliCommand::Extensions(ExtensionsCommand::Unpublish(args)) => {
+            extensions::unpublish_extension(&runtime, &args).await
         }
-        CliCommand::PendingImports(PendingImportsCommand::List) => {
-            pending_imports::list_pending_imports(&runtime, matches, format).await
+        CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
+            pending_imports::list_pending_imports(&runtime, &args, format).await
         }
-        CliCommand::Projects(ProjectsCommand::List) => {
+        CliCommand::Projects(ProjectsCommand::List(_)) => {
             projects::list_projects(&runtime, format).await
         }
-        CliCommand::Recordings(RecordingsCommand::Delete) => {
-            recordings::delete_recording(&runtime, matches).await
+        CliCommand::Recordings(RecordingsCommand::Delete(args)) => {
+            recordings::delete_recording(&runtime, &args).await
         }
-        CliCommand::Recordings(RecordingsCommand::List) => {
-            recordings::list_recordings(&runtime, matches, format).await
+        CliCommand::Recordings(RecordingsCommand::List(args)) => {
+            recordings::list_recordings(&runtime, &args, format).await
         }
-        CliCommand::Sessions(SessionsCommand::Add) => {
-            sessions::add_session(&runtime, matches).await
+        CliCommand::Sessions(command) => dispatch_session_command(&runtime, command, format).await,
+        CliCommand::Topics(TopicsCommand::List(args)) => {
+            topics::list_topics(&runtime, &args, format).await
         }
-        CliCommand::Sessions(SessionsCommand::Delete) => {
-            sessions::delete_session(&runtime, matches).await
-        }
-        CliCommand::Sessions(SessionsCommand::Get) => {
-            sessions::get_session(&runtime, matches).await
-        }
-        CliCommand::Sessions(SessionsCommand::List) => {
-            sessions::list_sessions(&runtime, matches, format).await
-        }
-        CliCommand::Sessions(SessionsCommand::Recordings(SessionRecordingsCommand::Add)) => {
-            sessions::patch_session_recordings(&runtime, matches, true).await
-        }
-        CliCommand::Sessions(SessionsCommand::Recordings(SessionRecordingsCommand::List)) => {
-            sessions::list_session_recordings(&runtime, matches).await
-        }
-        CliCommand::Sessions(SessionsCommand::Recordings(SessionRecordingsCommand::Remove)) => {
-            sessions::patch_session_recordings(&runtime, matches, false).await
-        }
-        CliCommand::Topics(TopicsCommand::List) => {
-            topics::list_topics(&runtime, matches, format).await
-        }
-        _ => Outcome::failure("This command is not implemented in the Rust migration yet\n"),
+        CliCommand::Auth(AuthCommand::ConfigureApiKey(_) | AuthCommand::Login(_))
+        | CliCommand::Completion(_)
+        | CliCommand::Config(_)
+        | CliCommand::Version => unreachable!("handled before API dispatch"),
     }
 }
 
-fn command() -> Command {
-    Command::new(ROOT_COMMAND)
-        .bin_name(ROOT_COMMAND)
-        .about("Command line client for the Foxglove data platform")
-        .disable_version_flag(true)
-        .subcommand_precedence_over_arg(true)
-        .arg(global_value("client-id", "Foxglove client ID"))
-        .arg(
-            global_value("config", "Config file")
-                .value_parser(clap::value_parser!(PathBuf))
-                .value_hint(ValueHint::FilePath),
-        )
-        .arg(flag("debug", "Enable debug logging").global(true))
-        .subcommand(attachments_command())
-        .subcommand(auth_command())
-        .subcommand(completion_command())
-        .subcommand(
-            group("config", "Manage CLI configuration values")
-                .subcommand(leaf("get", "Get a configuration value").arg(config_key_arg()))
-                .subcommand(
-                    leaf("set", "Set a configuration value")
-                        .arg(config_key_arg())
-                        .arg(Arg::new("value").value_name("VALUE").required(true)),
-                )
-                .subcommand(leaf("unset", "Remove a configuration value").arg(config_key_arg())),
-        )
-        .subcommand(data_command())
-        .subcommand(devices_command())
-        .subcommand(
-            group("event-types", "List event types")
-                .subcommand(with_format(leaf("list", "List event types"))),
-        )
-        .subcommand(events_command())
-        .subcommand(extensions_command())
-        .subcommand(pending_imports_command())
-        .subcommand(
-            group("projects", "List and manage projects")
-                .subcommand(with_format(leaf("list", "List projects"))),
-        )
-        .subcommand(recordings_command())
-        .subcommand(sessions_command())
-        .subcommand(topics_command())
-        .subcommand(leaf("version", "Print Foxglove CLI version"))
-}
-
-fn attachments_command() -> Command {
-    group("attachments", "Query and modify data attachments")
-        .subcommand(
-            leaf("download", "Download an MCAP attachment by ID")
-                .arg(positional("attachment-id", "ATTACHMENT_ID")),
-        )
-        .subcommand(
-            with_format(leaf("list", "List MCAP attachments"))
-                .arg(value("import-id", "Import ID"))
-                .arg(value("project-id", "Project ID"))
-                .arg(value("recording-id", "Recording ID"))
-                .arg(value("session-id", "Session ID"))
-                .arg(value("session-key", "Session key")),
-        )
-}
-
-fn auth_command() -> Command {
-    group("auth", "Manage authentication")
-        .subcommand(
-            leaf("configure-api-key", "Configure an API key")
-                .arg(value("api-key", "API key for non-interactive use"))
-                .arg(value(
-                    "base-url",
-                    "API server (default: https://api.foxglove.dev)",
-                )),
-        )
-        .subcommand(leaf(
-            "info",
-            "Display information about the currently authenticated user",
-        ))
-        .subcommand(leaf("login", "Log in to Foxglove Data Platform").arg(value(
-            "base-url",
-            "API server (default: https://api.foxglove.dev)",
-        )))
-}
-
-fn devices_command() -> Command {
-    group("devices", "List and manage devices")
-        .subcommand(
-            leaf("add", "Add a device for your organization")
-                .arg(value("name", "Name of the device"))
-                .arg(value("project-id", "Project ID"))
-                .arg(repeated_value(
-                    "property",
-                    Some('p'),
-                    "Custom property colon-separated key/value pair",
-                )),
-        )
-        .subcommand(
-            leaf("edit", "Edit a device")
-                .arg(value("name", "New name for the device"))
-                .arg(value("project-id", "Project ID"))
-                .arg(repeated_value(
-                    "property",
-                    Some('p'),
-                    "Custom property colon-separated key/value pair",
-                ))
-                .arg(positional("device-id-arg", "DEVICE_ID")),
-        )
-        .subcommand(
-            with_format(leaf("list", "List devices registered to your organization"))
-                .arg(value("project-id", "Project ID")),
-        )
-}
-
-fn extensions_command() -> Command {
-    group("extensions", "List and publish Studio extensions")
-        .subcommand(with_format(leaf(
-            "list",
-            "List Studio extensions created for your organization",
-        )))
-        .subcommand(
-            leaf(
-                "publish",
-                "Publish a Studio extension (.foxe) to your organization",
-            )
-            .arg(file_positional("file", "FILE")),
-        )
-        .subcommand(
-            leaf(
-                "unpublish",
-                "Delete and unpublish a Studio extension from your organization",
-            )
-            .arg(positional("extension-id", "EXTENSION_ID")),
-        )
-}
-
-fn data_command() -> Command {
-    group("data", "Data access and management")
-        .subcommand(
-            group("coverage", "List coverage ranges").subcommand(
-                with_format(leaf("list", "List coverage ranges"))
-                    .arg(value("device-id", "Device ID"))
-                    .arg(value("device-name", "Device name"))
-                    .arg(value("end", "End of coverage time range (ISO 8601)"))
-                    .arg(flag("include-edge-recordings", "Include edge recordings"))
-                    .arg(value("project-id", "Project ID"))
-                    .arg(value("recording-id", "Recording ID"))
-                    .arg(value("session-id", "Session ID"))
-                    .arg(value("session-key", "Session key"))
-                    .arg(value("start", "Start of coverage time range (ISO 8601)"))
-                    .arg(value(
-                        "tolerance",
-                        "Coverage separation tolerance in seconds",
-                    )),
-            ),
-        )
-        .subcommand(
-            leaf(
-                "export",
-                "Export data by recording, import, session, or device and time range",
-            )
-            .arg(value(
-                "compression",
-                "MCAP chunk compression: empty, zstd, or lz4 (default: lz4)",
-            ))
-            .arg(value("device-id", "Device ID"))
-            .arg(value("device-name", "Device name"))
-            .arg(value("end", "End time (ISO 8601)"))
-            .arg(value("import-id", "Import ID"))
-            .arg(flag("include-attachments", "Include MCAP attachments"))
-            .arg(value("key", "Recording key"))
-            .arg(file_value("output-file", Some('o'), "Output file"))
-            .arg(value(
-                "output-format",
-                "Output format: mcap0, bag1, or json (default: mcap0)",
-            ))
-            .arg(value("project-id", "Project ID"))
-            .arg(value("recording-id", "Recording ID"))
-            .arg(value(
-                "replay-lookback-seconds",
-                "Maximum replay lookback in seconds",
-            ))
-            .arg(value("replay-policy", "Replay policy"))
-            .arg(value("session-id", "Session ID"))
-            .arg(value("session-key", "Session key"))
-            .arg(value("start", "Start time (ISO 8601)"))
-            .arg(value("topics", "Comma-separated topic list")),
-        )
-        .subcommand(import_command())
-}
-
-fn import_command() -> Command {
-    leaf("import", "Import a data file to Foxglove Data Platform")
-        .arg(value("device-id", "Device ID"))
-        .arg(value("device-name", "Device name"))
-        .arg(value("edge-recording-id", "Edge recording ID"))
-        .arg(value("key", "Recording key"))
-        .arg(value("project-id", "Project ID"))
-        .arg(value("session-id", "Session ID"))
-        .arg(value("session-key", "Session key"))
-        .arg(file_positional("file", "FILE"))
-}
-
-fn events_command() -> Command {
-    group("events", "List and manage events")
-        .subcommand(
-            leaf("add", "Add an event")
-                .arg(value("device-id", "Device ID"))
-                .arg(value("end", "End of event (inclusive), RFC 3339"))
-                .arg(value("event-type-id", "Associated event type ID"))
-                .arg(repeated_value(
-                    "metadata",
-                    Some('m'),
-                    "Metadata colon-separated key/value pair",
-                ))
-                .arg(value("start", "Start of event, RFC 3339")),
-        )
-        .subcommand(
-            with_format(leaf("list", "List events"))
-                .arg(value("device-id", "Device ID"))
-                .arg(value("device-name", "Device name"))
-                .arg(value("end", "Exclude events after this time"))
-                .arg(value("event-type-id", "Event type ID"))
-                .arg(value("limit", "Result limit (default: 100)"))
-                .arg(value("offset", "Result offset"))
-                .arg(value("query", "Property or metadata query"))
-                .arg(repeated_value("query-field", None, "Fields to query by"))
-                .arg(value("sort-by", "Sort column"))
-                .arg(value("sort-order", "Sort order (default: asc)"))
-                .arg(value("start", "Exclude events before this time")),
-        )
-}
-
-fn pending_imports_command() -> Command {
-    group("pending-imports", "List pending imports").subcommand(
-        with_format(leaf(
-            "list",
-            "List pending and errored import jobs for uploaded recordings",
-        ))
-        .arg(value("device-id", "Device ID"))
-        .arg(value("device-name", "Device name"))
-        .arg(value("error", "Filter by error message"))
-        .arg(value("filename", "Filename"))
-        .arg(value("key", "Key"))
-        .arg(value("project-id", "Project ID"))
-        .arg(value("request-id", "Request ID"))
-        .arg(value("session-id", "Session ID"))
-        .arg(value("session-key", "Session key"))
-        .arg(flag("show-completed", "Show completed requests"))
-        .arg(flag("show-quarantined", "Show quarantined requests"))
-        .arg(value("site-id", "Site ID"))
-        .arg(value(
-            "updated-since",
-            "Only imports updated since this time",
-        ))
-        .arg(flag("without-project", "Only imports without a project")),
-    )
-}
-
-fn recordings_command() -> Command {
-    group("recordings", "Query recordings")
-        .subcommand(
-            leaf("delete", "Delete a recording from your organization")
-                .arg(positional("recording-id-arg", "RECORDING_ID")),
-        )
-        .subcommand(
-            with_format(leaf("list", "List recordings"))
-                .arg(value("device-id", "Device ID"))
-                .arg(value("device-name", "Device name"))
-                .arg(value("edge-site-id", "Edge site ID"))
-                .arg(value("end", "End of data range (ISO 8601)"))
-                .arg(value("import-status", "Import status"))
-                .arg(value("limit", "Maximum result count (default: 2000)"))
-                .arg(value("offset", "Number of recordings to skip"))
-                .arg(value("path", "Recording file path"))
-                .arg(value("project-id", "Project ID"))
-                .arg(value("session-id", "Session ID"))
-                .arg(value("session-key", "Session key"))
-                .arg(value("site-id", "Primary site ID"))
-                .arg(value("sort-by", "Sort field"))
-                .arg(value("sort-order", "Sort order: asc or desc"))
-                .arg(value("start", "Start of data range (ISO 8601)")),
-        )
-}
-
-fn sessions_command() -> Command {
-    group("sessions", "List and manage sessions")
-        .subcommand(
-            leaf("add", "Create a session")
-                .arg(value("device-id", "Device ID (required)"))
-                .arg(value("name", "Session name"))
-                .arg(value("project-id", "Project ID")),
-        )
-        .subcommand(
-            leaf("delete", "Delete a session")
-                .arg(value("project-id", "Project ID"))
-                .arg(positional("session", "SESSION_ID_OR_KEY")),
-        )
-        .subcommand(
-            leaf("get", "Get a session by ID or key")
-                .arg(value("project-id", "Project ID"))
-                .arg(positional("session", "SESSION_ID_OR_KEY")),
-        )
-        .subcommand(
-            with_format(leaf("list", "List sessions in your organization"))
-                .arg(value("device-id", "Filter by device ID"))
-                .arg(value("device-name", "Filter by device name"))
-                .arg(value("project-id", "Project ID")),
-        )
-        .subcommand(
-            group("recordings", "List, add, or remove recordings in a session")
-                .subcommand(
-                    leaf("add", "Assign a recording to a session")
-                        .arg(value("project-id", "Project ID"))
-                        .arg(positional("session", "SESSION"))
-                        .arg(positional("recording", "RECORDING")),
-                )
-                .subcommand(
-                    leaf("list", "List recording IDs in a session")
-                        .arg(value("project-id", "Project ID"))
-                        .arg(positional("session", "SESSION")),
-                )
-                .subcommand(
-                    leaf("remove", "Remove a recording from a session")
-                        .arg(value("project-id", "Project ID"))
-                        .arg(positional("session", "SESSION"))
-                        .arg(positional("recording", "RECORDING")),
-                ),
-        )
-}
-
-fn topics_command() -> Command {
-    group("topics", "List topics").subcommand(
-        with_format(leaf("list", "List topics"))
-            .arg(value("device-id", "Device ID"))
-            .arg(value("device-name", "Device name"))
-            .arg(value("end", "End of topic time range (ISO 8601)"))
-            .arg(flag("include-schemas", "Include full topic schemas"))
-            .arg(value("limit", "Maximum number of topics"))
-            .arg(value("offset", "Number of topics to skip"))
-            .arg(value("project-id", "Project ID"))
-            .arg(value("recording-id", "Recording ID"))
-            .arg(value("recording-key", "Recording key"))
-            .arg(value("session-id", "Session ID"))
-            .arg(value("session-key", "Session key"))
-            .arg(value("sort-by", "Sort by topic or version"))
-            .arg(value("sort-order", "Sort order: asc or desc"))
-            .arg(value("start", "Start of topic time range (ISO 8601)")),
-    )
-}
-
-fn completion_command() -> Command {
-    let mut command = group("completion", "Generate a shell completion script");
-    for (shell, description) in [
-        ("bash", "Generate completions for Bash"),
-        ("fish", "Generate completions for Fish"),
-        ("powershell", "Generate completions for PowerShell"),
-        ("zsh", "Generate completions for Zsh"),
-    ] {
-        command = command.subcommand(
-            leaf(shell, description)
-                .arg(flag("no-descriptions", "Disable completion descriptions")),
-        );
+async fn dispatch_session_command(
+    runtime: &runtime::Runtime,
+    command: SessionsCommand,
+    format: crate::output::Format,
+) -> Outcome {
+    match command {
+        SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
+        SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
+        SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
+        SessionsCommand::List(args) => sessions::list_sessions(runtime, &args, format).await,
+        SessionsCommand::Recordings(SessionRecordingsCommand::Add(args)) => {
+            sessions::patch_session_recordings(runtime, &args, true).await
+        }
+        SessionsCommand::Recordings(SessionRecordingsCommand::List(args)) => {
+            sessions::list_session_recordings(runtime, &args).await
+        }
+        SessionsCommand::Recordings(SessionRecordingsCommand::Remove(args)) => {
+            sessions::patch_session_recordings(runtime, &args, false).await
+        }
     }
-    command
 }
 
-fn group(name: &'static str, about: &'static str) -> Command {
-    Command::new(name)
-        .about(about)
-        .disable_version_flag(true)
-        .subcommand_precedence_over_arg(true)
-}
-
-fn leaf(name: &'static str, about: &'static str) -> Command {
-    group(name, about)
-}
-
-fn value(name: &'static str, help: &'static str) -> Arg {
-    Arg::new(name)
-        .long(name)
-        .help(help)
-        .num_args(1)
-        .allow_hyphen_values(true)
-        .action(ArgAction::Set)
-        .overrides_with(name)
-}
-
-fn file_value(name: &'static str, short: Option<char>, help: &'static str) -> Arg {
-    let argument = value(name, help).value_hint(ValueHint::FilePath);
-    short.map_or(argument.clone(), |short| argument.short(short))
-}
-
-fn repeated_value(name: &'static str, short: Option<char>, help: &'static str) -> Arg {
-    let argument = Arg::new(name)
-        .long(name)
-        .help(help)
-        .num_args(1)
-        .allow_hyphen_values(true)
-        .action(ArgAction::Append);
-    short.map_or(argument.clone(), |short| argument.short(short))
-}
-
-fn flag(name: &'static str, help: &'static str) -> Arg {
-    Arg::new(name)
-        .long(name)
-        .help(help)
-        .action(ArgAction::SetTrue)
-        .overrides_with(name)
-}
-
-fn global_value(name: &'static str, help: &'static str) -> Arg {
-    value(name, help).global(true)
-}
-
-fn positional(id: &'static str, value_name: &'static str) -> Arg {
-    Arg::new(id).value_name(value_name).required(true)
-}
-
-fn file_positional(id: &'static str, value_name: &'static str) -> Arg {
-    positional(id, value_name).value_hint(ValueHint::FilePath)
-}
-
-fn config_key_arg() -> Arg {
-    Arg::new("key")
-        .value_name("KEY")
-        .required(true)
-        .value_parser(clap::builder::EnumValueParser::<ConfigKey>::new())
-}
-
-fn with_format(command: Command) -> Command {
-    command.arg(value(
-        "format",
-        "Render output in table, JSON, or CSV format",
-    ))
+impl CliCommand {
+    fn format_value(&self) -> Option<&str> {
+        let format = match self {
+            Self::Attachments(AttachmentsCommand::List(args)) => &args.format,
+            Self::Data(DataCommand::Coverage(CoverageCommand::List(args))) => &args.format,
+            Self::Devices(DevicesCommand::List(args)) => &args.format,
+            Self::EventTypes(EventTypesCommand::List(args))
+            | Self::Extensions(ExtensionsCommand::List(args))
+            | Self::Projects(ProjectsCommand::List(args)) => args,
+            Self::Events(EventsCommand::List(args)) => &args.format,
+            Self::PendingImports(PendingImportsCommand::List(args)) => &args.format,
+            Self::Recordings(RecordingsCommand::List(args)) => &args.format,
+            Self::Sessions(SessionsCommand::List(args)) => &args.format,
+            Self::Topics(TopicsCommand::List(args)) => &args.format,
+            _ => return None,
+        };
+        format.format.as_deref()
+    }
 }
 
 fn root_help_outcome() -> Outcome {
-    let mut command = command();
+    let mut command = Cli::command();
     let mut stdout = Vec::new();
     match command.write_long_help(&mut stdout) {
         Ok(()) => {
@@ -782,16 +929,8 @@ fn config_key_name(key: ConfigKey) -> &'static str {
     }
 }
 
-fn selected_config_key(matches: &ArgMatches) -> &'static str {
-    config_key_name(
-        *matches
-            .get_one::<ConfigKey>("key")
-            .expect("required by Clap"),
-    )
-}
-
-fn run_config_get(matches: &ArgMatches, path: Option<&std::path::Path>) -> Outcome {
-    let key = selected_config_key(matches);
+fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Outcome {
+    let key = config_key_name(selected_key);
     let config = match load_config(path) {
         Ok(config) => config,
         Err(outcome) => return outcome,
@@ -802,12 +941,9 @@ fn run_config_get(matches: &ArgMatches, path: Option<&std::path::Path>) -> Outco
     }
 }
 
-fn run_config_set(matches: &ArgMatches, path: Option<&std::path::Path>) -> Outcome {
-    let key = selected_config_key(matches);
-    let value = matches
-        .get_one::<String>("value")
-        .expect("required by Clap")
-        .clone();
+fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outcome {
+    let key = config_key_name(args.key);
+    let value = args.value.clone();
     let mut config = match load_config(path) {
         Ok(config) => config,
         Err(outcome) => return outcome,
@@ -822,8 +958,8 @@ fn run_config_set(matches: &ArgMatches, path: Option<&std::path::Path>) -> Outco
     }
 }
 
-fn run_config_unset(matches: &ArgMatches, path: Option<&std::path::Path>) -> Outcome {
-    let key = selected_config_key(matches);
+fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Outcome {
+    let key = config_key_name(selected_key);
     let mut config = match load_config(path) {
         Ok(config) => config,
         Err(outcome) => return outcome,
@@ -849,15 +985,16 @@ fn config_name(key: &str) -> &str {
 }
 
 fn configure_api_key(
-    matches: &ArgMatches,
+    args: &ConfigureApiKeyArgs,
+    config_path: Option<&std::path::Path>,
     stdin: &mut dyn BufRead,
     prompt_writer: &mut dyn std::io::Write,
 ) -> Outcome {
-    let mut config = match Config::load_from_path(read_helpers::config_path(matches)) {
+    let mut config = match Config::load_from_path(config_path) {
         Ok(config) => config,
         Err(error) => return Outcome::failure(error),
     };
-    let token = match last_value(matches, "api-key") {
+    let token = match args.api_key.clone() {
         Some(token) if !token.is_empty() => token,
         _ => {
             if let Err(error) = writeln!(
@@ -883,9 +1020,11 @@ fn configure_api_key(
             token.to_owned()
         }
     };
-    let base_url = last_value(matches, "base-url")
+    let base_url = args
+        .base_url
+        .clone()
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| crate::read_helpers::DEFAULT_BASE_URL.to_owned());
+        .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
     config.set("auth_type", Value::Number(2.into()));
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(token));
@@ -899,13 +1038,6 @@ fn configure_api_key(
     }
 }
 
-fn last_value(matches: &ArgMatches, id: &str) -> Option<String> {
-    matches
-        .get_many::<String>(id)
-        .and_then(|mut values| values.next_back().cloned())
-        .or_else(|| matches.get_one::<String>(id).cloned())
-}
-
 fn completion_script(shell: &str, no_descriptions: bool) -> Outcome {
     let generator = match shell {
         "bash" => Shell::Bash,
@@ -914,7 +1046,7 @@ fn completion_script(shell: &str, no_descriptions: bool) -> Outcome {
         "zsh" => Shell::Zsh,
         _ => return Outcome::failure(format!("unsupported completion shell: {shell}\n")),
     };
-    let mut command = command();
+    let mut command = Cli::command();
     if no_descriptions {
         command = without_descriptions(command);
     }
@@ -963,11 +1095,11 @@ mod tests {
     fn global_flags_are_accepted_before_and_after_commands() {
         assert_eq!(
             invoke(&["--debug", "version"]).stdout,
-            format!("{}\n", crate::read_helpers::version()).as_bytes()
+            format!("{}\n", crate::runtime::version()).as_bytes()
         );
         assert_eq!(
             invoke(&["version", "--debug"]).stdout,
-            format!("{}\n", crate::read_helpers::version()).as_bytes()
+            format!("{}\n", crate::runtime::version()).as_bytes()
         );
     }
 
