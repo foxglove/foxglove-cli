@@ -71,6 +71,7 @@ The machine-readable expected results live in `compat/approved_deltas.json`.
 | `clap-parser-diagnostics` | Preserve Clap's native diagnostics and usage text for parser-level failures (for example unknown flags or missing flag values), rather than reproducing Cobra's wording. Command-specific validation errors remain compatibility-tested. |
 | `config-path-and-parsing` | Honor an explicitly selected config path; a missing config remains valid for first run, while unreadable, malformed, and non-mapping config files fail explicitly. Environment values still override persisted values and unknown YAML keys survive updates. |
 | `config-yaml-order` | Serialize configuration using serde YAML's normal mapping order rather than reproducing Viper's key ordering. |
+| `event-query-fields` | Encode `--query-field` values as repeated `queryFields` parameters, which the API accepts. Go sends indexed `queryFields/0` names that the API ignores. |
 | `query-parameter-order` | Preserve query parameter names and values but do not treat their encoded order as part of the Rust wire contract. |
 | `presigned-user-agent` | Send the Foxglove Rust CLI User-Agent on presigned storage requests without forwarding the API bearer token, rather than sending Go's literal default User-Agent. |
 | `signed-ros1-integers` | Decode ROS 1 `int8`, `int16`, `int32`, and `duration` components as signed values. This intentionally corrects Go's historic unsigned little-endian JSON rendering. |
@@ -78,7 +79,7 @@ The machine-readable expected results live in `compat/approved_deltas.json`.
 | `async-execution` | Execute API-backed commands on the production Tokio runtime and await operations directly instead of blocking separately inside every handler. |
 | `export-initial-download-error` | Fail immediately, keep stdout clean, remove partials, preserve the destination. |
 | `http-response-lifecycle` | Consume or drop every HTTP response on all branches. |
-| `transfer-cancellation` | Cancel active work, clean staging files, preserve destinations, and exit 130 on Ctrl-C. |
+| `transfer-cancellation` | Cancel active work, including response-body reads and every login stage, clean staging files, preserve destinations and credentials, and exit 130 on Ctrl-C. |
 | `deprecated-data-import-commands` | Omit the deprecated `data imports` command group; use `recordings list` and `data import`. |
 | `deprecated-flags` | Omit the deprecated `--json` alias and ignored `devices add --serial-number` flag. |
 | `json-output-file` | Honor `--output-file` for JSON exports, stage the result atomically, and preserve an existing destination on failure; Go silently ignores this flag for JSON. |
@@ -136,7 +137,7 @@ macOS-only size is not a current release-size claim.
 
 | Phase | Crate/category and exact version/features | Reason | Alternative considered | Status |
 | --- | --- | --- | --- | --- |
-| 2 | `reqwest 0.12.28`; `default-features = false`; `json`, `rustls-tls`, `stream` | TLS HTTP, JSON API calls, and response streaming | `hyper` directly; rejected because it would duplicate HTTP policy and response/error handling. | Complete |
+| 2 | `reqwest 0.12.28`; `default-features = false`; `json`, `rustls-tls-native-roots`, `stream` | TLS HTTP, JSON API calls, and response streaming | `hyper` directly; rejected because it would duplicate HTTP policy and response/error handling. | Complete |
 | 2 | `tokio 1.53.1`; `default-features = false`; `fs`, `io-util`, `macros`, `rt`, `rt-multi-thread`, `signal`, `time` | Async execution, cancellable I/O, portable Ctrl-C handling, and device-code polling | A synchronous client; rejected because it cannot cancel active transfers or poll without blocking a worker. | Complete |
 | 2 | `tokio-util 0.7.19`; `default-features = false`; `io`, `rt` | `CancellationToken` and async-reader upload streams | In-tree cancellation primitives; rejected because token propagation and reader adaptation are easy to get subtly wrong. | Complete |
 | 2 | `time 0.3.47`; `default-features = false`; `formatting`, `parsing`, `serde` | ISO-8601/RFC3339 request timestamps; establishes Rust 1.98 MSRV | String-only timestamps; rejected because it would defer ordering and wire-format validation to each command. | Complete |
@@ -288,3 +289,49 @@ candidate artifacts rather than this historical macOS-only development build.
   a `--help` smoke test, and publish SHA-256 checksums.
 - [ ] A release candidate has passed the six-platform manual verification in
   `RELEASE.md` and has been explicitly approved for cutover.
+
+## Release-candidate review follow-up
+
+- Native tests (including loopback contracts) and packaging now run on pull
+  requests and main pushes as well as tags. Native checkouts fetch LFS fixtures;
+  the Go-oracle checkout also fetches history and tags for its baseline check.
+  Publication remains restricted to version tags.
+- Response fixtures cover absent and null optional values for pending imports,
+  recordings, coverage, events, and event types in both JSON and CSV output. Nullable
+  values retain Go's zero-value output representation.
+- ROS field types resolve relative to their declaring message's package, with
+  the standard `Header` alias. Regression fixtures include same-named types in
+  different packages and nested arrays; unrelated short names cannot resolve
+  through an arbitrary hash-map entry.
+- Upload validation checks file signatures and the MCAP trailer, as Go does.
+  It does not scan/decompress the payload or apply local export decoder limits.
+  Full MCAP and bag validation tests remain separate. Actual import acceptance
+  is determined by the server; local bag decoding supports uncompressed/LZ4
+  chunks and retains its bounded record-size checks.
+- Cancellation covers successful and failed response bodies, signed-download
+  status checks, uploads, and the device-code/token/sign-in stages of login.
+  Tests cover token cancellation on native Rust platforms and actual Unix
+  Ctrl-C with destination/configuration preservation and staging cleanup.
+- Reqwest now enables `rustls-tls-native-roots` rather than bundled WebPKI roots.
+  This restores platform trust stores and supports explicit `SSL_CERT_FILE` /
+  `SSL_CERT_DIR` overrides. The overrides replace the native trust store.
+  A local TLS fixture tests both trusted and untrusted certificates without
+  changing the developer's system trust store.
+
+The TLS feature change adds these locked transitive dependencies:
+`rustls-native-certs 0.8.4`, `openssl-probe 0.2.1`, `schannel 0.1.29`,
+`security-framework 3.7.0`, `security-framework-sys 2.17.0`,
+`core-foundation 0.10.1`, and `core-foundation-sys 0.8.7`, and removes
+`webpki-roots`. Their manifest licenses are MIT, Apache-2.0, or ISC;
+no new direct runtime dependency is introduced.
+
+No historical Go golden files are regenerated for these corrections. The event
+query parameter correction is recorded in `approved_deltas.json`; regression
+assertions retain comparison of all other request and response fields.
+
+Local verification on 2026-09-10 passed the full Rust suite (including loopback
+contracts), Go tests and compatibility regressions, strict Rust/Go lint,
+documentation, and macOS arm64 packaging/checksum verification. Cargo audit
+scanned the updated 206-dependency lockfile against 1,243 advisories with the
+existing `RUSTSEC-2024-0436` exception and reported no vulnerabilities.
+Other native runners and staging checks remain subject to `RELEASE.md`.

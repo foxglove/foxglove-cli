@@ -516,7 +516,7 @@ func TestMain(main *testing.M) {
 		os.Exit(1)
 	}
 	rustProjectRoot := filepath.Join(repositoryRoot, "rust")
-	rustBuild := exec.Command("cargo", "build", "--quiet", "--features", "compat-test", "--manifest-path", filepath.Join(rustProjectRoot, "Cargo.toml"))
+	rustBuild := exec.Command("cargo", "build", "--locked", "--quiet", "--features", "compat-test", "--manifest-path", filepath.Join(rustProjectRoot, "Cargo.toml"))
 	rustBuild.Dir = rustProjectRoot
 	rustBuild.Stdout = os.Stdout
 	rustBuild.Stderr = os.Stderr

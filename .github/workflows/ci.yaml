@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           lfs: true
+          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: foxglove/go.mod
@@ -81,7 +82,6 @@ jobs:
     permissions:
       contents: read
     needs: [go, rust, docs]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
@@ -104,22 +104,24 @@ jobs:
           - platform: windows
             runner: windows-11-arm
             arch: arm64
-    name: Build Rust (${{ matrix.platform }}/${{ matrix.arch }})
+    name: Test and package Rust (${{ matrix.platform }}/${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1
       - name: Test native platform behavior
-        run: cargo test --manifest-path rust/Cargo.toml --locked --all-features
+        run: cargo test --manifest-path rust/Cargo.toml --locked --all-features -- --include-ignored
       - name: Package and smoke-test native artifact
         # GitHub's Windows image has Bash but does not guarantee GNU Make.
         run: ./scripts/package-rust-release.sh ${{ matrix.platform }} ${{ matrix.arch }}
         env:
-          FOXGLOVE_VERSION: ${{ github.ref_name }}
+          FOXGLOVE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: foxglove-${{ matrix.platform }}-${{ matrix.arch }}

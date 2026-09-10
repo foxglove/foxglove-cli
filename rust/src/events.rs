@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::cli::{EventAddArgs, EventListArgs};
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, is_zero, DeviceSummary, Record};
+use crate::records::{compact_json, fetch_list, null_to_default, DeviceSummary, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -18,6 +18,7 @@ struct Event {
     device: DeviceSummary,
     end: String,
     #[serde(rename = "eventTypeId")]
+    #[serde(default, deserialize_with = "null_to_default")]
     event_type_id: String,
     id: String,
     #[serde(default)]
@@ -61,33 +62,6 @@ impl Record for Event {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct EventListQuery {
-    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
-    device_id: String,
-    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
-    device_name: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    end: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    event_type_id: String,
-    #[serde(skip_serializing_if = "is_zero")]
-    limit: i64,
-    #[serde(skip_serializing_if = "is_zero")]
-    offset: i64,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    query: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    query_fields: Vec<String>,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    sort_by: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    sort_order: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    start: String,
-}
-
 pub(crate) async fn list_events(
     runtime: &Runtime,
     args: &EventListArgs,
@@ -102,19 +76,47 @@ pub(crate) async fn list_events(
     }
     let limit = args.limit.unwrap_or(100);
     let offset = args.offset.unwrap_or_default();
-    let query = EventListQuery {
-        device_id: args.device_id.clone().unwrap_or_default(),
-        device_name: args.device_name.clone().unwrap_or_default(),
-        end: args.end.clone().unwrap_or_default(),
-        event_type_id: args.event_type_id.clone().unwrap_or_default(),
-        limit,
-        offset,
-        query: args.query.clone().unwrap_or_default(),
-        query_fields: args.query_field.clone(),
-        sort_by: args.sort_by.clone().unwrap_or_default(),
-        sort_order: args.sort_order.clone().unwrap_or_else(|| "asc".to_owned()),
-        start: args.start.clone().unwrap_or_default(),
-    };
+    let query: Vec<(String, String)> = [
+        ("device.id", args.device_id.clone().unwrap_or_default()),
+        ("device.name", args.device_name.clone().unwrap_or_default()),
+        ("end", args.end.clone().unwrap_or_default()),
+        (
+            "eventTypeId",
+            args.event_type_id.clone().unwrap_or_default(),
+        ),
+        (
+            "limit",
+            if limit == 0 {
+                String::new()
+            } else {
+                limit.to_string()
+            },
+        ),
+        (
+            "offset",
+            if offset == 0 {
+                String::new()
+            } else {
+                offset.to_string()
+            },
+        ),
+        ("query", args.query.clone().unwrap_or_default()),
+        ("sortBy", args.sort_by.clone().unwrap_or_default()),
+        (
+            "sortOrder",
+            args.sort_order.clone().unwrap_or_else(|| "asc".to_owned()),
+        ),
+        ("start", args.start.clone().unwrap_or_default()),
+    ]
+    .into_iter()
+    .filter(|(_, value)| !value.is_empty())
+    .map(|(key, value)| (key.to_owned(), value))
+    .chain(
+        args.query_field
+            .iter()
+            .map(|field| ("queryFields".to_owned(), field.clone())),
+    )
+    .collect();
     fetch_list::<Event, _>(
         runtime,
         format,

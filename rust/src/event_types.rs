@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, Record};
+use crate::records::{compact_json, fetch_list, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -22,6 +22,7 @@ struct EventTypeProperty {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct EventType {
     #[serde(rename = "colorName")]
+    #[serde(default, deserialize_with = "null_to_default")]
     color_name: String,
     #[serde(rename = "createdAt")]
     created_at: String,

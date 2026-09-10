@@ -147,6 +147,13 @@
     },
     "debug-recovery-details": {
       "reason": "Use Rust's structured Debug request rendering and omit implementation-specific temporary-file and recovery-internal messages."
+    },
+    "event-query-fields": {
+      "reason": "Encode event query fields as repeated queryFields parameters accepted by the API. Go's indexed queryFields/0 parameters were ignored.",
+      "invariants": [
+        "Each --query-field value is sent as a queryFields parameter.",
+        "All other event query parameters retain their Go wire values."
+      ]
     }
   }
 }

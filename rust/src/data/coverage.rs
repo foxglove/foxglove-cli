@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::cli::CoverageListArgs;
 use crate::output::Format;
 use crate::records::{
-    fetch_list, is_false, is_zero, parse_timestamp, DeviceSummary, ProjectFallback, Record,
+    fetch_list, is_false, is_zero, null_to_default, parse_timestamp, DeviceSummary,
+    ProjectFallback, Record,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -13,8 +14,9 @@ use crate::Outcome;
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Coverage {
     #[serde(rename = "deviceId")]
+    #[serde(default, deserialize_with = "null_to_default")]
     device_id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     device: DeviceSummary,
     start: String,
     end: String,

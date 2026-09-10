@@ -117,24 +117,32 @@ pub trait RosbagSink {
     fn message(&mut self, message: RosbagMessage) -> Result<(), Error>;
 }
 
+/// Check the file signature (and MCAP trailer) before upload without scanning
+/// its contents. Server-side importers decide which encodings are supported.
 pub fn validate_import<R: Read + Seek>(reader: &mut R) -> Result<(), Error> {
     let mut magic = [0_u8; 8];
     reader
         .read_exact(&mut magic)
         .map_err(|error| Error::Invalid(format!("failed to read magic bytes: {error}")))?;
-    reader.seek(SeekFrom::Start(0))?;
     if magic == MCAP_MAGIC {
-        return validate_mcap(reader);
+        reader.seek(SeekFrom::End(-8))?;
+        reader.read_exact(&mut magic)?;
+        return if magic == MCAP_MAGIC {
+            Ok(())
+        } else {
+            Err(Error::TruncatedMcap)
+        };
     }
+    reader.seek(SeekFrom::Start(0))?;
     let mut bag_magic = [0_u8; ROSBAG_MAGIC.len()];
     reader
         .read_exact(&mut bag_magic)
         .map_err(|error| Error::Invalid(format!("failed to read magic bytes: {error}")))?;
-    reader.seek(SeekFrom::Start(0))?;
     if bag_magic == ROSBAG_MAGIC {
-        return validate_rosbag(reader);
+        Ok(())
+    } else {
+        Err(Error::InvalidMagic)
     }
-    Err(Error::InvalidMagic)
 }
 
 /// Validate and emit an MCAP stream without buffering the entire input.
@@ -419,7 +427,6 @@ impl ProtobufDecoder {
 pub struct Ros1Decoder {
     root: RosType,
     definitions: HashMap<String, Vec<RosField>>,
-    package: String,
 }
 
 #[derive(Clone, Debug)]
@@ -457,9 +464,21 @@ impl Ros1Decoder {
                 if parts.next().is_some() {
                     return Err(Error::Invalid("invalid ros1 field".into()));
                 }
+                let mut ty = parse_ros_type(ty)?;
+                let package = name
+                    .split_once('/')
+                    .map_or(parent_package, |(package, _)| package);
+                ty.name = match ty.name.as_str() {
+                    "Header" => "std_msgs/Header".to_owned(),
+                    "bool" | "int8" | "uint8" | "byte" | "char" | "int16" | "uint16" | "int32"
+                    | "uint32" | "int64" | "uint64" | "float32" | "float64" | "string" | "time"
+                    | "duration" => ty.name,
+                    name if name.contains('/') => ty.name,
+                    name => format!("{package}/{name}"),
+                };
                 fields.push(RosField {
                     name: field.to_owned(),
-                    ty: parse_ros_type(ty)?,
+                    ty,
                 });
             }
             definitions.insert(name.to_owned(), fields);
@@ -480,7 +499,6 @@ impl Ros1Decoder {
                 array: None,
             },
             definitions,
-            package: parent_package.to_owned(),
         })
     }
 
@@ -618,23 +636,9 @@ impl Ros1Decoder {
                 );
             }
             name => {
-                let full_name = if name.contains('/') {
-                    name.to_owned()
-                } else {
-                    format!("{}/{}", self.package, name)
-                };
                 let fields = self
                     .definitions
                     .get(name)
-                    .or_else(|| self.definitions.get(&full_name))
-                    .or_else(|| {
-                        self.definitions.iter().find_map(|(candidate, fields)| {
-                            candidate
-                                .rsplit_once('/')
-                                .is_some_and(|(_, short)| short == name)
-                                .then_some(fields)
-                        })
-                    })
                     .ok_or_else(|| Error::Invalid(format!("unknown ros1 message type: {name}")))?;
                 output.push(b'{');
                 for (index, field) in fields.iter().enumerate() {
@@ -1101,7 +1105,7 @@ fn ros_time_bytes(time: u64) -> Result<[u8; 8], Error> {
 }
 
 // ROS bag v2.0 uses the same length-prefixed field framing both at top level and inside chunks.
-fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
+pub fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
     let mut magic = [0_u8; ROSBAG_MAGIC.len()];
     reader.read_exact(&mut magic)?;
     if magic != ROSBAG_MAGIC {
@@ -1812,7 +1816,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_bag_compression() {
+    fn import_accepts_compression_that_local_decoder_does_not_support() {
         let mut bytes = ROSBAG_MAGIC.to_vec();
         let header = [
             field(b"op", &[5]),
@@ -1823,8 +1827,9 @@ mod tests {
         bytes.extend_from_slice(&(header.len() as u32).to_le_bytes());
         bytes.extend_from_slice(&header);
         bytes.extend_from_slice(&0_u32.to_le_bytes());
+        assert!(validate_import(&mut Cursor::new(&bytes)).is_ok());
         assert!(
-            matches!(validate_import(&mut Cursor::new(bytes)), Err(Error::UnsupportedCompression(value)) if value == "bz2")
+            matches!(validate_rosbag(&mut Cursor::new(bytes)), Err(Error::UnsupportedCompression(value)) if value == "bz2")
         );
     }
 
@@ -1832,7 +1837,7 @@ mod tests {
     fn rejects_partial_rosbag_record_length() {
         let mut bytes = ROSBAG_MAGIC.to_vec();
         bytes.extend_from_slice(&[1, 0]);
-        assert!(validate_import(&mut Cursor::new(bytes)).is_err());
+        assert!(validate_rosbag(&mut Cursor::new(bytes)).is_err());
     }
 
     #[test]
@@ -1935,6 +1940,79 @@ mod tests {
     }
 
     #[test]
+    fn resolves_nested_ros1_types_in_their_declaring_package() {
+        let decoder = Ros1Decoder::new("pkg_a", b"pkg_a/Helper own\npkg_b/Child child\n===\nMSG: pkg_a/Helper\nuint32 own_value\n===\nMSG: pkg_b/Child\nHelper[] helpers\n===\nMSG: pkg_b/Helper\nuint32 child_value\n").unwrap();
+        assert_eq!(
+            decoder
+                .transcode_json(&[1, 0, 0, 0, 1, 0, 0, 0, 42, 0, 0, 0])
+                .unwrap(),
+            br#"{"own":{"own_value":1},"child":{"helpers":[{"child_value":42}]}}"#
+        );
+    }
+
+    #[test]
+    fn ros1_short_names_do_not_resolve_to_unrelated_packages() {
+        let decoder = Ros1Decoder::new(
+            "pkg_a",
+            b"Missing child\n===\nMSG: pkg_b/Missing\nuint32 value\n",
+        )
+        .unwrap();
+        assert!(
+            matches!(decoder.transcode_json(&[42,0,0,0]), Err(Error::Invalid(message)) if message == "unknown ros1 message type: pkg_a/Missing")
+        );
+    }
+
+    #[test]
+    fn ros1_header_alias_resolves_to_std_msgs() {
+        let decoder = Ros1Decoder::new(
+            "example",
+            b"Header header\n===\nMSG: std_msgs/Header\nuint32 seq\ntime stamp\nstring frame_id\n",
+        )
+        .unwrap();
+        assert_eq!(
+            decoder.transcode_json(&[0; 16]).unwrap(),
+            br#"{"header":{"seq":0,"stamp":0.000000000,"frame_id":""}}"#
+        );
+    }
+
+    #[test]
+    fn import_validation_only_reads_signatures_of_large_files() {
+        // A sparse reader rejects any read of the payload, including a decoder
+        // trying to read a record length. No large allocation or disk I/O.
+        struct Signatures {
+            position: u64,
+            bytes_read: usize,
+        }
+        const LENGTH: u64 = 128 * 1024 * 1024;
+        impl Read for Signatures {
+            fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+                assert!(self.position == 0 || self.position == LENGTH - 8);
+                assert_eq!(buffer.len(), MCAP_MAGIC.len());
+                buffer.copy_from_slice(MCAP_MAGIC);
+                self.position += 8;
+                self.bytes_read += 8;
+                Ok(8)
+            }
+        }
+        impl Seek for Signatures {
+            fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+                self.position = match position {
+                    SeekFrom::End(-8) => LENGTH - 8,
+                    SeekFrom::Start(position) => position,
+                    _ => panic!("unexpected seek"),
+                };
+                Ok(self.position)
+            }
+        }
+        let mut file = Signatures {
+            position: 0,
+            bytes_read: 0,
+        };
+        validate_import(&mut file).unwrap();
+        assert_eq!(file.bytes_read, 16);
+    }
+
+    #[test]
     fn ros1_decoder_cache_is_keyed_by_schema_id() {
         let mut cache = Ros1DecoderCache::default();
         let number = Schema {
@@ -1965,6 +2043,16 @@ mod tests {
         ] {
             let mut file = std::fs::File::open(path).expect("committed fixture");
             validate_import(&mut file).unwrap_or_else(|error| panic!("{path}: {error}"));
+            file.rewind().unwrap();
+            let result = if std::path::Path::new(path)
+                .extension()
+                .is_some_and(|ext| ext == "mcap")
+            {
+                validate_mcap(&mut file)
+            } else {
+                validate_rosbag(&mut file)
+            };
+            result.unwrap_or_else(|error| panic!("{path}: {error}"));
         }
     }
 

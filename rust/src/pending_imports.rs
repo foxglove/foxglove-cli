@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::PendingImportListArgs;
 use crate::output::Format;
-use crate::records::{fetch_list, is_false, parse_timestamp, ProjectFallback, Record};
+use crate::records::{
+    fetch_list, is_false, null_to_default, parse_timestamp, ProjectFallback, Record,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -22,16 +24,22 @@ struct PendingImport {
     #[serde(rename = "requestId")]
     request_id: String,
     #[serde(rename = "deviceId")]
+    #[serde(default, deserialize_with = "null_to_default")]
     device_id: String,
     #[serde(rename = "deviceName")]
+    #[serde(default, deserialize_with = "null_to_default")]
     device_name: String,
     #[serde(rename = "importId")]
+    #[serde(default, deserialize_with = "null_to_default")]
     import_id: String,
     #[serde(rename = "siteId")]
     site_id: String,
     #[serde(rename = "projectId")]
+    #[serde(default, deserialize_with = "null_to_default")]
     project_id: String,
+    #[serde(default, deserialize_with = "null_to_default")]
     status: String,
+    #[serde(default, deserialize_with = "null_to_default")]
     error: String,
 }
 

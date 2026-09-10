@@ -1,7 +1,7 @@
 //! Shared response records, query parsing, and list rendering.
 
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::{Date, OffsetDateTime, PrimitiveDateTime, UtcOffset};
@@ -9,6 +9,14 @@ use time::{Date, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use crate::output::{self, Format};
 use crate::runtime::Runtime;
 use crate::Outcome;
+
+pub(crate) fn null_to_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Option::deserialize(deserializer).map(Option::unwrap_or_default)
+}
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct DeviceSummary {

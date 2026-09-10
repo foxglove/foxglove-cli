@@ -90,8 +90,15 @@ pub(crate) async fn login(
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
 
-    let (instructions, device_code, browser) = match start_login(&client).await {
+    let cancellation = api::ctrl_c_cancellation_token();
+    let (instructions, device_code, browser) = match start_login(&client, &cancellation).await {
         Ok(result) => result,
+        Err(_) if cancellation.is_cancelled() => {
+            return Outcome {
+                exit_code: 130,
+                ..Outcome::default()
+            }
+        }
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
     if let Err(error) = prompt_writer
@@ -101,8 +108,14 @@ pub(crate) async fn login(
         stop_browser(browser);
         return Outcome::failure(format!("failed to write login instructions: {error}\n"));
     }
-    let bearer_token = match complete_login(&client, &device_code, browser).await {
+    let bearer_token = match complete_login(&client, &device_code, browser, &cancellation).await {
         Ok(token) => token,
+        Err(_) if cancellation.is_cancelled() => {
+            return Outcome {
+                exit_code: 130,
+                ..Outcome::default()
+            }
+        }
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
     let mut config = match Config::load_from_path(config_path) {
@@ -128,9 +141,10 @@ pub(crate) async fn login(
 
 async fn start_login(
     client: &FoxgloveClient,
+    cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<(Vec<u8>, crate::api::DeviceCodeResponse, Option<Child>), String> {
     let device_code = client
-        .device_code()
+        .device_code_with_cancellation(cancellation)
         .await
         .map_err(|error| format!("failed to fetch device code: {error}"))?;
     let browser = open_browser(&device_code.verification_uri_complete);
@@ -155,15 +169,15 @@ async fn complete_login(
     client: &FoxgloveClient,
     device_code: &crate::api::DeviceCodeResponse,
     browser: Option<Child>,
+    cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
-    let cancellation = api::ctrl_c_cancellation_token();
     let result = async {
         loop {
             if cancellation.is_cancelled() {
                 return Err("context canceled".to_owned());
             }
             match client
-                .token_with_cancellation(&device_code.device_code, &cancellation)
+                .token_with_cancellation(&device_code.device_code, cancellation)
                 .await
             {
                 Ok(token) => break Ok(token),
@@ -181,7 +195,7 @@ async fn complete_login(
     stop_browser(browser);
     let token = result?;
     let bearer_token = client
-        .sign_in(&token)
+        .sign_in_with_cancellation(&token, cancellation)
         .await
         .map_err(|error| format!("failed to sign in: {error}"))?;
     Ok(bearer_token)

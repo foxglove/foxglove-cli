@@ -2,7 +2,7 @@
 
 This directory contains the language-neutral compatibility contract for the
 Go-to-Rust migration. The v1.0.33 fixtures are captured by the black-box Go
-harness in `foxglove/compat`; future Rust integration tests will read the same
+harness in `foxglove/compat`; the Rust compatibility tests read the same
 files.
 
 The committed goldens are reviewed inputs, not disposable snapshots. To
@@ -29,3 +29,10 @@ and script bytes are not Rust release requirements.
 All harness runs use an isolated home directory and a deterministic local HTTP
 server. Dynamic paths, fixture ports, and the known Go empty-CSV stack trace
 are normalized before comparison.
+
+Additional release-candidate regressions live in
+`foxglove/compat/release_candidate_test.go`. They compare real-world optional
+response fields, event query parameters, and nested ROS schemas against the Go
+oracle without regenerating historical goldens. They also test custom TLS trust
+using a temporary CA file and Unix Ctrl-C during incomplete HTTP response bodies.
+These tests use isolated configuration and do not change the OS trust store.

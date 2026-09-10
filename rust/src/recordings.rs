@@ -1,12 +1,13 @@
 //! Recording commands.
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cli::{RecordingDeleteArgs, RecordingListArgs};
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, is_zero, parse_timestamp, DeviceSummary, ProjectFallback, Record,
+    compact_json, fetch_list, is_zero, null_to_default, parse_timestamp, DeviceSummary,
+    ProjectFallback, Record,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -15,14 +16,6 @@ use crate::Outcome;
 struct Site {
     name: String,
     id: String,
-}
-
-fn null_to_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Default + Deserialize<'de>,
-{
-    Option::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -37,10 +30,12 @@ struct Recording {
     path: String,
     size: i64,
     #[serde(rename = "messageCount")]
+    #[serde(default, deserialize_with = "null_to_default")]
     message_count: i64,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "importedAt")]
+    #[serde(default, deserialize_with = "null_to_default")]
     imported_at: String,
     start: String,
     end: String,

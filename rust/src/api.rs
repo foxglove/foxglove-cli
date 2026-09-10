@@ -356,6 +356,20 @@ impl FoxgloveClient {
     ///
     /// Returns the mapped API, transport, or response-decoding error.
     pub async fn sign_in(&self, id_token: &str) -> Result<String, ApiError> {
+        self.sign_in_with_cancellation(id_token, &CancellationToken::new())
+            .await
+    }
+
+    /// Execute `sign_in` with cancellation covering headers and response bodies.
+    ///
+    /// # Errors
+    ///
+    /// Returns cancellation, transport, API, or decoding errors.
+    pub async fn sign_in_with_cancellation(
+        &self,
+        id_token: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<String, ApiError> {
         #[derive(Serialize)]
         struct SignInRequest<'a> {
             #[serde(rename = "idToken")]
@@ -372,7 +386,7 @@ impl FoxgloveClient {
                 "/v1/signin",
                 &SignInRequest { token: id_token },
                 false,
-                None,
+                Some(cancellation),
             )
             .await
             .map_err(|error| {
@@ -388,6 +402,19 @@ impl FoxgloveClient {
     ///
     /// Returns the mapped API, transport, or response-decoding error.
     pub async fn device_code(&self) -> Result<DeviceCodeResponse, ApiError> {
+        self.device_code_with_cancellation(&CancellationToken::new())
+            .await
+    }
+
+    /// Execute `device_code` with cancellation covering headers and response bodies.
+    ///
+    /// # Errors
+    ///
+    /// Returns cancellation, transport, API, or decoding errors.
+    pub async fn device_code_with_cancellation(
+        &self,
+        cancellation: &CancellationToken,
+    ) -> Result<DeviceCodeResponse, ApiError> {
         #[derive(Serialize)]
         #[serde(rename_all = "camelCase")]
         struct DeviceCodeRequest<'a> {
@@ -400,7 +427,7 @@ impl FoxgloveClient {
                 client_id: &self.client_id,
             },
             false,
-            None,
+            Some(cancellation),
         )
         .await
         .map_err(|error| {
@@ -452,27 +479,31 @@ impl FoxgloveClient {
             .map_err(|error| {
                 error.contextualize("token request failure", "failed to parse response body")
             })?;
-        match response.status() {
-            StatusCode::OK => response
-                .json::<TokenResponse>()
-                .await
-                .map(|response| response.id_token)
-                .map_err(ApiError::Decode)
-                .map_err(|error| {
-                    error.contextualize("token request failure", "failed to parse response body")
-                }),
-            StatusCode::FORBIDDEN => {
-                drop(response);
-                Err(ApiError::Forbidden)
+        with_optional_cancellation(Some(cancellation), async {
+            match response.status() {
+                StatusCode::OK => response
+                    .json::<TokenResponse>()
+                    .await
+                    .map(|response| response.id_token)
+                    .map_err(ApiError::Decode)
+                    .map_err(|error| {
+                        error
+                            .contextualize("token request failure", "failed to parse response body")
+                    }),
+                StatusCode::FORBIDDEN => {
+                    drop(response);
+                    Err(ApiError::Forbidden)
+                }
+                status => {
+                    let _ = response.text().await;
+                    Err(ApiError::Response {
+                        status: status.as_u16(),
+                        message: format!("unexpected status {}", status.as_u16()),
+                    })
+                }
             }
-            status => {
-                let _ = response.text().await;
-                Err(ApiError::Response {
-                    status: status.as_u16(),
-                    message: format!("unexpected status {}", status.as_u16()),
-                })
-            }
-        }
+        })
+        .await
     }
 
     /// Execute an authenticated GET and decode its JSON response.
@@ -630,7 +661,7 @@ impl FoxgloveClient {
     ) -> Result<(), ApiError> {
         let response =
             send_with_cancellation(self.request(Method::DELETE, endpoint)?, cancellation).await?;
-        ensure_ok(response).await
+        with_optional_cancellation(Some(cancellation), ensure_ok(response)).await
     }
 
     /// Request a streamed data download.
@@ -675,7 +706,7 @@ impl FoxgloveClient {
             cancellation,
         )
         .await?;
-        ensure_success_response(response)
+        with_optional_cancellation(Some(cancellation), ensure_success_response(response))
             .await
             .map(|response| ResponseStream {
                 response: Some(response),
@@ -729,7 +760,7 @@ impl FoxgloveClient {
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
             .body(reqwest::Body::wrap_stream(ReaderStream::new(reader)));
         let response = send_with_cancellation(request, cancellation).await?;
-        ensure_ok(response).await
+        with_optional_cancellation(Some(cancellation), ensure_ok(response)).await
     }
 
     /// Upload a reader and cancel the active HTTP future when requested.
@@ -770,7 +801,7 @@ impl FoxgloveClient {
             cancellation,
         )
         .await?;
-        ensure_upload_success(response).await
+        with_optional_cancellation(Some(cancellation), ensure_upload_success(response)).await
     }
 
     /// Download an attachment through the authenticated API.
@@ -798,7 +829,7 @@ impl FoxgloveClient {
         let endpoint = format!("/v1/recording-attachments/{id}/download");
         let response =
             send_with_cancellation(self.request(Method::GET, &endpoint)?, cancellation).await?;
-        ensure_success_response(response)
+        with_optional_cancellation(Some(cancellation), ensure_success_response(response))
             .await
             .map(|response| ResponseStream {
                 response: Some(response),
@@ -823,8 +854,11 @@ impl FoxgloveClient {
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .body(encode_json(body)?);
         let response = send_with_optional_cancellation(request, cancellation).await?;
-        let response = ensure_ok_response(response).await?;
-        response.json::<T>().await.map_err(ApiError::Decode)
+        with_optional_cancellation(cancellation, async {
+            let response = ensure_ok_response(response).await?;
+            response.json::<T>().await.map_err(ApiError::Decode)
+        })
+        .await
     }
 
     async fn send_json_with_query<Q, B, T>(
@@ -847,8 +881,11 @@ impl FoxgloveClient {
                 .body(encode_json(body)?);
         }
         let response = send_with_optional_cancellation(request, cancellation).await?;
-        let response = ensure_ok_response(response).await?;
-        response.json::<T>().await.map_err(ApiError::Decode)
+        with_optional_cancellation(cancellation, async {
+            let response = ensure_ok_response(response).await?;
+            response.json::<T>().await.map_err(ApiError::Decode)
+        })
+        .await
     }
 
     fn request(&self, method: Method, endpoint: &str) -> Result<RequestBuilder, ApiError> {
@@ -998,12 +1035,25 @@ async fn send_with_cancellation(
     request: RequestBuilder,
     cancellation: &CancellationToken,
 ) -> Result<Response, ApiError> {
-    if cancellation.is_cancelled() {
-        return Err(ApiError::Cancelled);
-    }
+    with_optional_cancellation(Some(cancellation), async {
+        request.send().await.map_err(ApiError::Transport)
+    })
+    .await
+}
+
+/// Keep cancellation active while consuming success and error response bodies,
+/// not just while waiting for response headers.
+async fn with_optional_cancellation<T>(
+    cancellation: Option<&CancellationToken>,
+    operation: impl std::future::Future<Output = Result<T, ApiError>>,
+) -> Result<T, ApiError> {
+    let Some(cancellation) = cancellation else {
+        return operation.await;
+    };
     tokio::select! {
+        biased;
         () = cancellation.cancelled() => Err(ApiError::Cancelled),
-        response = request.send() => response.map_err(ApiError::Transport),
+        result = operation => result,
     }
 }
 
@@ -1201,6 +1251,125 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.is_cancelled());
+    }
+
+    async fn stall_response_body(
+        listener: tokio::net::TcpListener,
+        cancellation: tokio_util::sync::CancellationToken,
+        status: u16,
+    ) {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        request_head(&mut stream).await;
+        stream.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n{{").as_bytes()).await.unwrap();
+        // Only cancellation can finish the body read before the test timeout.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        cancellation.cancel();
+        std::future::pending::<()>().await;
+        drop(stream);
+    }
+
+    #[ignore = "requires loopback socket access; run explicitly in the wire-test environment"]
+    #[tokio::test]
+    async fn cancellation_interrupts_success_and_error_response_bodies() {
+        use std::time::Duration;
+        use tokio_util::sync::CancellationToken;
+        for operation in [
+            "get",
+            "post",
+            "patch",
+            "delete",
+            "attachment",
+            "extension",
+            "signin",
+            "device-code",
+            "token",
+        ] {
+            for status in [200, 500] {
+                // Successful DELETE/upload responses are deliberately dropped.
+                if status == 200 && matches!(operation, "delete" | "extension") {
+                    continue;
+                }
+                let (listener, address) = test_listener().await;
+                let cancellation = CancellationToken::new();
+                let cancel = cancellation.clone();
+                let server = tokio::spawn(stall_response_body(listener, cancel, status));
+                let client = FoxgloveClient::new(
+                    &format!("http://{address}"),
+                    "fixture",
+                    "",
+                    "foxglove-cli/test",
+                )
+                .unwrap();
+                let result = tokio::time::timeout(Duration::from_secs(3), async {
+                    match operation {
+                        "get" => client
+                            .get_with_cancellation::<_, serde_json::Value>(
+                                "/fixture",
+                                &(),
+                                &cancellation,
+                            )
+                            .await
+                            .map(|_| ()),
+                        "post" => client
+                            .post_with_cancellation::<_, serde_json::Value>(
+                                "/fixture",
+                                &(),
+                                &cancellation,
+                            )
+                            .await
+                            .map(|_| ()),
+                        "patch" => client
+                            .patch_with_cancellation::<_, _, serde_json::Value>(
+                                "/fixture",
+                                &(),
+                                &(),
+                                &cancellation,
+                            )
+                            .await
+                            .map(|_| ()),
+                        "delete" => {
+                            client
+                                .delete_with_cancellation("/fixture", &cancellation)
+                                .await
+                        }
+                        "attachment" => match client
+                            .attachment_with_cancellation("fixture", &cancellation)
+                            .await
+                        {
+                            Ok(stream) => stream.bytes().await.map(|_| ()),
+                            Err(error) => Err(error),
+                        },
+                        "extension" => {
+                            client
+                                .upload_extension_with_cancellation(
+                                    tokio::io::empty(),
+                                    &cancellation,
+                                )
+                                .await
+                        }
+                        "signin" => client
+                            .sign_in_with_cancellation("fixture", &cancellation)
+                            .await
+                            .map(|_| ()),
+                        "device-code" => client
+                            .device_code_with_cancellation(&cancellation)
+                            .await
+                            .map(|_| ()),
+                        "token" => client
+                            .token_with_cancellation("fixture", &cancellation)
+                            .await
+                            .map(|_| ()),
+                        _ => unreachable!(),
+                    }
+                })
+                .await;
+                server.abort();
+                let error = result
+                    .unwrap_or_else(|_| panic!("{operation} {status} ignored cancellation"))
+                    .unwrap_err();
+                assert!(error.is_cancelled(), "{operation} {status}: {error}");
+            }
+        }
     }
 
     #[ignore = "requires loopback socket access; run explicitly in the wire-test environment"]
