@@ -11,6 +11,7 @@ use clap_complete::{generate, Shell};
 use serde_yaml_ng::Value;
 
 use crate::config::Config;
+use crate::output::Format;
 use crate::{
     attachments, auth, data, devices, event_types, events, extensions, pending_imports, projects,
     recordings, runtime, sessions, topics,
@@ -674,9 +675,10 @@ struct FormatArgs {
     #[arg(
         long,
         help = "Render output in table, JSON, or CSV format",
-        allow_hyphen_values = true
+        value_enum,
+        default_value = "table"
     )]
-    format: Option<String>,
+    format: Format,
 }
 
 /// Captured process output and status for one invocation.
@@ -786,19 +788,17 @@ async fn dispatch_api_command(
         Ok(runtime) => runtime,
         Err(error) => return Outcome::failure(error),
     };
-    let format = match crate::output::Format::resolve(command.format_value()) {
-        Ok(format) => format,
-        Err(error) => return Outcome::failure(error),
-    };
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
             attachments::download_attachment(&runtime, &args, writer).await
         }
         CliCommand::Attachments(AttachmentsCommand::List(args)) => {
+            let format = args.format.format;
             attachments::list_attachments(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
         CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => {
+            let format = args.format.format;
             data::list_coverage(&runtime, &args, format).await
         }
         CliCommand::Data(DataCommand::Export(args)) => {
@@ -824,17 +824,19 @@ async fn dispatch_api_command(
             devices::edit_device(&runtime, &args).await
         }
         CliCommand::Devices(DevicesCommand::List(args)) => {
+            let format = args.format.format;
             devices::list_devices(&runtime, &args, format).await
         }
-        CliCommand::EventTypes(EventTypesCommand::List(_)) => {
-            event_types::list_event_types(&runtime, format).await
+        CliCommand::EventTypes(EventTypesCommand::List(args)) => {
+            event_types::list_event_types(&runtime, args.format).await
         }
         CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
         CliCommand::Events(EventsCommand::List(args)) => {
+            let format = args.format.format;
             events::list_events(&runtime, &args, format).await
         }
-        CliCommand::Extensions(ExtensionsCommand::List(_)) => {
-            extensions::list_extensions(&runtime, format).await
+        CliCommand::Extensions(ExtensionsCommand::List(args)) => {
+            extensions::list_extensions(&runtime, args.format).await
         }
         CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
             extensions::publish_extension(&runtime, &args).await
@@ -843,19 +845,22 @@ async fn dispatch_api_command(
             extensions::unpublish_extension(&runtime, &args).await
         }
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
+            let format = args.format.format;
             pending_imports::list_pending_imports(&runtime, &args, format).await
         }
-        CliCommand::Projects(ProjectsCommand::List(_)) => {
-            projects::list_projects(&runtime, format).await
+        CliCommand::Projects(ProjectsCommand::List(args)) => {
+            projects::list_projects(&runtime, args.format).await
         }
         CliCommand::Recordings(RecordingsCommand::Delete(args)) => {
             recordings::delete_recording(&runtime, &args).await
         }
         CliCommand::Recordings(RecordingsCommand::List(args)) => {
+            let format = args.format.format;
             recordings::list_recordings(&runtime, &args, format).await
         }
-        CliCommand::Sessions(command) => dispatch_session_command(&runtime, command, format).await,
+        CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
+            let format = args.format.format;
             topics::list_topics(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::ConfigureApiKey(_) | AuthCommand::Login(_))
@@ -865,16 +870,15 @@ async fn dispatch_api_command(
     }
 }
 
-async fn dispatch_session_command(
-    runtime: &runtime::Runtime,
-    command: SessionsCommand,
-    format: crate::output::Format,
-) -> Outcome {
+async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsCommand) -> Outcome {
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
-        SessionsCommand::List(args) => sessions::list_sessions(runtime, &args, format).await,
+        SessionsCommand::List(args) => {
+            let format = args.format.format;
+            sessions::list_sessions(runtime, &args, format).await
+        }
         SessionsCommand::Recordings(SessionRecordingsCommand::Add(args)) => {
             sessions::patch_session_recordings(runtime, &args, true).await
         }
@@ -884,26 +888,6 @@ async fn dispatch_session_command(
         SessionsCommand::Recordings(SessionRecordingsCommand::Remove(args)) => {
             sessions::patch_session_recordings(runtime, &args, false).await
         }
-    }
-}
-
-impl CliCommand {
-    fn format_value(&self) -> Option<&str> {
-        let format = match self {
-            Self::Attachments(AttachmentsCommand::List(args)) => &args.format,
-            Self::Data(DataCommand::Coverage(CoverageCommand::List(args))) => &args.format,
-            Self::Devices(DevicesCommand::List(args)) => &args.format,
-            Self::EventTypes(EventTypesCommand::List(args))
-            | Self::Extensions(ExtensionsCommand::List(args))
-            | Self::Projects(ProjectsCommand::List(args)) => args,
-            Self::Events(EventsCommand::List(args)) => &args.format,
-            Self::PendingImports(PendingImportsCommand::List(args)) => &args.format,
-            Self::Recordings(RecordingsCommand::List(args)) => &args.format,
-            Self::Sessions(SessionsCommand::List(args)) => &args.format,
-            Self::Topics(TopicsCommand::List(args)) => &args.format,
-            _ => return None,
-        };
-        format.format.as_deref()
     }
 }
 
@@ -1084,6 +1068,9 @@ mod tests {
     use std::ffi::OsString;
     use std::io::Cursor;
 
+    use clap::Parser;
+
+    use crate::output::Format;
     use crate::run;
 
     fn invoke(args: &[&str]) -> super::Outcome {
@@ -1101,6 +1088,27 @@ mod tests {
             invoke(&["version", "--debug"]).stdout,
             format!("{}\n", crate::runtime::version()).as_bytes()
         );
+    }
+
+    #[test]
+    fn list_format_is_parsed_as_a_typed_value() {
+        for (argument, expected) in [(None, Format::Table), (Some("csv"), Format::Csv)] {
+            let mut argv = vec!["foxglove", "devices", "list"];
+            if let Some(argument) = argument {
+                argv.extend(["--format", argument]);
+            }
+            let cli = super::Cli::try_parse_from(argv).unwrap();
+            let Some(super::CliCommand::Devices(super::DevicesCommand::List(list_options))) =
+                cli.command
+            else {
+                panic!("expected devices list command");
+            };
+            assert_eq!(list_options.format.format, expected);
+        }
+
+        let error = super::Cli::try_parse_from(["foxglove", "devices", "list", "--format", "xml"])
+            .unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
     }
 
     #[test]

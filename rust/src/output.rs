@@ -4,28 +4,12 @@ use serde::Serialize;
 use std::io::{self, Write};
 
 /// Supported list-command output formats.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, clap::ValueEnum)]
 pub enum Format {
     #[default]
     Table,
     Json,
     Csv,
-}
-
-impl Format {
-    /// Resolve the `--format` value.
-    ///
-    /// # Errors
-    ///
-    /// Returns an unknown-format message when the value is unsupported.
-    pub fn resolve(format: Option<&str>) -> Result<Self, String> {
-        match format.unwrap_or("table") {
-            "table" => Ok(Self::Table),
-            "json" => Ok(Self::Json),
-            "csv" => Ok(Self::Csv),
-            value => Err(format!("Command failed. unknown output format: {value}\n")),
-        }
-    }
 }
 
 /// Render a JSON value using `serde_json`'s normal compact representation.
@@ -107,12 +91,7 @@ fn validate_rows(headers: &[&str], rows: &[Vec<String>]) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_csv, render_json, render_table, Format};
-
-    #[test]
-    fn parses_requested_format() {
-        assert_eq!(Format::resolve(Some("csv")), Ok(Format::Csv));
-    }
+    use super::{render_csv, render_json, render_table};
 
     #[test]
     fn empty_csv_contains_its_header() {
