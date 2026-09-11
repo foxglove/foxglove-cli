@@ -2,8 +2,7 @@
 
 This directory contains the language-neutral compatibility contract for the
 Rust CLI. The v1.0.33 fixtures are captured by the black-box Go
-harness in `foxglove/compat`; the Rust compatibility tests read the same
-files.
+harness in `foxglove/compat`, which also compares the Rust binary against them.
 
 Keep the v1.0.33 Go source unchanged: the harness checks it against the release
 tag. Preserve command arguments, defaults, validation, stdout/stderr, exit
@@ -35,13 +34,7 @@ All harness runs use an isolated home directory and a deterministic local HTTP
 server. Dynamic paths, fixture ports, and the known Go empty-CSV stack trace
 are normalized before comparison.
 
-Additional release-candidate regressions live in
-`foxglove/compat/release_candidate_test.go`. They compare real-world optional
-response fields, event query parameters, and nested ROS schemas against the Go
-oracle without regenerating historical goldens. They also test custom TLS trust
-using a temporary CA file and Unix Ctrl-C during incomplete HTTP response bodies.
-These tests use isolated configuration and do not change the OS trust store.
-
-`foxglove/compat/export_regression_test.go` covers large MCAP records and
-checks schema references and message preservation after recovery, including
-schemaless channels where the Go oracle has an inherited bug.
+Independent Rust regression coverage lives alongside the implementation and in
+[`rust/tests/cli_integration.rs`](../rust/tests/cli_integration.rs). Those tests
+assert intended behavior directly, without building Go or reading these goldens.
+See the [Rust development guide](../rust/README.md) for running them.

@@ -210,13 +210,23 @@ mod tests {
     use super::Recording;
 
     #[test]
-    fn recording_accepts_nullable_api_reference_fields_like_go() {
-        let recording: Recording = serde_json::from_str(
-            r#"{"id":"rec","path":"fixture.mcap","size":1,"messageCount":0,"createdAt":"2024-01-01T00:00:00Z","importedAt":"2024-01-01T00:00:00Z","start":"2024-01-01T00:00:00Z","end":"2024-01-01T00:00:00Z","importStatus":"complete","site":{"id":"site","name":"Site"},"edgeSite":null,"device":null,"metadata":null,"key":null,"projectId":"prj"}"#,
-        )
-        .unwrap();
-        assert!(recording.edge_site.id.is_empty());
-        assert!(recording.device.id.is_empty());
-        assert!(recording.key.is_empty());
+    fn missing_and_null_fields_render_explicit_defaults() {
+        let original = serde_json::json!({"id":"rec_fixture","path":"fixture.mcap","size":128,"createdAt":"2024-01-02T03:04:05Z","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","importStatus":"none","projectId":"prj_default"});
+        for (field, expected) in [
+            ("messageCount", serde_json::json!(0)),
+            ("importedAt", serde_json::json!("")),
+            ("site", serde_json::json!({"id": "", "name": ""})),
+            ("edgeSite", serde_json::json!({"id": "", "name": ""})),
+            ("device", serde_json::json!({"id": "", "name": ""})),
+            ("key", serde_json::json!("")),
+        ] {
+            let mut with_null = original.clone();
+            with_null[field] = serde_json::Value::Null;
+            for response in [original.clone(), with_null] {
+                let record: Recording = serde_json::from_value(response).unwrap();
+                let output = serde_json::to_value(record).unwrap();
+                assert_eq!(output[field], expected, "{field}");
+            }
+        }
     }
 }

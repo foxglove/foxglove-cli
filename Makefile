@@ -25,7 +25,6 @@ rust-doc:
 
 # Install the pinned tool with `cargo install cargo-audit --locked --version 0.22.2`.
 # RUSTSEC-2024-0436 is the reviewed unmaintained `paste` build dependency
-# documented in RELEASE.md; known vulnerabilities still fail this command.
 rust-audit:
 	cargo audit --file rust/Cargo.lock --ignore RUSTSEC-2024-0436
 

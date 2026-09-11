@@ -104,3 +104,25 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
     )
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Coverage;
+
+    #[test]
+    fn missing_and_null_fields_render_explicit_defaults() {
+        let original = serde_json::json!({"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"});
+        for (field, expected) in [
+            ("deviceId", serde_json::json!("")),
+            ("device", serde_json::json!({"id": "", "name": ""})),
+        ] {
+            let mut with_null = original.clone();
+            with_null[field] = serde_json::Value::Null;
+            for response in [original.clone(), with_null] {
+                let record: Coverage = serde_json::from_value(response).unwrap();
+                let output = serde_json::to_value(record).unwrap();
+                assert_eq!(output[field], expected, "{field}");
+            }
+        }
+    }
+}

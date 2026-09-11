@@ -11,7 +11,7 @@ name = "foxglove-rust"
 path = "src/main.rs"
 
 [features]
-# Only the compatibility harness enables this. It prevents a test subprocess
+# Test harnesses enable this to prevent a subprocess
 # from invoking a real platform browser during the device-code flow.
 compat-test = []
 

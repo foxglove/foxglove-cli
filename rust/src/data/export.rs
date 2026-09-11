@@ -1057,6 +1057,52 @@ mod tests {
     }
 
     #[test]
+    fn merge_sink_preserves_schema_zero_and_remaps_nonzero_schemas() {
+        let directory = std::env::temp_dir().join(format!(
+            "foxglove-rust-merge-schema-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("merged.mcap");
+        let schema = Schema {
+            id: 1,
+            name: "example/Message".into(),
+            encoding: "ros1msg".into(),
+            data: b"uint8 value\n".to_vec(),
+        };
+        let mut writer = McapWriter::new(create_export_file(&path).unwrap()).unwrap();
+        writer.schema(&schema).unwrap();
+        let mut sink = McapMergeSink {
+            writer,
+            schema_offset: 1,
+            channel_offset: 2,
+            max_schema: 1,
+            max_channel: 1,
+            scan_through: u64::MAX,
+        };
+        sink.schema(schema).unwrap();
+        for (id, schema_id) in [(1, 0), (2, 1)] {
+            sink.channel(Channel {
+                id,
+                schema_id,
+                topic: format!("/channel{id}"),
+                message_encoding: "json".into(),
+                metadata: BTreeMap::new(),
+            })
+            .unwrap();
+        }
+        sink.writer.finish().unwrap();
+        drop(sink);
+        let bytes = fs::read(&path).unwrap();
+        let summary = mcap::Summary::read(&bytes).unwrap().unwrap();
+        assert!(summary.channels[&3].schema.is_none());
+        let remapped = summary.channels[&4].schema.as_ref().unwrap();
+        assert_eq!(remapped.id, 2);
+        assert_eq!(remapped.data.as_ref(), b"uint8 value\n");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn scan_through_keeps_the_last_non_empty_partial_boundary() {
         let partials = vec![
             PartialExport {

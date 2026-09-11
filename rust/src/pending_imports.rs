@@ -164,3 +164,29 @@ pub(crate) async fn list_pending_imports(
     )
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::PendingImport;
+
+    #[test]
+    fn missing_and_null_fields_render_explicit_defaults() {
+        let original = serde_json::json!({"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","orgId":"org_fixture","filename":"fixture.mcap","pipelineStage":"parse","requestId":"req_fixture","siteId":"site_fixture"});
+        for (field, expected) in [
+            ("deviceId", serde_json::json!("")),
+            ("deviceName", serde_json::json!("")),
+            ("importId", serde_json::json!("")),
+            ("projectId", serde_json::json!("")),
+            ("status", serde_json::json!("")),
+            ("error", serde_json::json!("")),
+        ] {
+            let mut with_null = original.clone();
+            with_null[field] = serde_json::Value::Null;
+            for response in [original.clone(), with_null] {
+                let record: PendingImport = serde_json::from_value(response).unwrap();
+                let output = serde_json::to_value(record).unwrap();
+                assert_eq!(output[field], expected, "{field}");
+            }
+        }
+    }
+}

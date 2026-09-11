@@ -244,27 +244,8 @@ To enable this, consult your shell instructions under `$ foxglove completion <sh
 
 ## Development
 
-The CLI is implemented in `rust/`. `rust-toolchain.toml` pins the Rust
-compiler; the compatibility tests also require the Go version specified in
-`foxglove/go.mod`. From the repository root:
-
-```sh
-make lint go-test rust-test-ignored
-make rust-doc
-cargo install cargo-audit --locked --version 0.22.2
-make rust-audit
-make build
-./rust/target/release/foxglove-rust --help
-```
-
-`make lint` checks formatting and runs both linters, installing the pinned Go
-linter if needed. `make test` runs the normal Rust and Go suites, including the
-compatibility tests; `make compat` runs just the compatibility suite. Loopback
-tests require an environment that permits local sockets.
-
-The Go source is retained as the v1.0.33 test oracle. See the
-[compatibility contract](compat/README.md) for baseline maintenance and accepted
-behavior changes, and [RELEASE.md](RELEASE.md) for packaging and publishing.
+See the [Rust development guide](rust/README.md) for building, testing, and
+working with the Go compatibility oracle.
 
 ## Stay in touch
 
