@@ -27,7 +27,9 @@ pub enum ApiError {
         context: &'static str,
         source: Box<ApiError>,
     },
-    /// The API rejected the credentials with HTTP 401 or 403.
+    /// The API rejected the credentials with HTTP 401.
+    Unauthorized,
+    /// The API rejected the credentials with HTTP 403.
     Forbidden,
     /// The API rejected the credentials and supplied additional detail.
     ForbiddenWithMessage(String),
@@ -70,7 +72,10 @@ impl ApiError {
     /// Whether the server rejected the current authentication.
     #[must_use]
     pub const fn is_forbidden(&self) -> bool {
-        matches!(self, Self::Forbidden | Self::ForbiddenWithMessage(_))
+        matches!(
+            self,
+            Self::Unauthorized | Self::Forbidden | Self::ForbiddenWithMessage(_)
+        )
     }
 
     /// Whether the requested resource was not found.
@@ -90,7 +95,7 @@ impl fmt::Display for ApiError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Context { context, source } => write!(formatter, "{context}: {source}"),
-            Self::Forbidden => formatter.write_str(FORBIDDEN_MESSAGE),
+            Self::Unauthorized | Self::Forbidden => formatter.write_str(FORBIDDEN_MESSAGE),
             Self::ForbiddenWithMessage(message) => {
                 write!(formatter, "{FORBIDDEN_MESSAGE}\n{message}")
             }
@@ -115,7 +120,8 @@ impl std::error::Error for ApiError {
             Self::Transport(error) | Self::Decode(error) => Some(error),
             Self::Serialization(error) => Some(error),
             Self::Write(error) => Some(error),
-            Self::Forbidden
+            Self::Unauthorized
+            | Self::Forbidden
             | Self::ForbiddenWithMessage(_)
             | Self::NotFound
             | Self::Response { .. }
@@ -490,6 +496,10 @@ impl FoxgloveClient {
                         error
                             .contextualize("token request failure", "failed to parse response body")
                     }),
+                StatusCode::UNAUTHORIZED => {
+                    drop(response);
+                    Err(ApiError::Unauthorized)
+                }
                 StatusCode::FORBIDDEN => {
                     drop(response);
                     Err(ApiError::Forbidden)
@@ -1091,10 +1101,14 @@ async fn ensure_ok_response(response: Response) -> Result<Response, ApiError> {
 async fn error_from_response(response: Response) -> ApiError {
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
+    api_error_from_response(status, &body)
+}
+
+fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
     match status {
-        StatusCode::UNAUTHORIZED => ApiError::Forbidden,
+        StatusCode::UNAUTHORIZED => ApiError::Unauthorized,
         StatusCode::FORBIDDEN => {
-            let message = response_message(&body);
+            let message = response_message(body);
             if message.is_empty() {
                 ApiError::Forbidden
             } else {
@@ -1104,7 +1118,7 @@ async fn error_from_response(response: Response) -> ApiError {
         StatusCode::NOT_FOUND => ApiError::NotFound,
         _ => ApiError::Response {
             status: status.as_u16(),
-            message: response_message(&body),
+            message: response_message(body),
         },
     }
 }
@@ -1116,7 +1130,11 @@ fn response_message(body: &str) -> String {
         message: Option<String>,
     }
     match serde_json::from_str::<ErrorResponse>(body) {
-        Ok(response) => response.error.or(response.message).unwrap_or_default(),
+        Ok(response) => response
+            .error
+            .filter(|value| !value.is_empty())
+            .or(response.message.filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
         Err(_) => body.to_owned(),
     }
 }
@@ -1139,9 +1157,13 @@ fn is_mcap_format(format: &str) -> bool {
 mod tests {
     use std::net::SocketAddr;
 
+    use reqwest::StatusCode;
     use tokio::io::AsyncWriteExt;
 
-    use super::{response_message, ApiError, FoxgloveClient, StreamRequest};
+    use super::{
+        api_error_from_response, response_message, ApiError, FoxgloveClient, StreamRequest,
+        FORBIDDEN_MESSAGE,
+    };
 
     async fn request_head(stream: &mut tokio::net::TcpStream) -> String {
         use tokio::io::AsyncReadExt;
@@ -1219,12 +1241,33 @@ mod tests {
     fn error_payload_prefers_error_then_message_then_raw_body() {
         assert_eq!(response_message(r#"{"error":"bad"}"#), "bad");
         assert_eq!(response_message(r#"{"message":"bad"}"#), "bad");
+        assert_eq!(
+            response_message(r#"{"error":"","message":"fallback"}"#),
+            "fallback"
+        );
         assert_eq!(response_message("bad"), "bad");
+    }
+
+    #[test]
+    fn unauthorized_errors_always_direct_users_to_sign_in() {
+        let mutation = api_error_from_response(
+            StatusCode::UNAUTHORIZED,
+            r#"{"error":"mutation requires authentication"}"#,
+        );
+        assert!(matches!(mutation, ApiError::Unauthorized));
+        assert_eq!(mutation.to_string(), FORBIDDEN_MESSAGE);
+
+        let authentication = api_error_from_response(
+            StatusCode::UNAUTHORIZED,
+            r#"{"error":"read requires authentication"}"#,
+        );
+        assert!(matches!(authentication, ApiError::Unauthorized));
     }
 
     #[test]
     fn status_helpers_are_available_without_string_matching() {
         assert!(ApiError::Forbidden.is_forbidden());
+        assert!(ApiError::Unauthorized.is_forbidden());
         let forbidden = ApiError::ForbiddenWithMessage("requires capability".to_owned());
         assert!(forbidden.is_forbidden());
         assert_eq!(

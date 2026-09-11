@@ -181,7 +181,10 @@ async fn complete_login(
                 .await
             {
                 Ok(token) => break Ok(token),
-                Err(error) if error.is_forbidden() => {
+                // Device-code polling uses HTTP 403 to mean authorization is
+                // still pending. A 401 is an authentication error and must
+                // surface instead of retrying forever.
+                Err(api::ApiError::Forbidden) => {
                     tokio::select! {
                         () = cancellation.cancelled() => return Err("context canceled".to_owned()),
                         () = tokio::time::sleep(Duration::from_millis(500)) => {}

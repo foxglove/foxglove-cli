@@ -91,6 +91,13 @@
         "Error responses are released after their error text is captured."
       ]
     },
+    "unauthorized-api-responses": {
+      "reason": "Treat HTTP 401 from every API endpoint as an authentication failure and consistently direct users to `foxglove auth login`. The Go CLI exposes endpoint-specific server text or an unexpected-status error for some mutation and authentication requests.",
+      "invariants": [
+        "Every API HTTP 401 produces the standard sign-in guidance.",
+        "HTTP 403 retains its existing endpoint-specific handling."
+      ]
+    },
     "transfer-cancellation": {
       "reason": "Propagate cancellation through active uploads, downloads, conversions, and staging cleanup.",
       "exitCode": 130,

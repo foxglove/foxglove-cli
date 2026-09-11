@@ -1392,12 +1392,12 @@ func TestRustAuthLoginErrorContexts(t *testing.T) {
 		}
 	})
 
-	t.Run("token-unexpected-status", func(t *testing.T) {
+	t.Run("token-unauthorized-approved-delta", func(t *testing.T) {
 		testCase := baseCase
 		testCase.Plans = []responsePlan{validDeviceCode, responsePlan{Method: http.MethodPost, Path: "/v1/auth/token", Status: http.StatusUnauthorized, Body: `{"message":"unauthorized"}`, Headers: jsonHeaders}}
 		actual := runRustCaseWithFixture(t, testCase, fixture)
-		if actual.ExitCode != 1 || actual.Stderr != "Login failed: failed to request token: unexpected status 401\n" || len(actual.Requests) != 2 {
-			t.Fatalf("unexpected token-status result: %+v", actual)
+		if actual.ExitCode != 1 || actual.Stderr != "Login failed: failed to request token: forbidden: have you signed in with `foxglove auth login`?\n" || len(actual.Requests) != 2 {
+			t.Fatalf("unexpected token-unauthorized result: %+v", actual)
 		}
 	})
 
