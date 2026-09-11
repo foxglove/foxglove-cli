@@ -98,7 +98,7 @@ pub struct Attachment {
     pub data: Vec<u8>,
 }
 
-/// A streaming sink for the MCAP records Phase 6 and 7 need to preserve.
+/// A streaming sink for MCAP records.
 pub trait RecordSink {
     fn schema(&mut self, schema: Schema) -> Result<(), Error>;
     fn channel(&mut self, channel: Channel) -> Result<(), Error>;
@@ -271,7 +271,7 @@ pub fn validate_mcap<R: Read>(reader: &mut R) -> Result<(), Error> {
 }
 
 /// MCAP writer that preserves externally supplied schema and channel IDs.
-/// It is intentionally format-only; command-level file staging belongs to Phase 7.
+/// Callers handle destination staging and atomic replacement.
 pub struct McapWriter<W: Write + Seek> {
     inner: mcap::Writer<W>,
 }

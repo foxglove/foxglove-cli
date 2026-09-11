@@ -24,7 +24,7 @@ const BINARY_OUTPUT_TERMINAL_ERROR: &str =
     "Binary output may screw up your terminal. Please redirect to a pipe or file.";
 const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Execute the Phase 6 single-request export path.
+/// Export recording data as MCAP, ROS bag, or JSON.
 ///
 /// Binary exports use recovery, reindexing, and atomic destination handling.
 /// JSON exports are likewise staged before replacing their destination.

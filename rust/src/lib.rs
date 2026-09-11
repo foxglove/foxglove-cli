@@ -1,4 +1,4 @@
-//! Rust foundation for the Foxglove CLI migration.
+//! Foxglove CLI command execution and supporting libraries.
 
 pub mod api;
 mod attachments;

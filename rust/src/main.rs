@@ -1,4 +1,4 @@
-//! Foxglove CLI compatibility binary.
+//! Foxglove CLI entry point.
 
 use std::io::{self, Write};
 use std::process::ExitCode;

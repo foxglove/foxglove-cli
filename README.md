@@ -26,6 +26,7 @@ Alternatively, build the Rust CLI from source. Rust 1.98.1 is pinned in
 when you run Cargo in this checkout:
 
     $ git clone git@github.com:foxglove/foxglove-cli.git
+    $ cd foxglove-cli
     $ make build
     $ ./rust/target/release/foxglove-rust --help
 
@@ -243,40 +244,27 @@ To enable this, consult your shell instructions under `$ foxglove completion <sh
 
 ## Development
 
-The release CLI is the Rust implementation. Rust 1.98.1 is selected by
-`rust-toolchain.toml`; the full compatibility workflow also requires Go 1.25
-(from `foxglove/go.mod`). From the repository root:
+The CLI is implemented in `rust/`. `rust-toolchain.toml` pins the Rust
+compiler; the compatibility tests also require the Go version specified in
+`foxglove/go.mod`. From the repository root:
 
 ```sh
-# Formatting, linting, tests, and a locked optimized build
-make rust-fmt
-make rust-lint
-make rust-test
+make lint go-test rust-test-ignored
 make rust-doc
-make rust-audit # requires: cargo install cargo-audit --locked --version 0.22.2
-make rust-build
+cargo install cargo-audit --locked --version 0.22.2
+make rust-audit
+make build
 ./rust/target/release/foxglove-rust --help
 ```
 
-`make lint` runs the pinned Go and Rust linters, installing golangci-lint
-v2.12.2 into the active Go bin directory when necessary. `make test` runs the
-normal Rust and Go oracle suites. The compatibility suite
-builds both implementations and compares the Rust CLI with the v1.0.33 Go
-oracle; run it before changing behavior:
+`make lint` checks formatting and runs both linters, installing the pinned Go
+linter if needed. `make test` runs the normal Rust and Go suites, including the
+compatibility tests; `make compat` runs just the compatibility suite. Loopback
+tests require an environment that permits local sockets.
 
-```sh
-make compat
-# Run the loopback HTTP contracts when the local environment permits sockets.
-make rust-test-ignored
-```
-
-The Go implementation remains only as this compatibility oracle. It is not a
-release fallback. See [MIGRATION.md](MIGRATION.md) for accepted differences and
-[RELEASE.md](RELEASE.md) for the release-candidate checklist.
-
-To release a new version, create and publish a `v*` tag. GitHub Actions builds
-and smoke-tests six native Rust binaries, attaches SHA-256 checksums, and
-publishes the release after every required gate succeeds.
+The Go source is retained as the v1.0.33 test oracle. See the
+[compatibility contract](compat/README.md) for baseline maintenance and accepted
+behavior changes, and [RELEASE.md](RELEASE.md) for packaging and publishing.
 
 ## Stay in touch
 

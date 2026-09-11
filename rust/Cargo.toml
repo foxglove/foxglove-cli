@@ -4,7 +4,7 @@ version = "1.0.33"
 edition = "2021"
 rust-version = "1.98"
 license = "MIT"
-description = "Rust compatibility implementation of the Foxglove CLI"
+description = "Interact with Foxglove from the command line"
 
 [[bin]]
 name = "foxglove-rust"

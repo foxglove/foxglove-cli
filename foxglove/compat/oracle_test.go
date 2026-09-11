@@ -610,8 +610,8 @@ func TestOfflineBehaviorGolden(t *testing.T) {
 	assertGolden(t, "offline_behavior.json", cases, nil)
 }
 
-// TestRustPhase1OfflineContract runs the new binary against the shared,
-// reviewed fixtures. HTTP-backed cases intentionally remain Phase 2 work.
+// TestRustPhase1OfflineContract checks offline behavior against the shared,
+// reviewed fixtures. HTTP behavior is covered by the wire contract tests.
 func TestRustPhase1OfflineContract(t *testing.T) {
 	commandSurfacePath := filepath.Join(repositoryRoot, "compat", "goldens", baselineVersion, "command_surface.json")
 	commandSurface := map[string]commandSnapshot{}
