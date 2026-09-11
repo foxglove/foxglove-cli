@@ -517,10 +517,15 @@ impl RecordSink for McapMergeSink {
             .id
             .checked_add(self.channel_offset)
             .ok_or_else(|| FormatError::Invalid("too many MCAP channels while merging".into()))?;
-        channel.schema_id = channel
-            .schema_id
-            .checked_add(self.schema_offset)
-            .ok_or_else(|| FormatError::Invalid("too many MCAP schemas while merging".into()))?;
+        // Schema ID zero means no schema and is not part of the ID namespace.
+        if channel.schema_id != 0 {
+            channel.schema_id = channel
+                .schema_id
+                .checked_add(self.schema_offset)
+                .ok_or_else(|| {
+                    FormatError::Invalid("too many MCAP schemas while merging".into())
+                })?;
+        }
         self.max_channel = self.max_channel.max(channel.id);
         self.writer.channel(&channel)
     }

@@ -28,6 +28,10 @@ use tokio::io::AsyncRead;
 pub const MCAP_MAGIC: &[u8] = mcap::MAGIC;
 pub const ROSBAG_MAGIC: &[u8] = b"#ROSBAG V2.0\n";
 const MAX_RECORD_LEN: usize = 64 * 1024 * 1024;
+// MCAP records have a nine-byte opcode/length prefix. Limit only by what a
+// Rust buffer can address, rather than rejecting valid large messages.
+const MAX_MCAP_RECORD_LEN: usize = isize::MAX as usize - 9;
+const MCAP_READ_BUFFER_SIZE: usize = 64 * 1024;
 // Keep both the chunk payload and its per-connection index in bounded memory. A
 // single record can exceed this target (ROS bags cannot split a record), but
 // ordinary exports never accumulate an unbounded number of records in a chunk.
@@ -169,7 +173,7 @@ fn read_mcap_inner<R: Read, S: RecordSink>(
         .with_check_finishes_after_end_magic(true)
         .with_validate_chunk_crcs(true)
         .with_validate_data_section_crc(true)
-        .with_record_length_limit(MAX_RECORD_LEN);
+        .with_record_length_limit(MAX_MCAP_RECORD_LEN);
     let mut linear = LinearReader::new_with_options(options);
     let mut in_data_section = true;
     loop {
@@ -183,7 +187,8 @@ fn read_mcap_inner<R: Read, S: RecordSink>(
         };
         match event {
             LinearReadEvent::ReadRequest(length) => {
-                let read = match reader.read(linear.insert(length)) {
+                // Grow with received bytes, not an untrusted declared record size.
+                let read = match reader.read(linear.insert(length.min(MCAP_READ_BUFFER_SIZE))) {
                     Ok(read) => read,
                     Err(error) if recover && error.kind() == io::ErrorKind::UnexpectedEof => {
                         return Ok(false)
@@ -222,7 +227,7 @@ pub async fn read_mcap_async<R: AsyncRead + Unpin, S: RecordSink>(
         .with_check_finishes_after_end_magic(true)
         .with_validate_chunk_crcs(true)
         .with_validate_data_section_crc(true)
-        .with_record_length_limit(MAX_RECORD_LEN);
+        .with_record_length_limit(MAX_MCAP_RECORD_LEN);
     let mut linear = LinearReader::new_with_options(options);
     let mut in_data_section = true;
     loop {
@@ -231,9 +236,13 @@ pub async fn read_mcap_async<R: AsyncRead + Unpin, S: RecordSink>(
         };
         match event.map_err(map_mcap_error)? {
             LinearReadEvent::ReadRequest(length) => {
-                let read = tokio::io::AsyncReadExt::read(reader, linear.insert(length))
-                    .await
-                    .map_err(Error::Io)?;
+                // Grow with received bytes, not an untrusted declared record size.
+                let read = tokio::io::AsyncReadExt::read(
+                    reader,
+                    linear.insert(length.min(MCAP_READ_BUFFER_SIZE)),
+                )
+                .await
+                .map_err(Error::Io)?;
                 linear.notify_read(read);
             }
             LinearReadEvent::Record { opcode, data } => {
@@ -386,10 +395,9 @@ fn emit_mcap_record(record: Record<'_>, sink: &mut impl RecordSink) -> Result<()
 fn map_mcap_error(error: mcap::McapError) -> Error {
     match error {
         mcap::McapError::BadMagic => Error::InvalidMagic,
-        mcap::McapError::UnexpectedEof
-        | mcap::McapError::BadFooter
-        | mcap::McapError::Parse(_)
-        | mcap::McapError::RecordTooLarge { .. } => Error::TruncatedMcap,
+        mcap::McapError::UnexpectedEof | mcap::McapError::BadFooter | mcap::McapError::Parse(_) => {
+            Error::TruncatedMcap
+        }
         other => Error::Invalid(other.to_string()),
     }
 }
@@ -1520,6 +1528,15 @@ fn read_u32_optional<R: Read>(reader: &mut R) -> Result<Option<u32>, Error> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn oversized_mcap_record_errors_are_not_recoverable_truncation() {
+        let error = map_mcap_error(mcap::McapError::RecordTooLarge {
+            opcode: 5,
+            len: u64::MAX,
+        });
+        assert!(matches!(error, Error::Invalid(_)));
+    }
 
     #[derive(Default)]
     struct CollectSink {

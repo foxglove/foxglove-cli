@@ -5,9 +5,6 @@ use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-#[cfg(windows)]
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use serde_yaml_ng::{Mapping, Value};
 
 /// The persisted Foxglove CLI configuration.
@@ -195,67 +192,10 @@ fn restrict_new_config_permissions(_file: &File) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(windows))]
+/// Replace the destination in one filesystem operation.
+/// Both paths must be on the same filesystem; callers use sibling staging paths.
 pub(crate) fn replace_file(temporary: &Path, destination: &Path) -> io::Result<()> {
     fs::rename(temporary, destination)
-}
-
-/// Windows does not replace an existing file with `rename`. Move the old
-/// config aside first and restore it if installing the complete replacement
-/// fails. If restoration itself fails, the error identifies the preserved
-/// backup rather than silently losing access to it.
-#[cfg(windows)]
-pub(crate) fn replace_file(temporary: &Path, destination: &Path) -> io::Result<()> {
-    if !destination.exists() {
-        return fs::rename(temporary, destination);
-    }
-    let backup = unique_backup_path(destination)?;
-    fs::rename(destination, &backup)?;
-    match fs::rename(temporary, destination) {
-        Ok(()) => fs::remove_file(&backup).map_err(|error| {
-            io::Error::new(
-                error.kind(),
-                format!(
-                    "installed replacement at {} but could not remove credential backup {}: {error}",
-                    destination.display(),
-                    backup.display()
-                ),
-            )
-        }),
-        Err(error) => {
-            match fs::rename(&backup, destination) {
-                Ok(()) => Err(error),
-                Err(restore_error) => Err(io::Error::new(
-                    error.kind(),
-                    format!(
-                        "could not install replacement at {}: {error}; could not restore previous credentials from {}: {restore_error}",
-                        destination.display(),
-                        backup.display()
-                    ),
-                )),
-            }
-        }
-    }
-}
-
-/// Choose a non-existing same-directory backup path before moving the original
-/// config. A stale backup must never be overwritten because it can contain a
-/// bearer token. The final rename still protects against a concurrent creator.
-#[cfg(windows)]
-fn unique_backup_path(destination: &Path) -> io::Result<PathBuf> {
-    static NEXT_BACKUP: AtomicUsize = AtomicUsize::new(0);
-
-    for _ in 0..100 {
-        let sequence = NEXT_BACKUP.fetch_add(1, Ordering::Relaxed);
-        let backup = destination.with_extension(format!("bak-{}-{sequence}", std::process::id()));
-        if !backup.exists() {
-            return Ok(backup);
-        }
-    }
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "could not choose a unique credential backup path",
-    ))
 }
 
 struct TemporaryGuard<'a>(&'a Path);
@@ -398,9 +338,8 @@ mod tests {
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
-    #[cfg(windows)]
     #[test]
-    fn windows_replacement_installs_new_contents() {
+    fn replacement_installs_new_contents() {
         use super::replace_file;
 
         let path = test_path();
@@ -415,17 +354,41 @@ mod tests {
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 
+    #[test]
+    fn failed_replacement_preserves_destination() {
+        let path = test_path();
+        let missing = path.with_extension("missing");
+        fs::write(&path, "bearer_token: old\n").unwrap();
+
+        assert!(super::replace_file(&missing, &path).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "bearer_token: old\n");
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
     #[cfg(windows)]
     #[test]
-    fn windows_backup_path_never_reuses_a_stale_credential_file() {
-        use super::unique_backup_path;
+    fn locked_destination_preserves_both_files_on_failed_replacement() {
+        use std::os::windows::fs::OpenOptionsExt;
 
         let path = test_path();
-        let stale = path.with_extension(format!("bak-{}-0", std::process::id()));
-        fs::write(&stale, "bearer_token: old\n").unwrap();
+        let temporary = path.with_extension("replacement");
+        fs::write(&path, "bearer_token: old\n").unwrap();
+        fs::write(&temporary, "bearer_token: new\n").unwrap();
+        let locked = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&path)
+            .unwrap();
 
-        assert_ne!(unique_backup_path(&path).unwrap(), stale);
-
+        assert!(super::replace_file(&temporary, &path).is_err());
+        drop(locked);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "bearer_token: old\n");
+        assert_eq!(
+            fs::read_to_string(&temporary).unwrap(),
+            "bearer_token: new\n"
+        );
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 2);
         fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 }

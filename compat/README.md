@@ -41,3 +41,7 @@ response fields, event query parameters, and nested ROS schemas against the Go
 oracle without regenerating historical goldens. They also test custom TLS trust
 using a temporary CA file and Unix Ctrl-C during incomplete HTTP response bodies.
 These tests use isolated configuration and do not change the OS trust store.
+
+`foxglove/compat/export_regression_test.go` covers large MCAP records and
+checks schema references and message preservation after recovery, including
+schemaless channels where the Go oracle has an inherited bug.

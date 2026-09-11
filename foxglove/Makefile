@@ -1,9 +1,10 @@
 BINARY_NAME ?= foxglove
 GOLANGCI_LINT_VERSION ?= v2.12.2
-GOLANGCI_LINT_BIN ?= $(shell go env GOBIN)
-ifeq ($(GOLANGCI_LINT_BIN),)
-GOLANGCI_LINT_BIN := $(shell go env GOPATH)/bin/golangci-lint
+GO_BIN_DIR := $(shell go env GOBIN)
+ifeq ($(GO_BIN_DIR),)
+GO_BIN_DIR := $(shell go env GOPATH)/bin
 endif
+GOLANGCI_LINT_BIN ?= $(GO_BIN_DIR)/golangci-lint
 
 .PHONY: lint test compat version build build-release install
 
