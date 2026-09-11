@@ -12,15 +12,20 @@ esac
 
 # Avoid silently producing a host binary under another platform's filename.
 host_os=$(uname -s)
-host_arch=$(uname -m)
 case "$platform" in
   linux) [[ "$host_os" == Linux ]] ;;
   macos) [[ "$host_os" == Darwin ]] ;;
   windows) [[ "$host_os" == MINGW* || "$host_os" == MSYS* || "$host_os" == CYGWIN* ]] ;;
-esac || { echo "release runner is not native $platform/$arch (host: $host_os/$host_arch)" >&2; exit 2; }
-case "$arch/$host_arch" in
-  amd64/x86_64|amd64/amd64|arm64/aarch64|arm64/arm64|arm64/ARM64) ;;
-  *) echo "release runner architecture does not match $arch (host: $host_arch)" >&2; exit 2 ;;
+esac || { echo "release runner is not native $platform/$arch (host OS: $host_os)" >&2; exit 2; }
+# `uname -m` reports the architecture of the current shell process.  Git Bash
+# can run x64 under emulation on a native Windows ARM64 runner, so validate the
+# Rust host triple instead: it determines the architecture of `cargo build`'s
+# default output target.
+rust_host=$(rustc -vV | sed -n 's/^host: //p')
+case "$arch/$rust_host" in
+  amd64/x86_64-*) ;;
+  arm64/aarch64-*) ;;
+  *) echo "release Rust target does not match $arch (host: ${rust_host:-unknown})" >&2; exit 2 ;;
 esac
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
