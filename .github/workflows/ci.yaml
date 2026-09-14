@@ -122,7 +122,7 @@ jobs:
           FOXGLOVE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
       - name: Smoke-test Linux artifact across distributions
         if: matrix.platform == 'linux'
-        run: ./scripts/smoke-test-linux-release.sh "dist/foxglove-linux-${{ matrix.arch }}"
+        run: ./scripts/test-linux-release.sh "dist/foxglove-linux-${{ matrix.arch }}"
       - uses: actions/upload-artifact@v4
         with:
           name: foxglove-${{ matrix.platform }}-${{ matrix.arch }}
