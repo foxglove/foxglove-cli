@@ -122,11 +122,7 @@ pub(crate) async fn list_sessions(
     let query = SessionListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     fetch_list::<Session, _>(
         runtime,
@@ -140,11 +136,7 @@ pub(crate) async fn list_sessions(
 
 pub(crate) async fn get_session(runtime: &Runtime, args: &SessionLookupArgs) -> Outcome {
     let query = ProjectQuery {
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     let result = runtime
         .client
@@ -196,11 +188,7 @@ pub(crate) async fn list_session_recordings(
     args: &SessionLookupArgs,
 ) -> Outcome {
     let query = ProjectQuery {
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     let result = runtime
         .client
@@ -251,11 +239,7 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
     }
     let request = CreateSessionRequest {
         name: args.name.clone().unwrap_or_default(),
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id,
     };
     match runtime
@@ -282,11 +266,7 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
 
 pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) -> Outcome {
     let query = ProjectQuery {
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     match runtime
         .client
@@ -318,11 +298,7 @@ pub(crate) async fn patch_session_recordings(
     add: bool,
 ) -> Outcome {
     let query = ProjectQuery {
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     let request = PatchSessionRecordingsRequest {
         add_recording_ids: if add {

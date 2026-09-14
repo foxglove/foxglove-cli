@@ -61,11 +61,7 @@ pub(crate) async fn list_devices(
     format: Format,
 ) -> Outcome {
     let query = DeviceListQuery {
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     fetch_list::<Device, _>(
         runtime,
@@ -163,11 +159,7 @@ pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceWriteArgs) -> Out
     };
     let request = DeviceRequest {
         name: args.name.clone().unwrap_or_default(),
-        project_id: args
-            .project_id
-            .clone()
-            .unwrap_or_default()
-            .or_project(&runtime.project_id),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
         properties,
     };
     match runtime
@@ -197,7 +189,6 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
             .update
             .project_id
             .clone()
-            .unwrap_or_default()
             .or_project(&runtime.project_id),
     };
     let request = DeviceRequest {

@@ -27,7 +27,6 @@ use tokio::io::AsyncRead;
 
 pub const MCAP_MAGIC: &[u8] = mcap::MAGIC;
 pub const ROSBAG_MAGIC: &[u8] = b"#ROSBAG V2.0\n";
-const MAX_RECORD_LEN: usize = 64 * 1024 * 1024;
 // MCAP records have a nine-byte opcode/length prefix. Limit only by what a
 // Rust buffer can address, rather than rejecting valid large messages.
 const MAX_MCAP_RECORD_LEN: usize = isize::MAX as usize - 9;
@@ -531,13 +530,9 @@ impl Ros1Decoder {
                 Some(count) => count,
                 None => read_u32(input)? as usize,
             };
-            if count > MAX_RECORD_LEN {
-                return Err(Error::Invalid("ros1 array exceeds configured limit".into()));
-            }
             if matches!(ty.name.as_str(), "uint8" | "byte" | "char") {
-                let mut bytes = vec![0; count];
-                input.read_exact(&mut bytes)?;
-                return serde_json::to_writer(output, &base64(&bytes))
+                let bytes = read_ros_bytes(input, count)?;
+                return serde_json::to_writer(output, &base64(bytes))
                     .map_err(|error| Error::Invalid(error.to_string()));
             }
             output.push(b'[');
@@ -600,7 +595,7 @@ impl Ros1Decoder {
             ),
             "uint64" => serde_json::to_writer(
                 output,
-                &u64::from_le_bytes(scalar(8)?.try_into().expect("size")).to_string(),
+                &u64::from_le_bytes(scalar(8)?.try_into().expect("size")),
             )
             .map_err(|error| Error::Invalid(error.to_string()))?,
             "float32" => write_json_float(
@@ -613,14 +608,8 @@ impl Ros1Decoder {
             )?,
             "string" => {
                 let length = read_u32(input)? as usize;
-                if length > MAX_RECORD_LEN {
-                    return Err(Error::Invalid(
-                        "ros1 string exceeds configured limit".into(),
-                    ));
-                }
-                let mut bytes = vec![0; length];
-                input.read_exact(&mut bytes)?;
-                serde_json::to_writer(output, &String::from_utf8_lossy(&bytes))
+                let bytes = read_ros_bytes(input, length)?;
+                serde_json::to_writer(output, &String::from_utf8_lossy(bytes))
                     .map_err(|error| Error::Invalid(error.to_string()))?;
             }
             "time" => {
@@ -1214,12 +1203,7 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
                     .get("compression")
                     .and_then(|value| std::str::from_utf8(value).ok())
                     .unwrap_or("none");
-                let size = header_u32(&header, "size")? as usize;
-                if size > MAX_RECORD_LEN {
-                    return Err(Error::Invalid(
-                        "rosbag chunk exceeds configured limit".into(),
-                    ));
-                }
+                let size = checked_len(header_u32(&header, "size")?)?;
                 let mut indexed_connections = BTreeSet::new();
                 let complete = match compression {
                     "none" => read_rosbag_chunk_recover(
@@ -1228,17 +1212,17 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
                         &mut indexed_connections,
                     )?,
                     "lz4" => {
-                        let mut decompressed = Vec::with_capacity(size);
-                        let limit = u64::try_from(size + 1).expect("configured size fits u64");
-                        match FrameDecoder::new(Cursor::new(data))
-                            .take(limit)
-                            .read_to_end(&mut decompressed)
-                        {
-                            Ok(_) if decompressed.len() == size => read_rosbag_chunk_recover(
-                                &mut Cursor::new(decompressed),
-                                sink,
-                                &mut indexed_connections,
-                            )?,
+                        match read_bounded_bytes(
+                            &mut FrameDecoder::new(Cursor::new(data)),
+                            size + 1,
+                        ) {
+                            Ok(decompressed) if decompressed.len() == size => {
+                                read_rosbag_chunk_recover(
+                                    &mut Cursor::new(decompressed),
+                                    sink,
+                                    &mut indexed_connections,
+                                )?
+                            }
                             Ok(_) | Err(_) => false,
                         }
                     }
@@ -1362,8 +1346,7 @@ fn parse_bag_fields(data: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, Error> {
     let mut fields = BTreeMap::new();
     while (cursor.position() as usize) < data.len() {
         let len = checked_len(read_u32(&mut cursor)?)?;
-        let mut field = vec![0; len];
-        cursor.read_exact(&mut field)?;
+        let field = read_exact_bytes(&mut cursor, len)?;
         let Some(separator) = field.iter().position(|byte| *byte == b'=') else {
             return Err(Error::Invalid("invalid rosbag header field".into()));
         };
@@ -1404,25 +1387,17 @@ fn validate_bag_records<R: Read>(reader: &mut R) -> Result<(), Error> {
                     .get("compression")
                     .and_then(|value| std::str::from_utf8(value).ok())
                     .unwrap_or("none");
-                let size = header_u32(&header, "size")? as usize;
-                if size > MAX_RECORD_LEN {
-                    return Err(Error::Invalid(
-                        "rosbag chunk exceeds configured limit".into(),
-                    ));
-                }
+                let size = checked_len(header_u32(&header, "size")?)?;
                 match compression {
                     "none" => validate_bag_records(&mut Cursor::new(data))?,
                     "lz4" => {
-                        let mut decompressed = Vec::with_capacity(size);
-                        let limit = u64::try_from(size + 1).expect("configured size fits u64");
-                        FrameDecoder::new(Cursor::new(data))
-                            .take(limit)
-                            .read_to_end(&mut decompressed)
-                            .map_err(|error| {
-                                Error::Invalid(format!(
-                                    "failed to decompress lz4 rosbag chunk: {error}"
-                                ))
-                            })?;
+                        let decompressed =
+                            read_bounded_bytes(&mut FrameDecoder::new(Cursor::new(data)), size + 1)
+                                .map_err(|error| {
+                                    Error::Invalid(format!(
+                                        "failed to decompress lz4 rosbag chunk: {error}"
+                                    ))
+                                })?;
                         if decompressed.len() != size {
                             return Err(Error::Invalid(
                                 "lz4 rosbag chunk has unexpected decompressed size".into(),
@@ -1446,17 +1421,14 @@ fn read_bag_record<R: Read>(
         return Ok(None);
     };
     let header_len = checked_len(header_len)?;
-    let mut header_bytes = vec![0; header_len];
-    reader.read_exact(&mut header_bytes)?;
+    let header_bytes = read_exact_bytes(reader, header_len)?;
     let data_len = checked_len(read_u32(reader)?)?;
-    let mut data = vec![0; data_len];
-    reader.read_exact(&mut data)?;
+    let data = read_exact_bytes(reader, data_len)?;
     let mut header = BTreeMap::new();
     let mut cursor = Cursor::new(header_bytes);
     while (cursor.position() as usize) < cursor.get_ref().len() {
         let len = checked_len(read_u32(&mut cursor)?)?;
-        let mut field = vec![0; len];
-        cursor.read_exact(&mut field)?;
+        let field = read_exact_bytes(&mut cursor, len)?;
         let Some(separator) = field.iter().position(|byte| *byte == b'=') else {
             return Err(Error::Invalid("invalid rosbag header field".into()));
         };
@@ -1497,15 +1469,58 @@ fn header_u64(header: &BTreeMap<String, Vec<u8>>, name: &str) -> Result<u64, Err
         value.clone().try_into().expect("checked length"),
     ))
 }
-fn checked_len(length: u32) -> Result<usize, Error> {
-    let length = length as usize;
-    if length > MAX_RECORD_LEN {
-        Err(Error::Invalid(
-            "rosbag record exceeds configured limit".into(),
-        ))
-    } else {
-        Ok(length)
+// Read only bytes actually present, growing fallibly in small increments instead
+// of allocating a potentially huge buffer from an untrusted length prefix.
+fn read_bounded_bytes(reader: &mut impl Read, length: usize) -> Result<Vec<u8>, Error> {
+    let mut bytes = Vec::new();
+    let mut buffer = [0; 8 * 1024];
+    while bytes.len() < length {
+        let remaining = (length - bytes.len()).min(buffer.len());
+        let count = match reader.read(&mut buffer[..remaining]) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.into()),
+        };
+        bytes.try_reserve(count).map_err(|error| {
+            Error::Invalid(format!("unable to allocate rosbag record: {error}"))
+        })?;
+        bytes.extend_from_slice(&buffer[..count]);
     }
+    Ok(bytes)
+}
+
+fn read_exact_bytes(reader: &mut impl Read, length: usize) -> Result<Vec<u8>, Error> {
+    let bytes = read_bounded_bytes(reader, length)?;
+    if bytes.len() != length {
+        return Err(io::Error::from(io::ErrorKind::UnexpectedEof).into());
+    }
+    Ok(bytes)
+}
+
+fn read_ros_bytes<'a>(input: &mut Cursor<&'a [u8]>, length: usize) -> Result<&'a [u8], Error> {
+    let start = usize::try_from(input.position())
+        .map_err(|_| Error::Invalid("ros1 position exceeds addressable memory".into()))?;
+    let end = start
+        .checked_add(length)
+        .ok_or_else(|| Error::Invalid("ros1 length exceeds addressable memory".into()))?;
+    let bytes = input
+        .get_ref()
+        .get(start..end)
+        .ok_or_else(|| io::Error::from(io::ErrorKind::UnexpectedEof))?;
+    input.set_position(end as u64);
+    Ok(bytes)
+}
+
+fn checked_len(length: u32) -> Result<usize, Error> {
+    let length = usize::try_from(length)
+        .map_err(|_| Error::Invalid("rosbag length exceeds addressable memory".into()))?;
+    if length > isize::MAX as usize {
+        return Err(Error::Invalid(
+            "rosbag length exceeds addressable memory".into(),
+        ));
+    }
+    Ok(length)
 }
 fn read_u32<R: Read>(reader: &mut R) -> Result<u32, Error> {
     let mut bytes = [0; 4];
@@ -1855,6 +1870,135 @@ mod tests {
         let mut bytes = ROSBAG_MAGIC.to_vec();
         bytes.extend_from_slice(&[1, 0]);
         assert!(validate_rosbag(&mut Cursor::new(bytes)).is_err());
+    }
+
+    #[test]
+    fn accepts_large_rosbag_chunks_and_single_messages() {
+        // Exercise both a >64 MiB chunk made from smaller records and a single
+        // 65 MiB record, through strict validation and recovery for both codecs.
+        for (count, length) in [(2, 33 * 1024 * 1024), (1, 65 * 1024 * 1024)] {
+            let mut chunk = Vec::new();
+            write_connection_record(&mut chunk, &rosbag_connection()).expect("connection");
+            let payload = vec![42; length];
+            for time in 0..count {
+                let header = bag_header(&[
+                    ("op", vec![2]),
+                    ("conn", 1_u32.to_le_bytes().to_vec()),
+                    ("time", ros_time_bytes(time).expect("time").to_vec()),
+                ]);
+                write_bag_record(&mut chunk, &header, &payload).expect("message");
+            }
+            for compression in ["none", "lz4"] {
+                let mut bytes = ROSBAG_MAGIC.to_vec();
+                write_bag_header(&mut bytes, 0, 1, 1).expect("unindexed bag header");
+                let header = bag_header(&[
+                    ("op", vec![5]),
+                    ("compression", compression.as_bytes().to_vec()),
+                    (
+                        "size",
+                        u32::try_from(chunk.len())
+                            .expect("chunk size")
+                            .to_le_bytes()
+                            .to_vec(),
+                    ),
+                ]);
+                if compression == "lz4" {
+                    let mut encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
+                    encoder.write_all(&chunk).expect("compress");
+                    write_bag_record(&mut bytes, &header, &encoder.finish().expect("finish lz4"))
+                        .expect("compressed chunk");
+                } else {
+                    write_bag_record(&mut bytes, &header, &chunk).expect("chunk");
+                }
+                validate_rosbag(&mut Cursor::new(&bytes)).expect("validate large chunk");
+                let mut sink = CollectBagSink::default();
+                assert!(!read_rosbag_recover(&mut Cursor::new(&bytes), &mut sink)
+                    .expect("recover unindexed large chunk"));
+                assert_eq!(sink.messages.len(), count as usize);
+                for message in sink.messages {
+                    assert_eq!(message.data, payload);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_truncated_large_rosbag_lengths_without_allocating_the_declared_size() {
+        let mut bytes = u32::MAX.to_le_bytes().to_vec();
+        bytes.extend_from_slice(b"short");
+        assert!(matches!(read_bag_record(&mut Cursor::new(bytes)),
+            Err(Error::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof));
+        for schema in [b"string value\n".as_slice(), b"uint8[] value\n".as_slice()] {
+            let decoder = Ros1Decoder::new("example", schema).expect("schema");
+            assert!(matches!(decoder.transcode_json(&u32::MAX.to_le_bytes()),
+                Err(Error::Io(error)) if error.kind() == io::ErrorKind::UnexpectedEof));
+        }
+    }
+
+    #[test]
+    fn rejects_lz4_rosbag_chunks_with_incorrect_declared_sizes() {
+        let mut chunk = Vec::new();
+        write_connection_record(&mut chunk, &rosbag_connection()).expect("connection");
+        let mut encoder = lz4_flex::frame::FrameEncoder::new(Vec::new());
+        encoder.write_all(&chunk).expect("compress");
+        let compressed = encoder.finish().expect("finish lz4");
+        for size in [chunk.len() - 1, chunk.len() + 1, u32::MAX as usize] {
+            let mut bytes = ROSBAG_MAGIC.to_vec();
+            write_bag_header(&mut bytes, 0, 1, 1).expect("bag header");
+            let header = bag_header(&[
+                ("op", vec![5]),
+                ("compression", b"lz4".to_vec()),
+                ("size", (size as u32).to_le_bytes().to_vec()),
+            ]);
+            write_bag_record(&mut bytes, &header, &compressed).expect("chunk");
+            assert!(validate_rosbag(&mut Cursor::new(&bytes)).is_err());
+            assert!(
+                !read_rosbag_recover(&mut Cursor::new(bytes), &mut CollectBagSink::default())
+                    .expect("incomplete chunk")
+            );
+        }
+    }
+
+    #[test]
+    fn transcodes_ros1_strings_and_byte_arrays_above_64_mib() {
+        let length = 65 * 1024 * 1024;
+        let mut bytes = (length as u32).to_le_bytes().to_vec();
+        bytes.resize(length + 4, b'a');
+        let string_decoder = Ros1Decoder::new("example", b"string value\n").expect("schema");
+        let output = string_decoder.transcode_json(&bytes).expect("large string");
+        assert_eq!(output.len(), length + br#"{"value":""}"#.len());
+        assert!(output.starts_with(br#"{"value":"aaa"#));
+        assert!(output.ends_with(br#"aaa"}"#));
+        drop(output);
+        let bytes_decoder = Ros1Decoder::new("example", b"uint8[] value\n").expect("schema");
+        let output = bytes_decoder
+            .transcode_json(&bytes)
+            .expect("large byte array");
+        let json: Value = serde_json::from_slice(&output).expect("JSON");
+        assert_eq!(
+            json["value"].as_str().expect("base64 string"),
+            base64(&bytes[4..])
+        );
+    }
+
+    #[test]
+    fn transcodes_ros1_uint64_scalars_and_arrays_as_json_numbers() {
+        let decoder =
+            Ros1Decoder::new("example", b"uint64 value\nuint64[] values\n").expect("schema");
+        let values = [0, 42, 9_007_199_254_740_993, u64::MAX];
+        for value in values {
+            let mut bytes = value.to_le_bytes().to_vec();
+            bytes.extend_from_slice(&(values.len() as u32).to_le_bytes());
+            for element in values {
+                bytes.extend_from_slice(&element.to_le_bytes());
+            }
+            let output = decoder.transcode_json(&bytes).expect("payload");
+            let json: Value = serde_json::from_slice(&output).expect("JSON");
+            assert_eq!(json["value"].as_u64(), Some(value));
+            for (index, expected) in values.iter().enumerate() {
+                assert_eq!(json["values"][index].as_u64(), Some(*expected));
+            }
+        }
     }
 
     #[test]

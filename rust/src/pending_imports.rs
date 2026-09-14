@@ -119,11 +119,7 @@ pub(crate) async fn list_pending_imports(
     args: &PendingImportListArgs,
     format: Format,
 ) -> Outcome {
-    let project_id = args
-        .project_id
-        .clone()
-        .unwrap_or_default()
-        .or_project(&runtime.project_id);
+    let project_id = args.project_id.clone().or_project(&runtime.project_id);
     let session_key = args.session_key.clone().unwrap_or_default();
     if !session_key.is_empty() && project_id.is_empty() {
         return Outcome::failure("--project-id is required when using --session-key\n");

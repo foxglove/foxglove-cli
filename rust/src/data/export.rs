@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use time::format_description::well_known::Rfc3339;
-use time::{Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
+use time::OffsetDateTime;
 
 use crate::api::{self, StreamRequest};
 use crate::cli::DataExportArgs;
@@ -16,6 +15,7 @@ use crate::format::{
     Attachment, Channel, Error as FormatError, McapWriter, Message, ProtobufDecoder, RecordSink,
     Ros1DecoderCache, RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
 };
+use crate::records::parse_timestamp_value;
 use crate::runtime::Runtime;
 use crate::Outcome;
 use tokio::io::{AsyncRead, AsyncWriteExt, DuplexStream, ReadBuf};
@@ -151,8 +151,8 @@ fn stream_request(args: &DataExportArgs) -> Result<StreamRequest, String> {
         project_id: args.project_id.clone().unwrap_or_default(),
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
-        start: parse_export_timestamp(args.start.as_deref().unwrap_or_default(), "start")?,
-        end: parse_export_timestamp(args.end.as_deref().unwrap_or_default(), "end")?,
+        start: parse_timestamp_value(args.start.as_deref().unwrap_or_default(), "start")?,
+        end: parse_timestamp_value(args.end.as_deref().unwrap_or_default(), "end")?,
         output_format,
         compression_format: args.compression.clone(),
         include_attachments: args.include_attachments,
@@ -609,24 +609,6 @@ impl RosbagSink for BagMergeSink {
     }
 }
 
-fn parse_export_timestamp(raw: &str, label: &str) -> Result<Option<OffsetDateTime>, String> {
-    if raw.is_empty() {
-        return Ok(None);
-    }
-    let parsed = OffsetDateTime::parse(raw, &Rfc3339)
-        .or_else(|_| {
-            let format = time::format_description::parse("[year]-[month]-[day]")
-                .map_err(|error| error.to_string())?;
-            let date = Date::parse(raw, &format).map_err(|error| error.to_string())?;
-            Ok(PrimitiveDateTime::new(date, Time::MIDNIGHT).assume_offset(UtcOffset::UTC))
-        })
-        .map_err(|error: String| format!("failed to parse {label} time: {error}"))?;
-    parsed
-        .replace_nanosecond(0)
-        .map(Some)
-        .map_err(|error| format!("failed to parse {label} time: {error}"))
-}
-
 async fn render_mcap_json_stream(
     stream: &mut api::ResponseStream,
     stdout: &mut dyn Write,
@@ -1050,7 +1032,7 @@ mod tests {
 
     #[test]
     fn export_timestamp_matches_go_second_precision() {
-        let value = parse_export_timestamp("2024-03-01T01:02:03.123456789Z", "start")
+        let value = parse_timestamp_value("2024-03-01T01:02:03.123456789Z", "start")
             .expect("timestamp")
             .expect("value");
         assert_eq!(value.nanosecond(), 0);

@@ -7,6 +7,60 @@ use std::io::Cursor;
 use foxglove_rust::format::{Channel, McapWriter, Message, RecordSink, Schema};
 use support::{assert_success, Process, Reply, Server, Workspace};
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn explicit_empty_project_overrides_configured_default() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (vec![], Some("prj_default")),
+        (vec!["--project-id="], None),
+        (vec!["--project-id", ""], None),
+        (vec!["--project-id", "prj_explicit"], Some("prj_explicit")),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .args(["recordings", "list", "--format", "json"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        let requests = server.finish();
+        let target = requests[0].split_whitespace().nth(1).unwrap();
+        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
+        let project = url
+            .query_pairs()
+            .find(|(name, _)| name == "projectId")
+            .map(|(_, value)| value.into_owned());
+        assert_eq!(project.as_deref(), expected, "{flags:?}");
+    }
+}
+
+#[test]
+fn clearing_project_default_requires_project_for_session_key() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args([
+                "recordings",
+                "list",
+                "--project-id=",
+                "--session-key",
+                "session_key",
+            ]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "--project-id is required when using --session-key\n",
+    );
+}
+
 fn message(channel_id: u16, time: u64, data: Vec<u8>) -> Message {
     Message {
         channel_id,
