@@ -518,6 +518,11 @@ func TestMain(main *testing.M) {
 	rustProjectRoot := filepath.Join(repositoryRoot, "rust")
 	rustBuild := exec.Command("cargo", "build", "--locked", "--quiet", "--features", "compat-test", "--manifest-path", filepath.Join(rustProjectRoot, "Cargo.toml"))
 	rustBuild.Dir = rustProjectRoot
+	// The compatibility suite compares the Rust CLI to the fixed v1.0.33 Go
+	// oracle. A tagged release candidate would otherwise be embedded by
+	// build.rs and make the version command (and User-Agent) differ solely
+	// because of the ref CI checked out.
+	rustBuild.Env = append(os.Environ(), "FOXGLOVE_VERSION="+baselineVersion)
 	rustBuild.Stdout = os.Stdout
 	rustBuild.Stderr = os.Stderr
 	if err := rustBuild.Run(); err != nil {
