@@ -8,19 +8,21 @@ on:
     branches: [main]
 
 jobs:
-  go:
-    name: Go oracle and compatibility contract
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           lfs: true
-          fetch-depth: 0
       - uses: actions/setup-go@v7
         with:
           go-version-file: foxglove/go.mod
-      - name: Install pinned Rust toolchain for compatibility oracle
+      - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - name: Check pinned compiler
+        run: rustc --version | grep '1.98.1'
       - name: Download Go modules
         run: go mod download
         working-directory: foxglove
@@ -30,28 +32,10 @@ jobs:
           working-directory: foxglove
           version: v2.12.2
           args: ./...
-      - name: Test Go oracle and Rust compatibility
-        run: make go-test
-
-  rust:
-    name: Rust quality gates
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          lfs: true
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@1.98.1
-        with:
-          components: rustfmt, clippy
-      - name: Check pinned compiler
-        run: rustc --version | grep '1.98.1'
       - name: Check formatting
         run: make rust-fmt
       - name: Lint with warnings denied
         run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets --all-features -- -D warnings
-      - name: Test Rust suites including loopback contracts
-        run: make rust-test-ignored
       - name: Build documentation with warnings denied
         run: make rust-doc
       - name: Install dependency auditor
@@ -59,10 +43,27 @@ jobs:
       - name: Audit locked Rust dependencies
         run: make rust-audit
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: foxglove/go.mod
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.98.1
+      - name: Test Rust suites including loopback contracts
+        run: make rust-test-ignored
+      - name: Test Go oracle and Rust compatibility
+        run: make go-test
+
   release-build:
     permissions:
       contents: read
-    needs: [go, rust]
+    needs: [lint, test]
     strategy:
       fail-fast: false
       matrix:
