@@ -1,0 +1,570 @@
+{
+  "attachments": {
+    "args": [
+      "attachments",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Query and modify data attachments\n\nUsage:\n  foxglove attachments [command]\n\nAvailable Commands:\n  download    Download an MCAP attachment by ID\n  list        List MCAP attachments\n\nFlags:\n  -h, --help   help for attachments\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove attachments [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "attachments-download": {
+    "args": [
+      "attachments",
+      "download",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Download an MCAP attachment by ID\n\nUsage:\n  foxglove attachments download [flags]\n\nFlags:\n  -h, --help   help for download\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "attachments-list": {
+    "args": [
+      "attachments",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List MCAP attachments\n\nUsage:\n  foxglove attachments list [flags]\n\nFlags:\n      --format string         render output in specified format (table, json, csv)\n  -h, --help                  help for list\n      --import-id string      Import ID\n      --json                  alias for --format json\n      --project-id string     Project ID (required when using --session-key)\n      --recording-id string   Recording ID\n      --session-id string     Session ID\n      --session-key string    Session key\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "auth": {
+    "args": [
+      "auth",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Manage authentication\n\nUsage:\n  foxglove auth [command]\n\nAvailable Commands:\n  configure-api-key Configure an API key\n  info              Display information about the currently authenticated user\n  login             Log in to Foxglove Data Platform\n\nFlags:\n  -h, --help   help for auth\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove auth [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "auth-configure-api-key": {
+    "args": [
+      "auth",
+      "configure-api-key",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Configure an API key\n\nUsage:\n  foxglove auth configure-api-key [flags]\n\nFlags:\n      --api-key string    api key (for non-interactive use)\n      --base-url string   API server (default \"https://api.foxglove.dev\")\n  -h, --help              help for configure-api-key\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "auth-info": {
+    "args": [
+      "auth",
+      "info",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Display information about the currently authenticated user\n\nUsage:\n  foxglove auth info [flags]\n\nFlags:\n  -h, --help   help for info\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "auth-login": {
+    "args": [
+      "auth",
+      "login",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Log in to Foxglove Data Platform\n\nUsage:\n  foxglove auth login [flags]\n\nFlags:\n      --base-url string   API server (default \"https://api.foxglove.dev\")\n  -h, --help              help for login\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "completion": {
+    "args": [
+      "completion",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Generate the autocompletion script for foxglove for the specified shell.\nSee each sub-command's help for details on how to use the generated script.\n\nUsage:\n  foxglove completion [command]\n\nAvailable Commands:\n  bash        Generate the autocompletion script for bash\n  fish        Generate the autocompletion script for fish\n  powershell  Generate the autocompletion script for powershell\n  zsh         Generate the autocompletion script for zsh\n\nFlags:\n  -h, --help   help for completion\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove completion [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "completion-bash": {
+    "args": [
+      "completion",
+      "bash",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Generate the autocompletion script for the bash shell.\n\nThis script depends on the 'bash-completion' package.\nIf it is not installed already, you can install it via your OS's package manager.\n\nTo load completions in your current shell session:\n\n\tsource \u003c(foxglove completion bash)\n\nTo load completions for every new session, execute once:\n\n#### Linux:\n\n\tfoxglove completion bash \u003e /etc/bash_completion.d/foxglove\n\n#### macOS:\n\n\tfoxglove completion bash \u003e /usr/local/etc/bash_completion.d/foxglove\n\nYou will need to start a new shell for this setup to take effect.\n\nUsage:\n  foxglove completion bash\n\nFlags:\n  -h, --help              help for bash\n      --no-descriptions   disable completion descriptions\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "completion-fish": {
+    "args": [
+      "completion",
+      "fish",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Generate the autocompletion script for the fish shell.\n\nTo load completions in your current shell session:\n\n\tfoxglove completion fish | source\n\nTo load completions for every new session, execute once:\n\n\tfoxglove completion fish \u003e ~/.config/fish/completions/foxglove.fish\n\nYou will need to start a new shell for this setup to take effect.\n\nUsage:\n  foxglove completion fish [flags]\n\nFlags:\n  -h, --help              help for fish\n      --no-descriptions   disable completion descriptions\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "completion-powershell": {
+    "args": [
+      "completion",
+      "powershell",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Generate the autocompletion script for powershell.\n\nTo load completions in your current shell session:\n\n\tfoxglove completion powershell | Out-String | Invoke-Expression\n\nTo load completions for every new session, add the output of the above command\nto your powershell profile.\n\nUsage:\n  foxglove completion powershell [flags]\n\nFlags:\n  -h, --help              help for powershell\n      --no-descriptions   disable completion descriptions\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "completion-zsh": {
+    "args": [
+      "completion",
+      "zsh",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Generate the autocompletion script for the zsh shell.\n\nIf shell completion is not already enabled in your environment you will need\nto enable it.  You can execute the following once:\n\n\techo \"autoload -U compinit; compinit\" \u003e\u003e ~/.zshrc\n\nTo load completions for every new session, execute once:\n\n#### Linux:\n\n\tfoxglove completion zsh \u003e \"${fpath[1]}/_foxglove\"\n\n#### macOS:\n\n\tfoxglove completion zsh \u003e /usr/local/share/zsh/site-functions/_foxglove\n\nYou will need to start a new shell for this setup to take effect.\n\nUsage:\n  foxglove completion zsh [flags]\n\nFlags:\n  -h, --help              help for zsh\n      --no-descriptions   disable completion descriptions\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "config": {
+    "args": [
+      "config",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Manage CLI configuration values.\nAvailable configuration keys:\n  - project-id: Default project ID for commands\n\nUsage:\n  foxglove config [command]\n\nAvailable Commands:\n  get         Get a configuration value\n  set         Set a configuration value\n  unset       Remove a configuration value\n\nFlags:\n  -h, --help   help for config\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove config [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "config-get": {
+    "args": [
+      "config",
+      "get",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Get a configuration value\n\nUsage:\n  foxglove config get [KEY] [flags]\n\nFlags:\n  -h, --help   help for get\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "config-set": {
+    "args": [
+      "config",
+      "set",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Set a configuration value\n\nUsage:\n  foxglove config set [KEY] [VALUE] [flags]\n\nFlags:\n  -h, --help   help for set\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "config-unset": {
+    "args": [
+      "config",
+      "unset",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Remove a configuration value\n\nUsage:\n  foxglove config unset [KEY] [flags]\n\nFlags:\n  -h, --help   help for unset\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "data": {
+    "args": [
+      "data",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Data access and management\n\nUsage:\n  foxglove data [command]\n\nAvailable Commands:\n  coverage    List coverage ranges\n  export      Export a data selection from Foxglove Data Platform\n  import      Import a data file to Foxglove Data Platform\n\nFlags:\n  -h, --help   help for data\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove data [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "data-coverage": {
+    "args": [
+      "data",
+      "coverage",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List coverage ranges\n\nUsage:\n  foxglove data coverage [command]\n\nAvailable Commands:\n  list        List coverage ranges\n\nFlags:\n  -h, --help   help for coverage\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove data coverage [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "data-coverage-list": {
+    "args": [
+      "data",
+      "coverage",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List coverage ranges\n\nUsage:\n  foxglove data coverage list [flags]\n\nFlags:\n      --device-id string          Device ID\n      --device-name string        Device name\n      --end string                end of coverage time range (ISO8601)\n      --format string             render output in specified format (table, json, csv)\n  -h, --help                      help for list\n      --include-edge-recordings   Include edge recordings\n      --json                      alias for --format json\n      --project-id string         Project ID (required when using --session-key)\n      --recording-id string       Recording ID\n      --session-id string         Session ID\n      --session-key string        Session key\n      --start string              start of coverage time range (ISO8601)\n      --tolerance int             Number of seconds by which ranges must be separated to be considered distinct\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "data-export": {
+    "args": [
+      "data",
+      "export",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Export a data selection from Foxglove Data Platform by Recording ID, Import ID, Session ID/Key, or Device and time range\n\nUsage:\n  foxglove data export [flags]\n\nFlags:\n      --compression string              mcap chunk compression format: \"\" (none), zstd, or lz4 (mcap output only) (default \"lz4\")\n      --device-id string                device ID\n      --device-name string              device name\n      --end string                      end time (ISO8601 timestamp\n  -h, --help                            help for export\n      --import-id string                import ID\n      --include-attachments             include attachments in streamed data (mcap output only)\n      --json                            alias for --output-format json\n      --key string                      recording key\n  -o, --output-file string              output file\n      --output-format string            output format (mcap0, bag1, or json) (default \"mcap0\")\n      --project-id string               Project ID (required when using --session-key)\n      --recording-id string             recording ID\n      --replay-lookback-seconds float   max seconds to look back before start for lastPerChannel replay policy\n      --replay-policy string            replay policy: \"\" (none) or lastPerChannel\n      --session-id string               session ID\n      --session-key string              Session key\n      --start string                    start time (ISO8601 timestamp)\n      --topics string                   comma separated list of topics\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "data-import": {
+    "args": [
+      "data",
+      "import",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Import a data file to Foxglove Data Platform\n\nUsage:\n  foxglove data import [FILE] [flags]\n\nFlags:\n      --device-id string           Device ID\n      --device-name string         Device name\n      --edge-recording-id string   Edge recording ID\n  -h, --help                       help for import\n      --key string                 Recording key\n      --project-id string          Project ID (required when using --session-key)\n      --session-id string          Session ID\n      --session-key string         Session key\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "data-imports": {
+    "args": [
+      "data",
+      "imports",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Query and modify data imports\n\nUsage:\n\nFlags:\n  -h, --help   help for imports\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": "Command \"imports\" is deprecated, use 'recordings list' to list, and 'data import' to import data.\n"
+  },
+  "data-imports-add": {
+    "args": [
+      "data",
+      "imports",
+      "add",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Import a data file to Foxglove Data Platform\n\nUsage:\n  foxglove data imports add [FILE] [flags]\n\nFlags:\n      --device-id string           Device ID\n      --device-name string         Device name\n      --edge-recording-id string   Edge recording ID\n  -h, --help                       help for add\n      --key string                 Recording key\n      --project-id string          Project ID (required when using --session-key)\n      --session-id string          Session ID\n      --session-key string         Session key\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": "Command \"add\" is deprecated, use 'data import' instead.\n"
+  },
+  "data-imports-list": {
+    "args": [
+      "data",
+      "imports",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List imports for a device\n\nUsage:\n  foxglove data imports list [flags]\n\nFlags:\n      --data-end string     end of data time range (ISO8601)\n      --data-start string   start of data time range (ISO8601)\n      --device-id string    Device ID\n      --end string          end of import time range (ISO8601)\n      --format string       render output in specified format (table, json, csv)\n  -h, --help                help for list\n      --include-deleted     end of data time range\n      --json                alias for --format json\n      --start string        start of import time range (ISO8601)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": "Command \"list\" is deprecated, use 'recordings list' instead.\n"
+  },
+  "devices": {
+    "args": [
+      "devices",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List and manage devices\n\nUsage:\n  foxglove devices [command]\n\nAvailable Commands:\n  add         Add a device for your organization\n  edit        Edit a device\n  list        List devices registered to your organization\n\nFlags:\n  -h, --help   help for devices\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove devices [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "devices-add": {
+    "args": [
+      "devices",
+      "add",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Add a device for your organization\n\nUsage:\n  foxglove devices add [flags]\n\nFlags:\n  -h, --help                   help for add\n      --name string            name of the device\n      --project-id string      Project ID\n  -p, --property stringArray   Custom property colon-separated key value pair. Multiple may be specified.\n      --serial-number string   Deprecated. Value will be ignored.\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "devices-edit": {
+    "args": [
+      "devices",
+      "edit",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Edit a device\n\nUsage:\n  foxglove devices edit [flags]\n\nFlags:\n  -h, --help                   help for edit\n      --name string            New name for the device\n      --project-id string      Project ID\n  -p, --property stringArray   Custom property colon-separated key value pair. Multiple may be specified.\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "devices-list": {
+    "args": [
+      "devices",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List devices registered to your organization\n\nUsage:\n  foxglove devices list [flags]\n\nFlags:\n      --format string       render output in specified format (table, json, csv)\n  -h, --help                help for list\n      --json                alias for --format json\n      --project-id string   Project ID\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "event-types": {
+    "args": [
+      "event-types",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List event types\n\nUsage:\n  foxglove event-types [command]\n\nAvailable Commands:\n  list        List event types\n\nFlags:\n  -h, --help   help for event-types\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove event-types [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "event-types-list": {
+    "args": [
+      "event-types",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List event types\n\nUsage:\n  foxglove event-types list [flags]\n\nFlags:\n      --format string   render output in specified format (table, json, csv)\n  -h, --help            help for list\n      --json            alias for --format json\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "events": {
+    "args": [
+      "events",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List and manage events\n\nUsage:\n  foxglove events [command]\n\nAvailable Commands:\n  add         Add an event\n  list        List events\n\nFlags:\n  -h, --help   help for events\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove events [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "events-add": {
+    "args": [
+      "events",
+      "add",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Add an event\n\nUsage:\n  foxglove events add [flags]\n\nFlags:\n      --device-id string       Device ID\n      --end string             End of event (inclusive), RFC 3339 date-time format\n      --event-type-id string   Event type ID to associate with this event (e.g. evtt_123)\n  -h, --help                   help for add\n  -m, --metadata stringArray   Metadata colon-separated key value pair. Multiple may be specified.\n      --start string           Start of event, RFC 3339 date-time format\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "events-list": {
+    "args": [
+      "events",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List events\n\nUsage:\n  foxglove events list [flags]\n\nFlags:\n      --device-id string          Device ID\n      --device-name string        Device name\n      --end string                Exclude events after this time, RFC 3339 or ISO 8601 format\n      --event-type-id string      Filter by event type ID (e.g. evtt_123)\n      --format string             render output in specified format (table, json, csv)\n  -h, --help                      help for list\n      --json                      alias for --format json\n      --limit int                 limit (default 100)\n      --offset int                offset\n      --query string              Filter by properties or metadata, e.g. \"$key:$value\". See API docs for query syntax.\n      --query-field stringArray   Fields to query by (\"metadata\" or \"properties\"). Multiple may be specified. Defaults to \"metadata\".\n      --sort-by string            name of sort column\n      --sort-order string         sort order (default \"asc\")\n      --start string              Exclude events before this time, RFC 3339 or ISO 8601 format\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "extensions": {
+    "args": [
+      "extensions",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List and publish Studio extensions\n\nUsage:\n  foxglove extensions [command]\n\nAvailable Commands:\n  list        List Studio extensions created for your organization\n  publish     Publish a Studio extension (.foxe) to your organization\n  unpublish   Delete and unpublish a Studio extension from your organization\n\nFlags:\n  -h, --help   help for extensions\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove extensions [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "extensions-list": {
+    "args": [
+      "extensions",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List Studio extensions created for your organization\n\nUsage:\n  foxglove extensions list [flags]\n\nFlags:\n      --format string   render output in specified format (table, json, csv)\n  -h, --help            help for list\n      --json            alias for --format json\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "extensions-publish": {
+    "args": [
+      "extensions",
+      "publish",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Publish a Studio extension (.foxe) to your organization\n\nUsage:\n  foxglove extensions publish [FILE] [flags]\n\nFlags:\n  -h, --help   help for publish\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "extensions-unpublish": {
+    "args": [
+      "extensions",
+      "unpublish",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Delete and unpublish a Studio extension from your organization\n\nUsage:\n  foxglove extensions unpublish [ID] [flags]\n\nFlags:\n  -h, --help   help for unpublish\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "help": {
+    "args": [
+      "help",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Help provides help for any command in the application.\nSimply type foxglove help [path to command] for full details.\n\nUsage:\n  foxglove help [command] [flags]\n\nFlags:\n  -h, --help   help for help\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "pending-imports": {
+    "args": [
+      "pending-imports",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List pending imports\n\nUsage:\n  foxglove pending-imports [command]\n\nAvailable Commands:\n  list        List the pending and errored import jobs for uploaded recordings\n\nFlags:\n  -h, --help   help for pending-imports\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove pending-imports [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "pending-imports-list": {
+    "args": [
+      "pending-imports",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List the pending and errored import jobs for uploaded recordings\n\nUsage:\n  foxglove pending-imports list [flags]\n\nFlags:\n      --device-id string       Device ID\n      --device-name string     Device name\n      --error string           Filter based on error messages\n      --filename string        Filename\n      --format string          render output in specified format (table, json, csv)\n  -h, --help                   help for list\n      --json                   alias for --format json\n      --key string             Key\n      --project-id string      Project ID (required when using --session-key)\n      --request-id string      Request ID\n      --session-id string      Session ID\n      --session-key string     Session key\n      --show-completed         Show completed requests\n      --show-quarantined       Show quarantined requests\n      --site-id string         Site ID\n      --updated-since string   Filter pending imports updated since this time (ISO8601)\n      --without-project        Filter to pending imports without a project\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "projects": {
+    "args": [
+      "projects",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List and manage projects\n\nUsage:\n  foxglove projects [command]\n\nAvailable Commands:\n  list        List projects\n\nFlags:\n  -h, --help   help for projects\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove projects [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "projects-list": {
+    "args": [
+      "projects",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List projects\n\nUsage:\n  foxglove projects list [flags]\n\nFlags:\n      --format string   render output in specified format (table, json, csv)\n  -h, --help            help for list\n      --json            alias for --format json\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "recordings": {
+    "args": [
+      "recordings",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Query recordings\n\nUsage:\n  foxglove recordings [command]\n\nAvailable Commands:\n  delete      Delete a recording from your organization\n  list        List recordings\n\nFlags:\n  -h, --help   help for recordings\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove recordings [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "recordings-delete": {
+    "args": [
+      "recordings",
+      "delete",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Delete a recording from your organization\n\nUsage:\n  foxglove recordings delete [ID] [flags]\n\nFlags:\n  -h, --help   help for delete\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "recordings-list": {
+    "args": [
+      "recordings",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List recordings\n\nUsage:\n  foxglove recordings list [flags]\n\nFlags:\n      --device-id string       Device ID\n      --device-name string     Device name\n      --edge-site-id string    Edge site ID\n      --end string             End of data range (ISO8601 format)\n      --format string          render output in specified format (table, json, csv)\n  -h, --help                   help for list\n      --import-status string   Import status\n      --json                   alias for --format json\n      --limit int              Max number of recordings to return (default 2000)\n      --offset int             Number of recordings to skip\n      --path string            Recording file path\n      --project-id string      Project ID (required when using --session-key)\n      --session-id string      Session ID\n      --session-key string     Session key\n      --site-id string         Primary site ID\n      --sort-by string         Sort recordings by a field\n      --sort-order string      Sort order: 'asc' 'desc'\n      --start string           Start of data range (ISO8601 format)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "root": {
+    "args": [
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Command line client for the Foxglove data platform\n\nUsage:\n  foxglove [command]\n\nAvailable Commands:\n  attachments     Query and modify data attachments\n  auth            Manage authentication\n  completion      Generate the autocompletion script for the specified shell\n  config          Manage CLI configuration\n  data            Data access and management\n  devices         List and manage devices\n  event-types     List event types\n  events          List and manage events\n  extensions      List and publish Studio extensions\n  help            Help about any command\n  pending-imports List pending imports\n  projects        List and manage projects\n  recordings      Query recordings\n  sessions        List and manage sessions\n  topics          List topics\n  version         print Foxglove CLI version\n\nFlags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n  -h, --help               help for foxglove\n\nUse \"foxglove [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "sessions": {
+    "args": [
+      "sessions",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List and manage sessions\n\nUsage:\n  foxglove sessions [command]\n\nAvailable Commands:\n  add         Create a session\n  delete      Delete a session\n  get         Get a session by ID or key\n  list        List sessions in your organization\n  recordings  List, add, or remove recordings in a session\n\nFlags:\n  -h, --help   help for sessions\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove sessions [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "sessions-add": {
+    "args": [
+      "sessions",
+      "add",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Create a session\n\nUsage:\n  foxglove sessions add [flags]\n\nFlags:\n      --device-id string    Device ID (required)\n  -h, --help                help for add\n      --name string         Name of the session\n      --project-id string   Project ID\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "sessions-delete": {
+    "args": [
+      "sessions",
+      "delete",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Delete a session\n\nUsage:\n  foxglove sessions delete [session-id-or-key] [flags]\n\nFlags:\n  -h, --help                help for delete\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "sessions-get": {
+    "args": [
+      "sessions",
+      "get",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Get a session by ID or key\n\nUsage:\n  foxglove sessions get [session-id-or-key] [flags]\n\nFlags:\n  -h, --help                help for get\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "sessions-list": {
+    "args": [
+      "sessions",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List sessions in your organization\n\nUsage:\n  foxglove sessions list [flags]\n\nFlags:\n      --device-id string     Filter by device ID\n      --device-name string   Filter by device name\n      --format string        render output in specified format (table, json, csv)\n  -h, --help                 help for list\n      --json                 alias for --format json\n      --project-id string    Project ID (optional filter)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "sessions-recordings": {
+    "args": [
+      "sessions",
+      "recordings",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List, add, or remove recordings in a session\n\nUsage:\n  foxglove sessions recordings [command]\n\nAvailable Commands:\n  add         Assign a recording to a session\n  list        List recording IDs in a session\n  remove      Remove a recording from a session\n\nFlags:\n  -h, --help   help for recordings\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove sessions recordings [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "sessions-recordings-add": {
+    "args": [
+      "sessions",
+      "recordings",
+      "add",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Assign a recording to a session\n\nUsage:\n  foxglove sessions recordings add [session-id-or-key] [recording-id] [flags]\n\nFlags:\n  -h, --help                help for add\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "sessions-recordings-list": {
+    "args": [
+      "sessions",
+      "recordings",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List recording IDs in a session\n\nUsage:\n  foxglove sessions recordings list [session-id-or-key] [flags]\n\nFlags:\n  -h, --help                help for list\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "sessions-recordings-remove": {
+    "args": [
+      "sessions",
+      "recordings",
+      "remove",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Remove a recording from a session\n\nUsage:\n  foxglove sessions recordings remove [session-id-or-key] [recording-id] [flags]\n\nFlags:\n  -h, --help                help for remove\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "topics": {
+    "args": [
+      "topics",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List topics\n\nUsage:\n  foxglove topics [command]\n\nAvailable Commands:\n  list        List topics\n\nFlags:\n  -h, --help   help for topics\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove topics [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "topics-list": {
+    "args": [
+      "topics",
+      "list",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "List topics.\n\nOne of --device-id, --device-name, --recording-id, --recording-key, --session-id, or --session-key is required.\n\nUsage:\n  foxglove topics list [flags]\n\nFlags:\n      --device-id string       Device ID\n      --device-name string     Device name\n      --end string             End of topic time range (ISO8601)\n      --format string          render output in specified format (table, json, csv)\n  -h, --help                   help for list\n      --include-schemas        Include full topic schemas\n      --json                   alias for --format json\n      --limit int              Maximum number of topics to return\n      --offset int             Number of topics to skip\n      --project-id string      Project ID (required when using --session-key)\n      --recording-id string    Recording ID\n      --recording-key string   Recording key\n      --session-id string      Session ID\n      --session-key string     Session key\n      --sort-by string         Sort by topic or version\n      --sort-order string      Sort order (asc or desc)\n      --start string           Start of topic time range (ISO8601)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "version": {
+    "args": [
+      "version",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "print Foxglove CLI version\n\nUsage:\n  foxglove version [flags]\n\nFlags:\n  -h, --help   help for version\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  }
+}

@@ -1,0 +1,41 @@
+[package]
+name = "foxglove-rust"
+version = "1.0.33"
+edition = "2021"
+rust-version = "1.98"
+license = "MIT"
+description = "Interact with Foxglove from the command line"
+
+[[bin]]
+name = "foxglove-rust"
+path = "src/main.rs"
+
+[features]
+# Test harnesses enable this to prevent a subprocess
+# from invoking a real platform browser during the device-code flow.
+compat-test = []
+
+[dependencies]
+base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
+clap = { version = "=4.6.4", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
+clap_complete = { version = "=4.6.9", default-features = false }
+csv = { version = "=1.4.0", default-features = false }
+lz4_flex = { version = "=0.14.0", default-features = false, features = ["frame", "safe-decode", "safe-encode", "std"] }
+mcap = { version = "=0.25.0", default-features = false, features = ["lz4", "zstd"] }
+percent-encoding = { version = "=2.3.2", default-features = false, features = ["alloc"] }
+prost = { version = "=0.14.1", default-features = false, features = ["std"] }
+prost-reflect = { version = "=0.16.5", default-features = false, features = ["serde"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls-native-roots", "stream"] }
+serde = { version = "=1.0.228", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "=1.0.151", default-features = false, features = ["std"] }
+serde_yaml_ng = { version = "=0.10.0" }
+time = { version = "=0.3.47", default-features = false, features = ["formatting", "parsing", "serde"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "signal", "time"] }
+tokio-util = { version = "=0.7.19", default-features = false, features = ["io", "rt"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"

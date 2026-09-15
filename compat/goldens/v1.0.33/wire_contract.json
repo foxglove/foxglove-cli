@@ -1,0 +1,711 @@
+{
+  "attachment-download": {
+    "args": [
+      "attachments",
+      "download",
+      "att_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "fixture attachment",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/recording-attachments/att_fixture/download",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "attachment-download-404": {
+    "args": [
+      "attachments",
+      "download",
+      "missing"
+    ],
+    "exitCode": 0,
+    "stdout": "fixture attachment missing",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/recording-attachments/missing/download",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "attachments-list": {
+    "args": [
+      "attachments",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/recording-attachments",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "attachments-list-error": {
+    "args": [
+      "attachments",
+      "list"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Failed to list imports: fixture failure\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/recording-attachments",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "auth-info": {
+    "args": [
+      "auth",
+      "info"
+    ],
+    "exitCode": 0,
+    "stdout": "Authenticated with session token\n|      Email      |  Email verified  |    Org ID    |  Org Slug  |  Admin  |\n|-----------------|------------------|--------------|------------|---------|\n| fox@example.com | true             | org_fixture  | fixture    | false   |\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/me",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "coverage-list": {
+    "args": [
+      "data",
+      "coverage",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/data/coverage",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "device-add": {
+    "args": [
+      "devices",
+      "add",
+      "--name",
+      "Fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Device created: dev_fixture\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/v1/devices",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"name\":\"Fixture\",\"projectId\":\"prj_default\"}\n",
+        "bodyLength": 45
+      }
+    ]
+  },
+  "device-edit": {
+    "args": [
+      "devices",
+      "edit",
+      "dev_fixture",
+      "--name",
+      "Updated"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Device updated: Updated\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "PATCH",
+        "path": "/v1/devices/dev_fixture",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"name\":\"Updated\"}\n",
+        "bodyLength": 19
+      }
+    ]
+  },
+  "devices-empty-csv": {
+    "args": [
+      "devices",
+      "list",
+      "--format",
+      "csv"
+    ],
+    "exitCode": 2,
+    "stdout": "",
+    "stderr": "{GO_PANIC_EMPTY_CSV}\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/devices",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "devices-list": {
+    "args": [
+      "devices",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/devices",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "edge-import": {
+    "args": [
+      "data",
+      "import",
+      "ignored",
+      "--edge-recording-id",
+      "edge_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/v1/recordings/edge_fixture/import",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{}\n",
+        "bodyLength": 3
+      }
+    ]
+  },
+  "event-add": {
+    "args": [
+      "events",
+      "add",
+      "--device-id",
+      "dev_fixture",
+      "--start",
+      "2024-01-02T03:04:05Z",
+      "--end",
+      "2024-01-02T03:04:06Z",
+      "--metadata",
+      "key:value"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Created event: evt_fixture\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/v1/events",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"deviceId\":\"dev_fixture\",\"end\":\"2024-01-02T03:04:06Z\",\"metadata\":{\"key\":\"value\"},\"start\":\"2024-01-02T03:04:05Z\"}\n",
+        "bodyLength": 114
+      }
+    ]
+  },
+  "event-types-list": {
+    "args": [
+      "event-types",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/event-types",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "events-list": {
+    "args": [
+      "events",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/events",
+        "rawQuery": "limit=100\u0026sortOrder=asc",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "export-initial-download-error": {
+    "args": [
+      "data",
+      "export",
+      "--recording-id",
+      "rec_fixture",
+      "--output-file",
+      "{TMP}/output.mcap"
+    ],
+    "exitCode": 1,
+    "stdout": "error executing export:  fixture export failure\n",
+    "stderr": "Export failed: failed to reindex tmpfile {EXPORT_PARTIAL}: Invalid magic at start of file, found: []\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/v1/data/stream",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"recordingId\":\"rec_fixture\",\"outputFormat\":\"mcap0\",\"topics\":[]}\n",
+        "bodyLength": 65
+      }
+    ],
+    "outputFiles": {
+      "output.mcap": "{ABSENT}"
+    }
+  },
+  "extension-unpublish": {
+    "args": [
+      "extensions",
+      "unpublish",
+      "ext_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Extension deleted\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "DELETE",
+        "path": "/v1/extensions/ext_fixture",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "extensions-list": {
+    "args": [
+      "extensions",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/extensions",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "imports-list": {
+    "args": [
+      "data",
+      "imports",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "Command \"list\" is deprecated, use 'recordings list' instead.\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/data/imports",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "pending-imports-list": {
+    "args": [
+      "pending-imports",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/data/pending-imports",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "projects-list": {
+    "args": [
+      "projects",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/projects",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "recording-delete": {
+    "args": [
+      "recordings",
+      "delete",
+      "rec_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "DELETE",
+        "path": "/v1/recordings/rec_fixture",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "recordings-list": {
+    "args": [
+      "recordings",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/recordings",
+        "rawQuery": "limit=2000\u0026projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "session-add": {
+    "args": [
+      "sessions",
+      "add",
+      "--name",
+      "Fixture",
+      "--device-id",
+      "dev_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Session created: ses_fixture\nSession key: fixture-key\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/v1/sessions",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"name\":\"Fixture\",\"projectId\":\"prj_default\",\"deviceId\":\"dev_fixture\"}\n",
+        "bodyLength": 70
+      }
+    ]
+  },
+  "session-delete": {
+    "args": [
+      "sessions",
+      "delete",
+      "ses_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Session deleted: ses_fixture\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "DELETE",
+        "path": "/v1/sessions/ses_fixture",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "session-get": {
+    "args": [
+      "sessions",
+      "get",
+      "ses_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "ID:         ses_fixture\nName:       Fixture session\nKey:        fixture-key\nProject ID: prj_default\nCreated At: 2024-01-02T03:04:05Z\nUpdated At: 2024-01-02T04:05:06Z\nRecordings: (none)\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/sessions/ses_fixture",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "session-recording-add": {
+    "args": [
+      "sessions",
+      "recordings",
+      "add",
+      "ses_fixture",
+      "rec_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Recording rec_fixture added to session\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "PATCH",
+        "path": "/v1/sessions/ses_fixture",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"addRecordingIds\":[\"rec_fixture\"]}\n",
+        "bodyLength": 36
+      }
+    ]
+  },
+  "session-recording-remove": {
+    "args": [
+      "sessions",
+      "recordings",
+      "remove",
+      "ses_fixture",
+      "rec_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Recording rec_fixture removed from session\n",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "PATCH",
+        "path": "/v1/sessions/ses_fixture",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "Content-Type": "application/json",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        },
+        "body": "{\"removeRecordingIds\":[\"rec_fixture\"]}\n",
+        "bodyLength": 39
+      }
+    ]
+  },
+  "session-recordings-list": {
+    "args": [
+      "sessions",
+      "recordings",
+      "list",
+      "ses_fixture"
+    ],
+    "exitCode": 0,
+    "stdout": "No recordings in this session.\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/sessions/ses_fixture",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "sessions-list": {
+    "args": [
+      "sessions",
+      "list",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/sessions",
+        "rawQuery": "projectId=prj_default",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  },
+  "topics-list": {
+    "args": [
+      "topics",
+      "list",
+      "--recording-id",
+      "rec_fixture",
+      "--format",
+      "json"
+    ],
+    "exitCode": 0,
+    "stdout": "[]\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbase_url: {BASE_URL}\nbearer_token: fixture-token\ndefault_project_id: prj_default\n",
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/v1/data/topics",
+        "rawQuery": "projectId=prj_default\u0026recordingId=rec_fixture",
+        "headers": {
+          "Authorization": "Bearer fixture-token",
+          "User-Agent": "foxglove-cli/v1.0.33"
+        }
+      }
+    ]
+  }
+}

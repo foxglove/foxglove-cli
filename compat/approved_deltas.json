@@ -1,0 +1,182 @@
+{
+  "baseline": "v1.0.33",
+  "deltas": {
+    "literal-api-path-segments": {
+      "reason": "Treat user-provided API identifiers as literal path segments, including slashes and percent signs, rather than URL syntax. Go's URL joining can interpret these as separators or existing escapes. Reject empty identifiers and the standalone dot segments . and .. rather than silently addressing a different resource.",
+      "invariants": [
+        "Reserved characters, Unicode, and control characters in identifiers remain part of the intended identifier.",
+        "Identifiers cannot change the API origin, endpoint hierarchy, query, or fragment.",
+        "Query parameters and complete presigned URLs retain their existing encoding behavior."
+      ]
+    },
+    "attachments-list-error": {
+      "reason": "Correct a copy/paste error that names imports instead of attachments.",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Failed to list attachments: fixture failure\n"
+    },
+    "attachment-download-404": {
+      "reason": "Reject non-success attachment responses before writing their bodies to stdout.",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Failed to fetch attachment: not found\n"
+    },
+    "devices-empty-csv": {
+      "reason": "An empty CSV result is successful and contains its header row.",
+      "exitCode": 0,
+      "stdout": "ID,Name,Custom Properties,Created At,Updated At,Project ID\n",
+      "stderr": ""
+    },
+    "compact-renderers": {
+      "reason": "Use serde_json compact serialization, RFC 4180 CSV serialization, and a simple pipe-delimited table instead of reproducing Go renderer internals.",
+      "invariants": [
+        "JSON remains valid and ends with one newline.",
+        "CSV includes a header and correctly escapes commas, quotes, and newlines.",
+        "Tables retain headers and rows in command order."
+      ]
+    },
+    "clap-generated-help": {
+      "reason": "Render help and usage directly from the maintained Clap command tree instead of embedding Cobra output. Command and option coverage remains contract-tested, but layout and wording follow Clap."
+    },
+    "clap-generated-completions": {
+      "reason": "Generate shell scripts from the maintained Clap command tree. Static command, flag, and file-path completion is preserved; Cobra's API-backed device lookup is not part of the generated scripts."
+    },
+    "config-path-and-parsing": {
+      "reason": "Honor an explicit config path and report unreadable, malformed, or non-mapping YAML instead of treating it as an empty configuration.",
+      "invariants": [
+        "A missing configuration file remains valid for first-run commands.",
+        "Environment variables retain precedence over persisted values.",
+        "Unknown YAML keys survive config updates."
+      ]
+    },
+    "config-yaml-order": {
+      "reason": "Use serde YAML's normal mapping serialization order rather than reproducing Viper ordering."
+    },
+    "query-parameter-order": {
+      "reason": "Preserve query parameter names and values without treating their encoded order as a compatibility requirement."
+    },
+    "presigned-user-agent": {
+      "reason": "Presigned storage requests use the configured Foxglove Rust CLI User-Agent rather than Go-http-client/1.1.",
+      "invariants": [
+        "Presigned storage requests never forward the API bearer token.",
+        "Authenticated API requests retain the configured CLI User-Agent."
+      ]
+    },
+    "signed-ros1-integers": {
+      "reason": "Decode ROS 1 int8, int16, int32, and duration components according to their declared signed types instead of Go's historic unsigned little-endian JSON rendering.",
+      "invariants": [
+        "Negative signed ROS 1 values remain negative in JSON.",
+        "uint8, uint16, and uint32 retain unsigned JSON rendering."
+      ]
+    },
+    "compact-progress": {
+      "reason": "Use compact stderr-only transfer progress without a terminal-width dependency.",
+      "invariants": [
+        "Progress byte counts reflect transferred bytes.",
+        "Cancellation still removes staging files and preserves existing destinations."
+      ]
+    },
+    "async-execution": {
+      "reason": "Run API-backed commands on the production Tokio runtime and await operations directly instead of blocking separately inside every handler.",
+      "invariants": [
+        "Command results, cancellation, and exit status are unchanged.",
+        "Synchronous library wrappers remain available for non-async callers."
+      ]
+    },
+    "export-initial-download-error": {
+      "reason": "Fail immediately instead of printing to stdout and reindexing a failed partial response.",
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "Export failed: fixture export failure\n",
+      "outputFiles": {
+        "output.mcap": "{ABSENT}"
+      }
+    },
+    "http-response-lifecycle": {
+      "reason": "Every response body must be consumed or dropped on success and error paths.",
+      "invariants": [
+        "Repeated requests do not leak response resources or exhaust the connection pool.",
+        "Error responses are released after their error text is captured."
+      ]
+    },
+    "unauthorized-api-responses": {
+      "reason": "Treat HTTP 401 from every API endpoint as an authentication failure and consistently direct users to `foxglove auth login`. The Go CLI exposes endpoint-specific server text or an unexpected-status error for some mutation and authentication requests.",
+      "invariants": [
+        "Every API HTTP 401 produces the standard sign-in guidance.",
+        "HTTP 403 retains its existing endpoint-specific handling."
+      ]
+    },
+    "transfer-cancellation": {
+      "reason": "Propagate cancellation through active uploads, downloads, conversions, and staging cleanup.",
+      "exitCode": 130,
+      "stdout": "",
+      "invariants": [
+        "The active HTTP future is cancelled.",
+        "Temporary partial files are removed.",
+        "An existing destination file is unchanged.",
+        "No normal command-failure message is printed for Ctrl-C."
+      ]
+    },
+    "clap-parser-diagnostics": {
+      "reason": "Preserve Clap's native diagnostics and usage text for parser-level failures instead of reproducing Cobra's wording."
+    },
+    "deprecated-data-import-commands": {
+      "reason": "The Rust release CLI omits the deprecated `data imports`, `data imports add`, and `data imports list` commands; `recordings list` and `data import` are their supported replacements.",
+      "omittedCommandSurface": [
+        "data-imports",
+        "data-imports-add",
+        "data-imports-list"
+      ]
+    },
+    "deprecated-flags": {
+      "reason": "The Rust release CLI omits the deprecated `--json` alias and ignored `devices add --serial-number` flag. Use `--format json` or `data export --output-format json` instead."
+    },
+    "json-output-file": {
+      "reason": "Honor --output-file for JSON exports; the Go CLI silently writes JSON to stdout instead.",
+      "invariants": [
+        "A successful export writes NDJSON to the requested file and keeps stdout empty.",
+        "A failed export preserves an existing destination and removes staging files."
+      ]
+    },
+    "private-sensitive-files": {
+      "reason": "Restrict newly created configuration and export staging data rather than inheriting process umask defaults.",
+      "invariants": [
+        "New configuration and staged export files use mode 0600 on Unix.",
+        "Export staging directories use mode 0700 on Unix.",
+        "Existing configuration permissions survive atomic replacement."
+      ]
+    },
+    "windows-atomic-replacement": {
+      "reason": "Use a single filesystem rename to replace existing configuration and export destinations on Windows, as on Unix.",
+      "invariants": [
+        "The old destination is not moved aside before installing the replacement.",
+        "A failed replacement leaves the existing destination unchanged."
+      ]
+    },
+    "indexed-bag-completion": {
+      "reason": "Recognize a structurally complete indexed ROS bag instead of always requesting a redundant recovery segment.",
+      "invariants": [
+        "Declared connection and chunk counts must match the indexed records.",
+        "Every declared chunk must have matching chunk-info and per-connection index records."
+      ]
+    },
+    "debug-recovery-details": {
+      "reason": "Use Rust's structured Debug request rendering and omit implementation-specific temporary-file and recovery-internal messages."
+    },
+    "event-query-fields": {
+      "reason": "Encode event query fields as repeated queryFields parameters accepted by the API. Go's indexed queryFields/0 parameters were ignored.",
+      "invariants": [
+        "Each --query-field value is sent as a queryFields parameter.",
+        "All other event query parameters retain their Go wire values."
+      ]
+    },
+    "schemaless-mcap-recovery": {
+      "reason": "Preserve the schema ID zero sentinel when merging recovered MCAP segments; Go incorrectly offsets it to an unrelated schema.",
+      "invariants": [
+        "Schemaless channels retain schema ID zero.",
+        "Schema-backed channels retain their schema definitions after ID remapping.",
+        "Recovery preserves message contents and multiplicity."
+      ]
+    }
+  }
+}

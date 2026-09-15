@@ -1,0 +1,204 @@
+{
+  "config-get": {
+    "args": [
+      "config",
+      "get",
+      "project-id"
+    ],
+    "exitCode": 0,
+    "stdout": "prj_default\n",
+    "stderr": "",
+    "config": "auth_type: 1\nbearer_token: fixture-token\ndefault_project_id: prj_default\n"
+  },
+  "config-get-environment": {
+    "args": [
+      "config",
+      "get",
+      "project-id"
+    ],
+    "exitCode": 0,
+    "stdout": "prj_environment\n",
+    "stderr": ""
+  },
+  "config-set": {
+    "args": [
+      "config",
+      "set",
+      "project-id",
+      "prj_updated"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Configuration updated: project-id = prj_updated\n",
+    "config": "auth_type: 1\nbearer_token: fixture-token\ndefault_project_id: prj_updated\n"
+  },
+  "config-unset": {
+    "args": [
+      "config",
+      "unset",
+      "project-id"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "Configuration removed: project-id\n",
+    "config": "auth_type: 1\nbearer_token: fixture-token\n"
+  },
+  "config-unset-missing": {
+    "args": [
+      "config",
+      "unset",
+      "project-id"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "No value set for key 'project-id'\n"
+  },
+  "configure-api-key": {
+    "args": [
+      "auth",
+      "configure-api-key",
+      "--api-key",
+      "fox_sk_fixture",
+      "--base-url",
+      "https://example.test"
+    ],
+    "exitCode": 0,
+    "stdout": "",
+    "stderr": "",
+    "config": "auth_type: 2\nbase_url: https://example.test\nbearer_token: fox_sk_fixture\ndefault_project_id: prj_default\n"
+  },
+  "configure-api-key-interactive": {
+    "args": [
+      "auth",
+      "configure-api-key"
+    ],
+    "exitCode": 0,
+    "stdout": "Enter an API key (will be written to {HOME}/.foxgloverc):\n",
+    "stderr": "",
+    "config": "auth_type: 2\nbase_url: https://api.foxglove.dev\nbearer_token: fox_sk_interactive\ndefault_project_id: prj_default\n"
+  },
+  "equals-flag": {
+    "args": [
+      "events",
+      "list",
+      "--query-field=invalid"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Invalid --query-field value \"invalid\": must be \"metadata\" or \"properties\"\n"
+  },
+  "extra-positional": {
+    "args": [
+      "config",
+      "get",
+      "project-id",
+      "extra"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Error: accepts at most 1 arg(s), received 2\nUsage:\n  foxglove config get [KEY] [flags]\n\nFlags:\n  -h, --help   help for get\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nError: accepts at most 1 arg(s), received 2\n"
+  },
+  "format-conflict": {
+    "args": [
+      "devices",
+      "list",
+      "--json",
+      "--format",
+      "csv"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Command failed. Output format conflict: --json, --format\n"
+  },
+  "global-after-command": {
+    "args": [
+      "version",
+      "--debug"
+    ],
+    "exitCode": 0,
+    "stdout": "v1.0.33\n",
+    "stderr": ""
+  },
+  "global-before-command": {
+    "args": [
+      "--debug",
+      "version"
+    ],
+    "exitCode": 0,
+    "stdout": "v1.0.33\n",
+    "stderr": ""
+  },
+  "help-command": {
+    "args": [
+      "help",
+      "devices"
+    ],
+    "exitCode": 0,
+    "stdout": "List and manage devices\n\nUsage:\n  foxglove devices [command]\n\nAvailable Commands:\n  add         Add a device for your organization\n  edit        Edit a device\n  list        List devices registered to your organization\n\nFlags:\n  -h, --help   help for devices\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nUse \"foxglove devices [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "invalid-query-field": {
+    "args": [
+      "events",
+      "list",
+      "--query-field",
+      "invalid"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Invalid --query-field value \"invalid\": must be \"metadata\" or \"properties\"\n"
+  },
+  "missing-positional": {
+    "args": [
+      "sessions",
+      "get"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Error: accepts 1 arg(s), received 0\nUsage:\n  foxglove sessions get [session-id-or-key] [flags]\n\nFlags:\n  -h, --help                help for get\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n\nError: accepts 1 arg(s), received 0\n"
+  },
+  "positional-help": {
+    "args": [
+      "sessions",
+      "get",
+      "fixture",
+      "--help"
+    ],
+    "exitCode": 0,
+    "stdout": "Get a session by ID or key\n\nUsage:\n  foxglove sessions get [session-id-or-key] [flags]\n\nFlags:\n  -h, --help                help for get\n      --project-id string   Project ID (required when session-id-or-key is a session key)\n\nGlobal Flags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n",
+    "stderr": ""
+  },
+  "root-no-args": {
+    "args": null,
+    "exitCode": 0,
+    "stdout": "Command line client for the Foxglove data platform\n\nUsage:\n  foxglove [command]\n\nAvailable Commands:\n  attachments     Query and modify data attachments\n  auth            Manage authentication\n  completion      Generate the autocompletion script for the specified shell\n  config          Manage CLI configuration\n  data            Data access and management\n  devices         List and manage devices\n  event-types     List event types\n  events          List and manage events\n  extensions      List and publish Studio extensions\n  help            Help about any command\n  pending-imports List pending imports\n  projects        List and manage projects\n  recordings      Query recordings\n  sessions        List and manage sessions\n  topics          List topics\n  version         print Foxglove CLI version\n\nFlags:\n      --client-id string   foxglove client ID (default \"d51173be08ed4cf7a734aed9ac30afd0\")\n      --config string      config file (default is $HOME/.foxglove.yaml)\n      --debug              enable debug logging\n  -h, --help               help for foxglove\n\nUse \"foxglove [command] --help\" for more information about a command.\n",
+    "stderr": ""
+  },
+  "session-key-requires-project": {
+    "args": [
+      "attachments",
+      "list",
+      "--session-key",
+      "fixture"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "--project-id is required when using --session-key\n"
+  },
+  "unknown-command": {
+    "args": [
+      "not-a-command"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "Error: unknown command \"not-a-command\" for \"foxglove\"\nRun 'foxglove --help' for usage.\nError: unknown command \"not-a-command\" for \"foxglove\"\n"
+  },
+  "version": {
+    "args": [
+      "version"
+    ],
+    "exitCode": 0,
+    "stdout": "v1.0.33\n",
+    "stderr": ""
+  }
+}

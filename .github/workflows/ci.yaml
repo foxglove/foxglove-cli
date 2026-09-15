@@ -12,89 +12,152 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: install go
-        uses: actions/setup-go@v6
+        with:
+          lfs: true
+      - uses: actions/setup-go@v7
         with:
           go-version-file: foxglove/go.mod
-      - name: download modules
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt, clippy
+      - name: Check pinned compiler
+        run: rustc --version | grep '1.98.1'
+      - name: Download Go modules
         run: go mod download
         working-directory: foxglove
-      - uses: golangci/golangci-lint-action@v9
+      - name: Lint Go oracle
+        uses: golangci/golangci-lint-action@v9
         with:
           working-directory: foxglove
           version: v2.12.2
           args: ./...
+      - name: Check formatting
+        run: make rust-fmt
+      - name: Lint with warnings denied
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets --all-features -- -D warnings
+      - name: Build documentation with warnings denied
+        run: make rust-doc
+      - name: Install dependency auditor
+        run: cargo install cargo-audit --locked --version 0.22.2
+      - name: Audit locked Rust dependencies
+        run: make rust-audit
+
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-      - name: install go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
         with:
           go-version-file: foxglove/go.mod
-      - run: git lfs pull
-      - name: run tests
-        run: make test
-  release:
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.98.1
+      - name: Test Rust suites including loopback contracts
+        run: make rust-test-ignored
+      - name: Test Go oracle and Rust compatibility
+        run: make go-test
+
+  release-build:
     permissions:
-      contents: write
-    needs:
-      - lint
-      - test
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+      contents: read
+    needs: [lint, test]
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: linux
-            image: ubuntu-latest
+          - platform: linux
+            runner: ubuntu-24.04
             arch: amd64
-            env: {}
-          - os: linux
-            image: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - platform: linux
+            runner: ubuntu-24.04-arm
             arch: arm64
-            env: {}
-          - os: macos
-            image: macos-latest
+            target: aarch64-unknown-linux-musl
+          - platform: macos
+            runner: macos-15-intel
             arch: amd64
-            env: {}
-          - os: macos
-            image: macos-latest
+          - platform: macos
+            runner: macos-15
             arch: arm64
-            env: {}
-          - os: windows
-            image: windows-latest
+          - platform: windows
+            runner: windows-latest
             arch: amd64
-            env: {}
-          - os: windows
-            image: windows-latest
+          - platform: windows
+            runner: windows-11-arm
             arch: arm64
-            env: {}
-    name: Build (${{ matrix.os }}/${{ matrix.arch }})
-    runs-on: ${{ matrix.image }}
-    env: ${{ matrix.env }}
-
+    name: Test and package Rust (${{ matrix.platform }}/${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: "0"
-      - run: git fetch --depth=1 origin +refs/tags/*:refs/tags/*
-      - uses: actions/setup-go@v6
+          lfs: true
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.98.1
         with:
-          go-version-file: foxglove/go.mod
-      - name: Setup environment
-        run: ${{ matrix.setup }}
-      - name: Build binary
-        run: make -C foxglove build-release
-        env:
-          GOARCH: ${{ matrix.arch }}
-          BINARY_NAME: foxglove-${{ matrix.os }}-${{ matrix.arch }}
-      - name: Generate release notes
+          targets: ${{ matrix.target || '' }}
+      - name: Install native musl build tools
+        if: matrix.platform == 'linux'
         run: |
-          git log --oneline --no-merges --first-parent --decorate-refs=refs $(git describe --tags --abbrev=0)..HEAD > ${{ github.workspace }}-CHANGELOG.txt
-      - name: Releaase
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends musl-tools binutils
+          # Native C dependencies (ring and zstd-sys) must use musl too.
+          echo "CC_$(echo '${{ matrix.target }}' | tr '-' '_')=musl-gcc" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_$(echo '${{ matrix.target }}' | tr '[:lower:]-' '[:upper:]_')_LINKER=musl-gcc" >> "$GITHUB_ENV"
+      - name: Test native platform behavior
+        run: |
+          target_args=()
+          if [[ -n '${{ matrix.target }}' ]]; then
+            target_args=(--target '${{ matrix.target }}')
+          fi
+          cargo test --manifest-path rust/Cargo.toml --locked --all-features "${target_args[@]}" -- --include-ignored
+      - name: Package and smoke-test native artifact
+        # GitHub's Windows image has Bash but does not guarantee GNU Make.
+        run: ./scripts/package-rust-release.sh ${{ matrix.platform }} ${{ matrix.arch }}
+        env:
+          FOXGLOVE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+      - name: Smoke-test Linux artifact across distributions
+        if: matrix.platform == 'linux'
+        run: ./scripts/test-linux-release.sh "dist/foxglove-linux-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foxglove-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    permissions:
+      contents: write
+    needs: release-build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Verify and combine checksums
+        run: |
+          cat dist/*.sha256 | sort > dist/CHECKSUMS.txt
+          (cd dist && sha256sum -c CHECKSUMS.txt)
+          rm dist/*.sha256
+      - name: Generate release notes
+        run: git log --oneline --no-merges --first-parent "$(git describe --tags --abbrev=0 HEAD^)"..HEAD > CHANGELOG.txt
+      - name: Publish six Rust artifacts
         uses: softprops/action-gh-release@v3
         with:
-          files: foxglove/bin/*
-          body_path: ${{ github.workspace }}-CHANGELOG.txt
+          files: |
+            dist/foxglove-*
+            dist/CHECKSUMS.txt
+          body_path: CHANGELOG.txt
           draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}

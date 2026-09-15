@@ -21,10 +21,17 @@ Download the latest release for your OS and architecture:
 
 To install a specific release, see the [releases page](https://github.com/foxglove/foxglove-cli/releases).
 
-Alternatively, install the CLI tool from source (requires Go >= 1.21) – this will install it to `$GOPATH/bin`:
+Alternatively, build the Rust CLI from source. Rust 1.98.1 is pinned in
+`rust-toolchain.toml`; [rustup](https://rustup.rs/) installs it automatically
+when you run Cargo in this checkout:
 
     $ git clone git@github.com:foxglove/foxglove-cli.git
-    $ make install
+    $ cd foxglove-cli
+    $ make build
+    $ ./rust/target/release/foxglove-rust --help
+
+`make install` copies that source build to `foxglove` in Cargo's bin directory
+(`$CARGO_HOME/bin`, or `~/.cargo/bin` by default) on Unix-like systems.
 
 ## Getting started
 
@@ -230,29 +237,15 @@ $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 
 ## Shell autocompletion
 
-Certain shells (bash, zsh, fish, and PowerShell) support autocompletion for subcommands and certain parameters (like device IDs).
+Certain shells (bash, zsh, fish, and PowerShell) support generated
+autocompletion for commands, flags, and file paths.
 
 To enable this, consult your shell instructions under `$ foxglove completion <shell> -h`.
 
 ## Development
 
-To build and test locally
-
-```sh
-cd foxglove
-make build
-
-# run tests
-make test
-# or run the local version of the cli
-./foxglove --help
-```
-
-To release a new version
- 1. Draft a new [release](https://github.com/foxglove/foxglove-cli/releases)
- 2. Create a new tag via the UI following the `v1.0.31` format
- 3. Auto generate release notes and review them
- 4. Publish the release. An action will build the assets
+See the [Rust development guide](rust/README.md) for building, testing, and
+working with the Go compatibility oracle.
 
 ## Stay in touch
 
