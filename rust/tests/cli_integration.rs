@@ -378,3 +378,113 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
         server.finish();
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn identifier_paths_are_escaped_for_every_command() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    const SESSION_PATH: &str = "/v1/sessions/drive%231%3F%2F%5C%25%20snow%E2%98%83";
+    const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (&["sessions", "get", KEY], "GET", SESSION_PATH, SESSION),
+        (
+            &["sessions", "recordings", "list", KEY],
+            "GET",
+            SESSION_PATH,
+            SESSION,
+        ),
+        (&["sessions", "delete", KEY], "DELETE", SESSION_PATH, "{}"),
+        (
+            &["sessions", "recordings", "add", KEY, "rec"],
+            "PATCH",
+            SESSION_PATH,
+            "{}",
+        ),
+        (
+            &["sessions", "recordings", "remove", KEY, "rec"],
+            "PATCH",
+            SESSION_PATH,
+            "{}",
+        ),
+        (
+            &["devices", "edit", KEY, "--name", "renamed"],
+            "PATCH",
+            "/v1/devices/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"device","name":"renamed"}"#,
+        ),
+        (
+            &["recordings", "delete", KEY],
+            "DELETE",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            "{}",
+        ),
+        (
+            &["data", "import", "unused.mcap", "--edge-recording-id", KEY],
+            "POST",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
+            r#"{"id":"recording"}"#,
+        ),
+        (
+            &["extensions", "unpublish", KEY],
+            "DELETE",
+            "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            "{}",
+        ),
+        (
+            &["attachments", "download", KEY],
+            "GET",
+            "/v1/recording-attachments/drive%231%3F%2F%5C%25%20snow%E2%98%83/download",
+            "attachment",
+        ),
+    ];
+    let workspace = Workspace::new();
+    for &(args, method, path, body) in cases {
+        let server = Server::new(vec![Reply::json(method, path, body)]);
+        let output = Process::spawn(workspace.command(&server.url).args(args)).finish();
+        assert_success(&output);
+        assert_eq!(server.finish().len(), 1, "{args:?}");
+    }
+}
+
+#[test]
+fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
+    let workspace = Workspace::new();
+    for key in ["", ".", ".."] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["sessions", "delete", key]),
+        )
+        .finish();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("API path segments must not be"));
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn empty_environment_overrides_use_saved_configuration() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        format!(
+            "base_url: {}\nbearer_token: saved-token\ndefault_project_id: saved-project\n",
+            server.url,
+        ),
+    )
+    .unwrap();
+    let output = Process::spawn(
+        workspace
+            .command("")
+            .env("BEARER_TOKEN", "")
+            .env("DEFAULT_PROJECT_ID", "")
+            .args(["recordings", "list", "--format", "json"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains("projectId=saved-project"));
+    assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}

@@ -102,7 +102,7 @@ impl Config {
 
     /// Return a string value using Viper's environment-over-file precedence.
     pub fn get_string(&self, key: &str) -> Option<String> {
-        if let Ok(value) = env::var(environment_name(key)) {
+        if let Some(value) = environment_value(key) {
             return Some(value);
         }
         self.values
@@ -113,8 +113,7 @@ impl Config {
     /// Whether a value is supplied by either the environment or the file.
     #[must_use]
     pub fn is_set(&self, key: &str) -> bool {
-        env::var_os(environment_name(key)).is_some()
-            || self.values.contains_key(Value::String(key.to_owned()))
+        environment_value(key).is_some() || self.values.contains_key(Value::String(key.to_owned()))
     }
 
     /// Set a persisted value.
@@ -214,6 +213,15 @@ impl Drop for TemporaryGuard<'_> {
 
 fn environment_name(key: &str) -> String {
     key.to_ascii_uppercase()
+}
+
+fn environment_value(key: &str) -> Option<String> {
+    // Viper ignores empty environment values unless AllowEmptyEnv is enabled.
+    // Keep explicitly empty persisted values intact: only environment overrides
+    // use this fallback rule.
+    env::var(environment_name(key))
+        .ok()
+        .filter(|value| !value.is_empty())
 }
 
 fn value_as_string(value: &Value) -> String {

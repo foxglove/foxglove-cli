@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
 
+use crate::api::encode_path_segment;
 use crate::cli::{
     SessionAddArgs, SessionListArgs, SessionLookupArgs, SessionRecordingMutationArgs,
 };
@@ -140,7 +141,10 @@ pub(crate) async fn get_session(runtime: &Runtime, args: &SessionLookupArgs) -> 
     };
     let result = runtime
         .client
-        .get::<_, Session>(&format!("/v1/sessions/{}", args.session), &query)
+        .get::<_, Session>(
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
+            &query,
+        )
         .await;
     match result {
         Ok(session) => session_outcome(&session),
@@ -192,7 +196,10 @@ pub(crate) async fn list_session_recordings(
     };
     let result = runtime
         .client
-        .get::<_, Session>(&format!("/v1/sessions/{}", args.session), &query)
+        .get::<_, Session>(
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
+            &query,
+        )
         .await;
     match result {
         Ok(session) if session.recordings.is_empty() => {
@@ -270,7 +277,10 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
     };
     match runtime
         .client
-        .delete_with_query(&format!("/v1/sessions/{}", args.session), &query)
+        .delete_with_query(
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
+            &query,
+        )
         .await
     {
         Ok(()) => Outcome {
@@ -315,7 +325,7 @@ pub(crate) async fn patch_session_recordings(
     match runtime
         .client
         .patch::<_, _, serde_json::Value>(
-            &format!("/v1/sessions/{}", args.session),
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
             &query,
             &request,
         )

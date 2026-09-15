@@ -1,6 +1,14 @@
 {
   "baseline": "v1.0.33",
   "deltas": {
+    "literal-api-path-segments": {
+      "reason": "Treat user-provided API identifiers as literal path segments, including slashes and percent signs, rather than URL syntax. Go's URL joining can interpret these as separators or existing escapes. Reject empty identifiers and the standalone dot segments . and .. rather than silently addressing a different resource.",
+      "invariants": [
+        "Reserved characters, Unicode, and control characters in identifiers remain part of the intended identifier.",
+        "Identifiers cannot change the API origin, endpoint hierarchy, query, or fragment.",
+        "Query parameters and complete presigned URLs retain their existing encoding behavior."
+      ]
+    },
     "attachments-list-error": {
       "reason": "Correct a copy/paste error that names imports instead of attachments.",
       "exitCode": 1,

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+use crate::api::encode_path_segment;
 use crate::cli::{DeviceEditArgs, DeviceListArgs, DeviceWriteArgs};
 use crate::output::Format;
 use crate::records::{compact_json, fetch_list, ProjectFallback, Record};
@@ -198,7 +199,11 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
     };
     match runtime
         .client
-        .patch::<_, _, DeviceResponse>(&format!("/v1/devices/{}", args.id), &query, &request)
+        .patch::<_, _, DeviceResponse>(
+            &format!("/v1/devices/{}", encode_path_segment(&args.id)),
+            &query,
+            &request,
+        )
         .await
     {
         Ok(response) => Outcome {

@@ -19,6 +19,16 @@ use crate::{
 
 const ROOT_COMMAND: &str = "foxglove";
 
+/// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
+/// so a bare boolean flag never consumes the next positional argument.
+fn parse_bool(value: &str) -> Result<bool, String> {
+    match value {
+        "1" | "t" | "T" | "TRUE" | "true" | "True" => Ok(true),
+        "0" | "f" | "F" | "FALSE" | "false" | "False" => Ok(false),
+        _ => Err(format!("invalid boolean value: {value:?}")),
+    }
+}
+
 /// The complete command hierarchy. Parsing, help, dispatch metadata, and shell
 /// completions are all generated from these types.
 #[derive(Debug, Parser)]
@@ -39,7 +49,15 @@ struct Cli {
     client_id: Option<String>,
     #[arg(long, global = true, help = "Config file", value_hint = ValueHint::FilePath)]
     config: Option<PathBuf>,
-    #[arg(long, global = true, help = "Enable debug logging")]
+    #[arg(
+        long, global = true, help = "Enable debug logging",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     debug: bool,
     #[command(subcommand)]
     command: Option<CliCommand>,
@@ -159,7 +177,15 @@ enum CompletionCommand {
 
 #[derive(Debug, Args)]
 struct CompletionArgs {
-    #[arg(long, help = "Disable completion descriptions")]
+    #[arg(
+        long, help = "Disable completion descriptions",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     no_descriptions: bool,
 }
 
@@ -222,7 +248,15 @@ pub(crate) struct CoverageListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
-    #[arg(long, help = "Include edge recordings")]
+    #[arg(
+        long, help = "Include edge recordings",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     pub(crate) include_edge_recordings: bool,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
@@ -262,7 +296,15 @@ pub(crate) struct DataExportArgs {
     pub(crate) end: Option<String>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
-    #[arg(long, help = "Include MCAP attachments")]
+    #[arg(
+        long, help = "Include MCAP attachments",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     pub(crate) include_attachments: bool,
     #[arg(long, help = "Recording key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
@@ -470,9 +512,25 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true)]
     pub(crate) session_key: Option<String>,
-    #[arg(long, help = "Show completed requests")]
+    #[arg(
+        long, help = "Show completed requests",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     pub(crate) show_completed: bool,
-    #[arg(long, help = "Show quarantined requests")]
+    #[arg(
+        long, help = "Show quarantined requests",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     pub(crate) show_quarantined: bool,
     #[arg(long, help = "Site ID", allow_hyphen_values = true)]
     pub(crate) site_id: Option<String>,
@@ -482,7 +540,15 @@ pub(crate) struct PendingImportListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) updated_since: Option<String>,
-    #[arg(long, help = "Only imports without a project")]
+    #[arg(
+        long, help = "Only imports without a project",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     pub(crate) without_project: bool,
 }
 
@@ -642,7 +708,15 @@ pub(crate) struct TopicListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
-    #[arg(long, help = "Include full topic schemas")]
+    #[arg(
+        long, help = "Include full topic schemas",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
     pub(crate) include_schemas: bool,
     #[arg(long, help = "Maximum number of topics", allow_hyphen_values = true)]
     pub(crate) limit: Option<i64>,
@@ -1068,7 +1142,7 @@ mod tests {
     use std::ffi::OsString;
     use std::io::Cursor;
 
-    use clap::Parser;
+    use clap::{CommandFactory, Parser};
 
     use crate::output::Format;
     use crate::run;
@@ -1076,6 +1150,79 @@ mod tests {
     fn invoke(args: &[&str]) -> super::Outcome {
         let args = args.iter().map(OsString::from).collect::<Vec<_>>();
         run(&args, &mut Cursor::new(Vec::<u8>::new()))
+    }
+
+    #[test]
+    fn boolean_flags_accept_go_values_and_preserve_defaults() {
+        let cases = [
+            (vec![], "debug"),
+            (vec!["completion", "bash"], "no-descriptions"),
+            (vec!["data", "coverage", "list"], "include-edge-recordings"),
+            (vec!["data", "export"], "include-attachments"),
+            (vec!["pending-imports", "list"], "show-completed"),
+            (vec!["pending-imports", "list"], "show-quarantined"),
+            (vec!["pending-imports", "list"], "without-project"),
+            (vec!["topics", "list"], "include-schemas"),
+        ];
+        let values = [
+            (None, false),
+            (Some(""), true),
+            (Some("=1"), true),
+            (Some("=t"), true),
+            (Some("=T"), true),
+            (Some("=TRUE"), true),
+            (Some("=true"), true),
+            (Some("=True"), true),
+            (Some("=0"), false),
+            (Some("=f"), false),
+            (Some("=F"), false),
+            (Some("=FALSE"), false),
+            (Some("=false"), false),
+            (Some("=False"), false),
+        ];
+        for (path, flag) in cases {
+            let id = flag.replace('-', "_");
+            for (suffix, expected) in values {
+                let mut argv = vec!["foxglove".to_owned()];
+                argv.extend(path.iter().map(|part| (*part).to_owned()));
+                if let Some(suffix) = suffix {
+                    argv.push(format!("--{flag}{suffix}"));
+                }
+                let matches = super::Cli::command().try_get_matches_from(&argv).unwrap();
+                let mut command = &matches;
+                for part in &path {
+                    command = command.subcommand_matches(part).unwrap();
+                }
+                assert_eq!(command.get_one::<bool>(&id), Some(&expected), "{argv:?}");
+            }
+            for value in ["", "yes", "no", "TrUe", "2"] {
+                let mut argv = vec!["foxglove".to_owned()];
+                argv.extend(path.iter().map(|part| (*part).to_owned()));
+                argv.push(format!("--{flag}={value}"));
+                assert!(super::Cli::try_parse_from(&argv).is_err(), "{argv:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn bare_boolean_flags_do_not_consume_positionals() {
+        let cli = super::Cli::try_parse_from([
+            "foxglove",
+            "--debug",
+            "config",
+            "set",
+            "project-id",
+            "false",
+        ])
+        .unwrap();
+        assert!(cli.debug);
+        let Some(super::CliCommand::Config(super::ConfigCommand::Set(args))) = cli.command else {
+            panic!("expected config set command");
+        };
+        assert_eq!(args.value, "false");
+        let cli = super::Cli::try_parse_from(["foxglove", "--debug", "--debug=false", "version"])
+            .unwrap();
+        assert!(!cli.debug);
     }
 
     #[test]

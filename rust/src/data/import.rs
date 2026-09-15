@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use super::UploadProgressReader;
-use crate::api::UploadRequest;
+use crate::api::{encode_path_segment, UploadRequest};
 use crate::cli::DataImportArgs;
 use crate::records::ProjectFallback;
 use crate::runtime::Runtime;
@@ -25,7 +25,10 @@ pub(crate) async fn from_edge(runtime: &Runtime, args: &DataImportArgs) -> Outco
     let id = args.edge_recording_id.as_deref().unwrap_or_default();
     match runtime
         .client
-        .post::<_, ImportFromEdgeResponse>(&format!("/v1/recordings/{id}/import"), &EmptyRequest {})
+        .post::<_, ImportFromEdgeResponse>(
+            &format!("/v1/recordings/{}/import", encode_path_segment(id)),
+            &EmptyRequest {},
+        )
         .await
     {
         Ok(_) => Outcome::default(),

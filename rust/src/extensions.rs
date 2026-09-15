@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+use crate::api::encode_path_segment;
 use crate::cli::{ExtensionIdArgs, FileArgs};
 use crate::output::Format;
 use crate::records::{fetch_list, Record};
@@ -64,7 +65,10 @@ pub(crate) async fn list_extensions(runtime: &Runtime, format: Format) -> Outcom
 pub(crate) async fn unpublish_extension(runtime: &Runtime, args: &ExtensionIdArgs) -> Outcome {
     match runtime
         .client
-        .delete(&format!("/v1/extensions/{}", args.extension_id))
+        .delete(&format!(
+            "/v1/extensions/{}",
+            encode_path_segment(&args.extension_id)
+        ))
         .await
     {
         Ok(()) => Outcome {

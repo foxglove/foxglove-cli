@@ -4,11 +4,16 @@
 //! command execution. Commands can therefore stage output and decide their own
 //! cleanup policy while this module guarantees that response bodies are either
 //! consumed or dropped on every branch.
+//!
+//! Keep static endpoint paths as strings and percent-encode dynamic identifiers
+//! with `encode_path_segment(value)` before interpolating them.
+//! Pass query parameters separately.
 
 use std::fmt;
 use std::io;
 use std::sync::{Arc, RwLock};
 
+use percent_encoding::{utf8_percent_encode, AsciiSet, PercentEncode, NON_ALPHANUMERIC};
 use reqwest::{Method, RequestBuilder, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -16,6 +21,19 @@ use time::OffsetDateTime;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 use tokio_util::sync::CancellationToken;
+
+// Encode every byte except RFC 3986 unreserved characters. In particular,
+// percent signs are literal input, never already-escaped URL syntax.
+const PATH_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+/// Percent-encode a raw identifier for use as a single URL path segment.
+pub(crate) fn encode_path_segment(value: &str) -> PercentEncode<'_> {
+    utf8_percent_encode(value, PATH_SEGMENT)
+}
 
 const FORBIDDEN_MESSAGE: &str = "forbidden: have you signed in with `foxglove auth login`?";
 
@@ -836,7 +854,10 @@ impl FoxgloveClient {
         id: &str,
         cancellation: &CancellationToken,
     ) -> Result<ResponseStream, ApiError> {
-        let endpoint = format!("/v1/recording-attachments/{id}/download");
+        let endpoint = format!(
+            "/v1/recording-attachments/{}/download",
+            encode_path_segment(id)
+        );
         let response =
             send_with_cancellation(self.request(Method::GET, &endpoint)?, cancellation).await?;
         with_optional_cancellation(Some(cancellation), ensure_success_response(response))
@@ -898,6 +919,22 @@ impl FoxgloveClient {
         .await
     }
 
+    /// Reject ambiguous segments before URL parsing can normalize them away.
+    fn endpoint_url(&self, endpoint: &str) -> Result<Url, ApiError> {
+        let path = endpoint.trim_start_matches('/');
+        if path
+            .split('/')
+            .any(|segment| matches!(segment, "" | "." | ".."))
+        {
+            return Err(ApiError::InvalidUrl(
+                "API path segments must not be empty, '.' or '..'".into(),
+            ));
+        }
+        self.base_url
+            .join(path)
+            .map_err(|error| ApiError::InvalidUrl(format!("invalid API endpoint: {error}")))
+    }
+
     fn request(&self, method: Method, endpoint: &str) -> Result<RequestBuilder, ApiError> {
         self.request_with_auth(method, endpoint, true)
     }
@@ -908,10 +945,7 @@ impl FoxgloveClient {
         endpoint: &str,
         authenticated: bool,
     ) -> Result<RequestBuilder, ApiError> {
-        let url = self
-            .base_url
-            .join(endpoint.trim_start_matches('/'))
-            .map_err(|error| ApiError::InvalidUrl(format!("invalid API endpoint: {error}")))?;
+        let url = self.endpoint_url(endpoint)?;
         let request = self
             .http
             .request(method, url)
@@ -1161,9 +1195,111 @@ mod tests {
     use tokio::io::AsyncWriteExt;
 
     use super::{
-        api_error_from_response, response_message, ApiError, FoxgloveClient, StreamRequest,
-        FORBIDDEN_MESSAGE,
+        api_error_from_response, encode_path_segment, response_message, ApiError, FoxgloveClient,
+        StreamRequest, FORBIDDEN_MESSAGE,
     };
+
+    #[test]
+    fn api_paths_preserve_raw_identifiers_and_base_path() {
+        let client = FoxgloveClient::new(
+            "https://example.test/proxy%20prefix?unused=yes#unused",
+            "client",
+            "token",
+            "test",
+        )
+        .unwrap();
+        for key in [
+            "drive#1",
+            "a/b\\c?x=y&z",
+            "%2e%2f",
+            " space ",
+            "雪☃",
+            "a\r\n\tb",
+        ] {
+            let request = client
+                .request(
+                    reqwest::Method::DELETE,
+                    &format!("/v1/sessions/{}", encode_path_segment(key)),
+                )
+                .unwrap()
+                .query(&[("projectId", "a&b=#/?% 雪")])
+                .build()
+                .unwrap();
+            let url = request.url();
+            assert_eq!(url.origin(), client.base_url.origin());
+            assert_eq!(url.fragment(), None);
+            let path = url
+                .path()
+                .strip_prefix("/proxy%20prefix/v1/sessions/")
+                .unwrap();
+            assert!(!path.contains('/'), "{key:?}");
+            assert_eq!(
+                percent_encoding::percent_decode_str(path)
+                    .decode_utf8()
+                    .unwrap(),
+                key
+            );
+            assert_eq!(
+                url.query_pairs().collect::<Vec<_>>(),
+                vec![("projectId".into(), "a&b=#/?% 雪".into())]
+            );
+        }
+        assert_eq!(
+            client
+                .endpoint_url(&format!("/v1/sessions/{}", encode_path_segment("drive#1")))
+                .unwrap()
+                .as_str(),
+            "https://example.test/proxy%20prefix/v1/sessions/drive%231"
+        );
+        assert_eq!(
+            client
+                .endpoint_url(&format!("/v1/sessions/{}", encode_path_segment("%2e")))
+                .unwrap()
+                .path(),
+            "/proxy%20prefix/v1/sessions/%252e"
+        );
+    }
+
+    #[test]
+    fn api_paths_encode_all_ascii_bytes_without_changing_identifiers() {
+        let client =
+            FoxgloveClient::new("https://example.test", "client", "token", "test").unwrap();
+        for byte in 0..=127_u8 {
+            let key = format!("a{}b", char::from(byte));
+            let url = client
+                .endpoint_url(&format!(
+                    "/v1/sessions/{}/recordings",
+                    encode_path_segment(&key)
+                ))
+                .unwrap();
+            let segments: Vec<_> = url.path_segments().unwrap().collect();
+            assert_eq!(segments.len(), 4, "{key:?}");
+            assert_eq!(
+                percent_encoding::percent_decode_str(segments[2])
+                    .decode_utf8()
+                    .unwrap(),
+                key
+            );
+            assert_eq!(segments[3], "recordings");
+            assert!(url.query().is_none());
+            assert!(url.fragment().is_none());
+        }
+    }
+
+    #[test]
+    fn api_paths_reject_segments_that_would_target_a_different_resource() {
+        let client =
+            FoxgloveClient::new("https://example.test", "client", "token", "test").unwrap();
+        for key in ["", ".", ".."] {
+            assert!(matches!(
+                client.request(
+                    reqwest::Method::DELETE,
+                    &format!("/v1/sessions/{}", encode_path_segment(key))
+                ),
+                Err(ApiError::InvalidUrl(_))
+            ));
+        }
+    }
 
     async fn request_head(stream: &mut tokio::net::TcpStream) -> String {
         use tokio::io::AsyncReadExt;

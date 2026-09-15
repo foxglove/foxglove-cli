@@ -365,6 +365,7 @@ dependencies = [
  "csv",
  "lz4_flex",
  "mcap",
+ "percent-encoding",
  "prost",
  "prost-reflect",
  "reqwest",

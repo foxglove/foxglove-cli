@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::api::encode_path_segment;
 use crate::cli::{RecordingDeleteArgs, RecordingListArgs};
 use crate::output::Format;
 use crate::records::{
@@ -189,7 +190,7 @@ pub(crate) async fn list_recordings(
 pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteArgs) -> Outcome {
     match runtime
         .client
-        .delete(&format!("/v1/recordings/{}", args.id))
+        .delete(&format!("/v1/recordings/{}", encode_path_segment(&args.id)))
         .await
     {
         Ok(()) => Outcome::default(),
