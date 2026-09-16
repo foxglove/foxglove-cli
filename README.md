@@ -208,7 +208,7 @@ ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge mane
 ```
 
 List episodes, optionally narrowing to a time range, a member recording, or
-episodes whose recordings have since been deleted:
+episodes with recordings that are no longer available:
 
 ```
 $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recordings

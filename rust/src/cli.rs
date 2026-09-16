@@ -382,21 +382,29 @@ pub(crate) struct DatasetListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of datasets (default: 2000)",
+        help = "Maximum number of items to return (default: 2000)",
         allow_hyphen_values = true
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(long, help = "Number of datasets to skip", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Filter datasets by project", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
-        help = "Sort by name, createdAt, or updatedAt",
+        help = "Field to sort datasets by: name, createdAt, or updatedAt (default: createdAt)",
         allow_hyphen_values = true
     )]
     pub(crate) sort_by: Option<String>,
-    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true
+    )]
     pub(crate) sort_order: Option<String>,
 }
 
@@ -408,12 +416,12 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) dataset_id: String,
     #[arg(
         long,
-        help = "End of episode time range (ISO 8601)",
+        help = "End of a time range the episode's window must overlap (ISO 8601); give with --start",
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
     #[arg(
-        long, help = "Keep only episodes that have, or have not, lost a member recording",
+        long, help = "Filter to episodes with, or without, recordings that are no longer available",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -433,29 +441,37 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of episodes (default: 2000)",
+        help = "Maximum number of items to return (default: 2000)",
         allow_hyphen_values = true
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(long, help = "Number of episodes to skip", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
     pub(crate) offset: Option<i64>,
     #[arg(
         long,
-        help = "Keep only episodes covering this recording ID",
+        help = "Filter to episodes containing this recording display ID",
         allow_hyphen_values = true
     )]
     pub(crate) recording_id: Option<String>,
     #[arg(
         long,
-        help = "Sort by addedAt, createdAt, startTime, or endTime",
+        help = "Field to sort episodes by: addedAt (when the episode joined the dataset), createdAt, startTime, or endTime (default: addedAt)",
         allow_hyphen_values = true
     )]
     pub(crate) sort_by: Option<String>,
-    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true
+    )]
     pub(crate) sort_order: Option<String>,
     #[arg(
         long,
-        help = "Start of episode time range (ISO 8601)",
+        help = "Start of a time range the episode's window must overlap (ISO 8601); give with --end",
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
@@ -509,12 +525,12 @@ pub(crate) struct EpisodeListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "End of episode time range (ISO 8601)",
+        help = "End of a time range the episode's window must overlap (ISO 8601); give with --start",
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
     #[arg(
-        long, help = "Keep only episodes that have, or have not, lost a member recording",
+        long, help = "Filter to episodes with, or without, recordings that are no longer available",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -534,31 +550,39 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of episodes (default: 2000)",
+        help = "Maximum number of items to return (default: 2000)",
         allow_hyphen_values = true
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(long, help = "Number of episodes to skip", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Filter episodes by project", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
-        help = "Keep only episodes covering this recording ID",
+        help = "Filter to episodes containing this recording display ID",
         allow_hyphen_values = true
     )]
     pub(crate) recording_id: Option<String>,
     #[arg(
         long,
-        help = "Sort by createdAt, startTime, or endTime",
+        help = "Field to sort episodes by: createdAt, startTime, or endTime (default: createdAt)",
         allow_hyphen_values = true
     )]
     pub(crate) sort_by: Option<String>,
-    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true
+    )]
     pub(crate) sort_order: Option<String>,
     #[arg(
         long,
-        help = "Start of episode time range (ISO 8601)",
+        help = "Start of a time range the episode's window must overlap (ISO 8601); give with --end",
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
