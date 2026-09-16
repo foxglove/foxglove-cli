@@ -382,7 +382,7 @@ pub(crate) struct DatasetListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 2000)",
+        help = "Maximum number of items to return (0-2000, default: 2000)",
         allow_hyphen_values = true
     )]
     pub(crate) limit: Option<i64>,
@@ -441,7 +441,7 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 2000)",
+        help = "Maximum number of items to return (0-2000, default: 2000)",
         allow_hyphen_values = true
     )]
     pub(crate) limit: Option<i64>,
@@ -550,7 +550,7 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 2000)",
+        help = "Maximum number of items to return (0-2000, default: 2000)",
         allow_hyphen_values = true
     )]
     pub(crate) limit: Option<i64>,
