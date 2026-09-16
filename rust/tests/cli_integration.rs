@@ -748,12 +748,48 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         "Recordings for this episode are no longer available"
     );
 
+    // Skipped episodes still report progress, so the count never jumps.
+    let progress = String::from_utf8_lossy(&output.stderr);
+    assert!(progress.contains("Episode 1 of 2"), "{progress}");
+    assert!(progress.contains("Episode 2 of 2"), "{progress}");
+
     // The episode, not a device or recording, is what the stream request names.
     let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
     let stream: serde_json::Value = serde_json::from_str(body).unwrap();
     assert_eq!(stream["episodeId"], "ep_one");
     assert_eq!(stream["outputFormat"], "mcap");
     assert_eq!(stream["topics"][0], "/a");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_version_whose_episodes_are_all_skipped_is_not_a_failure() {
+    const DATASET: &str =
+        r#"{"id":"ds_one","projectId":"prj_default","name":"Gone","createdAt":"","updatedAt":""}"#;
+    const VERSIONS: &str =
+        r#"{"versions":[{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z"}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":1,"hasMissingRecordings":true,"episode":{"id":"ep_gone","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
+
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/1/episodes", EPISODES),
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(workspace.0.join("Gone-v1").join("manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "skipped");
 }
 
 #[test]

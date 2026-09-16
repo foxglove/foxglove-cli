@@ -1099,7 +1099,7 @@ async fn dispatch_api_command(
             data::import_from_edge(&runtime, &args).await
         }
         CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
-        CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command, writer).await,
+        CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
         CliCommand::Devices(DevicesCommand::Add(args)) => {
             devices::add_device(&runtime, &args).await
         }
@@ -1157,13 +1157,9 @@ async fn dispatch_api_command(
     }
 }
 
-async fn dispatch_dataset_command(
-    runtime: &runtime::Runtime,
-    command: DatasetsCommand,
-    writer: &mut dyn Write,
-) -> Outcome {
+async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsCommand) -> Outcome {
     match command {
-        DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args, writer).await,
+        DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await

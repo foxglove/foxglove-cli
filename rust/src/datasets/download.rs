@@ -237,11 +237,20 @@ async fn write_episode(
     let mut file = tokio::fs::File::create(path)
         .await
         .map_err(ApiError::Write)?;
-    let written = stream.copy_to(&mut file).await?;
-    tokio::io::AsyncWriteExt::flush(&mut file)
-        .await
-        .map_err(ApiError::Write)?;
-    Ok(written)
+    let result = match stream.copy_to(&mut file).await {
+        Ok(written) => tokio::io::AsyncWriteExt::flush(&mut file)
+            .await
+            .map(|()| written)
+            .map_err(ApiError::Write),
+        Err(error) => Err(error),
+    };
+    if result.is_err() {
+        // Nothing resumes a partial episode, so a truncated file is only a
+        // corrupt MCAP the manifest does not list.
+        drop(file);
+        let _ = tokio::fs::remove_file(path).await;
+    }
+    result
 }
 
 struct DownloadTally {
@@ -260,7 +269,6 @@ async fn download_episodes(
     episodes: &[DatasetEpisode],
     topics: Option<&[String]>,
     directory: &Path,
-    writer: &mut dyn Write,
 ) -> Option<DownloadTally> {
     let cancellation = crate::api::ctrl_c_cancellation_token();
     let mut tally = DownloadTally {
@@ -290,34 +298,36 @@ async fn download_episodes(
                 None,
                 Some("Recordings for this episode are no longer available".to_owned()),
             ));
-            continue;
-        }
-        let name = episode_file_name(index, &entry.episode.id);
-        let request = StreamRequest {
-            episode_id: entry.episode.id.clone(),
-            output_format: "mcap".to_owned(),
-            include_attachments: args.include_attachments,
-            topics: topics.map(<[String]>::to_vec).unwrap_or_default(),
-            ..StreamRequest::default()
-        };
-        match write_episode(runtime, &request, &directory.join(&name), &cancellation).await {
-            Ok(written) => {
-                bytes += written;
-                tally.downloaded += 1;
-                tally
-                    .episodes
-                    .push(base("downloaded", Some(name), Some(written), None));
+        } else {
+            let name = episode_file_name(index, &entry.episode.id);
+            let request = StreamRequest {
+                episode_id: entry.episode.id.clone(),
+                output_format: "mcap".to_owned(),
+                include_attachments: args.include_attachments,
+                topics: topics.map(<[String]>::to_vec).unwrap_or_default(),
+                ..StreamRequest::default()
+            };
+            match write_episode(runtime, &request, &directory.join(&name), &cancellation).await {
+                Ok(written) => {
+                    bytes += written;
+                    tally.downloaded += 1;
+                    tally
+                        .episodes
+                        .push(base("downloaded", Some(name), Some(written), None));
+                }
+                Err(error) if error.is_cancelled() => return None,
+                Err(error) => {
+                    tally.failed += 1;
+                    tally
+                        .episodes
+                        .push(base("failed", None, None, Some(error.to_string())));
+                }
             }
-            Err(error) if error.is_cancelled() => return None,
-            Err(error) => {
-                tally.failed += 1;
-                tally
-                    .episodes
-                    .push(base("failed", None, None, Some(error.to_string())));
-            }
         }
+        // Progress belongs on stderr, as it does for `data export`, so nothing
+        // this command prints can be mistaken for output.
         let _ = writeln!(
-            writer,
+            std::io::stderr(),
             "Episode {} of {} \u{2014} {bytes} bytes written",
             index + 1,
             episodes.len()
@@ -326,11 +336,7 @@ async fn download_episodes(
     Some(tally)
 }
 
-pub(crate) async fn download_dataset(
-    runtime: &Runtime,
-    args: &DatasetDownloadArgs,
-    writer: &mut dyn Write,
-) -> Outcome {
+pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
     let dataset = match fetch_dataset(runtime, &args.dataset_id).await {
         Ok(dataset) => dataset,
         Err(error) if error.is_not_found() => {
@@ -365,15 +371,7 @@ pub(crate) async fn download_dataset(
     }
 
     let topics = topic_list(args.topics.as_deref());
-    let tally = download_episodes(
-        runtime,
-        args,
-        &episodes,
-        topics.as_deref(),
-        &directory,
-        writer,
-    )
-    .await;
+    let tally = download_episodes(runtime, args, &episodes, topics.as_deref(), &directory).await;
     let Some(tally) = tally else {
         return Outcome {
             exit_code: 130,
@@ -420,7 +418,10 @@ pub(crate) async fn download_dataset(
         episodes.len(),
         directory.display()
     );
-    if downloaded == 0 && !episodes.is_empty() {
+    // Matches downloadDatasetVersion.ts, which fails only when it attempted at
+    // least one episode and none of them arrived. A version whose episodes were
+    // all skipped finished correctly and has a manifest that says so.
+    if downloaded == 0 && failed > 0 {
         return Outcome::failure(summary);
     }
     Outcome {
