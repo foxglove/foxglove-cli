@@ -202,9 +202,9 @@ List datasets:
 
 ```
 $ foxglove datasets list
-ID | Name | Project ID | Description | Episode Count | Created By | Created At | Updated At
---- | --- | --- | --- | --- | --- | --- | ---
-ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | Adrian | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
+ID | Name | Project ID | Description | Episode Count | Created At | Updated At
+--- | --- | --- | --- | --- | --- | ---
+ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
 ```
 
 List episodes, optionally narrowing to a time range, a member recording, or

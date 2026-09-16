@@ -7,8 +7,8 @@ use crate::cli::{DatasetEpisodeListArgs, DatasetListArgs};
 use crate::episodes::{include_recordings, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, creator_name, format_output, is_zero, null_to_default, optional_bool,
-    warn_if_truncated, Creator, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_output, is_zero, null_to_default, optional_bool, warn_if_truncated,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -23,8 +23,6 @@ struct Dataset {
     description: String,
     #[serde(rename = "episodeCount", default, deserialize_with = "null_to_default")]
     episode_count: i64,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    creator: Option<Creator>,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "updatedAt")]
@@ -39,7 +37,6 @@ impl Record for Dataset {
             "Project ID",
             "Description",
             "Episode Count",
-            "Created By",
             "Created At",
             "Updated At",
         ]
@@ -52,7 +49,6 @@ impl Record for Dataset {
             self.project_id.clone(),
             self.description.clone(),
             self.episode_count.to_string(),
-            creator_name(self.creator.as_ref()),
             self.created_at.clone(),
             self.updated_at.clone(),
         ]
@@ -86,7 +82,6 @@ impl Record for DatasetEpisode {
             "Metadata",
             "Added At",
             "Added In Version",
-            "Created By",
             "Created At",
         ]
     }
@@ -102,7 +97,6 @@ impl Record for DatasetEpisode {
             compact_json(&self.episode.metadata),
             self.added_at.clone(),
             self.added_in_version.to_string(),
-            creator_name(self.episode.creator.as_ref()),
             self.episode.created_at.clone(),
         ]
     }
@@ -234,20 +228,6 @@ mod tests {
                 assert_eq!(output[field], expected, "{field}");
             }
         }
-    }
-
-    #[test]
-    fn the_creator_display_name_fills_the_created_by_cell() {
-        let record: Dataset = serde_json::from_value(serde_json::json!({
-            "id": "ds_fixture",
-            "projectId": "prj_default",
-            "name": "Fixture",
-            "createdAt": "2024-01-02T03:04:05Z",
-            "updatedAt": "2024-01-02T03:04:06Z",
-            "creator": {"type": "api-key", "displayName": "CI key", "isDeleted": false},
-        }))
-        .unwrap();
-        assert_eq!(record.fields()[5], "CI key");
     }
 
     #[test]

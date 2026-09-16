@@ -514,7 +514,7 @@ fn expected_pairs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn dataset_list_filters_reach_the_api() {
-    const DATASETS: &str = r#"[{"id":"ds_one","projectId":"prj_explicit","name":"Highway","description":"Merges","episodeCount":2,"creator":{"type":"org-member","displayName":"Ada","isDeleted":false},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}]"#;
+    const DATASETS: &str = r#"[{"id":"ds_one","projectId":"prj_explicit","name":"Highway","description":"Merges","episodeCount":2,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}]"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/datasets", DATASETS)]);
     let output = Process::spawn(workspace.command(&server.url).args([
@@ -535,9 +535,9 @@ fn dataset_list_filters_reach_the_api() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID | Name | Project ID | Description | Episode Count | Created By | Created At | Updated At\n\
-         --- | --- | --- | --- | --- | --- | --- | ---\n\
-         ds_one | Highway | prj_explicit | Merges | 2 | Ada | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z\n"
+        "ID | Name | Project ID | Description | Episode Count | Created At | Updated At\n\
+         --- | --- | --- | --- | --- | --- | ---\n\
+         ds_one | Highway | prj_explicit | Merges | 2 | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -583,9 +583,9 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Created By | Created At\n\
-         --- | --- | --- | --- | --- | --- | --- | --- | ---\n\
-         ep_one | prj_explicit | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z | rec_one | true | {\"run\":7} |  | 2024-01-02T03:04:07Z\n"
+        "ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Created At\n\
+         --- | --- | --- | --- | --- | --- | --- | ---\n\
+         ep_one | prj_explicit | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z | rec_one | true | {\"run\":7} | 2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -607,7 +607,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn dataset_episode_membership_is_rendered_alongside_the_episode() {
-    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"hasMissingRecordings":false,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"creator":{"type":"api-key","displayName":"CI key","isDeleted":false},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"hasMissingRecordings":false,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "GET",
@@ -627,9 +627,9 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Episode ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Added At | Added In Version | Created By | Created At\n\
-         --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---\n\
-         ep_one | prj_default | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z |  | false | {} | 2024-01-02T03:04:08Z | 3 | CI key | 2024-01-02T03:04:07Z\n"
+        "Episode ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Added At | Added In Version | Created At\n\
+         --- | --- | --- | --- | --- | --- | --- | --- | --- | ---\n\
+         ep_one | prj_default | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z |  | false | {} | 2024-01-02T03:04:08Z | 3 | 2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),

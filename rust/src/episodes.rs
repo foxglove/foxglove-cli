@@ -6,8 +6,8 @@ use serde_json::Value;
 use crate::cli::EpisodeListArgs;
 use crate::output::Format;
 use crate::records::{
-    compact_json, creator_name, format_output, is_zero, optional_bool, parse_timestamp,
-    warn_if_truncated, Creator, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_output, is_zero, optional_bool, parse_timestamp, warn_if_truncated,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -46,8 +46,6 @@ pub(crate) struct Episode {
         default
     )]
     pub(crate) has_missing_recordings: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) creator: Option<Creator>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
 }
@@ -76,7 +74,6 @@ impl Record for Episode {
             "Recordings",
             "Missing Recordings",
             "Metadata",
-            "Created By",
             "Created At",
         ]
     }
@@ -90,7 +87,6 @@ impl Record for Episode {
             self.recording_ids(),
             optional_bool(self.has_missing_recordings),
             compact_json(&self.metadata),
-            creator_name(self.creator.as_ref()),
             self.created_at.clone(),
         ]
     }
@@ -204,7 +200,7 @@ mod tests {
         }))
         .unwrap();
         let output = serde_json::to_value(&record).unwrap();
-        for field in ["recordings", "hasMissingRecordings", "creator"] {
+        for field in ["recordings", "hasMissingRecordings"] {
             assert!(output.get(field).is_none(), "{field}");
         }
         assert_eq!(record.recording_ids(), "");
