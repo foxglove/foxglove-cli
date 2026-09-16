@@ -173,7 +173,16 @@ pub(crate) async fn list_episodes(
         .get::<_, EpisodeListResponse>("/v1/episodes", &query)
         .await
     {
-        Ok(response) => format_output(&response.episodes, format),
+        Ok(mut response) => {
+            for episode in &mut response.episodes {
+                // /v1/episodes sets this only when recordings are requested; the
+                // filter already decided it for every row it returned.
+                episode.has_missing_recordings = episode
+                    .has_missing_recordings
+                    .or(args.has_missing_recordings);
+            }
+            format_output(&response.episodes, format)
+        }
         Err(error) => Outcome::failure(format!("Failed to list episodes: {error}\n")),
     }
 }

@@ -515,7 +515,7 @@ pub(crate) struct EpisodeListArgs {
     )]
     pub(crate) has_missing_recordings: Option<bool>,
     #[arg(
-        long, help = "Include the member recordings of each episode",
+        long, help = "Include the member recordings of each episode, and report whether any are missing",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,

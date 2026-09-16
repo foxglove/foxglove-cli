@@ -638,6 +638,34 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn the_missing_recordings_filter_fills_the_column_it_selected_on() {
+    const EPISODE: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}]}"#;
+    let workspace = Workspace::new();
+    for (flag, expected) in [
+        (Some("--has-missing-recordings"), "true"),
+        (Some("--has-missing-recordings=false"), "false"),
+        (None, ""),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODE)]);
+        let mut command = workspace.command(&server.url);
+        command.args(["episodes", "list"]);
+        if let Some(flag) = flag {
+            command.arg(flag);
+        }
+        let output = Process::spawn(&mut command).finish();
+        assert_success(&output);
+        let row = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .last()
+            .unwrap()
+            .to_owned();
+        assert_eq!(row.split(" | ").nth(5).unwrap(), expected, "{flag:?}");
+        server.finish();
+    }
+}
+
+#[test]
 fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
     for args in [
