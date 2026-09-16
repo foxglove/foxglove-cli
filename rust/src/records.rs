@@ -24,6 +24,26 @@ pub(crate) struct DeviceSummary {
     pub(crate) id: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub(crate) struct Creator {
+    #[serde(rename = "type", default)]
+    pub(crate) kind: String,
+    #[serde(rename = "displayName", default)]
+    pub(crate) display_name: String,
+    #[serde(rename = "isDeleted", default)]
+    pub(crate) is_deleted: bool,
+}
+
+pub(crate) fn creator_name(creator: Option<&Creator>) -> String {
+    creator
+        .map(|creator| creator.display_name.clone())
+        .unwrap_or_default()
+}
+
+pub(crate) fn optional_bool(value: Option<bool>) -> String {
+    value.map(|value| value.to_string()).unwrap_or_default()
+}
+
 pub(crate) trait Record: Serialize {
     fn headers() -> &'static [&'static str];
     fn fields(&self) -> Vec<String>;

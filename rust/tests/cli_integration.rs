@@ -436,6 +436,12 @@ fn identifier_paths_are_escaped_for_every_command() {
             "/v1/recording-attachments/drive%231%3F%2F%5C%25%20snow%E2%98%83/download",
             "attachment",
         ),
+        (
+            &["datasets", "episodes", "list", KEY],
+            "GET",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
+            r#"{"episodes":[]}"#,
+        ),
     ];
     let workspace = Workspace::new();
     for &(args, method, path, body) in cases {
@@ -487,4 +493,171 @@ fn empty_environment_overrides_use_saved_configuration() {
     assert_eq!(requests.len(), 1);
     assert!(requests[0].contains("projectId=saved-project"));
     assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}
+
+fn query_pairs(request: &str) -> BTreeMap<String, String> {
+    let target = request.split_whitespace().nth(1).unwrap();
+    reqwest::Url::parse(&format!("http://localhost{target}"))
+        .unwrap()
+        .query_pairs()
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
+        .collect()
+}
+
+fn expected_pairs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|&(name, value)| (name.to_owned(), value.to_owned()))
+        .collect()
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn dataset_list_filters_reach_the_api() {
+    const DATASETS: &str = r#"[{"id":"ds_one","projectId":"prj_explicit","name":"Highway","description":"Merges","episodeCount":2,"creator":{"type":"org-member","displayName":"Ada","isDeleted":false},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/datasets", DATASETS)]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "datasets",
+        "list",
+        "--project-id",
+        "prj_explicit",
+        "--limit",
+        "10",
+        "--offset",
+        "5",
+        "--sort-by",
+        "name",
+        "--sort-order",
+        "desc",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID | Name | Project ID | Description | Episode Count | Created By | Created At | Updated At\n\
+         --- | --- | --- | --- | --- | --- | --- | ---\n\
+         ds_one | Highway | prj_explicit | Merges | 2 | Ada | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z\n"
+    );
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("limit", "10"),
+            ("offset", "5"),
+            ("projectId", "prj_explicit"),
+            ("sortBy", "name"),
+            ("sortOrder", "desc"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
+    const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"hasMissingRecordings":true,"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODES)]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "episodes",
+        "list",
+        "--project-id",
+        "prj_explicit",
+        "--start",
+        "2024-01-02",
+        "--end",
+        "2024-01-03",
+        "--recording-id",
+        "rec_one",
+        "--has-missing-recordings",
+        "--include-recordings",
+        "--limit",
+        "10",
+        "--offset",
+        "5",
+        "--sort-by",
+        "startTime",
+        "--sort-order",
+        "desc",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Created By | Created At\n\
+         --- | --- | --- | --- | --- | --- | --- | --- | ---\n\
+         ep_one | prj_explicit | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z | rec_one | true | {\"run\":7} |  | 2024-01-02T03:04:07Z\n"
+    );
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("end", "2024-01-03T00:00:00Z"),
+            ("hasMissingRecordings", "true"),
+            ("include", "recordings"),
+            ("limit", "10"),
+            ("offset", "5"),
+            ("projectId", "prj_explicit"),
+            ("recordingId", "rec_one"),
+            ("sortBy", "startTime"),
+            ("sortOrder", "desc"),
+            ("start", "2024-01-02T00:00:00Z"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn dataset_episode_membership_is_rendered_alongside_the_episode() {
+    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"hasMissingRecordings":false,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"creator":{"type":"api-key","displayName":"CI key","isDeleted":false},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/episodes",
+        EPISODES,
+    )]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "datasets",
+        "episodes",
+        "list",
+        "ds_one",
+        "--has-missing-recordings=false",
+        "--sort-by",
+        "addedAt",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Episode ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Added At | Added In Version | Created By | Created At\n\
+         --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | ---\n\
+         ep_one | prj_default | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z |  | false | {} | 2024-01-02T03:04:08Z | 3 | CI key | 2024-01-02T03:04:07Z\n"
+    );
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("hasMissingRecordings", "false"), ("sortBy", "addedAt")])
+    );
+}
+
+#[test]
+fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
+    let workspace = Workspace::new();
+    for args in [
+        vec!["episodes", "list", "--start", "2024-01-02"],
+        vec!["episodes", "list", "--end", "2024-01-03"],
+        vec![
+            "datasets",
+            "episodes",
+            "list",
+            "ds_one",
+            "--start",
+            "2024-01-02",
+        ],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "both --start and --end must be specified, or neither\n",
+            "{args:?}"
+        );
+    }
 }

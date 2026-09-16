@@ -13,8 +13,8 @@ use serde_yaml_ng::Value;
 use crate::config::Config;
 use crate::output::Format;
 use crate::{
-    attachments, auth, data, devices, event_types, events, extensions, pending_imports, projects,
-    recordings, runtime, sessions, topics,
+    attachments, auth, data, datasets, devices, episodes, event_types, events, extensions,
+    pending_imports, projects, recordings, runtime, sessions, topics,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -75,8 +75,12 @@ enum CliCommand {
     Config(ConfigCommand),
     #[command(about = "Data access and management", subcommand)]
     Data(DataCommand),
+    #[command(about = "List datasets and their episodes", subcommand)]
+    Datasets(DatasetsCommand),
     #[command(about = "List and manage devices", subcommand)]
     Devices(DevicesCommand),
+    #[command(about = "List episodes", subcommand)]
+    Episodes(EpisodesCommand),
     #[command(name = "event-types", about = "List event types", subcommand)]
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
@@ -359,6 +363,97 @@ pub(crate) struct DataImportArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum DatasetsCommand {
+    #[command(about = "List the episodes in a dataset", subcommand)]
+    Episodes(DatasetEpisodesCommand),
+    #[command(about = "List datasets")]
+    List(DatasetListArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum DatasetEpisodesCommand {
+    #[command(about = "List the episodes in a dataset")]
+    List(DatasetEpisodeListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Maximum number of datasets", allow_hyphen_values = true)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Number of datasets to skip", allow_hyphen_values = true)]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Sort by name, createdAt, or updatedAt",
+        allow_hyphen_values = true
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    pub(crate) sort_order: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodeListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "End of episode time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(
+        long, help = "Keep only episodes that have, or have not, lost a member recording",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
+        long, help = "Include the member recordings of each episode",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_recordings: bool,
+    #[arg(long, help = "Maximum number of episodes", allow_hyphen_values = true)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Number of episodes to skip", allow_hyphen_values = true)]
+    pub(crate) offset: Option<i64>,
+    #[arg(
+        long,
+        help = "Keep only episodes covering this recording ID",
+        allow_hyphen_values = true
+    )]
+    pub(crate) recording_id: Option<String>,
+    #[arg(
+        long,
+        help = "Sort by addedAt, createdAt, startTime, or endTime",
+        allow_hyphen_values = true
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Start of episode time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum DevicesCommand {
     #[command(about = "Add a device for your organization")]
     Add(DeviceWriteArgs),
@@ -392,6 +487,69 @@ pub(crate) struct DeviceListArgs {
     format: FormatArgs,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EpisodesCommand {
+    #[command(about = "List episodes")]
+    List(EpisodeListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "End of episode time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(
+        long, help = "Keep only episodes that have, or have not, lost a member recording",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
+        long, help = "Include the member recordings of each episode",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_recordings: bool,
+    #[arg(long, help = "Maximum number of episodes", allow_hyphen_values = true)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Number of episodes to skip", allow_hyphen_values = true)]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Keep only episodes covering this recording ID",
+        allow_hyphen_values = true
+    )]
+    pub(crate) recording_id: Option<String>,
+    #[arg(
+        long,
+        help = "Sort by createdAt, startTime, or endTime",
+        allow_hyphen_values = true
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(long, help = "Sort order: asc or desc", allow_hyphen_values = true)]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Start of episode time range (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -891,6 +1049,14 @@ async fn dispatch_api_command(
             data::import_from_edge(&runtime, &args).await
         }
         CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
+        CliCommand::Datasets(DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args))) => {
+            let format = args.format.format;
+            datasets::list_dataset_episodes(&runtime, &args, format).await
+        }
+        CliCommand::Datasets(DatasetsCommand::List(args)) => {
+            let format = args.format.format;
+            datasets::list_datasets(&runtime, &args, format).await
+        }
         CliCommand::Devices(DevicesCommand::Add(args)) => {
             devices::add_device(&runtime, &args).await
         }
@@ -900,6 +1066,10 @@ async fn dispatch_api_command(
         CliCommand::Devices(DevicesCommand::List(args)) => {
             let format = args.format.format;
             devices::list_devices(&runtime, &args, format).await
+        }
+        CliCommand::Episodes(EpisodesCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_episodes(&runtime, &args, format).await
         }
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
             event_types::list_event_types(&runtime, args.format).await

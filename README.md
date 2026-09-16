@@ -192,6 +192,39 @@ $ foxglove events list
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
+### Datasets and episodes
+
+An episode is a time window over one or more recordings; a dataset is a named,
+versioned collection of episodes. Both require a plan that supports
+[datasets](https://docs.foxglove.dev/docs/datasets).
+
+List datasets:
+
+```
+$ foxglove datasets list
+ID | Name | Project ID | Description | Episode Count | Created By | Created At | Updated At
+--- | --- | --- | --- | --- | --- | --- | ---
+ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | Adrian | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
+```
+
+List episodes, optionally narrowing to a time range, a member recording, or
+episodes whose recordings have since been deleted:
+
+```
+$ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recordings
+$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
+```
+
+List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
+on when each episode joined the dataset:
+
+```
+$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-order desc
+```
+
+Member recordings are omitted unless you pass `--include-recordings`, which also
+populates the missing-recordings column on `foxglove episodes list`.
+
 ### Extensions
 
 With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share
