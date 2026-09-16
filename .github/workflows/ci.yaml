@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: foxglove/go.mod
+          cache-dependency-path: foxglove/go.sum
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1
         with:
@@ -53,6 +54,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: foxglove/go.mod
+          cache-dependency-path: foxglove/go.sum
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.98.1
       - name: Test Rust suites including loopback contracts
