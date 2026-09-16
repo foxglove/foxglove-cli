@@ -633,7 +633,11 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
-        expected_pairs(&[("hasMissingRecordings", "false"), ("sortBy", "addedAt")])
+        expected_pairs(&[
+            ("hasMissingRecordings", "false"),
+            ("limit", "2000"),
+            ("sortBy", "addedAt"),
+        ])
     );
 }
 
@@ -662,6 +666,57 @@ fn the_missing_recordings_filter_fills_the_column_it_selected_on() {
             .to_owned();
         assert_eq!(row.split(" | ").nth(5).unwrap(), expected, "{flag:?}");
         server.finish();
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_full_page_reports_that_more_results_may_exist() {
+    fn page(count: usize) -> String {
+        let episodes = (0..count)
+            .map(|index| {
+                format!(
+                    r#"{{"id":"ep_{index}","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}"#
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(r#"{{"episodes":[{episodes}]}}"#)
+    }
+
+    let workspace = Workspace::new();
+    for (returned, requested, expected) in [
+        (
+            3,
+            "3",
+            "Showing the first 3 results. More may exist; use --offset to page through them.\n",
+        ),
+        (2, "3", ""),
+        (0, "0", ""),
+    ] {
+        let body = page(returned);
+        let server = Server::new(vec![Reply {
+            body: body.into_bytes(),
+            ..Reply::json("GET", "/v1/episodes", "")
+        }]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["episodes", "list", "--limit", requested]),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{returned} of {requested}"
+        );
+        assert_eq!(
+            query_pairs(&server.finish()[0])
+                .get("limit")
+                .map(String::as_str),
+            Some(requested)
+        );
     }
 }
 

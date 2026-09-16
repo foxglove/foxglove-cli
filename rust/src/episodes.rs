@@ -6,8 +6,8 @@ use serde_json::Value;
 use crate::cli::EpisodeListArgs;
 use crate::output::Format;
 use crate::records::{
-    compact_json, creator_name, format_output, is_zero, optional_bool, parse_timestamp, Creator,
-    ProjectFallback, Record,
+    compact_json, creator_name, format_output, is_zero, optional_bool, parse_timestamp,
+    warn_if_truncated, Creator, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -111,7 +111,6 @@ struct EpisodeListQuery {
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
-    #[serde(skip_serializing_if = "is_zero")]
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -156,11 +155,12 @@ pub(crate) async fn list_episodes(
         Ok(range) => range,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
-        limit: args.limit.unwrap_or_default(),
+        limit,
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
@@ -181,7 +181,8 @@ pub(crate) async fn list_episodes(
                     .has_missing_recordings
                     .or(args.has_missing_recordings);
             }
-            format_output(&response.episodes, format)
+            let count = response.episodes.len();
+            warn_if_truncated(format_output(&response.episodes, format), count, limit)
         }
         Err(error) => Outcome::failure(format!("Failed to list episodes: {error}\n")),
     }

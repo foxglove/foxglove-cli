@@ -380,7 +380,11 @@ enum DatasetEpisodesCommand {
 pub(crate) struct DatasetListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Maximum number of datasets", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of datasets (default: 2000)",
+        allow_hyphen_values = true
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of datasets to skip", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
@@ -427,7 +431,11 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
-    #[arg(long, help = "Maximum number of episodes", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of episodes (default: 2000)",
+        allow_hyphen_values = true
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of episodes to skip", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
@@ -524,7 +532,11 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
-    #[arg(long, help = "Maximum number of episodes", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of episodes (default: 2000)",
+        allow_hyphen_values = true
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of episodes to skip", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,

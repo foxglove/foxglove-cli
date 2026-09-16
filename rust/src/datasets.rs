@@ -7,8 +7,8 @@ use crate::cli::{DatasetEpisodeListArgs, DatasetListArgs};
 use crate::episodes::{include_recordings, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, creator_name, fetch_list, format_output, is_zero, null_to_default, optional_bool,
-    Creator, ProjectFallback, Record,
+    compact_json, creator_name, format_output, is_zero, null_to_default, optional_bool,
+    warn_if_truncated, Creator, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -117,7 +117,6 @@ struct DatasetEpisodeListResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DatasetListQuery {
-    #[serde(skip_serializing_if = "is_zero")]
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -138,7 +137,6 @@ struct DatasetEpisodeListQuery {
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
-    #[serde(skip_serializing_if = "is_zero")]
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -157,21 +155,22 @@ pub(crate) async fn list_datasets(
     args: &DatasetListArgs,
     format: Format,
 ) -> Outcome {
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetListQuery {
-        limit: args.limit.unwrap_or_default(),
+        limit,
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
     };
-    fetch_list::<Dataset, _>(
-        runtime,
-        format,
-        "Failed to list datasets",
-        "/v1/datasets",
-        &query,
-    )
-    .await
+    match runtime
+        .client
+        .get::<_, Vec<Dataset>>("/v1/datasets", &query)
+        .await
+    {
+        Ok(datasets) => warn_if_truncated(format_output(&datasets, format), datasets.len(), limit),
+        Err(error) => Outcome::failure(format!("Failed to list datasets: {error}\n")),
+    }
 }
 
 pub(crate) async fn list_dataset_episodes(
@@ -183,11 +182,12 @@ pub(crate) async fn list_dataset_episodes(
         Ok(range) => range,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
-        limit: args.limit.unwrap_or_default(),
+        limit,
         offset: args.offset.unwrap_or_default(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
@@ -203,7 +203,10 @@ pub(crate) async fn list_dataset_episodes(
         .get::<_, DatasetEpisodeListResponse>(&endpoint, &query)
         .await
     {
-        Ok(response) => format_output(&response.episodes, format),
+        Ok(response) => {
+            let count = response.episodes.len();
+            warn_if_truncated(format_output(&response.episodes, format), count, limit)
+        }
         Err(error) if error.is_not_found() => {
             Outcome::failure(format!("Dataset not found: {}\n", args.dataset_id))
         }

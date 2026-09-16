@@ -225,6 +225,9 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 Member recordings are omitted unless you pass `--include-recordings`, which also
 populates the missing-recordings column on `foxglove episodes list`.
 
+Each list returns at most 2000 rows. A full page prints a note on stderr, because
+the API reports no total; page through the rest with `--offset`.
+
 ### Extensions
 
 With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share
