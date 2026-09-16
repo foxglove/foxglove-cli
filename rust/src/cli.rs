@@ -364,10 +364,42 @@ pub(crate) struct DataImportArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetsCommand {
+    #[command(about = "Download a committed dataset version")]
+    Download(DatasetDownloadArgs),
     #[command(about = "List the episodes in a dataset", subcommand)]
     Episodes(DatasetEpisodesCommand),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetDownloadArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long, help = "Include MCAP attachments",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_attachments: bool,
+    #[arg(long, short = 'o', help = "Output directory (default: the dataset name and version)", value_hint = ValueHint::DirPath, allow_hyphen_values = true)]
+    pub(crate) output: Option<String>,
+    #[arg(
+        long,
+        help = "Comma-separated topic list (default: all topics)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) topics: Option<String>,
+    #[arg(
+        long,
+        help = "Committed version to download (default: the newest committed version)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) version: Option<i64>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1067,14 +1099,7 @@ async fn dispatch_api_command(
             data::import_from_edge(&runtime, &args).await
         }
         CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
-        CliCommand::Datasets(DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args))) => {
-            let format = args.format.format;
-            datasets::list_dataset_episodes(&runtime, &args, format).await
-        }
-        CliCommand::Datasets(DatasetsCommand::List(args)) => {
-            let format = args.format.format;
-            datasets::list_datasets(&runtime, &args, format).await
-        }
+        CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command, writer).await,
         CliCommand::Devices(DevicesCommand::Add(args)) => {
             devices::add_device(&runtime, &args).await
         }
@@ -1129,6 +1154,24 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_dataset_command(
+    runtime: &runtime::Runtime,
+    command: DatasetsCommand,
+    writer: &mut dyn Write,
+) -> Outcome {
+    match command {
+        DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args, writer).await,
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
+            let format = args.format.format;
+            datasets::list_dataset_episodes(runtime, &args, format).await
+        }
+        DatasetsCommand::List(args) => {
+            let format = args.format.format;
+            datasets::list_datasets(runtime, &args, format).await
+        }
     }
 }
 

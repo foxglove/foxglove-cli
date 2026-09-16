@@ -223,6 +223,23 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 
 Member recordings are omitted unless you pass `--include-recordings`.
 
+Download a committed version of a dataset. The CLI writes one MCAP file per
+episode plus a `manifest.json`, in the same layout and with the same manifest
+the in-app download produces, so the two are interchangeable:
+
+```
+$ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
+Episode 1 of 128 — 41231 bytes written
+...
+Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
+```
+
+Without `--version` the newest committed version is used; a dataset's editable
+version is never downloaded, because its contents can change mid-transfer.
+Episodes whose recordings are no longer available are recorded in the manifest
+as skipped. Narrow the payload with `--topics`, and choose where it lands with
+`--output`.
+
 ### Extensions
 
 With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share

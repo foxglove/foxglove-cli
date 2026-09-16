@@ -689,6 +689,74 @@ fn a_full_page_reports_that_more_results_may_exist() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
+    const DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway merges","createdAt":"","updatedAt":""}"#;
+    const VERSIONS: &str = r#"{"versions":[{"versionNumber":3,"committedAt":"2024-01-01T00:00:00Z"},{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"},{"versionNumber":5}]}"#;
+    const EPISODES: &str = r#"{"episodes":[
+        {"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":false,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"createdAt":"2024-01-02T03:04:07Z"}},
+        {"addedAt":"2024-01-02T03:04:09Z","addedInVersion":4,"hasMissingRecordings":true,"episode":{"id":"ep_gone","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}
+    ]}"#;
+
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", EPISODES),
+        Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"link":"{BASE_URL}/download"}"#,
+        ),
+        Reply {
+            body: b"episode-bytes".to_vec(),
+            ..Reply::json("GET", "/download", "")
+        },
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one", "--topics", "/a, /b"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 5);
+
+    // The newest committed version wins; the editable version 5 is never chosen.
+    let root = workspace.0.join("Highway-merges-v4");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        b"episode-bytes"
+    );
+    assert!(!root.join("episode_0001_ep_gone.mcap").exists());
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["formatVersion"], 1);
+    assert_eq!(manifest["dataset"]["name"], "Highway merges");
+    assert_eq!(manifest["version"]["versionNumber"], 4);
+    assert_eq!(manifest["version"]["committedAt"], "2024-01-02T00:00:00Z");
+    assert_eq!(manifest["selection"]["episodeCount"], 2);
+    assert_eq!(manifest["selection"]["topics"][1], "/b");
+    assert_eq!(manifest["episodes"][0]["status"], "downloaded");
+    assert_eq!(manifest["episodes"][0]["byteSize"], 13);
+    assert_eq!(manifest["episodes"][0]["file"], "episode_0000_ep_one.mcap");
+    assert_eq!(manifest["episodes"][1]["status"], "skipped");
+    assert_eq!(
+        manifest["episodes"][1]["reason"],
+        "Recordings for this episode are no longer available"
+    );
+
+    // The episode, not a device or recording, is what the stream request names.
+    let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
+    let stream: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(stream["episodeId"], "ep_one");
+    assert_eq!(stream["outputFormat"], "mcap");
+    assert_eq!(stream["topics"][0], "/a");
+}
+
+#[test]
 fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
     for args in [

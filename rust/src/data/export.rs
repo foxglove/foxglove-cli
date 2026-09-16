@@ -145,6 +145,7 @@ fn stream_request(args: &DataExportArgs) -> Result<StreamRequest, String> {
         output_format_value
     };
     let request = StreamRequest {
+        episode_id: String::new(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         key: args.key.clone().unwrap_or_default(),
         import_id: args.import_id.clone().unwrap_or_default(),

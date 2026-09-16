@@ -1,5 +1,9 @@
 //! Dataset commands.
 
+mod download;
+
+pub(crate) use download::download_dataset;
+
 use serde::{Deserialize, Serialize};
 
 use crate::api::encode_path_segment;
@@ -56,12 +60,14 @@ impl Record for Dataset {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct DatasetEpisode {
+pub(crate) struct DatasetEpisode {
     #[serde(rename = "addedAt")]
     added_at: String,
     #[serde(rename = "addedInVersion")]
     added_in_version: i64,
-    episode: Episode,
+    #[serde(rename = "hasMissingRecordings", skip_serializing, default)]
+    pub(crate) has_missing_recordings: Option<bool>,
+    pub(crate) episode: Episode,
 }
 
 impl Record for DatasetEpisode {
@@ -95,9 +101,9 @@ impl Record for DatasetEpisode {
 }
 
 #[derive(Deserialize)]
-struct DatasetEpisodeListResponse {
+pub(crate) struct DatasetEpisodeListResponse {
     #[serde(default)]
-    episodes: Vec<DatasetEpisode>,
+    pub(crate) episodes: Vec<DatasetEpisode>,
 }
 
 #[derive(Serialize)]
