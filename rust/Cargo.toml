@@ -19,6 +19,7 @@ compat-test = []
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }
 clap = { version = "=4.6.4", default-features = false, features = ["derive", "error-context", "help", "std", "suggestions", "usage"] }
 clap_complete = { version = "=4.6.9", default-features = false }
+comfy-table = { version = "=8.0.0", default-features = false, features = ["tty"] }
 csv = { version = "=1.4.0", default-features = false }
 lz4_flex = { version = "=0.14.0", default-features = false, features = ["frame", "safe-decode", "safe-encode", "std"] }
 mcap = { version = "=0.25.0", default-features = false, features = ["lz4", "zstd"] }

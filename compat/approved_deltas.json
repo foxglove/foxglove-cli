@@ -28,11 +28,13 @@
       "stderr": ""
     },
     "compact-renderers": {
-      "reason": "Use serde_json compact serialization, RFC 4180 CSV serialization, and a simple pipe-delimited table instead of reproducing Go renderer internals.",
+      "reason": "Use serde_json compact serialization, RFC 4180 CSV serialization, and comfy-table for the table, instead of reproducing Go renderer internals. Columns are aligned and the table is arranged to the terminal width, wrapping a cell inside its own column rather than letting the row wrap. The Go table centered its headers, wrapped every row in outer pipes, and fell back to a vertical record layout; none of those are reproduced. Terminal width comes from `stty size` as it did in Go, because comfy-table only detects it on a real terminal and a piped stdout would otherwise arrange for unlimited width.",
       "invariants": [
         "JSON remains valid and ends with one newline.",
         "CSV includes a header and correctly escapes commas, quotes, and newlines.",
-        "Tables retain headers and rows in command order."
+        "Tables retain headers and rows in command order.",
+        "Table cells escape their own pipes and newlines.",
+        "No table line exceeds the terminal width, and no cell is truncated."
       ]
     },
     "clap-generated-help": {
