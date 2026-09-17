@@ -723,7 +723,6 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
     let requests = server.finish();
     assert_eq!(requests.len(), 5);
 
-    // The newest committed version wins; the editable version 5 is never chosen.
     let root = workspace.0.join("Highway-merges-v4");
     assert_eq!(
         fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
@@ -741,8 +740,6 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
     assert_eq!(manifest["selection"]["topics"][1], "/b");
     assert_eq!(manifest["episodes"][0]["status"], "downloaded");
     assert_eq!(manifest["episodes"][0]["byteSize"], 13);
-    // The app stores `<archive root>/<name>`, so the same consumer resolves
-    // either manifest against the directory the download landed beside.
     assert_eq!(
         manifest["episodes"][0]["file"],
         "Highway-merges-v4/episode_0000_ep_one.mcap"
@@ -753,8 +750,6 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         "Recordings for this episode are no longer available"
     );
 
-    // Skipped episodes still report progress, and the line says what happened
-    // to the episode rather than only the running total.
     let progress = String::from_utf8_lossy(&output.stderr);
     assert!(
         progress.contains("Episode 1 of 2 \u{2014} 13 bytes written"),
@@ -767,7 +762,6 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         "{progress}"
     );
 
-    // The episode index names the file, so the order has to be the app's.
     assert_eq!(
         query_pairs(&requests[2]),
         expected_pairs(&[
@@ -778,13 +772,11 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         ])
     );
 
-    // The episode, not a device or recording, is what the stream request names.
     let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
     let stream: serde_json::Value = serde_json::from_str(body).unwrap();
     assert_eq!(stream["episodeId"], "ep_one");
     assert_eq!(stream["outputFormat"], "mcap");
     assert_eq!(stream["topics"][0], "/a");
-    // The in-app download always asks for attachments, so this one does too.
     assert_eq!(stream["includeAttachments"], true);
 }
 
@@ -843,9 +835,6 @@ fn a_transient_stream_failure_is_retried_before_the_episode_is_recorded() {
     assert_eq!(manifest["episodes"][0]["status"], "downloaded");
 }
 
-/// A signed link that stops sending part way through the episode. The body is
-/// shorter than the declared length, so the transfer fails only after the CLI
-/// has already written some of the file.
 fn truncated_download() -> Reply {
     Reply {
         body: b"partial".to_vec(),
@@ -891,8 +880,6 @@ fn a_stream_that_stops_part_way_restarts_the_file_on_the_next_attempt() {
     assert_success(&output);
     assert_eq!(server.finish().len(), 7);
 
-    // The file holds only the bytes of the attempt that finished, so a
-    // restarted episode is a whole MCAP and not a spliced one.
     let root = workspace.0.join("Highway-merges-v4");
     assert_eq!(
         fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
@@ -929,7 +916,6 @@ fn a_stream_that_never_completes_leaves_no_partial_episode_behind() {
     )
     .finish();
     assert!(!output.status.success());
-    // Three attempts, and no fourth.
     assert_eq!(server.finish().len(), 9);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -942,8 +928,6 @@ fn a_stream_that_never_completes_leaves_no_partial_episode_behind() {
         "{stderr}"
     );
 
-    // The partial file is removed, and the manifest records the episode the
-    // directory does not hold.
     let root = workspace.0.join("Highway-merges-v4");
     assert!(!root.join("episode_0000_ep_one.mcap").exists());
     let manifest: serde_json::Value =
@@ -980,7 +964,6 @@ fn an_episode_that_could_not_be_downloaded_fails_the_run() {
             body: b"episode-bytes".to_vec(),
             ..Reply::json("GET", "/download", "")
         },
-        // A missing source is permanent, so it is not retried.
         Reply {
             status: 404,
             ..Reply::json("POST", "/v1/data/stream", "{}")
@@ -1005,7 +988,6 @@ fn an_episode_that_could_not_be_downloaded_fails_the_run() {
         "{stderr}"
     );
 
-    // The episode that did arrive, and the manifest describing both, are kept.
     let root = workspace.0.join("Highway-merges-v4");
     assert!(root.join("episode_0000_ep_one.mcap").exists());
     assert!(!root.join("episode_0001_ep_two.mcap").exists());

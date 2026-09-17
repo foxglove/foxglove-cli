@@ -93,10 +93,7 @@ pub struct Reply {
     pub path: &'static str,
     pub status: u16,
     pub body: Vec<u8>,
-    /// Promise more body than is sent, then hold the connection open.
     pub stall: bool,
-    /// Promise more body than is sent, then close. The client sees the transfer
-    /// fail after it has already accepted part of the response.
     pub truncate: bool,
 }
 

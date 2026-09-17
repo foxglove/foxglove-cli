@@ -17,16 +17,10 @@ use crate::records::DEFAULT_LIST_LIMIT;
 use crate::runtime::Runtime;
 use crate::Outcome;
 
-/// Mirrors `MANIFEST_FORMAT_VERSION` in the app's `downloadDatasetVersion.ts`,
-/// so a directory written here and an archive written there describe
-/// themselves the same way.
 const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const SLUG_MAX_CHARS: usize = 64;
 
-/// How many times one episode is requested before it is recorded as failed.
-/// A dataset large enough to need this command is large enough that a single
-/// dropped connection should not cost an episode.
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
 
@@ -103,8 +97,6 @@ struct Manifest {
     episodes: Vec<ManifestEpisode>,
 }
 
-/// Slug of the dataset name plus the version, matching `archiveRootName` in the
-/// app so the directory here and the unpacked archive there have one name.
 fn archive_root_name(dataset_name: &str, version_number: i64) -> String {
     let mut slug = String::new();
     let mut pending_dash = false;
@@ -127,8 +119,6 @@ fn archive_root_name(dataset_name: &str, version_number: i64) -> String {
     format!("{slug}-v{version_number}")
 }
 
-/// Matches `episodeFileName` in the app: a zero-padded position keeps the
-/// directory in episode order, and the id keeps it unambiguous.
 fn episode_file_name(index: usize, episode_id: &str) -> String {
     let mut safe = String::new();
     let mut pending_dash = false;
@@ -149,11 +139,6 @@ fn episode_file_name(index: usize, episode_id: &str) -> String {
     format!("episode_{index:04}_{safe}.mcap")
 }
 
-/// The leading component of every `file` path in the manifest. The app writes
-/// `<archive root>/<name>`, which resolves against the directory the archive was
-/// unpacked into, so the same rule here is the name of the directory the
-/// download landed in. Resolving the path first keeps `--output .` and a
-/// trailing slash from losing that name.
 fn manifest_prefix(directory: &Path, root: &str) -> String {
     std::fs::canonicalize(directory)
         .as_deref()
@@ -182,9 +167,6 @@ async fn fetch_dataset(runtime: &Runtime, id: &str) -> Result<DatasetSummary, Ap
         .await
 }
 
-/// Resolve the version to download: the requested one, or the newest committed
-/// one. The editable latest version is never chosen implicitly, because its
-/// contents change under the download.
 async fn resolve_version(
     runtime: &Runtime,
     id: &str,
@@ -212,13 +194,6 @@ async fn resolve_version(
     }
 }
 
-/// Page through every episode in the version. The endpoint caps a page, so a
-/// dataset larger than one page needs the whole walk before any download
-/// starts; the manifest has to describe the full selection.
-///
-/// The order is the app's, not the endpoint's default: each episode's position
-/// in this list becomes the index in its file name, so `startTime` here and
-/// `addedAt` there would name the same episode differently.
 async fn fetch_all_episodes(
     runtime: &Runtime,
     id: &str,
@@ -250,9 +225,6 @@ async fn fetch_all_episodes(
     }
 }
 
-/// Request the episode until it arrives, the error turns out to be permanent,
-/// or the attempts run out. Nothing resumes a partial episode, so each attempt
-/// starts the file again from the beginning.
 async fn write_episode(
     runtime: &Runtime,
     request: &StreamRequest,
@@ -295,8 +267,6 @@ async fn write_episode_once(
         Err(error) => Err(error),
     };
     if result.is_err() {
-        // A truncated file is only a corrupt MCAP that no manifest lists, and
-        // leaving it would make the next attempt append to a partial episode.
         drop(file);
         let _ = tokio::fs::remove_file(path).await;
     }
@@ -310,9 +280,6 @@ struct DownloadTally {
     skipped: usize,
 }
 
-/// Download every episode in order. Returns `None` when the user interrupted,
-/// leaving the partial directory in place rather than writing a manifest that
-/// would describe a download that did not finish.
 async fn download_episodes(
     runtime: &Runtime,
     args: &DatasetDownloadArgs,
@@ -380,10 +347,6 @@ async fn download_episodes(
                 }
             }
         };
-        // The line names the outcome, not only the running total, so a failure
-        // in a long run is visible before the summary. Progress belongs on
-        // stderr, as it does for `data export`, so nothing this command prints
-        // can be mistaken for output.
         let _ = writeln!(
             std::io::stderr(),
             "Episode {} of {} \u{2014} {note}",
@@ -485,10 +448,6 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         episodes.len(),
         directory.display()
     );
-    // A partial download is a failure for anything that reads the exit status,
-    // even though the manifest and the episodes that did arrive are kept. A
-    // version whose episodes were all skipped is not a failure: that run
-    // finished, and its manifest says so.
     if failed > 0 {
         return Outcome::failure(summary);
     }
@@ -537,8 +496,6 @@ mod tests {
             "Highway-merges-v4"
         );
         assert_eq!(manifest_prefix(Path::new("out/data/"), "root"), "data");
-        // `.` names a real directory, so the fallback is not reached and the
-        // prefix never carries a separator of its own.
         let here = manifest_prefix(Path::new("."), "root");
         assert!(!here.contains(['/', '\\']), "{here}");
     }

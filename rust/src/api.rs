@@ -108,9 +108,7 @@ impl ApiError {
         matches!(self, Self::Cancelled)
     }
 
-    /// Whether the same request could succeed on a later attempt. A dropped
-    /// connection and a server-side failure are transient. A rejected request,
-    /// a cancelled run, and a local write failure are not.
+    /// Whether the same request could succeed on a later attempt.
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
