@@ -117,6 +117,19 @@ pub(crate) fn parse_timestamp(raw: &str, label: &str) -> Result<String, String> 
     )
 }
 
+pub(crate) const DEFAULT_LIST_LIMIT: i64 = 2000;
+
+pub(crate) fn warn_if_truncated(mut outcome: Outcome, count: usize, limit: i64) -> Outcome {
+    if outcome.exit_code == 0 && limit > 0 && i64::try_from(count).is_ok_and(|count| count >= limit)
+    {
+        outcome.stderr.extend_from_slice(
+            format!("Showing the first {limit} results. More may exist; use --offset to page through them.\n")
+                .as_bytes(),
+        );
+    }
+    outcome
+}
+
 pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome {
     let mut stdout = Vec::new();
     let result = match format {
