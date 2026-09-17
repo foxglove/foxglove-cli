@@ -107,6 +107,17 @@ impl ApiError {
     pub const fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled)
     }
+
+    /// Whether the same request could succeed on a later attempt.
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Context { source, .. } => source.is_retryable(),
+            Self::Transport(_) => true,
+            Self::Response { status, .. } => *status == 429 || *status >= 500,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for ApiError {
@@ -162,6 +173,8 @@ pub struct StreamRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub import_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
+    pub episode_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub project_id: String,
     #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
     pub device_id: String,
@@ -206,8 +219,9 @@ impl StreamRequest {
         let session = !self.session_id.is_empty() || !self.session_key.is_empty();
         let device = !self.device_id.is_empty() || !self.device_name.is_empty();
         let import = !self.import_id.is_empty();
-        if !(recording || session || device || import) {
-            return Err("either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required".to_owned());
+        let episode = !self.episode_id.is_empty();
+        if !(recording || session || device || import || episode) {
+            return Err("either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required".to_owned());
         }
         if !self.session_key.is_empty() && self.project_id.is_empty() {
             return Err("project-id is required when using session-key".to_owned());
@@ -216,6 +230,7 @@ impl StreamRequest {
             && !import
             && !recording
             && !session
+            && !episode
             && (self.start.is_none() || self.end.is_none())
         {
             return Err(

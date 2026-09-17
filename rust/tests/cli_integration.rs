@@ -689,6 +689,346 @@ fn a_full_page_reports_that_more_results_may_exist() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
+    const DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway merges","createdAt":"","updatedAt":""}"#;
+    const VERSIONS: &str = r#"{"versions":[{"versionNumber":3,"committedAt":"2024-01-01T00:00:00Z"},{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"},{"versionNumber":5}]}"#;
+    const EPISODES: &str = r#"{"episodes":[
+        {"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":false,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"createdAt":"2024-01-02T03:04:07Z"}},
+        {"addedAt":"2024-01-02T03:04:09Z","addedInVersion":4,"hasMissingRecordings":true,"episode":{"id":"ep_gone","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}
+    ]}"#;
+
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", EPISODES),
+        Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"link":"{BASE_URL}/download"}"#,
+        ),
+        Reply {
+            body: b"episode-bytes".to_vec(),
+            ..Reply::json("GET", "/download", "")
+        },
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one", "--topics", "/a, /b"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 5);
+
+    let root = workspace.0.join("Highway-merges-v4");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        b"episode-bytes"
+    );
+    assert!(!root.join("episode_0001_ep_gone.mcap").exists());
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["formatVersion"], 1);
+    assert_eq!(manifest["dataset"]["name"], "Highway merges");
+    assert_eq!(manifest["version"]["versionNumber"], 4);
+    assert_eq!(manifest["version"]["committedAt"], "2024-01-02T00:00:00Z");
+    assert_eq!(manifest["selection"]["episodeCount"], 2);
+    assert_eq!(manifest["selection"]["topics"][1], "/b");
+    assert_eq!(manifest["episodes"][0]["status"], "downloaded");
+    assert_eq!(manifest["episodes"][0]["byteSize"], 13);
+    assert_eq!(
+        manifest["episodes"][0]["file"],
+        "Highway-merges-v4/episode_0000_ep_one.mcap"
+    );
+    assert_eq!(manifest["episodes"][1]["status"], "skipped");
+    assert_eq!(
+        manifest["episodes"][1]["reason"],
+        "Recordings for this episode are no longer available"
+    );
+
+    let progress = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        progress.contains("Episode 1 of 2 \u{2014} 13 bytes written"),
+        "{progress}"
+    );
+    assert!(
+        progress.contains(
+            "Episode 2 of 2 \u{2014} skipped: Recordings for this episode are no longer available"
+        ),
+        "{progress}"
+    );
+
+    assert_eq!(
+        query_pairs(&requests[2]),
+        expected_pairs(&[
+            ("limit", "2000"),
+            ("offset", "0"),
+            ("sortBy", "startTime"),
+            ("sortOrder", "asc"),
+        ])
+    );
+
+    let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
+    let stream: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(stream["episodeId"], "ep_one");
+    assert_eq!(stream["outputFormat"], "mcap");
+    assert_eq!(stream["topics"][0], "/a");
+    assert_eq!(stream["includeAttachments"], true);
+}
+
+const DOWNLOAD_DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway merges","createdAt":"","updatedAt":""}"#;
+const DOWNLOAD_VERSIONS: &str =
+    r#"{"versions":[{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"}]}"#;
+
+fn download_episode(id: &str, start: &str) -> String {
+    format!(
+        r#"{{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":false,"episode":{{"id":"{id}","projectId":"prj_default","startTime":"{start}","endTime":"2024-01-02T03:04:09Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
+    )
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_transient_stream_failure_is_retried_before_the_episode_is_recorded() {
+    let episodes = format!(
+        r#"{{"episodes":[{}]}}"#,
+        download_episode("ep_one", "2024-01-02T03:04:05Z")
+    );
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", &episodes),
+        Reply {
+            status: 500,
+            ..Reply::json("POST", "/v1/data/stream", r#"{"error":"upstream"}"#)
+        },
+        Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"link":"{BASE_URL}/download"}"#,
+        ),
+        Reply {
+            body: b"episode-bytes".to_vec(),
+            ..Reply::json("GET", "/download", "")
+        },
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 6);
+
+    let root = workspace.0.join("Highway-merges-v4");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        b"episode-bytes"
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "downloaded");
+}
+
+fn truncated_download() -> Reply {
+    Reply {
+        body: b"partial".to_vec(),
+        truncate: true,
+        ..Reply::json("GET", "/download", "")
+    }
+}
+
+fn episode_stream_link() -> Reply {
+    Reply::json(
+        "POST",
+        "/v1/data/stream",
+        r#"{"link":"{BASE_URL}/download"}"#,
+    )
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_stream_that_stops_part_way_restarts_the_file_on_the_next_attempt() {
+    let episodes = format!(
+        r#"{{"episodes":[{}]}}"#,
+        download_episode("ep_one", "2024-01-02T03:04:05Z")
+    );
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", &episodes),
+        episode_stream_link(),
+        truncated_download(),
+        episode_stream_link(),
+        Reply {
+            body: b"episode-bytes".to_vec(),
+            ..Reply::json("GET", "/download", "")
+        },
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 7);
+
+    let root = workspace.0.join("Highway-merges-v4");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        b"episode-bytes"
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "downloaded");
+    assert_eq!(manifest["episodes"][0]["byteSize"], 13);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_stream_that_never_completes_leaves_no_partial_episode_behind() {
+    let episodes = format!(
+        r#"{{"episodes":[{}]}}"#,
+        download_episode("ep_one", "2024-01-02T03:04:05Z")
+    );
+    let workspace = Workspace::new();
+    let mut replies = vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", &episodes),
+    ];
+    for _ in 0..3 {
+        replies.push(episode_stream_link());
+        replies.push(truncated_download());
+    }
+    let server = Server::new(replies);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(server.finish().len(), 9);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Episode 1 of 1 \u{2014} failed: "),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Downloaded 0 of 1 episodes to Highway-merges-v4 (1 failed, 0 skipped)"),
+        "{stderr}"
+    );
+
+    let root = workspace.0.join("Highway-merges-v4");
+    assert!(!root.join("episode_0000_ep_one.mcap").exists());
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "failed");
+    assert_eq!(manifest["episodes"][0]["file"], serde_json::Value::Null);
+    assert!(
+        manifest["episodes"][0]["reason"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()),
+        "{manifest}"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_episode_that_could_not_be_downloaded_fails_the_run() {
+    let episodes = format!(
+        r#"{{"episodes":[{},{}]}}"#,
+        download_episode("ep_one", "2024-01-02T03:04:05Z"),
+        download_episode("ep_two", "2024-01-02T03:04:06Z")
+    );
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", &episodes),
+        Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"link":"{BASE_URL}/download"}"#,
+        ),
+        Reply {
+            body: b"episode-bytes".to_vec(),
+            ..Reply::json("GET", "/download", "")
+        },
+        Reply {
+            status: 404,
+            ..Reply::json("POST", "/v1/data/stream", "{}")
+        },
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(server.finish().len(), 6);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Episode 2 of 2 \u{2014} failed: "),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Downloaded 1 of 2 episodes to Highway-merges-v4 (1 failed, 0 skipped)"),
+        "{stderr}"
+    );
+
+    let root = workspace.0.join("Highway-merges-v4");
+    assert!(root.join("episode_0000_ep_one.mcap").exists());
+    assert!(!root.join("episode_0001_ep_two.mcap").exists());
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "downloaded");
+    assert_eq!(manifest["episodes"][1]["status"], "failed");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_version_whose_episodes_are_all_skipped_is_not_a_failure() {
+    const DATASET: &str =
+        r#"{"id":"ds_one","projectId":"prj_default","name":"Gone","createdAt":"","updatedAt":""}"#;
+    const VERSIONS: &str =
+        r#"{"versions":[{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z"}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":1,"hasMissingRecordings":true,"episode":{"id":"ep_gone","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
+
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DATASET),
+        Reply::json("GET", "/v1/datasets/ds_one/versions", VERSIONS),
+        Reply::json("GET", "/v1/datasets/ds_one/versions/1/episodes", EPISODES),
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(workspace.0.join("Gone-v1").join("manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "skipped");
+}
+
+#[test]
 fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
     for args in [
