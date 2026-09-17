@@ -295,7 +295,6 @@ async fn download_episodes(
         failed: 0,
         skipped: 0,
     };
-    let mut bytes = 0_u64;
     for (index, entry) in episodes.iter().enumerate() {
         let base = |status, file, byte_size, reason| ManifestEpisode {
             index,
@@ -326,7 +325,6 @@ async fn download_episodes(
             };
             match write_episode(runtime, &request, &directory.join(&name), &cancellation).await {
                 Ok(written) => {
-                    bytes += written;
                     tally.downloaded += 1;
                     tally.episodes.push(base(
                         "downloaded",
@@ -334,7 +332,7 @@ async fn download_episodes(
                         Some(written),
                         None,
                     ));
-                    format!("{bytes} bytes written")
+                    format!("{written} bytes written")
                 }
                 Err(error) if error.is_cancelled() => return None,
                 Err(error) => {
