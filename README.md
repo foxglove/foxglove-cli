@@ -207,12 +207,11 @@ ID | Name | Project ID | Description | Episode Count | Created At | Updated At
 ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
 ```
 
-List episodes, optionally narrowing to a time range, a member recording, or
-episodes with recordings that are no longer available:
+List episodes, optionally narrowing to a time range or a member recording:
 
 ```
 $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recordings
-$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
+$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg
 ```
 
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
@@ -222,8 +221,7 @@ on when each episode joined the dataset:
 $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-order desc
 ```
 
-Member recordings are omitted unless you pass `--include-recordings`, which also
-populates the missing-recordings column on `foxglove episodes list`.
+Member recordings are omitted unless you pass `--include-recordings`.
 
 Each list returns at most 2000 rows, which is also the largest `--limit` the API
 accepts. A full page prints a note on stderr, because the API reports no total;

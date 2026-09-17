@@ -421,15 +421,6 @@ pub(crate) struct DatasetEpisodeListArgs {
     )]
     pub(crate) end: Option<String>,
     #[arg(
-        long, help = "Filter to episodes with, or without, recordings that are no longer available",
-        action = clap::ArgAction::Set,
-        num_args = 0..=1,
-        require_equals = true,
-        default_missing_value = "true",
-        value_parser = parse_bool
-    )]
-    pub(crate) has_missing_recordings: Option<bool>,
-    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -530,16 +521,7 @@ pub(crate) struct EpisodeListArgs {
     )]
     pub(crate) end: Option<String>,
     #[arg(
-        long, help = "Filter to episodes with, or without, recordings that are no longer available",
-        action = clap::ArgAction::Set,
-        num_args = 0..=1,
-        require_equals = true,
-        default_missing_value = "true",
-        value_parser = parse_bool
-    )]
-    pub(crate) has_missing_recordings: Option<bool>,
-    #[arg(
-        long, help = "Include the member recordings of each episode, and report whether any are missing",
+        long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,

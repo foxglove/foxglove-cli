@@ -6,8 +6,8 @@ use serde_json::Value;
 use crate::cli::EpisodeListArgs;
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_output, is_zero, optional_bool, parse_timestamp, warn_if_truncated,
-    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_output, is_zero, parse_timestamp, warn_if_truncated, ProjectFallback,
+    Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -40,12 +40,6 @@ pub(crate) struct Episode {
     pub(crate) metadata: Value,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) recordings: Option<Vec<EpisodeRecording>>,
-    #[serde(
-        rename = "hasMissingRecordings",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub(crate) has_missing_recordings: Option<bool>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
 }
@@ -72,7 +66,6 @@ impl Record for Episode {
             "Start Time",
             "End Time",
             "Recordings",
-            "Missing Recordings",
             "Metadata",
             "Created At",
         ]
@@ -85,7 +78,6 @@ impl Record for Episode {
             self.start_time.clone(),
             self.end_time.clone(),
             self.recording_ids(),
-            optional_bool(self.has_missing_recordings),
             compact_json(&self.metadata),
             self.created_at.clone(),
         ]
@@ -103,8 +95,6 @@ pub(crate) struct EpisodeListResponse {
 struct EpisodeListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
     limit: i64,
@@ -154,7 +144,6 @@ pub(crate) async fn list_episodes(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
         end,
-        has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
         offset: args.offset.unwrap_or_default(),
@@ -169,12 +158,7 @@ pub(crate) async fn list_episodes(
         .get::<_, EpisodeListResponse>("/v1/episodes", &query)
         .await
     {
-        Ok(mut response) => {
-            for episode in &mut response.episodes {
-                episode.has_missing_recordings = episode
-                    .has_missing_recordings
-                    .or(args.has_missing_recordings);
-            }
+        Ok(response) => {
             let count = response.episodes.len();
             warn_if_truncated(format_output(&response.episodes, format), count, limit)
         }
@@ -187,7 +171,7 @@ mod tests {
     use super::{parse_time_range, Episode};
 
     #[test]
-    fn missing_optional_fields_are_omitted_from_json_output() {
+    fn an_absent_recordings_list_is_omitted_from_json_output() {
         let record: Episode = serde_json::from_value(serde_json::json!({
             "id": "ep_fixture",
             "projectId": "prj_default",
@@ -198,9 +182,7 @@ mod tests {
         }))
         .unwrap();
         let output = serde_json::to_value(&record).unwrap();
-        for field in ["recordings", "hasMissingRecordings"] {
-            assert!(output.get(field).is_none(), "{field}");
-        }
+        assert!(output.get("recordings").is_none());
         assert_eq!(record.recording_ids(), "");
     }
 
@@ -213,7 +195,6 @@ mod tests {
             "endTime": "2024-01-02T03:04:06Z",
             "metadata": {},
             "createdAt": "2024-01-02T03:04:07Z",
-            "hasMissingRecordings": true,
             "recordings": [
                 {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true},
                 {"id": "rec_two", "path": "two.mcap", "start": "", "end": "", "available": false},

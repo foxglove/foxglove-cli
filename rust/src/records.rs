@@ -24,10 +24,6 @@ pub(crate) struct DeviceSummary {
     pub(crate) id: String,
 }
 
-pub(crate) fn optional_bool(value: Option<bool>) -> String {
-    value.map(|value| value.to_string()).unwrap_or_default()
-}
-
 pub(crate) trait Record: Serialize {
     fn headers() -> &'static [&'static str];
     fn fields(&self) -> Vec<String>;

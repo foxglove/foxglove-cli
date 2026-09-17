@@ -7,8 +7,8 @@ use crate::cli::{DatasetEpisodeListArgs, DatasetListArgs};
 use crate::episodes::{include_recordings, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_output, is_zero, null_to_default, optional_bool, warn_if_truncated,
-    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_output, is_zero, null_to_default, warn_if_truncated, ProjectFallback,
+    Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -61,12 +61,6 @@ struct DatasetEpisode {
     added_at: String,
     #[serde(rename = "addedInVersion")]
     added_in_version: i64,
-    #[serde(
-        rename = "hasMissingRecordings",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    has_missing_recordings: Option<bool>,
     episode: Episode,
 }
 
@@ -78,7 +72,6 @@ impl Record for DatasetEpisode {
             "Start Time",
             "End Time",
             "Recordings",
-            "Missing Recordings",
             "Metadata",
             "Added At",
             "Added In Version",
@@ -93,7 +86,6 @@ impl Record for DatasetEpisode {
             self.episode.start_time.clone(),
             self.episode.end_time.clone(),
             self.episode.recording_ids(),
-            optional_bool(self.has_missing_recordings),
             compact_json(&self.episode.metadata),
             self.added_at.clone(),
             self.added_in_version.to_string(),
@@ -127,8 +119,6 @@ struct DatasetListQuery {
 struct DatasetEpisodeListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
     limit: i64,
@@ -179,7 +169,6 @@ pub(crate) async fn list_dataset_episodes(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
         end,
-        has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
         offset: args.offset.unwrap_or_default(),
@@ -231,11 +220,10 @@ mod tests {
     }
 
     #[test]
-    fn membership_reports_missing_recordings_over_the_nested_episode() {
+    fn membership_fields_render_around_the_nested_episode() {
         let record: DatasetEpisode = serde_json::from_value(serde_json::json!({
             "addedAt": "2024-01-02T03:04:08Z",
             "addedInVersion": 3,
-            "hasMissingRecordings": true,
             "episode": {
                 "id": "ep_fixture",
                 "projectId": "prj_default",
@@ -248,8 +236,8 @@ mod tests {
         .unwrap();
         let fields = record.fields();
         assert_eq!(fields[0], "ep_fixture");
-        assert_eq!(fields[5], "true");
-        assert_eq!(fields[6], r#"{"run":7}"#);
-        assert_eq!(fields[8], "3");
+        assert_eq!(fields[5], r#"{"run":7}"#);
+        assert_eq!(fields[6], "2024-01-02T03:04:08Z");
+        assert_eq!(fields[7], "3");
     }
 }

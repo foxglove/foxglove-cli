@@ -555,7 +555,7 @@ fn dataset_list_filters_reach_the_api() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
-    const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"hasMissingRecordings":true,"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODES)]);
     let output = Process::spawn(workspace.command(&server.url).args([
@@ -569,7 +569,6 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         "2024-01-03",
         "--recording-id",
         "rec_one",
-        "--has-missing-recordings",
         "--include-recordings",
         "--limit",
         "10",
@@ -586,14 +585,13 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Project ID,Start Time,End Time,Recordings,Missing Recordings,Metadata,Created At\n\
-         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,true,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z\n"
+        "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At\n\
+         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
         expected_pairs(&[
             ("end", "2024-01-03T00:00:00Z"),
-            ("hasMissingRecordings", "true"),
             ("include", "recordings"),
             ("limit", "10"),
             ("offset", "5"),
@@ -609,7 +607,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn dataset_episode_membership_is_rendered_alongside_the_episode() {
-    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"hasMissingRecordings":false,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "GET",
@@ -621,7 +619,6 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
         "episodes",
         "list",
         "ds_one",
-        "--has-missing-recordings=false",
         "--sort-by",
         "addedAt",
         "--format",
@@ -631,45 +628,13 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Episode ID,Project ID,Start Time,End Time,Recordings,Missing Recordings,Metadata,Added At,Added In Version,Created At\n\
-         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,false,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z\n"
+        "Episode ID,Project ID,Start Time,End Time,Recordings,Metadata,Added At,Added In Version,Created At\n\
+         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
-        expected_pairs(&[
-            ("hasMissingRecordings", "false"),
-            ("limit", "2000"),
-            ("sortBy", "addedAt"),
-        ])
+        expected_pairs(&[("limit", "2000"), ("sortBy", "addedAt"),])
     );
-}
-
-#[test]
-#[ignore = "requires loopback sockets"]
-fn the_missing_recordings_filter_fills_the_column_it_selected_on() {
-    const EPISODE: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}]}"#;
-    let workspace = Workspace::new();
-    for (flag, expected) in [
-        (Some("--has-missing-recordings"), "true"),
-        (Some("--has-missing-recordings=false"), "false"),
-        (None, ""),
-    ] {
-        let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODE)]);
-        let mut command = workspace.command(&server.url);
-        command.args(["episodes", "list", "--format", "csv"]);
-        if let Some(flag) = flag {
-            command.arg(flag);
-        }
-        let output = Process::spawn(&mut command).finish();
-        assert_success(&output);
-        let row = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .last()
-            .unwrap()
-            .to_owned();
-        assert_eq!(row.split(',').nth(5).unwrap(), expected, "{flag:?}");
-        server.finish();
-    }
 }
 
 #[test]
