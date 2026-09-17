@@ -1,6 +1,6 @@
 //! Shared output-format parsing and deterministic renderers.
 
-use comfy_table::{ContentArrangement, ContentLineStyle, LineStyle, Table, TableStyle};
+use comfy_table::{ContentArrangement, LineStyle, Table, TableStyle};
 use serde::Serialize;
 use std::io::{self, Write};
 
@@ -66,14 +66,9 @@ fn render_table_at(
         return writer.write_all(b"No records found\n");
     }
     validate_rows(headers, rows)?;
-    // The Go CLI's columns without its outer pipes: a `|` between cells, a rule
-    // under the header, and a rule between records so a row that wraps onto a
-    // second line is still one visible record.
-    let style = TableStyle::new()
-        .header_lines(ContentLineStyle::none().junction('|'))
-        .content_lines(ContentLineStyle::none().junction('|'))
-        .header_separator(LineStyle::none().fill('-').junction('|'))
-        .row_separator(LineStyle::none().fill('-').junction('|'));
+    // Keep list output compact: aligned columns and one rule below the header.
+    // The table's padding provides whitespace between columns.
+    let style = TableStyle::new().header_separator(LineStyle::none().fill('-').junction('-'));
     let mut table = Table::new();
     table
         .load_style(style)
@@ -171,11 +166,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            " ID         | Name  \n\
-             ------------|-------\n\
-             \u{20}dev_1      | Robot \n\
-             ------------|-------\n\
-             \u{20}dev_longer | A     \n"
+            " ID           Name  \n\
+             --------------------\n\
+             \u{20}dev_1        Robot \n\
+             \u{20}dev_longer   A     \n"
         );
     }
 
