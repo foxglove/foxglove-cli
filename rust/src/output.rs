@@ -1,5 +1,6 @@
 //! Shared output-format parsing and deterministic renderers.
 
+use comfy_table::{ContentArrangement, LineStyle, Table, TableStyle};
 use serde::Serialize;
 use std::io::{self, Write};
 
@@ -42,7 +43,7 @@ pub fn render_csv(
     csv.flush().map_err(io::Error::other)
 }
 
-/// Render a simple, pipe-delimited table.
+/// Render a table, wrapping cells so the whole table fits the terminal.
 ///
 /// # Errors
 ///
@@ -52,31 +53,61 @@ pub fn render_table(
     headers: &[&str],
     rows: &[Vec<String>],
 ) -> io::Result<()> {
+    render_table_at(writer, headers, rows, terminal_width())
+}
+
+fn render_table_at(
+    writer: &mut dyn Write,
+    headers: &[&str],
+    rows: &[Vec<String>],
+    width: u16,
+) -> io::Result<()> {
     if rows.is_empty() {
         return writer.write_all(b"No records found\n");
     }
     validate_rows(headers, rows)?;
-    writeln!(writer, "{}", headers.join(" | "))?;
-    writeln!(
-        writer,
-        "{}",
-        headers
-            .iter()
-            .map(|_| "---")
-            .collect::<Vec<_>>()
-            .join(" | ")
-    )?;
-    for row in rows {
-        writeln!(
-            writer,
-            "{}",
-            row.iter()
-                .map(|cell| cell.replace('|', "\\|").replace(['\r', '\n'], "\\n"))
-                .collect::<Vec<_>>()
-                .join(" | ")
-        )?;
+    let style = TableStyle::new().header_separator(LineStyle::none().fill('-').junction('-'));
+    let mut table = Table::new();
+    table
+        .load_style(style)
+        .set_width(width)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(headers.iter().copied())
+        .add_rows(
+            rows.iter()
+                .map(|row| row.iter().map(|cell| escape_cell(cell))),
+        );
+    writeln!(writer, "{table}")
+}
+
+fn escape_cell(cell: &str) -> String {
+    cell.replace(['\r', '\n'], "\\n")
+}
+
+fn terminal_width() -> u16 {
+    if let Some(columns) = std::env::var("COLUMNS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .filter(|columns| *columns > 0)
+    {
+        return columns;
     }
-    Ok(())
+    std::process::Command::new("stty")
+        .arg("size")
+        .stdin(std::process::Stdio::inherit())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| {
+            String::from_utf8(output.stdout)
+                .ok()?
+                .split_whitespace()
+                .nth(1)?
+                .parse::<u16>()
+                .ok()
+        })
+        .filter(|columns| *columns > 0)
+        .unwrap_or(80)
 }
 
 fn validate_rows(headers: &[&str], rows: &[Vec<String>]) -> io::Result<()> {
@@ -91,7 +122,7 @@ fn validate_rows(headers: &[&str], rows: &[Vec<String>]) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_csv, render_json, render_table};
+    use super::{render_csv, render_json};
 
     #[test]
     fn empty_csv_contains_its_header() {
@@ -115,27 +146,57 @@ mod tests {
     }
 
     #[test]
-    fn table_is_pipe_delimited() {
+    fn a_table_that_fits_keeps_every_cell_on_one_line() {
         let mut output = Vec::new();
-        render_table(
+        super::render_table_at(
             &mut output,
             &["ID", "Name"],
-            &[vec!["dev_1".into(), "Robot".into()]],
+            &[
+                vec!["dev_1".into(), "Robot".into()],
+                vec!["dev_longer".into(), "A".into()],
+            ],
+            80,
         )
         .unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            "ID | Name\n--- | ---\ndev_1 | Robot\n"
+            " ID           Name  \n\
+             --------------------\n\
+             \u{20}dev_1        Robot \n\
+             \u{20}dev_longer   A     \n"
         );
     }
 
     #[test]
-    fn table_escapes_cell_delimiters_and_newlines() {
+    fn a_table_too_wide_for_the_terminal_wraps_inside_its_columns() {
         let mut output = Vec::new();
-        render_table(&mut output, &["Value"], &[vec!["left|right\nnext".into()]]).unwrap();
-        assert_eq!(
-            String::from_utf8(output).unwrap(),
-            "Value\n---\nleft\\|right\\nnext\n"
-        );
+        super::render_table_at(
+            &mut output,
+            &["ID", "Notes"],
+            &[vec!["dev_1".into(), "a".repeat(60)]],
+            40,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(output).unwrap();
+        for line in rendered.lines() {
+            assert!(line.chars().count() <= 40, "{line:?}");
+        }
+        let joined: String = rendered.lines().flat_map(str::chars).collect();
+        assert!(joined.matches('a').count() == 60, "{rendered}");
+    }
+
+    #[test]
+    fn table_escapes_cell_newlines_and_keeps_pipes_verbatim() {
+        let mut output = Vec::new();
+        super::render_table_at(
+            &mut output,
+            &["Value"],
+            &[vec!["left|right\nnext".into()]],
+            80,
+        )
+        .unwrap();
+        assert!(String::from_utf8(output)
+            .unwrap()
+            .contains("left|right\\nnext"),);
     }
 }
