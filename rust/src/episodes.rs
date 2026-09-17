@@ -171,8 +171,6 @@ pub(crate) async fn list_episodes(
     {
         Ok(mut response) => {
             for episode in &mut response.episodes {
-                // /v1/episodes sets this only when recordings are requested; the
-                // filter already decided it for every row it returned.
                 episode.has_missing_recordings = episode
                     .has_missing_recordings
                     .or(args.has_missing_recordings);
