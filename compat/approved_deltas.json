@@ -33,7 +33,7 @@
         "JSON remains valid and ends with one newline.",
         "CSV includes a header and correctly escapes commas, quotes, and newlines.",
         "Tables retain headers and rows in command order.",
-        "Table cells escape their own pipes and newlines.",
+        "Table cells escape their own newlines.",
         "No table line exceeds the terminal width, and no cell is truncated."
       ]
     },

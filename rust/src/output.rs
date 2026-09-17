@@ -84,7 +84,7 @@ fn render_table_at(
 
 /// A cell keeps its own delimiters out of the table it is printed in.
 fn escape_cell(cell: &str) -> String {
-    cell.replace('|', "\\|").replace(['\r', '\n'], "\\n")
+    cell.replace(['\r', '\n'], "\\n")
 }
 
 /// comfy-table only detects the width on a real terminal, so a piped stdout
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn table_escapes_cell_delimiters_and_newlines() {
+    fn table_escapes_cell_newlines_and_keeps_pipes_verbatim() {
         let mut output = Vec::new();
         super::render_table_at(
             &mut output,
@@ -204,6 +204,6 @@ mod tests {
         .unwrap();
         assert!(String::from_utf8(output)
             .unwrap()
-            .contains("left\\|right\\nnext"),);
+            .contains("left|right\\nnext"),);
     }
 }
