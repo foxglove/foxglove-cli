@@ -530,14 +530,15 @@ fn dataset_list_filters_reach_the_api() {
         "name",
         "--sort-order",
         "desc",
+        "--format",
+        "csv",
     ]))
     .finish();
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID | Name | Project ID | Description | Episode Count | Created At | Updated At\n\
-         --- | --- | --- | --- | --- | --- | ---\n\
-         ds_one | Highway | prj_explicit | Merges | 2 | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z\n"
+        "ID,Name,Project ID,Description,Episode Count,Created At,Updated At\n\
+         ds_one,Highway,prj_explicit,Merges,2,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -578,14 +579,15 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         "startTime",
         "--sort-order",
         "desc",
+        "--format",
+        "csv",
     ]))
     .finish();
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Created At\n\
-         --- | --- | --- | --- | --- | --- | --- | ---\n\
-         ep_one | prj_explicit | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z | rec_one | true | {\"run\":7} | 2024-01-02T03:04:07Z\n"
+        "ID,Project ID,Start Time,End Time,Recordings,Missing Recordings,Metadata,Created At\n\
+         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,true,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -622,14 +624,15 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
         "--has-missing-recordings=false",
         "--sort-by",
         "addedAt",
+        "--format",
+        "csv",
     ]))
     .finish();
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Episode ID | Project ID | Start Time | End Time | Recordings | Missing Recordings | Metadata | Added At | Added In Version | Created At\n\
-         --- | --- | --- | --- | --- | --- | --- | --- | --- | ---\n\
-         ep_one | prj_default | 2024-01-02T03:04:05Z | 2024-01-02T03:04:06Z |  | false | {} | 2024-01-02T03:04:08Z | 3 | 2024-01-02T03:04:07Z\n"
+        "Episode ID,Project ID,Start Time,End Time,Recordings,Missing Recordings,Metadata,Added At,Added In Version,Created At\n\
+         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,false,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -653,7 +656,7 @@ fn the_missing_recordings_filter_fills_the_column_it_selected_on() {
     ] {
         let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODE)]);
         let mut command = workspace.command(&server.url);
-        command.args(["episodes", "list"]);
+        command.args(["episodes", "list", "--format", "csv"]);
         if let Some(flag) = flag {
             command.arg(flag);
         }
@@ -664,7 +667,7 @@ fn the_missing_recordings_filter_fills_the_column_it_selected_on() {
             .last()
             .unwrap()
             .to_owned();
-        assert_eq!(row.split(" | ").nth(5).unwrap(), expected, "{flag:?}");
+        assert_eq!(row.split(',').nth(5).unwrap(), expected, "{flag:?}");
         server.finish();
     }
 }
