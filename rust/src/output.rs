@@ -66,8 +66,6 @@ fn render_table_at(
         return writer.write_all(b"No records found\n");
     }
     validate_rows(headers, rows)?;
-    // Keep list output compact: aligned columns and one rule below the header.
-    // The table's padding provides whitespace between columns.
     let style = TableStyle::new().header_separator(LineStyle::none().fill('-').junction('-'));
     let mut table = Table::new();
     table
@@ -82,14 +80,10 @@ fn render_table_at(
     writeln!(writer, "{table}")
 }
 
-/// A cell keeps its own delimiters out of the table it is printed in.
 fn escape_cell(cell: &str) -> String {
     cell.replace(['\r', '\n'], "\\n")
 }
 
-/// comfy-table only detects the width on a real terminal, so a piped stdout
-/// would otherwise arrange for unlimited width. `stty` reads the terminal on
-/// stdin, so `list | head` still fits the window the reader is looking at.
 fn terminal_width() -> u16 {
     if let Some(columns) = std::env::var("COLUMNS")
         .ok()
@@ -187,7 +181,6 @@ mod tests {
         for line in rendered.lines() {
             assert!(line.chars().count() <= 40, "{line:?}");
         }
-        // Nothing is dropped: every character of the long cell is still there.
         let joined: String = rendered.lines().flat_map(str::chars).collect();
         assert!(joined.matches('a').count() == 60, "{rendered}");
     }
