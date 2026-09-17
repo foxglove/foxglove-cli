@@ -377,12 +377,12 @@ pub(crate) struct DatasetDownloadArgs {
     #[arg(value_name = "DATASET_ID")]
     pub(crate) dataset_id: String,
     #[arg(
-        long, help = "Include MCAP attachments",
+        long, help = "Include MCAP attachments, as the in-app download does",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
         default_missing_value = "true",
-        default_value = "false",
+        default_value = "true",
         value_parser = parse_bool
     )]
     pub(crate) include_attachments: bool,

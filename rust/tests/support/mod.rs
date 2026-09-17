@@ -93,7 +93,11 @@ pub struct Reply {
     pub path: &'static str,
     pub status: u16,
     pub body: Vec<u8>,
+    /// Promise more body than is sent, then hold the connection open.
     pub stall: bool,
+    /// Promise more body than is sent, then close. The client sees the transfer
+    /// fail after it has already accepted part of the response.
+    pub truncate: bool,
 }
 
 impl Reply {
@@ -104,6 +108,7 @@ impl Reply {
             status: 200,
             body: body.as_bytes().to_vec(),
             stall: false,
+            truncate: false,
         }
     }
 }
@@ -137,7 +142,7 @@ impl Server {
                 } else {
                     reply.body
                 };
-                let length = if reply.stall {
+                let length = if reply.stall || reply.truncate {
                     body.len() + 1000
                 } else {
                     body.len()

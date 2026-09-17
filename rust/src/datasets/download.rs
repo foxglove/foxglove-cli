@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,6 +23,12 @@ use crate::Outcome;
 const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const SLUG_MAX_CHARS: usize = 64;
+
+/// How many times one episode is requested before it is recorded as failed.
+/// A dataset large enough to need this command is large enough that a single
+/// dropped connection should not cost an episode.
+const EPISODE_ATTEMPTS: u32 = 3;
+const RETRY_BACKOFF: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, Default, Deserialize)]
 struct DatasetSummary {
@@ -142,6 +149,21 @@ fn episode_file_name(index: usize, episode_id: &str) -> String {
     format!("episode_{index:04}_{safe}.mcap")
 }
 
+/// The leading component of every `file` path in the manifest. The app writes
+/// `<archive root>/<name>`, which resolves against the directory the archive was
+/// unpacked into, so the same rule here is the name of the directory the
+/// download landed in. Resolving the path first keeps `--output .` and a
+/// trailing slash from losing that name.
+fn manifest_prefix(directory: &Path, root: &str) -> String {
+    std::fs::canonicalize(directory)
+        .as_deref()
+        .unwrap_or(directory)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(root)
+        .to_owned()
+}
+
 fn topic_list(raw: Option<&str>) -> Option<Vec<String>> {
     let topics: Vec<String> = raw
         .unwrap_or_default()
@@ -193,6 +215,10 @@ async fn resolve_version(
 /// Page through every episode in the version. The endpoint caps a page, so a
 /// dataset larger than one page needs the whole walk before any download
 /// starts; the manifest has to describe the full selection.
+///
+/// The order is the app's, not the endpoint's default: each episode's position
+/// in this list becomes the index in its file name, so `startTime` here and
+/// `addedAt` there would name the same episode differently.
 async fn fetch_all_episodes(
     runtime: &Runtime,
     id: &str,
@@ -203,7 +229,7 @@ async fn fetch_all_episodes(
         let query = [
             ("limit".to_owned(), DEFAULT_LIST_LIMIT.to_string()),
             ("offset".to_owned(), episodes.len().to_string()),
-            ("sortBy".to_owned(), "addedAt".to_owned()),
+            ("sortBy".to_owned(), "startTime".to_owned()),
             ("sortOrder".to_owned(), "asc".to_owned()),
         ];
         let page: DatasetEpisodeListResponse = runtime
@@ -224,7 +250,31 @@ async fn fetch_all_episodes(
     }
 }
 
+/// Request the episode until it arrives, the error turns out to be permanent,
+/// or the attempts run out. Nothing resumes a partial episode, so each attempt
+/// starts the file again from the beginning.
 async fn write_episode(
+    runtime: &Runtime,
+    request: &StreamRequest,
+    path: &Path,
+    cancellation: &CancellationToken,
+) -> Result<u64, ApiError> {
+    let mut attempt = 1;
+    loop {
+        let result = write_episode_once(runtime, request, path, cancellation).await;
+        let Err(error) = &result else { return result };
+        if attempt >= EPISODE_ATTEMPTS || !error.is_retryable() {
+            return result;
+        }
+        tokio::select! {
+            () = cancellation.cancelled() => return Err(ApiError::Cancelled),
+            () = tokio::time::sleep(RETRY_BACKOFF * attempt) => {}
+        }
+        attempt += 1;
+    }
+}
+
+async fn write_episode_once(
     runtime: &Runtime,
     request: &StreamRequest,
     path: &Path,
@@ -245,8 +295,8 @@ async fn write_episode(
         Err(error) => Err(error),
     };
     if result.is_err() {
-        // Nothing resumes a partial episode, so a truncated file is only a
-        // corrupt MCAP the manifest does not list.
+        // A truncated file is only a corrupt MCAP that no manifest lists, and
+        // leaving it would make the next attempt append to a partial episode.
         drop(file);
         let _ = tokio::fs::remove_file(path).await;
     }
@@ -269,6 +319,7 @@ async fn download_episodes(
     episodes: &[DatasetEpisode],
     topics: Option<&[String]>,
     directory: &Path,
+    prefix: &str,
 ) -> Option<DownloadTally> {
     let cancellation = crate::api::ctrl_c_cancellation_token();
     let mut tally = DownloadTally {
@@ -290,14 +341,13 @@ async fn download_episodes(
             status,
             reason,
         };
-        if entry.has_missing_recordings == Some(true) {
+        let note = if entry.has_missing_recordings == Some(true) {
+            let reason = "Recordings for this episode are no longer available".to_owned();
             tally.skipped += 1;
-            tally.episodes.push(base(
-                "skipped",
-                None,
-                None,
-                Some("Recordings for this episode are no longer available".to_owned()),
-            ));
+            tally
+                .episodes
+                .push(base("skipped", None, None, Some(reason.clone())));
+            format!("skipped: {reason}")
         } else {
             let name = episode_file_name(index, &entry.episode.id);
             let request = StreamRequest {
@@ -311,24 +361,32 @@ async fn download_episodes(
                 Ok(written) => {
                     bytes += written;
                     tally.downloaded += 1;
-                    tally
-                        .episodes
-                        .push(base("downloaded", Some(name), Some(written), None));
+                    tally.episodes.push(base(
+                        "downloaded",
+                        Some(format!("{prefix}/{name}")),
+                        Some(written),
+                        None,
+                    ));
+                    format!("{bytes} bytes written")
                 }
                 Err(error) if error.is_cancelled() => return None,
                 Err(error) => {
+                    let reason = error.to_string();
                     tally.failed += 1;
                     tally
                         .episodes
-                        .push(base("failed", None, None, Some(error.to_string())));
+                        .push(base("failed", None, None, Some(reason.clone())));
+                    format!("failed: {reason}")
                 }
             }
-        }
-        // Progress belongs on stderr, as it does for `data export`, so nothing
-        // this command prints can be mistaken for output.
+        };
+        // The line names the outcome, not only the running total, so a failure
+        // in a long run is visible before the summary. Progress belongs on
+        // stderr, as it does for `data export`, so nothing this command prints
+        // can be mistaken for output.
         let _ = writeln!(
             std::io::stderr(),
-            "Episode {} of {} \u{2014} {bytes} bytes written",
+            "Episode {} of {} \u{2014} {note}",
             index + 1,
             episodes.len()
         );
@@ -371,7 +429,16 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
     }
 
     let topics = topic_list(args.topics.as_deref());
-    let tally = download_episodes(runtime, args, &episodes, topics.as_deref(), &directory).await;
+    let prefix = manifest_prefix(&directory, &root);
+    let tally = download_episodes(
+        runtime,
+        args,
+        &episodes,
+        topics.as_deref(),
+        &directory,
+        &prefix,
+    )
+    .await;
     let Some(tally) = tally else {
         return Outcome {
             exit_code: 130,
@@ -418,10 +485,11 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         episodes.len(),
         directory.display()
     );
-    // Matches downloadDatasetVersion.ts, which fails only when it attempted at
-    // least one episode and none of them arrived. A version whose episodes were
-    // all skipped finished correctly and has a manifest that says so.
-    if downloaded == 0 && failed > 0 {
+    // A partial download is a failure for anything that reads the exit status,
+    // even though the manifest and the episodes that did arrive are kept. A
+    // version whose episodes were all skipped is not a failure: that run
+    // finished, and its manifest says so.
+    if failed > 0 {
         return Outcome::failure(summary);
     }
     Outcome {
@@ -432,7 +500,9 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
 
 #[cfg(test)]
 mod tests {
-    use super::{archive_root_name, episode_file_name, topic_list};
+    use std::path::Path;
+
+    use super::{archive_root_name, episode_file_name, manifest_prefix, topic_list};
 
     #[test]
     fn the_directory_name_matches_the_app_archive_root() {
@@ -458,6 +528,19 @@ mod tests {
             episode_file_name(12, "ep/../escape"),
             "episode_0012_ep-..-escape.mcap"
         );
+    }
+
+    #[test]
+    fn manifest_paths_name_the_directory_the_download_landed_in() {
+        assert_eq!(
+            manifest_prefix(Path::new("Highway-merges-v4"), "root"),
+            "Highway-merges-v4"
+        );
+        assert_eq!(manifest_prefix(Path::new("out/data/"), "root"), "data");
+        // `.` names a real directory, so the fallback is not reached and the
+        // prefix never carries a separator of its own.
+        let here = manifest_prefix(Path::new("."), "root");
+        assert!(!here.contains(['/', '\\']), "{here}");
     }
 
     #[test]

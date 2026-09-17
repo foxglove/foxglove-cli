@@ -237,8 +237,9 @@ Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 Without `--version` the newest committed version is used; a dataset's editable
 version is never downloaded, because its contents can change mid-transfer.
 Episodes whose recordings are no longer available are recorded in the manifest
-as skipped. Narrow the payload with `--topics`, keep MCAP attachments with
-`--include-attachments`, and choose where it lands with `--output`.
+as skipped, and the command exits non-zero if any episode failed to download.
+Narrow the payload with `--topics`, drop MCAP attachments with
+`--include-attachments=false`, and choose where it lands with `--output`.
 
 ### Extensions
 

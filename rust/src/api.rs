@@ -107,6 +107,19 @@ impl ApiError {
     pub const fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled)
     }
+
+    /// Whether the same request could succeed on a later attempt. A dropped
+    /// connection and a server-side failure are transient. A rejected request,
+    /// a cancelled run, and a local write failure are not.
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Context { source, .. } => source.is_retryable(),
+            Self::Transport(_) => true,
+            Self::Response { status, .. } => *status == 429 || *status >= 500,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for ApiError {
