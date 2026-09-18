@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::builder::Resettable;
 use clap::error::ErrorKind;
-use clap::{Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{ArgGroup, Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::{generate, Shell};
 use serde_yaml_ng::Value;
 
@@ -806,6 +806,8 @@ enum SessionsCommand {
     Add(SessionAddArgs),
     #[command(about = "Delete a session")]
     Delete(SessionLookupArgs),
+    #[command(about = "Update a session key")]
+    Edit(SessionEditArgs),
     #[command(about = "Get a session by ID or key")]
     Get(SessionLookupArgs),
     #[command(about = "List sessions in your organization")]
@@ -826,6 +828,23 @@ pub(crate) struct SessionAddArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct SessionLookupArgs {
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "SESSION_ID_OR_KEY")]
+    pub(crate) session: String,
+}
+
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("key_update")
+        .args(["key", "clear_key"])
+        .required(true)
+))]
+pub(crate) struct SessionEditArgs {
+    #[arg(long, help = "Clear the session key", conflicts_with = "key")]
+    pub(crate) clear_key: bool,
+    #[arg(long, help = "New session key", allow_hyphen_values = true)]
+    pub(crate) key: Option<String>,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION_ID_OR_KEY")]
@@ -1136,6 +1155,7 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
+        SessionsCommand::Edit(args) => sessions::edit_session(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
         SessionsCommand::List(args) => {
             let format = args.format.format;

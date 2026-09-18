@@ -395,6 +395,12 @@ fn identifier_paths_are_escaped_for_every_command() {
         ),
         (&["sessions", "delete", KEY], "DELETE", SESSION_PATH, "{}"),
         (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            SESSION_PATH,
+            SESSION,
+        ),
+        (
             &["sessions", "recordings", "add", KEY, "rec"],
             "PATCH",
             SESSION_PATH,
@@ -450,6 +456,68 @@ fn identifier_paths_are_escaped_for_every_command() {
         assert_success(&output);
         assert_eq!(server.finish().len(), 1, "{args:?}");
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_edit_sets_or_clears_the_key() {
+    let workspace = Workspace::new();
+    for (args, expected_body) in [
+        (
+            vec![
+                "sessions",
+                "edit",
+                "session",
+                "--project-id",
+                "prj",
+                "--key",
+                "new-key",
+            ],
+            "{\"key\":\"new-key\"}\n",
+        ),
+        (
+            vec![
+                "sessions",
+                "edit",
+                "session",
+                "--project-id",
+                "prj",
+                "--clear-key",
+            ],
+            "{\"key\":null}\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/sessions/session",
+            r#"{"id":"session","createdAt":"","updatedAt":""}"#,
+        )]);
+        let output = Process::spawn(workspace.command(&server.url).args(&args)).finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Session updated: session\n"
+        );
+        let request = &server.finish()[0];
+        assert!(request.contains("/v1/sessions/session?projectId=prj "));
+        assert_eq!(request.split("\r\n\r\n").nth(1), Some(expected_body));
+    }
+}
+
+#[test]
+fn session_edit_rejects_an_empty_key() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .args(["sessions", "edit", "session", "--key", ""]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "--key must not be empty; use --clear-key to remove it\n"
+    );
 }
 
 #[test]

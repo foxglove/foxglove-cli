@@ -5,7 +5,8 @@ use std::fmt::Write as _;
 
 use crate::api::encode_path_segment;
 use crate::cli::{
-    SessionAddArgs, SessionListArgs, SessionLookupArgs, SessionRecordingMutationArgs,
+    SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
+    SessionRecordingMutationArgs,
 };
 use crate::output::Format;
 use crate::records::{fetch_list, format_output, DeviceSummary, ProjectFallback, Record};
@@ -239,6 +240,28 @@ struct PatchSessionRecordingsRequest {
     remove_recording_ids: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct PatchSessionKeyRequest {
+    key: SessionKeyUpdate,
+}
+
+enum SessionKeyUpdate {
+    Clear,
+    Set(String),
+}
+
+impl Serialize for SessionKeyUpdate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::Clear => serializer.serialize_none(),
+            Self::Set(key) => serializer.serialize_str(key),
+        }
+    }
+}
+
 pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Outcome {
     let device_id = args.device_id.clone().unwrap_or_default();
     if device_id.is_empty() {
@@ -299,6 +322,39 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }
         Err(error) => Outcome::failure(format!("Failed to delete session: {error}\n")),
+    }
+}
+
+pub(crate) async fn edit_session(runtime: &Runtime, args: &SessionEditArgs) -> Outcome {
+    let key = match &args.key {
+        Some(key) if key.is_empty() => {
+            return Outcome::failure("--key must not be empty; use --clear-key to remove it\n");
+        }
+        Some(key) => SessionKeyUpdate::Set(key.clone()),
+        None if args.clear_key => SessionKeyUpdate::Clear,
+        None => return Outcome::failure("Nothing to update\n"),
+    };
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    let request = PatchSessionKeyRequest { key };
+    match runtime
+        .client
+        .patch::<_, _, Session>(
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
+            &query,
+            &request,
+        )
+        .await
+    {
+        Ok(_) => Outcome {
+            stderr: format!("Session updated: {}\n", args.session).into_bytes(),
+            ..Outcome::default()
+        },
+        Err(error) if error.is_forbidden() => {
+            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
+        }
+        Err(error) => Outcome::failure(format!("Failed to edit session: {error}\n")),
     }
 }
 
