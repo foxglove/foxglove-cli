@@ -74,6 +74,17 @@ func TestRenderJSON(t *testing.T) {
 			"\n", ""))
 }
 
+func TestRenderRecord(t *testing.T) {
+	record := TestRecord{A: "a", B: "b"}
+	buf := &bytes.Buffer{}
+	err := renderRecord(buf, record, "json")
+	assert.Nil(t, err)
+	assert.Equal(t, `{"a":"a","b":"b"}`,
+		strings.ReplaceAll(
+			strings.ReplaceAll(strings.TrimSpace(buf.String()), " ", ""),
+			"\n", ""))
+}
+
 func TestRenderList(t *testing.T) {
 	records := []TestRecord{
 		{A: "a", B: "b"},
@@ -116,6 +127,12 @@ func TestMaybeConvertToRFC3339(t *testing.T) {
 			"accepts RFC3339",
 			"2021-01-01T00:00:00Z",
 			"2021-01-01T00:00:00Z",
+			nil,
+		},
+		{
+			"preserves subsecond precision",
+			"2021-01-01T00:00:00.123456789Z",
+			"2021-01-01T00:00:00.123456789Z",
 			nil,
 		},
 		{

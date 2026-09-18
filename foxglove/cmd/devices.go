@@ -83,7 +83,7 @@ func newAddDeviceCommand(params *baseParams) *cobra.Command {
 	addDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "name of the device")
 	addDeviceCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
 	addDeviceCmd.PersistentFlags().StringVarP(&serialNumber, "serial-number", "", "", "Deprecated. Value will be ignored.")
-	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
+	addDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Property colon-separated key value pair. Multiple may be specified.")
 	return addDeviceCmd
 }
 
@@ -138,6 +138,6 @@ func newEditDeviceCommand(params *baseParams) *cobra.Command {
 	editDeviceCmd.InheritedFlags()
 	editDeviceCmd.PersistentFlags().StringVarP(&name, "name", "", "", "New name for the device")
 	editDeviceCmd.PersistentFlags().StringVarP(&projectID, "project-id", "", viper.GetString("default_project_id"), "Project ID")
-	editDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Custom property colon-separated key value pair. Multiple may be specified.")
+	editDeviceCmd.PersistentFlags().StringArrayVarP(&propertyPairs, "property", "p", []string{}, "Property colon-separated key value pair. Multiple may be specified.")
 	return editDeviceCmd
 }

@@ -65,6 +65,28 @@ func TestDeviceProperties(t *testing.T) {
 	})
 }
 
+func TestEventProperties(t *testing.T) {
+	ctx := context.Background()
+	sv, err := api.NewMockServer(ctx)
+	assert.Nil(t, err)
+	client := newAuthedClient(t, sv.BaseURL())
+
+	t.Run("converts event custom property values", func(t *testing.T) {
+		properties, err := EventProperties([]string{"severity:high", "status:open", "tags:a,b"}, client)
+		assert.Nil(t, err)
+		assert.Equal(t, map[string]interface{}{
+			"severity": "high",
+			"status":   "open",
+			"tags":     []string{"a", "b"},
+		}, properties)
+	})
+
+	t.Run("rejects unknown event keys", func(t *testing.T) {
+		_, err := EventProperties([]string{"str:bar"}, client)
+		assert.Equal(t, fmt.Errorf("unknown key: str"), err)
+	})
+}
+
 func newAuthedClient(t *testing.T, baseUrl string) *api.FoxgloveClient {
 	client := api.NewRemoteFoxgloveClient(
 		baseUrl,

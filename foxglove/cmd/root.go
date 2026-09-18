@@ -157,7 +157,7 @@ func Execute(version string) {
 	}
 	eventTypesCmd := &cobra.Command{
 		Use:   "event-types",
-		Short: "List event types",
+		Short: "List and manage event types",
 	}
 	pendingImportsCmd := &cobra.Command{
 		Use:   "pending-imports",
@@ -247,8 +247,20 @@ func Execute(version string) {
 		newSessionRecordingsCommand(params),
 		newDeleteSessionCommand(params),
 	)
-	eventsCmd.AddCommand(newListEventsCommand(params), newAddEventCommand(params))
-	eventTypesCmd.AddCommand(newListEventTypesCommand(params))
+	eventsCmd.AddCommand(
+		newListEventsCommand(params),
+		newAddEventCommand(params),
+		newGetEventCommand(params),
+		newEditEventCommand(params),
+		newDeleteEventCommand(params),
+	)
+	eventTypesCmd.AddCommand(
+		newListEventTypesCommand(params),
+		newAddEventTypeCommand(params),
+		newGetEventTypeCommand(params),
+		newEditEventTypeCommand(params),
+		newDeleteEventTypeCommand(params),
+	)
 	extensionsCmd.AddCommand(newListExtensionsCommand(params))
 	extensionsCmd.AddCommand(newPublishExtensionCommand(params))
 	extensionsCmd.AddCommand(newUnpublishExtensionCommand(params))
