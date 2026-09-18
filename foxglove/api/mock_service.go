@@ -304,7 +304,7 @@ func (s *MockFoxgloveServer) createSession(w http.ResponseWriter, r *http.Reques
 
 func (s *MockFoxgloveServer) patchSession(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	req := PatchSessionRecordingsRequest{}
+	req := PatchSessionRequest{}
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -327,14 +327,17 @@ func (s *MockFoxgloveServer) patchSession(w http.ResponseWriter, r *http.Request
 					removeSet[rid] = true
 				}
 				newRecs := make([]SessionRecordingSummary, 0, len(recs))
-				for _, r := range recs {
-					if !removeSet[r.ID] {
-						newRecs = append(newRecs, r)
+				for _, rec := range recs {
+					if !removeSet[rec.ID] {
+						newRecs = append(newRecs, rec)
 					}
 				}
 				recs = newRecs
 			}
 			s.registeredSessions[i].Recordings = recs
+			if req.Key != "" {
+				s.registeredSessions[i].Key = req.Key
+			}
 			s.registeredSessions[i].UpdatedAt = time.Now()
 			sess := &s.registeredSessions[i]
 			_ = json.NewEncoder(w).Encode(UpdateSessionResponse{

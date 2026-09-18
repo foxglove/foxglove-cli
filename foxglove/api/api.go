@@ -646,7 +646,9 @@ type SessionRecordingsResponse struct {
 	RecordingIDs []string `json:"recordingIds"`
 }
 
-type PatchSessionRecordingsRequest struct {
+// PatchSessionRequest is the body for PATCH /v1/sessions/{keyOrId}.
+type PatchSessionRequest struct {
+	Key                string   `json:"key,omitempty"`
 	AddRecordingIDs    []string `json:"addRecordingIds,omitempty"`
 	RemoveRecordingIDs []string `json:"removeRecordingIds,omitempty"`
 }

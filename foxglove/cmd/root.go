@@ -244,6 +244,7 @@ func Execute(version string) {
 		newListSessionsCommand(params),
 		newGetSessionCommand(params),
 		newAddSessionCommand(params),
+		newEditSessionCommand(params),
 		newSessionRecordingsCommand(params),
 		newDeleteSessionCommand(params),
 	)
