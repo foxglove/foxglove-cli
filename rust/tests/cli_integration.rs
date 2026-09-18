@@ -712,3 +712,347 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
         );
     }
 }
+
+const SITE: &str =
+    r#"{"id":"site_one","name":"Warehouse, east","type":"edge","retainRecordingsSeconds":0}"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn sites_read_formats_preserve_optional_fields_and_numbers() {
+    let workspace = Workspace::new();
+    for command in ["list", "get"] {
+        for format in ["json", "csv", "table"] {
+            let body = if command == "list" {
+                format!("[{SITE}]")
+            } else {
+                SITE.to_owned()
+            };
+            let path = if command == "list" {
+                "/v1/sites"
+            } else {
+                "/v1/sites/site_one"
+            };
+            let server = Server::new(vec![Reply::json("GET", path, &body)]);
+            let mut args = vec!["sites", command];
+            if command == "get" {
+                args.push("site_one");
+            }
+            args.extend(["--format", format]);
+            let output = Process::spawn(
+                workspace
+                    .command(&server.url)
+                    .env("DEFAULT_PROJECT_ID", "prj_ignored")
+                    .args(&args),
+            )
+            .finish();
+            assert_success(&output);
+            assert!(output.stderr.is_empty());
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            match format {
+                "json" => assert_eq!(serde_json::from_str::<serde_json::Value>(&stdout).unwrap(), serde_json::from_str::<serde_json::Value>(&body).unwrap()),
+                "csv" => assert_eq!(stdout, "ID,Name,Type,URL,Retain Recordings Seconds\nsite_one,\"Warehouse, east\",edge,,0\n"),
+                _ => {
+                    assert!(stdout.contains("site_one"));
+                    assert!(stdout.contains("Warehouse, east"));
+                    assert!(stdout.contains("edge"));
+                }
+            }
+            let requests = server.finish();
+            assert_eq!(requests[0].split_whitespace().nth(1), Some(path));
+        }
+    }
+    let body = r#"[{"id":"s","name":"Primary","type":"future-type","url":"https://site.example"},{"id":"e","name":"Edge","type":"edge","retainRecordingsSeconds":1.25}]"#;
+    let server = Server::new(vec![Reply::json("GET", "/v1/sites", body)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["sites", "list", "--format", "json"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::from_str::<serde_json::Value>(body).unwrap()
+    );
+    server.finish();
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn sites_empty_list_and_invalid_response() {
+    let workspace = Workspace::new();
+    for (format, expected) in [
+        ("json", "[]\n"),
+        ("csv", "ID,Name,Type,URL,Retain Recordings Seconds\n"),
+        ("table", "No records found\n"),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/sites", "[]")]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["sites", "list", "--format", format]),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(output.stdout, expected.as_bytes());
+        assert!(output.stderr.is_empty());
+        server.finish();
+    }
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/sites",
+        r#"[{"id":"s","name":"Missing type"}]"#,
+    )]);
+    let output = Process::spawn(workspace.command(&server.url).args(["sites", "list"])).finish();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Failed to list sites:"));
+    server.finish();
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn sites_mutations_send_only_requested_fields() {
+    let workspace = Workspace::new();
+    for (args, method, path, body, action) in [
+        (
+            vec!["add", "--name", "Primary", "--type", "self-hosted"],
+            "POST",
+            "/v1/sites",
+            serde_json::json!({"name":"Primary","type":"self-hosted"}),
+            "created",
+        ),
+        (
+            vec![
+                "add",
+                "--name",
+                "Edge",
+                "--type",
+                "edge",
+                "--retain-recordings-seconds",
+                "0",
+            ],
+            "POST",
+            "/v1/sites",
+            serde_json::json!({"name":"Edge","type":"edge","retainRecordingsSeconds":0}),
+            "created",
+        ),
+        (
+            vec![
+                "add",
+                "--name",
+                "Edge",
+                "--type",
+                "edge",
+                "--retain-recordings-seconds",
+                "1.25",
+            ],
+            "POST",
+            "/v1/sites",
+            serde_json::json!({"name":"Edge","type":"edge","retainRecordingsSeconds":1.25}),
+            "created",
+        ),
+        (
+            vec!["edit", "site_one", "--name", "Renamed"],
+            "PATCH",
+            "/v1/sites/site_one",
+            serde_json::json!({"name":"Renamed"}),
+            "updated",
+        ),
+        (
+            vec!["edit", "site_one", "--retain-recordings-seconds", "0"],
+            "PATCH",
+            "/v1/sites/site_one",
+            serde_json::json!({"retainRecordingsSeconds":0}),
+            "updated",
+        ),
+        (
+            vec!["edit", "site_one", "--url", "https://site.example"],
+            "PATCH",
+            "/v1/sites/site_one",
+            serde_json::json!({"url":"https://site.example"}),
+            "updated",
+        ),
+        (
+            vec![
+                "edit",
+                "site_one",
+                "--name=",
+                "--url=",
+                "--retain-recordings-seconds",
+                "2.5",
+            ],
+            "PATCH",
+            "/v1/sites/site_one",
+            serde_json::json!({"name":"","url":"","retainRecordingsSeconds":2.5}),
+            "updated",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(method, path, SITE)]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "prj_ignored")
+                .arg("sites")
+                .args(args),
+        )
+        .finish();
+        assert_success(&output);
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!("Site {action}: site_one\n")
+        );
+        let requests = server.finish();
+        assert_eq!(requests[0].split_whitespace().nth(1), Some(path));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                requests[0].split_once("\r\n\r\n").unwrap().1
+            )
+            .unwrap(),
+            body
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn sites_ids_are_encoded_for_get_edit_and_delete() {
+    let workspace = Workspace::new();
+    for (verb, method, extra) in [
+        ("get", "GET", vec!["--format", "json"]),
+        ("edit", "PATCH", vec!["--name", "Renamed"]),
+        ("delete", "DELETE", vec![]),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            method,
+            "/v1/sites/site%2F%23%3F%25%20snow%E2%98%83",
+            if verb == "delete" {
+                r#"{"id":"site/#?% snow☃"}"#
+            } else {
+                SITE
+            },
+        )]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["sites", verb, "site/#?% snow☃"])
+                .args(extra),
+        )
+        .finish();
+        assert_success(&output);
+        if verb == "delete" {
+            assert!(output.stdout.is_empty());
+            assert_eq!(
+                String::from_utf8_lossy(&output.stderr),
+                "Site deleted: site/#?% snow☃\n"
+            );
+        }
+        server.finish();
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn sites_api_errors_keep_stdout_empty() {
+    let workspace = Workspace::new();
+    for status in [400, 403, 404, 500] {
+        for (args, method, path, context) in [
+            (vec!["list"], "GET", "/v1/sites", "list sites"),
+            (vec!["get", "s"], "GET", "/v1/sites/s", "get site"),
+            (
+                vec!["add", "--name", "Edge", "--type", "edge"],
+                "POST",
+                "/v1/sites",
+                "create site",
+            ),
+            (
+                vec!["edit", "s", "--name", "New"],
+                "PATCH",
+                "/v1/sites/s",
+                "edit site",
+            ),
+            (vec!["delete", "s"], "DELETE", "/v1/sites/s", "delete site"),
+        ] {
+            let server = Server::new(vec![Reply {
+                status,
+                ..Reply::json(method, path, r#"{"message":"fixture failure"}"#)
+            }]);
+            let output =
+                Process::spawn(workspace.command(&server.url).arg("sites").args(args)).finish();
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            assert!(String::from_utf8_lossy(&output.stderr)
+                .starts_with(&format!("Failed to {context}:")));
+            server.finish();
+        }
+    }
+}
+
+#[test]
+fn sites_invalid_arguments_fail_before_http() {
+    let workspace = Workspace::new();
+    for args in [
+        vec!["add", "--name", "Edge"],
+        vec!["add", "--type", "edge"],
+        vec!["add", "--name", "Hosted", "--type", "foxglove-hosted"],
+        vec![
+            "add",
+            "--name",
+            "Primary",
+            "--type",
+            "self-hosted",
+            "--retain-recordings-seconds",
+            "0",
+        ],
+        vec!["edit", "s"],
+        vec!["edit", "s", "--retain-recordings-seconds=-1"],
+        vec!["edit", "s", "--retain-recordings-seconds=NaN"],
+        vec!["edit", "s", "--retain-recordings-seconds=inf"],
+        vec!["edit", "s", "--retain-recordings-seconds=null"],
+        vec!["get"],
+        vec!["delete"],
+        vec!["get", ".."],
+        vec!["edit", ".", "--name", "New"],
+        vec!["delete", ""],
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .arg("sites")
+                .args(&args),
+        )
+        .finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("error sending request"),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn sites_help_and_completions_include_commands_and_flags() {
+    let workspace = Workspace::new();
+    for verb in ["list", "get", "add", "edit", "delete"] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["sites", verb, "--help"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert!(String::from_utf8_lossy(&output.stdout).contains(&format!("foxglove sites {verb}")));
+    }
+    // Drain the completion script while the child runs; it can exceed pipe capacity.
+    let output = workspace
+        .command("http://127.0.0.1:1")
+        .args(["completion", "bash"])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let script = String::from_utf8_lossy(&output.stdout);
+    assert!(script.contains("sites"));
+    assert!(script.contains("--retain-recordings-seconds"));
+}
