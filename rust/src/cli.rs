@@ -14,7 +14,7 @@ use crate::config::Config;
 use crate::output::Format;
 use crate::{
     attachments, auth, data, datasets, devices, episodes, event_types, events, extensions,
-    pending_imports, projects, recordings, runtime, sessions, topics,
+    pending_imports, projects, recordings, runtime, sessions, sites, topics,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -95,6 +95,8 @@ enum CliCommand {
     Recordings(RecordingsCommand),
     #[command(about = "List and manage sessions", subcommand)]
     Sessions(SessionsCommand),
+    #[command(about = "List and manage sites", subcommand)]
+    Sites(SitesCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
     #[command(about = "Print Foxglove CLI version")]
@@ -920,6 +922,59 @@ pub(crate) struct TopicListArgs {
     pub(crate) start: Option<String>,
 }
 
+#[derive(Debug, Subcommand)]
+enum SitesCommand {
+    #[command(about = "List sites")]
+    List(FormatArgs),
+    #[command(about = "Get site details")]
+    Get(SiteGetArgs),
+    #[command(about = "Add an Edge or self-hosted Primary Site")]
+    Add(SiteAddArgs),
+    #[command(about = "Edit a site's name, retention period, or URL")]
+    Edit(SiteEditArgs),
+    #[command(
+        about = "Permanently delete a site",
+        long_about = "Permanently delete a site. Recordings at this site will no longer be available through Foxglove. Shut down Edge and self-hosted deployments first. Files in site storage are not deleted."
+    )]
+    Delete(SiteIdArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteIdArgs {
+    #[arg(value_name = "SITE_ID")]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteGetArgs {
+    #[command(flatten)]
+    pub(crate) site: SiteIdArgs,
+    #[command(flatten)]
+    format: FormatArgs,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteAddArgs {
+    #[arg(long, help = "Name of the site", allow_hyphen_values = true)]
+    pub(crate) name: String,
+    #[arg(long = "type", help = "Type of site to create", value_parser = ["self-hosted", "edge"])]
+    pub(crate) site_type: String,
+    #[arg(long, help = "Edge recording retention in seconds; 0 retains indefinitely", value_parser = sites::parse_retention)]
+    pub(crate) retain_recordings_seconds: Option<serde_json::Number>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteEditArgs {
+    #[command(flatten)]
+    pub(crate) site: SiteIdArgs,
+    #[arg(long, help = "Name of the site", allow_hyphen_values = true)]
+    pub(crate) name: Option<String>,
+    #[arg(long, help = "Edge recording retention in seconds; 0 retains indefinitely", value_parser = sites::parse_retention)]
+    pub(crate) retain_recordings_seconds: Option<serde_json::Number>,
+    #[arg(long, help = "REST API URL exposed by a self-hosted Primary Site", value_hint = ValueHint::Url, allow_hyphen_values = true)]
+    pub(crate) url: Option<String>,
+}
+
 #[derive(Debug, Args)]
 struct FormatArgs {
     #[arg(
@@ -1047,6 +1102,7 @@ async fn dispatch_api_command(
             attachments::list_attachments(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
+        CliCommand::Sites(command) => dispatch_site_command(&runtime, command).await,
         CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => {
             let format = args.format.format;
             data::list_coverage(&runtime, &args, format).await
@@ -1129,6 +1185,18 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_site_command(runtime: &runtime::Runtime, command: SitesCommand) -> Outcome {
+    match command {
+        SitesCommand::List(args) => sites::list_sites(runtime, args.format).await,
+        SitesCommand::Get(args) => {
+            sites::get_site(runtime, &args.site.id, args.format.format).await
+        }
+        SitesCommand::Add(args) => sites::add_site(runtime, &args).await,
+        SitesCommand::Edit(args) => sites::edit_site(runtime, &args).await,
+        SitesCommand::Delete(args) => sites::delete_site(runtime, &args.id).await,
     }
 }
 

@@ -192,6 +192,47 @@ $ foxglove events list
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
+### Sites
+
+List sites or get one site's details (table, JSON, and CSV are supported):
+
+```sh
+$ foxglove sites list --format json
+$ foxglove sites get site_example --format json
+```
+
+JSON returns an array for `list` and an object for `get`. Site commands are
+organization-wide and do not use the configured default project.
+
+Create an Edge Site or a self-hosted Primary Site:
+
+```sh
+$ foxglove sites add --name warehouse --type edge --retain-recordings-seconds 86400
+$ foxglove sites add --name primary --type self-hosted
+```
+
+Edit a site's name, Edge recording retention, or self-hosted Primary Site URL:
+
+```sh
+$ foxglove sites edit site_example --name warehouse-west
+$ foxglove sites edit site_example --retain-recordings-seconds 0
+$ foxglove sites edit site_primary --url https://site.example.com
+```
+
+Omitted edit flags leave those fields unchanged. Retention is measured in seconds;
+zero retains recordings indefinitely. Retention applies only to Edge Sites.
+
+Permanently delete a site:
+
+```sh
+$ foxglove sites delete site_example
+```
+
+Shut down Edge and self-hosted deployments before deletion. Recordings at the
+deleted site become unavailable through Foxglove; files in site storage remain.
+Mutations print confirmation to stderr. See the [Sites API](https://docs.foxglove.dev/api#tag/Sites)
+for API key capabilities and site behavior.
+
 ### Datasets and episodes
 
 An episode is a time window over one or more recordings; a dataset is a named,
