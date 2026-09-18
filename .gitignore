@@ -2,7 +2,7 @@ foxglove/foxglove
 *.swp
 *.swo
 tags
-.claude/
+.claude/settings.local.json
 
 **/target/
 **/*.rs.bk
