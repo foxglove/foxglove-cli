@@ -800,6 +800,13 @@ const DOWNLOAD_DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name
 const DOWNLOAD_VERSIONS: &str =
     r#"{"versions":[{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"}]}"#;
 
+fn with_missing_recordings(episode: &str, missing: bool) -> String {
+    episode.replace(
+        r#""hasMissingRecordings":false"#,
+        &format!(r#""hasMissingRecordings":{missing}"#),
+    )
+}
+
 fn download_episode(id: &str, start: &str) -> String {
     format!(
         r#"{{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":false,"episode":{{"id":"{id}","projectId":"prj_default","startTime":"{start}","endTime":"2024-01-02T03:04:09Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
@@ -1238,10 +1245,7 @@ fn a_rerun_downloads_again_an_episode_that_was_missing_recordings() {
     let episodes = |missing: bool| {
         format!(
             r#"{{"episodes":[{}]}}"#,
-            download_episode("ep_one", "2024-01-02T03:04:05Z").replace(
-                r#""hasMissingRecordings":false"#,
-                &format!(r#""hasMissingRecordings":{missing}"#)
-            )
+            with_missing_recordings(&download_episode("ep_one", "2024-01-02T03:04:05Z"), missing)
         )
     };
     let replies = |missing: bool| {
@@ -1284,10 +1288,7 @@ fn a_rerun_downloads_again_an_episode_that_was_missing_recordings() {
 fn a_rerun_keeps_the_earlier_partial_file_when_its_new_attempt_fails() {
     let episodes = format!(
         r#"{{"episodes":[{}]}}"#,
-        download_episode("ep_one", "2024-01-02T03:04:05Z").replace(
-            r#""hasMissingRecordings":false"#,
-            r#""hasMissingRecordings":true"#
-        )
+        with_missing_recordings(&download_episode("ep_one", "2024-01-02T03:04:05Z"), true)
     );
     let metadata = || {
         vec![
@@ -1346,13 +1347,6 @@ fn a_rerun_keeps_the_earlier_partial_file_when_its_new_attempt_fails() {
         stderr.contains("bytes kept from an earlier run (skipped: "),
         "{stderr}"
     );
-}
-
-fn with_missing_recordings(episode: &str, missing: bool) -> String {
-    episode.replace(
-        r#""hasMissingRecordings":false"#,
-        &format!(r#""hasMissingRecordings":{missing}"#),
-    )
 }
 
 #[test]
@@ -1460,10 +1454,10 @@ fn a_stopped_rerun_reports_an_earlier_partial_file_as_kept() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("Episode 2 of 2 \u{2014} ")
-            && stderr.contains("bytes kept from an earlier run (Not attempted: "),
+            && stderr.contains("bytes kept from an earlier run (not attempted: "),
         "{stderr}"
     );
-    assert!(!stderr.contains("not attempted: "), "{stderr}");
+    assert!(!stderr.contains("more episode"), "{stderr}");
     assert!(
         stderr.contains("Downloaded 1 of 2 episodes to Highway-merges-v4 (1 failed, 0 skipped)"),
         "{stderr}"

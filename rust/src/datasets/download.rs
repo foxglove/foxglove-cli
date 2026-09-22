@@ -531,8 +531,15 @@ async fn download_episodes(
             )
         } else if let Some(reason) = &stopped {
             quiet = true;
-            let reason = format!("Not attempted: {reason}");
-            (base("failed", None, None, Some(reason.clone())), reason)
+            (
+                base(
+                    "failed",
+                    None,
+                    None,
+                    Some(format!("Not attempted: {reason}")),
+                ),
+                format!("not attempted: {reason}"),
+            )
         } else {
             let request = episode_request(entry, args, topics);
             match write_episode(runtime, request, &path, &mut progress, &cancellation).await {
@@ -562,9 +569,7 @@ async fn download_episodes(
         };
         if let Some(earlier) = earlier.filter(|_| episode.status != "downloaded") {
             quiet = false;
-            note = format!("{} bytes kept from an earlier run ({note})", earlier.size);
-            episode = base("downloaded", file, Some(earlier.size), None);
-            episode.episode_has_missing_recordings = Some(true);
+            keep_earlier_file(&mut episode, &mut note, earlier, file);
         }
         tally.record(episode);
         if quiet {
@@ -577,6 +582,20 @@ async fn download_episodes(
         report_not_attempted(not_attempted, &reason);
     }
     tally
+}
+
+fn keep_earlier_file(
+    episode: &mut ManifestEpisode,
+    note: &mut String,
+    earlier: EarlierFile,
+    file: Option<String>,
+) {
+    *note = format!("{} bytes kept from an earlier run ({note})", earlier.size);
+    episode.status = "downloaded";
+    episode.file = file;
+    episode.byte_size = Some(earlier.size);
+    episode.reason = None;
+    episode.episode_has_missing_recordings = Some(true);
 }
 
 fn report_not_attempted(count: usize, reason: &str) {
