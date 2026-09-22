@@ -1,6 +1,7 @@
 //! Dataset version download.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -401,6 +402,8 @@ struct PreviousEpisode {
     #[serde(default)]
     byte_size: Option<u64>,
     status: String,
+    #[serde(default)]
+    episode_has_missing_recordings: Option<bool>,
 }
 
 struct Selection<'a> {
@@ -427,7 +430,9 @@ fn previously_downloaded(directory: &Path, selection: &Selection<'_>) -> HashMap
     previous
         .episodes
         .into_iter()
-        .filter(|episode| episode.status == "downloaded")
+        .filter(|episode| {
+            episode.status == "downloaded" && episode.episode_has_missing_recordings != Some(true)
+        })
         .filter_map(|episode| {
             Some((
                 episode_file_name(episode.index, &episode.id),
@@ -582,6 +587,29 @@ fn write_manifest(directory: &Path, manifest: &Manifest) -> Result<(), String> {
         .map_err(|error| format!("Failed to write {}: {error}\n", path.display()))
 }
 
+fn summary(tally: &DownloadTally, total: usize, directory: &Path) -> String {
+    let mut summary = format!(
+        "Downloaded {} of {total} episodes to {} ({} failed, {} skipped)\n",
+        tally.downloaded,
+        directory.display(),
+        tally.failed,
+        tally.skipped
+    );
+    if tally.partial > 0 {
+        let noun = if tally.partial == 1 {
+            "episode has"
+        } else {
+            "episodes have"
+        };
+        let _ = writeln!(
+            summary,
+            "{} downloaded {noun} missing recordings",
+            tally.partial
+        );
+    }
+    summary
+}
+
 pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
     let dataset = match fetch_dataset(runtime, &args.dataset_id).await {
         Ok(dataset) => dataset,
@@ -637,8 +665,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         &reusable,
     )
     .await;
-    let (downloaded, partial, failed, skipped) =
-        (tally.downloaded, tally.partial, tally.failed, tally.skipped);
+    let summary = summary(&tally, episodes.len(), &directory);
+    let (failed, cancelled) = (tally.failed, tally.cancelled);
 
     let manifest = Manifest {
         format_version: MANIFEST_FORMAT_VERSION,
@@ -667,12 +695,7 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         return Outcome::failure(error);
     }
 
-    let summary = format!(
-        "Downloaded {downloaded} of {} episodes to {} ({partial} with missing recordings, {failed} failed, {skipped} skipped)\n",
-        episodes.len(),
-        directory.display()
-    );
-    if tally.cancelled {
+    if cancelled {
         return Outcome {
             exit_code: 130,
             stderr: summary.into_bytes(),

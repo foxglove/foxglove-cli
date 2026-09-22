@@ -231,7 +231,7 @@ the in-app download produces, so the two are interchangeable:
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
 Episode 1 of 128 — 41231 bytes written
 ...
-Downloaded 127 of 128 episodes to Highway-merges-v4 (0 with missing recordings, 0 failed, 1 skipped)
+Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
 
 Without `--version` the newest committed version is used; a dataset's editable

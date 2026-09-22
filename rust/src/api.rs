@@ -55,7 +55,11 @@ pub enum ApiError {
     /// gave, if any.
     NotFound { code: Option<String> },
     /// The server returned a non-success response with its decoded message.
-    Response { status: u16, message: String },
+    Response {
+        status: u16,
+        message: String,
+        code: Option<String>,
+    },
     /// The request could not be sent or its response could not be read.
     Transport(reqwest::Error),
     /// A response was syntactically valid HTTP but not valid expected JSON.
@@ -108,7 +112,7 @@ impl ApiError {
     pub fn code(&self) -> Option<&str> {
         match self {
             Self::Context { source, .. } => source.code(),
-            Self::NotFound { code } => code.as_deref(),
+            Self::NotFound { code } | Self::Response { code, .. } => code.as_deref(),
             _ => None,
         }
     }
@@ -554,6 +558,7 @@ impl FoxgloveClient {
                     Err(ApiError::Response {
                         status: status.as_u16(),
                         message: format!("unexpected status {}", status.as_u16()),
+                        code: None,
                     })
                 }
             }
@@ -1182,6 +1187,7 @@ fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
         _ => ApiError::Response {
             status: status.as_u16(),
             message: response_message(body),
+            code: response_code(body),
         },
     }
 }
@@ -1460,6 +1466,11 @@ mod tests {
         assert_eq!(
             api_error_from_response(StatusCode::NOT_FOUND, "not json").code(),
             None
+        );
+        assert_eq!(
+            api_error_from_response(StatusCode::CONFLICT, r#"{"error":"busy","code":"Busy"}"#)
+                .code(),
+            Some("Busy")
         );
         assert!(ApiError::Cancelled.is_cancelled());
     }

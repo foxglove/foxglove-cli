@@ -766,7 +766,7 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
     );
     assert!(
         progress.contains(
-            "Downloaded 2 of 2 episodes to Highway-merges-v4 (1 with missing recordings, 0 failed, 0 skipped)"
+            "Downloaded 2 of 2 episodes to Highway-merges-v4 (0 failed, 0 skipped)\n1 downloaded episode has missing recordings"
         ),
         "{progress}"
     );
@@ -991,7 +991,7 @@ fn a_stream_that_never_completes_leaves_no_partial_episode_behind() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("Downloaded 0 of 1 episodes to Highway-merges-v4 (0 with missing recordings, 1 failed, 0 skipped)"),
+        stderr.contains("Downloaded 0 of 1 episodes to Highway-merges-v4 (1 failed, 0 skipped)"),
         "{stderr}"
     );
 
@@ -1048,7 +1048,7 @@ fn an_episode_that_could_not_be_downloaded_fails_the_run() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("Downloaded 1 of 2 episodes to Highway-merges-v4 (0 with missing recordings, 1 failed, 0 skipped)"),
+        stderr.contains("Downloaded 1 of 2 episodes to Highway-merges-v4 (1 failed, 0 skipped)"),
         "{stderr}"
     );
 
@@ -1107,7 +1107,7 @@ fn a_version_whose_episodes_are_all_skipped_is_not_a_failure() {
         .is_none());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Downloaded 0 of 1 episodes to Gone-v1 (0 with missing recordings, 0 failed, 1 skipped)"),
+        stderr.contains("Downloaded 0 of 1 episodes to Gone-v1 (0 failed, 1 skipped)"),
         "{stderr}"
     );
 }
@@ -1230,6 +1230,53 @@ fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
     )
     .unwrap();
     assert_eq!(manifest["selection"]["includeAttachments"], false);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_rerun_downloads_again_an_episode_that_was_missing_recordings() {
+    let episodes = |missing: bool| {
+        format!(
+            r#"{{"episodes":[{}]}}"#,
+            download_episode("ep_one", "2024-01-02T03:04:05Z").replace(
+                r#""hasMissingRecordings":false"#,
+                &format!(r#""hasMissingRecordings":{missing}"#)
+            )
+        )
+    };
+    let replies = |missing: bool| {
+        vec![
+            Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+            Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+            Reply::json(
+                "GET",
+                "/v1/datasets/ds_one/versions/4/episodes",
+                &episodes(missing),
+            ),
+            episode_stream_link(),
+            episode_download(),
+        ]
+    };
+    let workspace = Workspace::new();
+    for missing in [true, false] {
+        let server = Server::new(replies(missing));
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["datasets", "download", "ds_one"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(server.finish().len(), 5);
+    }
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(workspace.0.join("Highway-merges-v4").join("manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        manifest["episodes"][0]["episodeHasMissingRecordings"],
+        false
+    );
 }
 
 #[cfg(all(unix, feature = "compat-test"))]
