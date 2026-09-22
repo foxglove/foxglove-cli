@@ -1,7 +1,7 @@
 //! Data import, export, and coverage commands.
 
 mod coverage;
-mod export;
+pub(crate) mod export;
 mod import;
 
 pub(crate) use coverage::list as list_coverage;

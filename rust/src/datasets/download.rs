@@ -1,28 +1,34 @@
 //! Dataset version download.
 
-use std::io::Write;
+use std::collections::HashMap;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
+use unicode_general_category::{get_general_category, GeneralCategory};
 
 use super::{DatasetEpisode, DatasetEpisodeListResponse};
 use crate::api::{encode_path_segment, ApiError, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
+use crate::data::export::{resumable_download, CompletionCheck, DownloadProgress};
 use crate::records::DEFAULT_LIST_LIMIT;
 use crate::runtime::Runtime;
 use crate::Outcome;
 
 const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
-const SLUG_MAX_CHARS: usize = 64;
+/// The app cuts the slug with `String.prototype.slice`, which counts UTF-16
+/// code units.
+const SLUG_MAX_UTF16_UNITS: usize = 64;
 
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Debug, Default, Deserialize)]
 struct DatasetSummary {
@@ -66,6 +72,10 @@ struct ManifestVersion {
 struct ManifestSelection {
     #[serde(skip_serializing_if = "Option::is_none")]
     topics: Option<Vec<String>>,
+    /// Recorded only when attachments were left out, so a default download
+    /// writes the same manifest as the app, which always includes them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    include_attachments: Option<bool>,
     episode_count: usize,
 }
 
@@ -97,12 +107,31 @@ struct Manifest {
     episodes: Vec<ManifestEpisode>,
 }
 
+/// The app's `[\p{Letter}\p{Number}._-]`. `char::is_alphanumeric` is wider:
+/// it also keeps vowel signs and other marks the app replaces.
+fn is_slug_character(character: char) -> bool {
+    matches!(character, '.' | '_' | '-')
+        || matches!(
+            get_general_category(character),
+            GeneralCategory::UppercaseLetter
+                | GeneralCategory::LowercaseLetter
+                | GeneralCategory::TitlecaseLetter
+                | GeneralCategory::ModifierLetter
+                | GeneralCategory::OtherLetter
+                | GeneralCategory::DecimalNumber
+                | GeneralCategory::LetterNumber
+                | GeneralCategory::OtherNumber
+        )
+}
+
+/// Matches `archiveRootName` in the app: replace each run of other
+/// characters with a dash, trim dashes, and only then cut to length.
 fn archive_root_name(dataset_name: &str, version_number: i64) -> String {
     let mut slug = String::new();
     let mut pending_dash = false;
     for character in dataset_name.trim().chars() {
-        if character.is_alphanumeric() || matches!(character, '.' | '_' | '-') {
-            if pending_dash && !slug.is_empty() {
+        if is_slug_character(character) {
+            if pending_dash {
                 slug.push('-');
             }
             pending_dash = false;
@@ -110,11 +139,17 @@ fn archive_root_name(dataset_name: &str, version_number: i64) -> String {
         } else {
             pending_dash = true;
         }
-        if slug.chars().count() >= SLUG_MAX_CHARS {
-            break;
-        }
     }
     let slug = slug.trim_matches('-');
+    let mut units = 0;
+    let end = slug
+        .char_indices()
+        .find_map(|(offset, character)| {
+            units += character.len_utf16();
+            (units > SLUG_MAX_UTF16_UNITS).then_some(offset)
+        })
+        .unwrap_or(slug.len());
+    let slug = &slug[..end];
     let slug = if slug.is_empty() { "dataset" } else { slug };
     format!("{slug}-v{version_number}")
 }
@@ -227,13 +262,30 @@ async fn fetch_all_episodes(
 
 async fn write_episode(
     runtime: &Runtime,
-    request: &StreamRequest,
+    request: Result<StreamRequest, String>,
     path: &Path,
+    progress: &mut EpisodeProgress,
     cancellation: &CancellationToken,
 ) -> Result<u64, ApiError> {
+    let request = request.map_err(ApiError::Conversion)?;
     let mut attempt = 1;
     loop {
-        let result = write_episode_once(runtime, request, path, cancellation).await;
+        // A response that stops part way resumes from its last message, so a
+        // retry here only follows a failure before any usable data arrived.
+        let result = resumable_download(
+            runtime,
+            request.clone(),
+            path,
+            cancellation,
+            progress,
+            CompletionCheck::EndMagic,
+        )
+        .await
+        .and_then(|()| {
+            std::fs::metadata(path)
+                .map(|metadata| metadata.len())
+                .map_err(ApiError::Write)
+        });
         let Err(error) = &result else { return result };
         if attempt >= EPISODE_ATTEMPTS || !error.is_retryable() {
             return result;
@@ -246,31 +298,145 @@ async fn write_episode(
     }
 }
 
-async fn write_episode_once(
-    runtime: &Runtime,
-    request: &StreamRequest,
-    path: &Path,
-    cancellation: &CancellationToken,
-) -> Result<u64, ApiError> {
-    let mut stream = runtime
-        .client
-        .stream_with_cancellation(request, cancellation)
-        .await?;
-    let mut file = tokio::fs::File::create(path)
-        .await
-        .map_err(ApiError::Write)?;
-    let result = match stream.copy_to(&mut file).await {
-        Ok(written) => tokio::io::AsyncWriteExt::flush(&mut file)
-            .await
-            .map(|()| written)
-            .map_err(ApiError::Write),
-        Err(error) => Err(error),
+/// Stream one episode, with its bounds pinned so that a resumed request never
+/// reads past the end of the episode.
+fn episode_request(
+    entry: &DatasetEpisode,
+    args: &DatasetDownloadArgs,
+    topics: Option<&[String]>,
+) -> Result<StreamRequest, String> {
+    let bound = |raw: &str| {
+        OffsetDateTime::parse(raw, &Rfc3339)
+            .map_err(|error| format!("Invalid episode time {raw:?}: {error}"))
     };
-    if result.is_err() {
-        drop(file);
-        let _ = tokio::fs::remove_file(path).await;
+    Ok(StreamRequest {
+        episode_id: entry.episode.id.clone(),
+        start: Some(bound(&entry.episode.start_time)?),
+        end: Some(bound(&entry.episode.end_time)?),
+        output_format: "mcap".to_owned(),
+        include_attachments: args.include_attachments,
+        topics: topics.map(<[String]>::to_vec).unwrap_or_default(),
+        ..StreamRequest::default()
+    })
+}
+
+/// Progress for one episode: a running byte count while it downloads when
+/// stderr is a terminal, then one line with the outcome.
+struct EpisodeProgress {
+    label: String,
+    received: u64,
+    last_report: Instant,
+    live: bool,
+    shown: usize,
+}
+
+impl EpisodeProgress {
+    fn new(index: usize, total: usize) -> Self {
+        Self {
+            label: format!("Episode {} of {total}", index + 1),
+            received: 0,
+            last_report: Instant::now(),
+            live: std::io::stderr().is_terminal(),
+            shown: 0,
+        }
     }
-    result
+
+    fn finish(&self, note: &str) {
+        let line = format!("{} \u{2014} {note}", self.label);
+        let carriage = if self.shown > 0 { "\r" } else { "" };
+        let padding = " ".repeat(self.shown.saturating_sub(line.chars().count()));
+        let _ = writeln!(std::io::stderr(), "{carriage}{line}{padding}");
+    }
+}
+
+impl DownloadProgress for EpisodeProgress {
+    fn advance(&mut self, bytes: usize) {
+        self.received = self.received.saturating_add(bytes as u64);
+        if !self.live || self.last_report.elapsed() < PROGRESS_INTERVAL {
+            return;
+        }
+        let line = format!("{} \u{2014} {} bytes received", self.label, self.received);
+        let _ = write!(std::io::stderr(), "\r{line}");
+        self.shown = self.shown.max(line.chars().count());
+        self.last_report = Instant::now();
+    }
+}
+
+#[derive(Deserialize)]
+struct PreviousManifest {
+    dataset: PreviousDataset,
+    version: PreviousVersion,
+    selection: PreviousSelection,
+    episodes: Vec<PreviousEpisode>,
+}
+
+#[derive(Deserialize)]
+struct PreviousDataset {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviousVersion {
+    version_number: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviousSelection {
+    #[serde(default)]
+    topics: Option<Vec<String>>,
+    #[serde(default)]
+    include_attachments: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviousEpisode {
+    index: usize,
+    id: String,
+    #[serde(default)]
+    byte_size: Option<u64>,
+    status: String,
+}
+
+/// The selection a download is made with, which an earlier run must share
+/// before its files can be reused.
+struct Selection<'a> {
+    dataset_id: &'a str,
+    version_number: i64,
+    topics: Option<&'a [String]>,
+    include_attachments: bool,
+}
+
+/// Episode files that an earlier run into `directory` finished for the same
+/// selection, with the sizes its manifest recorded. The manifest is written
+/// last, so it only names files that were complete.
+fn previously_downloaded(directory: &Path, selection: &Selection<'_>) -> HashMap<String, u64> {
+    let Ok(encoded) = std::fs::read(directory.join(MANIFEST_FILE_NAME)) else {
+        return HashMap::new();
+    };
+    let Ok(previous) = serde_json::from_slice::<PreviousManifest>(&encoded) else {
+        return HashMap::new();
+    };
+    let same_selection = previous.dataset.id == selection.dataset_id
+        && previous.version.version_number == selection.version_number
+        && previous.selection.topics.as_deref() == selection.topics
+        && previous.selection.include_attachments.unwrap_or(true) == selection.include_attachments;
+    if !same_selection {
+        return HashMap::new();
+    }
+    previous
+        .episodes
+        .into_iter()
+        .filter(|episode| episode.status == "downloaded")
+        .filter_map(|episode| {
+            Some((
+                episode_file_name(episode.index, &episode.id),
+                episode.byte_size?,
+            ))
+        })
+        .collect()
 }
 
 struct DownloadTally {
@@ -278,6 +444,7 @@ struct DownloadTally {
     downloaded: usize,
     failed: usize,
     skipped: usize,
+    cancelled: bool,
 }
 
 async fn download_episodes(
@@ -287,14 +454,22 @@ async fn download_episodes(
     topics: Option<&[String]>,
     directory: &Path,
     prefix: &str,
-) -> Option<DownloadTally> {
+    reusable: &HashMap<String, u64>,
+) -> DownloadTally {
     let cancellation = crate::api::ctrl_c_cancellation_token();
     let mut tally = DownloadTally {
         episodes: Vec::with_capacity(episodes.len()),
         downloaded: 0,
         failed: 0,
         skipped: 0,
+        cancelled: false,
     };
+    // After cancellation, or a local write error such as a full disk that
+    // would fail every later episode only after most of its data arrived, the
+    // rest are recorded as not attempted so the manifest still lets a rerun
+    // reuse what finished.
+    let mut stopped: Option<String> = None;
+    let mut not_attempted = 0_usize;
     for (index, entry) in episodes.iter().enumerate() {
         let base = |status, file, byte_size, reason| ManifestEpisode {
             index,
@@ -307,6 +482,13 @@ async fn download_episodes(
             status,
             reason,
         };
+        let mut progress = EpisodeProgress::new(index, episodes.len());
+        let name = episode_file_name(index, &entry.episode.id);
+        let path = directory.join(&name);
+        let reused = reusable
+            .get(&name)
+            .copied()
+            .filter(|size| std::fs::metadata(&path).is_ok_and(|file| file.len() == *size));
         let note = if entry.has_missing_recordings == Some(true) {
             let reason = "Recordings for this episode are no longer available".to_owned();
             tally.skipped += 1;
@@ -314,16 +496,28 @@ async fn download_episodes(
                 .episodes
                 .push(base("skipped", None, None, Some(reason.clone())));
             format!("skipped: {reason}")
+        } else if let Some(size) = reused {
+            tally.downloaded += 1;
+            tally.episodes.push(base(
+                "downloaded",
+                Some(format!("{prefix}/{name}")),
+                Some(size),
+                None,
+            ));
+            format!("{size} bytes already downloaded")
+        } else if let Some(reason) = &stopped {
+            tally.failed += 1;
+            not_attempted += 1;
+            tally.episodes.push(base(
+                "failed",
+                None,
+                None,
+                Some(format!("Not attempted: {reason}")),
+            ));
+            continue;
         } else {
-            let name = episode_file_name(index, &entry.episode.id);
-            let request = StreamRequest {
-                episode_id: entry.episode.id.clone(),
-                output_format: "mcap".to_owned(),
-                include_attachments: args.include_attachments,
-                topics: topics.map(<[String]>::to_vec).unwrap_or_default(),
-                ..StreamRequest::default()
-            };
-            match write_episode(runtime, &request, &directory.join(&name), &cancellation).await {
+            let request = episode_request(entry, args, topics);
+            match write_episode(runtime, request, &path, &mut progress, &cancellation).await {
                 Ok(written) => {
                     tally.downloaded += 1;
                     tally.episodes.push(base(
@@ -334,9 +528,15 @@ async fn download_episodes(
                     ));
                     format!("{written} bytes written")
                 }
-                Err(error) if error.is_cancelled() => return None,
                 Err(error) => {
                     let reason = error.to_string();
+                    if error.is_cancelled() {
+                        tally.cancelled = true;
+                        stopped = Some("the download was cancelled".to_owned());
+                    } else if matches!(error, ApiError::Write(_)) {
+                        stopped =
+                            Some(format!("an earlier episode could not be written: {reason}"));
+                    }
                     tally.failed += 1;
                     tally
                         .episodes
@@ -345,14 +545,23 @@ async fn download_episodes(
                 }
             }
         };
+        progress.finish(&note);
+    }
+    if let Some(reason) = stopped.filter(|_| not_attempted > 0) {
         let _ = writeln!(
             std::io::stderr(),
-            "Episode {} of {} \u{2014} {note}",
-            index + 1,
-            episodes.len()
+            "{not_attempted} more episodes not attempted: {reason}"
         );
     }
-    Some(tally)
+    tally
+}
+
+fn write_manifest(directory: &Path, manifest: &Manifest) -> Result<(), String> {
+    let path = directory.join(MANIFEST_FILE_NAME);
+    let encoded = serde_json::to_vec_pretty(manifest)
+        .map_err(|error| format!("Failed to build the manifest: {error}\n"))?;
+    std::fs::write(&path, encoded)
+        .map_err(|error| format!("Failed to write {}: {error}\n", path.display()))
 }
 
 pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
@@ -391,6 +600,15 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
 
     let topics = topic_list(args.topics.as_deref());
     let prefix = manifest_prefix(&directory, &root);
+    let reusable = previously_downloaded(
+        &directory,
+        &Selection {
+            dataset_id: &dataset.id,
+            version_number: version.version_number,
+            topics: topics.as_deref(),
+            include_attachments: args.include_attachments,
+        },
+    );
     let tally = download_episodes(
         runtime,
         args,
@@ -398,15 +616,9 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         topics.as_deref(),
         &directory,
         &prefix,
+        &reusable,
     )
     .await;
-    let Some(tally) = tally else {
-        return Outcome {
-            exit_code: 130,
-            ..Outcome::default()
-        };
-    };
-    let manifest_episodes = tally.episodes;
     let (downloaded, failed, skipped) = (tally.downloaded, tally.failed, tally.skipped);
 
     let manifest = Manifest {
@@ -425,20 +637,13 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         selection: ManifestSelection {
             topics,
+            include_attachments: (!args.include_attachments).then_some(false),
             episode_count: episodes.len(),
         },
-        episodes: manifest_episodes,
+        episodes: tally.episodes,
     };
-    let manifest_path = directory.join(MANIFEST_FILE_NAME);
-    let encoded = match serde_json::to_vec_pretty(&manifest) {
-        Ok(encoded) => encoded,
-        Err(error) => return Outcome::failure(format!("Failed to build the manifest: {error}\n")),
-    };
-    if let Err(error) = std::fs::write(&manifest_path, encoded) {
-        return Outcome::failure(format!(
-            "Failed to write {}: {error}\n",
-            manifest_path.display()
-        ));
+    if let Err(error) = write_manifest(&directory, &manifest) {
+        return Outcome::failure(error);
     }
 
     let summary = format!(
@@ -446,6 +651,13 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         episodes.len(),
         directory.display()
     );
+    if tally.cancelled {
+        return Outcome {
+            exit_code: 130,
+            stderr: summary.into_bytes(),
+            ..Outcome::default()
+        };
+    }
     if failed > 0 {
         return Outcome::failure(summary);
     }
@@ -470,9 +682,29 @@ mod tests {
             ("!!!", "dataset-v4"),
             ("", "dataset-v4"),
             ("keep.dots_and-dashes", "keep.dots_and-dashes-v4"),
+            (
+                "Left lane cut ins and highway merges on rainy nights with heavy traffic",
+                "Left-lane-cut-ins-and-highway-merges-on-rainy-nights-with-heavy--v4",
+            ),
+            ("सड़क परीक्षण", "सड-क-पर-क-षण-v4"),
+            ("ทดสอบการขับขี่", "ทดสอบการข-บข-v4"),
+            ("Ⓐ test", "test-v4"),
         ] {
             assert_eq!(archive_root_name(name, 4), expected, "{name:?}");
         }
+    }
+
+    #[test]
+    fn the_directory_name_is_cut_like_the_app_after_trimming() {
+        assert_eq!(
+            archive_root_name(&format!("--{}", "a".repeat(70)), 4),
+            format!("{}-v4", "a".repeat(64))
+        );
+        // The app counts UTF-16 code units, so each of these counts twice.
+        assert_eq!(
+            archive_root_name(&"\u{1D400}".repeat(40), 4),
+            format!("{}-v4", "\u{1D400}".repeat(32))
+        );
     }
 
     #[test]

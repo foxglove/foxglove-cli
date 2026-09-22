@@ -238,6 +238,11 @@ Without `--version` the newest committed version is used; a dataset's editable
 version is never downloaded, because its contents can change mid-transfer.
 Episodes whose recordings are no longer available are recorded in the manifest
 as skipped, and the command exits non-zero if any episode failed to download.
+A transfer that stops part way resumes from its last message, and running the
+command again into the same directory reuses the episodes that its manifest
+already lists as downloaded for the same version and selection. A local write
+error, such as a full disk, stops the run, and so does Ctrl-C; either way the
+manifest is still written.
 Narrow the payload with `--topics`, drop MCAP attachments with
 `--include-attachments=false`, and choose where it lands with `--output`.
 

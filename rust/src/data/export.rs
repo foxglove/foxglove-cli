@@ -193,17 +193,56 @@ struct PartialExport {
     info: ExportInfo,
 }
 
+async fn resumable_export(
+    runtime: &Runtime,
+    request: StreamRequest,
+    destination: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<(), api::ApiError> {
+    resumable_download(
+        runtime,
+        request,
+        destination,
+        cancellation,
+        &mut PartialExportProgress::default(),
+        CompletionCheck::Reindex,
+    )
+    .await
+}
+
+/// How a response that ended without a transport error is judged complete.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompletionCheck {
+    /// Scan and validate every response, as exports always have.
+    Reindex,
+    /// Accept a first MCAP response that ends with the closing magic without
+    /// scanning it, and fail unless some response reached the end. The stream
+    /// server drops the connection on failure for non-visualization requests,
+    /// so a clean end with the magic is complete.
+    EndMagic,
+}
+
 /// Download into a private sibling directory, repair each interrupted response,
 /// and replace the requested destination only after the complete result exists.
-async fn resumable_export(
+pub(crate) async fn resumable_download(
     runtime: &Runtime,
     mut request: StreamRequest,
     destination: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
+    progress: &mut dyn DownloadProgress,
+    check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let staging = create_export_staging(destination).map_err(api::ApiError::Write)?;
-    let result =
-        resumable_export_inner(runtime, &mut request, destination, &staging, cancellation).await;
+    let result = resumable_export_inner(
+        runtime,
+        &mut request,
+        destination,
+        &staging,
+        cancellation,
+        progress,
+        check,
+    )
+    .await;
     let _ = fs::remove_dir_all(&staging);
     result
 }
@@ -214,40 +253,28 @@ async fn resumable_export_inner(
     destination: &Path,
     staging: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
+    progress: &mut dyn DownloadProgress,
+    check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let mut partials = Vec::new();
+    let mut complete_found = false;
     let mut empty_downloads = 0_u8;
     let mut repeated_starts = 0_u8;
     loop {
         let path = staging.join(format!("export-{}", partials.len()));
-        let mut output =
-            tokio::fs::File::from_std(create_export_file(&path).map_err(api::ApiError::Write)?);
-        let mut stream = runtime
-            .client
-            .stream_with_cancellation(request, cancellation)
-            .await?;
-        let mut bytes = 0_u64;
-        let mut progress = ExportProgress::new();
-        let download = async {
-            while let Some(chunk) = stream.next_chunk().await? {
-                bytes += u64::try_from(chunk.len()).expect("chunk length fits u64");
-                output
-                    .write_all(&chunk)
-                    .await
-                    .map_err(api::ApiError::Write)?;
-                progress.advance(chunk.len());
-            }
-            output.flush().await.map_err(api::ApiError::Write)
-        }
-        .await;
-        drop(output);
-        // A transport error after receiving bytes is a recoverable truncated
-        // download. Local write failures and cancellation must preserve the
-        // destination rather than being mistaken for a partial response.
-        match download {
-            Ok(()) => {}
-            Err(api::ApiError::Transport(_)) if bytes > 0 => {}
-            Err(error) => return Err(error),
+        let ended_cleanly =
+            download_response(runtime, request, &path, cancellation, progress).await?;
+        if check == CompletionCheck::EndMagic
+            && ended_cleanly
+            && partials.is_empty()
+            && ends_with_mcap_magic(&path).map_err(api::ApiError::Write)?
+        {
+            partials.push(PartialExport {
+                path,
+                info: ExportInfo::default(),
+            });
+            complete_found = true;
+            break;
         }
         let reindex_path = path.clone();
         let reindex_format = request.output_format.clone();
@@ -265,6 +292,7 @@ async fn resumable_export_inner(
         }
         partials.push(PartialExport { path, info });
         if complete {
+            complete_found = true;
             break;
         }
         if info.message_count == 0 {
@@ -291,6 +319,13 @@ async fn resumable_export_inner(
             request.end = Some(OffsetDateTime::now_utc());
         }
     }
+    // The empty and repeated-start stops exist because a bag cannot say it is
+    // complete. An MCAP can, so strict callers reject a result without its end.
+    if check == CompletionCheck::EndMagic && !complete_found {
+        return Err(api::ApiError::Conversion(
+            "the stream ended before the download was complete".into(),
+        ));
+    }
     let merged = staging.join("complete");
     if partials.len() == 1 {
         fs::rename(&partials[0].path, &merged).map_err(api::ApiError::Write)?;
@@ -311,6 +346,46 @@ async fn resumable_export_inner(
         }
     }
     crate::config::replace_file(&merged, destination).map_err(api::ApiError::Write)
+}
+
+/// Write one stream response to `path`, and report whether it ended cleanly
+/// rather than with a recoverable transport error.
+async fn download_response(
+    runtime: &Runtime,
+    request: &StreamRequest,
+    path: &Path,
+    cancellation: &tokio_util::sync::CancellationToken,
+    progress: &mut dyn DownloadProgress,
+) -> Result<bool, api::ApiError> {
+    let mut output =
+        tokio::fs::File::from_std(create_export_file(path).map_err(api::ApiError::Write)?);
+    let mut stream = runtime
+        .client
+        .stream_with_cancellation(request, cancellation)
+        .await?;
+    let mut bytes = 0_u64;
+    let download = async {
+        while let Some(chunk) = stream.next_chunk().await? {
+            bytes += u64::try_from(chunk.len()).expect("chunk length fits u64");
+            output
+                .write_all(&chunk)
+                .await
+                .map_err(api::ApiError::Write)?;
+            progress.advance(chunk.len());
+        }
+        output.flush().await.map_err(api::ApiError::Write)
+    }
+    .await;
+    drop(output);
+    progress.partial_finished();
+    // A transport error after receiving bytes is a recoverable truncated
+    // download. Local write failures and cancellation must preserve the
+    // destination rather than being mistaken for a partial response.
+    match download {
+        Ok(()) => Ok(true),
+        Err(api::ApiError::Transport(_)) if bytes > 0 => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 fn create_export_staging(destination: &Path) -> std::io::Result<PathBuf> {
@@ -351,9 +426,26 @@ fn create_export_file(path: &Path) -> io::Result<File> {
     options.open(path)
 }
 
+const MCAP_MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
+
+/// Whether a file ends with the MCAP closing magic, which only a finished
+/// writer emits.
+fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = File::open(path)?;
+    if file.metadata()?.len() < 2 * MCAP_MAGIC.len() as u64 {
+        return Ok(false);
+    }
+    file.seek(SeekFrom::End(-8))?;
+    let mut tail = [0_u8; 8];
+    file.read_exact(&mut tail)?;
+    Ok(&tail == MCAP_MAGIC)
+}
+
 fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
     match format {
-        "mcap0" => reindex_mcap(path),
+        "mcap" | "mcap0" => reindex_mcap(path),
         "bag1" => reindex_bag(path),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"
@@ -453,7 +545,7 @@ fn merge_partials(
     format: &str,
 ) -> Result<(), FormatError> {
     match format {
-        "mcap0" => merge_mcap_partials(partials, output),
+        "mcap" | "mcap0" => merge_mcap_partials(partials, output),
         "bag1" => merge_bag_partials(partials, output),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"
@@ -481,11 +573,15 @@ fn merge_mcap_partials(partials: &[PartialExport], output: &Path) -> Result<(), 
         max_schema: 0,
         max_channel: 0,
         scan_through: 0,
+        earlier_records: HashSet::new(),
+        current_records: HashSet::new(),
     };
     for (index, partial) in partials.iter().enumerate() {
         if partial.info.message_count == 0 {
             continue;
         }
+        let current = std::mem::take(&mut sink.current_records);
+        sink.earlier_records.extend(current);
         sink.schema_offset = sink.max_schema;
         sink.channel_offset = sink.max_channel.saturating_add(1);
         sink.scan_through = scan_through(index, partials);
@@ -502,6 +598,21 @@ struct McapMergeSink {
     max_schema: u16,
     max_channel: u16,
     scan_through: u64,
+    /// Fingerprints of the attachments and metadata written from earlier
+    /// partials. A resumed request resends them, so a repeat is skipped.
+    earlier_records: HashSet<u64>,
+    current_records: HashSet<u64>,
+}
+
+impl McapMergeSink {
+    /// Record a fingerprint and report whether an earlier partial wrote it.
+    fn repeats_earlier_partial(&mut self, fingerprint: impl std::hash::Hash) -> bool {
+        use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
+
+        let fingerprint = BuildHasherDefault::<DefaultHasher>::default().hash_one(fingerprint);
+        self.current_records.insert(fingerprint);
+        self.earlier_records.contains(&fingerprint)
+    }
 }
 
 impl RecordSink for McapMergeSink {
@@ -545,9 +656,22 @@ impl RecordSink for McapMergeSink {
         name: String,
         metadata: BTreeMap<String, String>,
     ) -> Result<(), FormatError> {
+        if self.repeats_earlier_partial(("metadata", &name, &metadata)) {
+            return Ok(());
+        }
         self.writer.metadata(name, metadata)
     }
     fn attachment(&mut self, attachment: Attachment) -> Result<(), FormatError> {
+        if self.repeats_earlier_partial((
+            "attachment",
+            attachment.log_time,
+            attachment.create_time,
+            &attachment.name,
+            &attachment.media_type,
+            &attachment.data,
+        )) {
+            return Ok(());
+        }
         self.writer.attachment(&attachment)
     }
 }
@@ -859,8 +983,26 @@ struct ExportProgress<W: Write> {
     writer: Option<W>,
 }
 
-trait DownloadProgress {
+pub(crate) trait DownloadProgress {
     fn advance(&mut self, bytes: usize);
+    /// Called when one response of a resumable download ends.
+    fn partial_finished(&mut self) {}
+}
+
+/// Export progress that restarts its count for each response.
+#[derive(Default)]
+struct PartialExportProgress(Option<ExportProgress<io::Stderr>>);
+
+impl DownloadProgress for PartialExportProgress {
+    fn advance(&mut self, bytes: usize) {
+        self.0
+            .get_or_insert_with(ExportProgress::new)
+            .advance(bytes);
+    }
+
+    fn partial_finished(&mut self) {
+        self.0 = None;
+    }
 }
 
 struct NoopProgress;
@@ -1062,6 +1204,8 @@ mod tests {
             max_schema: 1,
             max_channel: 1,
             scan_through: u64::MAX,
+            earlier_records: HashSet::new(),
+            current_records: HashSet::new(),
         };
         sink.schema(schema).unwrap();
         for (id, schema_id) in [(1, 0), (2, 1)] {
