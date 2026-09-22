@@ -523,12 +523,13 @@ async fn download_episodes(
         let file = Some(format!("{prefix}/{name}"));
         let mut quiet = false;
         let (mut episode, mut note) = if let Some(earlier) = earlier.filter(|e| !e.partial) {
+            let mut episode = base("downloaded", file.clone(), Some(earlier.size), None);
+            episode.episode_has_missing_recordings = Some(false);
             (
-                base("downloaded", file.clone(), Some(earlier.size), None),
-                format!("{} bytes already downloaded{partial_note}", earlier.size),
+                episode,
+                format!("{} bytes already downloaded", earlier.size),
             )
         } else if let Some(reason) = &stopped {
-            not_attempted += 1;
             quiet = true;
             let reason = format!("Not attempted: {reason}");
             (base("failed", None, None, Some(reason.clone())), reason)
@@ -560,12 +561,14 @@ async fn download_episodes(
             }
         };
         if let Some(earlier) = earlier.filter(|_| episode.status != "downloaded") {
+            quiet = false;
             note = format!("{} bytes kept from an earlier run ({note})", earlier.size);
             episode = base("downloaded", file, Some(earlier.size), None);
             episode.episode_has_missing_recordings = Some(true);
         }
         tally.record(episode);
         if quiet {
+            not_attempted += 1;
             continue;
         }
         progress.finish(&note);

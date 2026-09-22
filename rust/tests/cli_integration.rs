@@ -1348,6 +1348,133 @@ fn a_rerun_keeps_the_earlier_partial_file_when_its_new_attempt_fails() {
     );
 }
 
+fn with_missing_recordings(episode: &str, missing: bool) -> String {
+    episode.replace(
+        r#""hasMissingRecordings":false"#,
+        &format!(r#""hasMissingRecordings":{missing}"#),
+    )
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_rerun_keeps_the_flag_of_a_complete_file_it_reuses() {
+    let episodes = |missing: bool| {
+        format!(
+            r#"{{"episodes":[{}]}}"#,
+            with_missing_recordings(&download_episode("ep_one", "2024-01-02T03:04:05Z"), missing)
+        )
+    };
+    let metadata = |missing: bool| {
+        vec![
+            Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+            Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+            Reply::json(
+                "GET",
+                "/v1/datasets/ds_one/versions/4/episodes",
+                &episodes(missing),
+            ),
+        ]
+    };
+    let workspace = Workspace::new();
+    let mut replies = metadata(false);
+    replies.extend([episode_stream_link(), episode_download()]);
+    let server = Server::new(replies);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+
+    for _ in 0..2 {
+        let server = Server::new(metadata(true));
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["datasets", "download", "ds_one"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(server.finish().len(), 3);
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &fs::read(workspace.0.join("Highway-merges-v4").join("manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest["episodes"][0]["episodeHasMissingRecordings"],
+            false
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_stopped_rerun_reports_an_earlier_partial_file_as_kept() {
+    let episodes = format!(
+        r#"{{"episodes":[{},{}]}}"#,
+        download_episode("ep_one", "2024-01-02T03:04:05Z"),
+        with_missing_recordings(&download_episode("ep_two", "2024-01-02T03:04:06Z"), true)
+    );
+    let metadata = || {
+        vec![
+            Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+            Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
+            Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", &episodes),
+        ]
+    };
+    let workspace = Workspace::new();
+    let mut replies = metadata();
+    replies.extend([
+        episode_stream_link(),
+        episode_download(),
+        episode_stream_link(),
+        episode_download(),
+    ]);
+    let server = Server::new(replies);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+
+    let root = workspace.0.join("Highway-merges-v4");
+    fs::remove_file(root.join("episode_0000_ep_one.mcap")).unwrap();
+    fs::create_dir_all(root.join("episode_0000_ep_one.mcap").join("occupied")).unwrap();
+    let mut replies = metadata();
+    replies.extend([episode_stream_link(), episode_download()]);
+    let server = Server::new(replies);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(server.finish().len(), 5);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Episode 2 of 2 \u{2014} ")
+            && stderr.contains("bytes kept from an earlier run (Not attempted: "),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("not attempted: "), "{stderr}");
+    assert!(
+        stderr.contains("Downloaded 1 of 2 episodes to Highway-merges-v4 (1 failed, 0 skipped)"),
+        "{stderr}"
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["episodes"][0]["status"], "failed");
+    assert_eq!(manifest["episodes"][1]["status"], "downloaded");
+    assert_eq!(manifest["episodes"][1]["episodeHasMissingRecordings"], true);
+}
+
 #[cfg(all(unix, feature = "compat-test"))]
 #[test]
 #[ignore = "requires loopback sockets and Unix signal delivery"]
