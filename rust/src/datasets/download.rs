@@ -24,6 +24,9 @@ const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const SLUG_MAX_UTF16_UNITS: usize = 64;
 
+const NO_STREAMABLE_RECORDINGS: &str = "NoStreamableRecordings";
+const NO_DATA_LEFT_REASON: &str = "No Primary Site holds data for any recording in this episode. Import those recordings to include it.";
+
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
@@ -90,6 +93,8 @@ struct ManifestEpisode {
     status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    episode_has_missing_recordings: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -199,26 +204,38 @@ async fn resolve_version(
     id: &str,
     requested: Option<i64>,
 ) -> Result<DatasetVersion, String> {
+    let versions = format!("/v1/datasets/{}/versions", encode_path_segment(id));
+    if let Some(number) = requested {
+        let version: DatasetVersion = match runtime
+            .client
+            .get(&format!("{versions}/{number}"), &())
+            .await
+        {
+            Ok(version) => version,
+            Err(error) if error.is_not_found() => {
+                return Err(format!("Version {number} is not a version of this dataset"))
+            }
+            Err(error) => return Err(format!("Failed to get dataset version: {error}")),
+        };
+        return if version.committed_at.is_some() {
+            Ok(version)
+        } else {
+            Err(format!(
+                "Version {number} is not a committed version of this dataset"
+            ))
+        };
+    }
     let response: DatasetVersionListResponse = runtime
         .client
-        .get(
-            &format!("/v1/datasets/{}/versions", encode_path_segment(id)),
-            &(),
-        )
+        .get(&versions, &[("sortOrder", "desc")])
         .await
         .map_err(|error| format!("Failed to list dataset versions: {error}"))?;
-    let mut committed = response
+    response
         .versions
         .into_iter()
-        .filter(|version| version.committed_at.is_some());
-    match requested {
-        Some(number) => committed
-            .find(|version| version.version_number == number)
-            .ok_or_else(|| format!("Version {number} is not a committed version of this dataset")),
-        None => committed
-            .max_by_key(|version| version.version_number)
-            .ok_or_else(|| "This dataset has no committed version to download".to_owned()),
-    }
+        .filter(|version| version.committed_at.is_some())
+        .max_by_key(|version| version.version_number)
+        .ok_or_else(|| "This dataset has no committed version to download".to_owned())
 }
 
 async fn fetch_all_episodes(
@@ -423,9 +440,24 @@ fn previously_downloaded(directory: &Path, selection: &Selection<'_>) -> HashMap
 struct DownloadTally {
     episodes: Vec<ManifestEpisode>,
     downloaded: usize,
+    partial: usize,
     failed: usize,
     skipped: usize,
     cancelled: bool,
+}
+
+impl DownloadTally {
+    fn record(&mut self, episode: ManifestEpisode) {
+        match episode.status {
+            "downloaded" => {
+                self.downloaded += 1;
+                self.partial += usize::from(episode.episode_has_missing_recordings == Some(true));
+            }
+            "skipped" => self.skipped += 1,
+            _ => self.failed += 1,
+        }
+        self.episodes.push(episode);
+    }
 }
 
 async fn download_episodes(
@@ -441,6 +473,7 @@ async fn download_episodes(
     let mut tally = DownloadTally {
         episodes: Vec::with_capacity(episodes.len()),
         downloaded: 0,
+        partial: 0,
         failed: 0,
         skipped: 0,
         cancelled: false,
@@ -448,6 +481,7 @@ async fn download_episodes(
     let mut stopped: Option<String> = None;
     let mut not_attempted = 0_usize;
     for (index, entry) in episodes.iter().enumerate() {
+        let missing_recordings = entry.has_missing_recordings == Some(true);
         let base = |status, file, byte_size, reason| ManifestEpisode {
             index,
             id: entry.episode.id.clone(),
@@ -458,6 +492,7 @@ async fn download_episodes(
             byte_size,
             status,
             reason,
+            episode_has_missing_recordings: (status == "downloaded").then_some(missing_recordings),
         };
         let mut progress = EpisodeProgress::new(index, episodes.len());
         let name = episode_file_name(index, &entry.episode.id);
@@ -466,26 +501,22 @@ async fn download_episodes(
             .get(&name)
             .copied()
             .filter(|size| std::fs::metadata(&path).is_ok_and(|file| file.len() == *size));
-        let note = if entry.has_missing_recordings == Some(true) {
-            let reason = "Recordings for this episode are no longer available".to_owned();
-            tally.skipped += 1;
-            tally
-                .episodes
-                .push(base("skipped", None, None, Some(reason.clone())));
-            format!("skipped: {reason}")
-        } else if let Some(size) = reused {
-            tally.downloaded += 1;
-            tally.episodes.push(base(
+        let partial_note = if missing_recordings {
+            " (some of its recordings are no longer available)"
+        } else {
+            ""
+        };
+        let note = if let Some(size) = reused {
+            tally.record(base(
                 "downloaded",
                 Some(format!("{prefix}/{name}")),
                 Some(size),
                 None,
             ));
-            format!("{size} bytes already downloaded")
+            format!("{size} bytes already downloaded{partial_note}")
         } else if let Some(reason) = &stopped {
-            tally.failed += 1;
             not_attempted += 1;
-            tally.episodes.push(base(
+            tally.record(base(
                 "failed",
                 None,
                 None,
@@ -496,14 +527,22 @@ async fn download_episodes(
             let request = episode_request(entry, args, topics);
             match write_episode(runtime, request, &path, &mut progress, &cancellation).await {
                 Ok(written) => {
-                    tally.downloaded += 1;
-                    tally.episodes.push(base(
+                    tally.record(base(
                         "downloaded",
                         Some(format!("{prefix}/{name}")),
                         Some(written),
                         None,
                     ));
-                    format!("{written} bytes written")
+                    format!("{written} bytes written{partial_note}")
+                }
+                Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => {
+                    tally.record(base(
+                        "skipped",
+                        None,
+                        None,
+                        Some(NO_DATA_LEFT_REASON.to_owned()),
+                    ));
+                    format!("skipped: {NO_DATA_LEFT_REASON}")
                 }
                 Err(error) => {
                     let reason = error.to_string();
@@ -514,10 +553,7 @@ async fn download_episodes(
                         stopped =
                             Some(format!("an earlier episode could not be written: {reason}"));
                     }
-                    tally.failed += 1;
-                    tally
-                        .episodes
-                        .push(base("failed", None, None, Some(reason.clone())));
+                    tally.record(base("failed", None, None, Some(reason.clone())));
                     format!("failed: {reason}")
                 }
             }
@@ -601,7 +637,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         &reusable,
     )
     .await;
-    let (downloaded, failed, skipped) = (tally.downloaded, tally.failed, tally.skipped);
+    let (downloaded, partial, failed, skipped) =
+        (tally.downloaded, tally.partial, tally.failed, tally.skipped);
 
     let manifest = Manifest {
         format_version: MANIFEST_FORMAT_VERSION,
@@ -631,7 +668,7 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
     }
 
     let summary = format!(
-        "Downloaded {downloaded} of {} episodes to {} ({failed} failed, {skipped} skipped)\n",
+        "Downloaded {downloaded} of {} episodes to {} ({partial} with missing recordings, {failed} failed, {skipped} skipped)\n",
         episodes.len(),
         directory.display()
     );

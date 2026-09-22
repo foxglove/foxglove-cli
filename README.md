@@ -231,13 +231,15 @@ the in-app download produces, so the two are interchangeable:
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
 Episode 1 of 128 — 41231 bytes written
 ...
-Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
+Downloaded 127 of 128 episodes to Highway-merges-v4 (0 with missing recordings, 0 failed, 1 skipped)
 ```
 
 Without `--version` the newest committed version is used; a dataset's editable
 version is never downloaded, because its contents can change mid-transfer.
-Episodes whose recordings are no longer available are recorded in the manifest
-as skipped, and the command exits non-zero if any episode failed to download.
+An episode that has lost some of its recordings is downloaded with the data that
+remains and marked `episodeHasMissingRecordings` in the manifest. An episode with
+no data left is recorded as skipped, and the command exits non-zero if any
+episode failed to download.
 A transfer that stops part way resumes from its last message, and running the
 command again into the same directory reuses the episodes that its manifest
 already lists as downloaded for the same version and selection. A local write
