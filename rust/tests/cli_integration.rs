@@ -1202,6 +1202,11 @@ fn ctrl_c_during_a_download_keeps_a_manifest_that_a_rerun_can_reuse() {
         manifest["episodes"][2]["reason"],
         "Not attempted: the download was cancelled"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("1 more episode not attempted: the download was cancelled"),
+        "{stderr}"
+    );
     let entries: Vec<_> = fs::read_dir(&root)
         .unwrap()
         .map(|entry| entry.unwrap().file_name())

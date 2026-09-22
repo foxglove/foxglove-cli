@@ -548,12 +548,17 @@ async fn download_episodes(
         progress.finish(&note);
     }
     if let Some(reason) = stopped.filter(|_| not_attempted > 0) {
-        let _ = writeln!(
-            std::io::stderr(),
-            "{not_attempted} more episodes not attempted: {reason}"
-        );
+        report_not_attempted(not_attempted, &reason);
     }
     tally
+}
+
+fn report_not_attempted(count: usize, reason: &str) {
+    let noun = if count == 1 { "episode" } else { "episodes" };
+    let _ = writeln!(
+        std::io::stderr(),
+        "{count} more {noun} not attempted: {reason}"
+    );
 }
 
 fn write_manifest(directory: &Path, manifest: &Manifest) -> Result<(), String> {
