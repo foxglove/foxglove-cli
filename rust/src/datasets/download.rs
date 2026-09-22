@@ -1,5 +1,3 @@
-//! Dataset version download.
-
 use std::collections::HashMap;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -22,8 +20,6 @@ use crate::Outcome;
 
 const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
-/// The app cuts the slug with `String.prototype.slice`, which counts UTF-16
-/// code units.
 const SLUG_MAX_UTF16_UNITS: usize = 64;
 
 const EPISODE_ATTEMPTS: u32 = 3;
@@ -72,8 +68,6 @@ struct ManifestVersion {
 struct ManifestSelection {
     #[serde(skip_serializing_if = "Option::is_none")]
     topics: Option<Vec<String>>,
-    /// Recorded only when attachments were left out, so a default download
-    /// writes the same manifest as the app, which always includes them.
     #[serde(skip_serializing_if = "Option::is_none")]
     include_attachments: Option<bool>,
     episode_count: usize,
@@ -107,8 +101,6 @@ struct Manifest {
     episodes: Vec<ManifestEpisode>,
 }
 
-/// The app's `[\p{Letter}\p{Number}._-]`. `char::is_alphanumeric` is wider:
-/// it also keeps vowel signs and other marks the app replaces.
 fn is_slug_character(character: char) -> bool {
     matches!(character, '.' | '_' | '-')
         || matches!(
@@ -124,8 +116,6 @@ fn is_slug_character(character: char) -> bool {
         )
 }
 
-/// Matches `archiveRootName` in the app: replace each run of other
-/// characters with a dash, trim dashes, and only then cut to length.
 fn archive_root_name(dataset_name: &str, version_number: i64) -> String {
     let mut slug = String::new();
     let mut pending_dash = false;
@@ -270,8 +260,6 @@ async fn write_episode(
     let request = request.map_err(ApiError::Conversion)?;
     let mut attempt = 1;
     loop {
-        // A response that stops part way resumes from its last message, so a
-        // retry here only follows a failure before any usable data arrived.
         let result = resumable_download(
             runtime,
             request.clone(),
@@ -298,8 +286,6 @@ async fn write_episode(
     }
 }
 
-/// Stream one episode, with its bounds pinned so that a resumed request never
-/// reads past the end of the episode.
 fn episode_request(
     entry: &DatasetEpisode,
     args: &DatasetDownloadArgs,
@@ -320,8 +306,6 @@ fn episode_request(
     })
 }
 
-/// Progress for one episode: a running byte count while it downloads when
-/// stderr is a terminal, then one line with the outcome.
 struct EpisodeProgress {
     label: String,
     received: u64,
@@ -400,8 +384,6 @@ struct PreviousEpisode {
     status: String,
 }
 
-/// The selection a download is made with, which an earlier run must share
-/// before its files can be reused.
 struct Selection<'a> {
     dataset_id: &'a str,
     version_number: i64,
@@ -409,9 +391,6 @@ struct Selection<'a> {
     include_attachments: bool,
 }
 
-/// Episode files that an earlier run into `directory` finished for the same
-/// selection, with the sizes its manifest recorded. The manifest is written
-/// last, so it only names files that were complete.
 fn previously_downloaded(directory: &Path, selection: &Selection<'_>) -> HashMap<String, u64> {
     let Ok(encoded) = std::fs::read(directory.join(MANIFEST_FILE_NAME)) else {
         return HashMap::new();
@@ -464,10 +443,6 @@ async fn download_episodes(
         skipped: 0,
         cancelled: false,
     };
-    // After cancellation, or a local write error such as a full disk that
-    // would fail every later episode only after most of its data arrived, the
-    // rest are recorded as not attempted so the manifest still lets a rerun
-    // reuse what finished.
     let mut stopped: Option<String> = None;
     let mut not_attempted = 0_usize;
     for (index, entry) in episodes.iter().enumerate() {
@@ -705,7 +680,6 @@ mod tests {
             archive_root_name(&format!("--{}", "a".repeat(70)), 4),
             format!("{}-v4", "a".repeat(64))
         );
-        // The app counts UTF-16 code units, so each of these counts twice.
         assert_eq!(
             archive_root_name(&"\u{1D400}".repeat(40), 4),
             format!("{}-v4", "\u{1D400}".repeat(32))

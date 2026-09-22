@@ -108,7 +108,6 @@ impl ApiError {
         matches!(self, Self::Cancelled)
     }
 
-    /// Whether the same request could succeed on a later attempt.
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {

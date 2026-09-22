@@ -210,15 +210,9 @@ async fn resumable_export(
     .await
 }
 
-/// How a response that ended without a transport error is judged complete.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompletionCheck {
-    /// Scan and validate every response, as exports always have.
     Reindex,
-    /// Accept a first MCAP response that ends with the closing magic without
-    /// scanning it, and fail unless some response reached the end. The stream
-    /// server drops the connection on failure for non-visualization requests,
-    /// so a clean end with the magic is complete.
     EndMagic,
 }
 
@@ -319,8 +313,6 @@ async fn resumable_export_inner(
             request.end = Some(OffsetDateTime::now_utc());
         }
     }
-    // The empty and repeated-start stops exist because a bag cannot say it is
-    // complete. An MCAP can, so strict callers reject a result without its end.
     if check == CompletionCheck::EndMagic && !complete_found {
         return Err(api::ApiError::Conversion(
             "the stream ended before the download was complete".into(),
@@ -348,8 +340,6 @@ async fn resumable_export_inner(
     crate::config::replace_file(&merged, destination).map_err(api::ApiError::Write)
 }
 
-/// Write one stream response to `path`, and report whether it ended cleanly
-/// rather than with a recoverable transport error.
 async fn download_response(
     runtime: &Runtime,
     request: &StreamRequest,
@@ -428,8 +418,6 @@ fn create_export_file(path: &Path) -> io::Result<File> {
 
 const MCAP_MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
 
-/// Whether a file ends with the MCAP closing magic, which only a finished
-/// writer emits.
 fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
     use std::io::{Read, Seek, SeekFrom};
 
@@ -598,14 +586,11 @@ struct McapMergeSink {
     max_schema: u16,
     max_channel: u16,
     scan_through: u64,
-    /// Fingerprints of the attachments and metadata written from earlier
-    /// partials. A resumed request resends them, so a repeat is skipped.
     earlier_records: HashSet<u64>,
     current_records: HashSet<u64>,
 }
 
 impl McapMergeSink {
-    /// Record a fingerprint and report whether an earlier partial wrote it.
     fn repeats_earlier_partial(&mut self, fingerprint: impl std::hash::Hash) -> bool {
         use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
 
@@ -985,11 +970,9 @@ struct ExportProgress<W: Write> {
 
 pub(crate) trait DownloadProgress {
     fn advance(&mut self, bytes: usize);
-    /// Called when one response of a resumable download ends.
     fn partial_finished(&mut self) {}
 }
 
-/// Export progress that restarts its count for each response.
 #[derive(Default)]
 struct PartialExportProgress(Option<ExportProgress<io::Stderr>>);
 

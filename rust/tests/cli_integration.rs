@@ -835,14 +835,12 @@ fn a_transient_stream_failure_is_retried_before_the_episode_is_recorded() {
     assert_eq!(manifest["episodes"][0]["status"], "downloaded");
 }
 
-/// One nanosecond after the start of the fixture episodes.
-const EPISODE_START_NANOS: u64 = 1_704_164_645_000_000_001;
+const FIRST_MESSAGE_NANOS: u64 = 1_704_164_645_000_000_001;
 
-/// Built once, because `recording` does not write its summary in a fixed order.
 fn episode_mcap() -> Vec<u8> {
     static EPISODE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
     EPISODE
-        .get_or_init(|| recording(&[message(1, EPISODE_START_NANOS, vec![1])]))
+        .get_or_init(|| recording(&[message(1, FIRST_MESSAGE_NANOS, vec![1])]))
         .clone()
 }
 
@@ -881,9 +879,9 @@ fn a_stream_that_stops_part_way_resumes_from_its_last_message() {
         download_episode("ep_one", "2024-01-02T03:04:05Z")
     );
     let messages = [
-        message(1, EPISODE_START_NANOS, vec![1]),
-        message(1, EPISODE_START_NANOS + 1_000_000_000, vec![2]),
-        message(1, EPISODE_START_NANOS + 2_000_000_000, vec![3]),
+        message(1, FIRST_MESSAGE_NANOS, vec![1]),
+        message(1, FIRST_MESSAGE_NANOS + 1_000_000_000, vec![2]),
+        message(1, FIRST_MESSAGE_NANOS + 2_000_000_000, vec![3]),
     ];
     let mut partial = recording(&messages[..2]);
     partial.truncate(partial.len() - 4);
@@ -960,7 +958,6 @@ fn a_stream_that_never_completes_leaves_no_partial_episode_behind() {
         Reply::json("GET", "/v1/datasets/ds_one/versions", DOWNLOAD_VERSIONS),
         Reply::json("GET", "/v1/datasets/ds_one/versions/4/episodes", &episodes),
     ];
-    // Two responses in a row that end before any message means no progress.
     for _ in 0..2 {
         replies.push(episode_stream_link());
         replies.push(truncated_download());
@@ -1127,7 +1124,6 @@ fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
         "{stderr}"
     );
 
-    // A different selection is a different download.
     let mut replies = metadata();
     replies.extend([episode_stream_link(), episode_download()]);
     let server = Server::new(replies);
@@ -1224,7 +1220,6 @@ fn a_local_write_error_stops_the_run() {
     );
     let workspace = Workspace::new();
     let root = workspace.0.join("Highway-merges-v4");
-    // A directory where the first episode belongs makes its final write fail.
     fs::create_dir_all(root.join("episode_0000_ep_one.mcap").join("occupied")).unwrap();
     let server = Server::new(vec![
         Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
