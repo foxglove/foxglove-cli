@@ -413,7 +413,16 @@ struct Selection<'a> {
     include_attachments: bool,
 }
 
-fn previously_downloaded(directory: &Path, selection: &Selection<'_>) -> HashMap<String, u64> {
+#[derive(Clone, Copy)]
+struct EarlierFile {
+    size: u64,
+    partial: bool,
+}
+
+fn previously_downloaded(
+    directory: &Path,
+    selection: &Selection<'_>,
+) -> HashMap<String, EarlierFile> {
     let Ok(encoded) = std::fs::read(directory.join(MANIFEST_FILE_NAME)) else {
         return HashMap::new();
     };
@@ -430,13 +439,14 @@ fn previously_downloaded(directory: &Path, selection: &Selection<'_>) -> HashMap
     previous
         .episodes
         .into_iter()
-        .filter(|episode| {
-            episode.status == "downloaded" && episode.episode_has_missing_recordings != Some(true)
-        })
+        .filter(|episode| episode.status == "downloaded")
         .filter_map(|episode| {
             Some((
                 episode_file_name(episode.index, &episode.id),
-                episode.byte_size?,
+                EarlierFile {
+                    size: episode.byte_size?,
+                    partial: episode.episode_has_missing_recordings == Some(true),
+                },
             ))
         })
         .collect()
@@ -472,7 +482,7 @@ async fn download_episodes(
     topics: Option<&[String]>,
     directory: &Path,
     prefix: &str,
-    reusable: &HashMap<String, u64>,
+    reusable: &HashMap<String, EarlierFile>,
 ) -> DownloadTally {
     let cancellation = crate::api::ctrl_c_cancellation_token();
     let mut tally = DownloadTally {
@@ -502,53 +512,37 @@ async fn download_episodes(
         let mut progress = EpisodeProgress::new(index, episodes.len());
         let name = episode_file_name(index, &entry.episode.id);
         let path = directory.join(&name);
-        let reused = reusable
-            .get(&name)
-            .copied()
-            .filter(|size| std::fs::metadata(&path).is_ok_and(|file| file.len() == *size));
+        let earlier = reusable.get(&name).copied().filter(|earlier| {
+            std::fs::metadata(&path).is_ok_and(|file| file.len() == earlier.size)
+        });
         let partial_note = if missing_recordings {
             " (some of its recordings are no longer available)"
         } else {
             ""
         };
-        let note = if let Some(size) = reused {
-            tally.record(base(
-                "downloaded",
-                Some(format!("{prefix}/{name}")),
-                Some(size),
-                None,
-            ));
-            format!("{size} bytes already downloaded{partial_note}")
+        let file = Some(format!("{prefix}/{name}"));
+        let mut quiet = false;
+        let (mut episode, mut note) = if let Some(earlier) = earlier.filter(|e| !e.partial) {
+            (
+                base("downloaded", file.clone(), Some(earlier.size), None),
+                format!("{} bytes already downloaded{partial_note}", earlier.size),
+            )
         } else if let Some(reason) = &stopped {
             not_attempted += 1;
-            tally.record(base(
-                "failed",
-                None,
-                None,
-                Some(format!("Not attempted: {reason}")),
-            ));
-            continue;
+            quiet = true;
+            let reason = format!("Not attempted: {reason}");
+            (base("failed", None, None, Some(reason.clone())), reason)
         } else {
             let request = episode_request(entry, args, topics);
             match write_episode(runtime, request, &path, &mut progress, &cancellation).await {
-                Ok(written) => {
-                    tally.record(base(
-                        "downloaded",
-                        Some(format!("{prefix}/{name}")),
-                        Some(written),
-                        None,
-                    ));
-                    format!("{written} bytes written{partial_note}")
-                }
-                Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => {
-                    tally.record(base(
-                        "skipped",
-                        None,
-                        None,
-                        Some(NO_DATA_LEFT_REASON.to_owned()),
-                    ));
-                    format!("skipped: {NO_DATA_LEFT_REASON}")
-                }
+                Ok(written) => (
+                    base("downloaded", file.clone(), Some(written), None),
+                    format!("{written} bytes written{partial_note}"),
+                ),
+                Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => (
+                    base("skipped", None, None, Some(NO_DATA_LEFT_REASON.to_owned())),
+                    format!("skipped: {NO_DATA_LEFT_REASON}"),
+                ),
                 Err(error) => {
                     let reason = error.to_string();
                     if error.is_cancelled() {
@@ -558,11 +552,22 @@ async fn download_episodes(
                         stopped =
                             Some(format!("an earlier episode could not be written: {reason}"));
                     }
-                    tally.record(base("failed", None, None, Some(reason.clone())));
-                    format!("failed: {reason}")
+                    (
+                        base("failed", None, None, Some(reason.clone())),
+                        format!("failed: {reason}"),
+                    )
                 }
             }
         };
+        if let Some(earlier) = earlier.filter(|_| episode.status != "downloaded") {
+            note = format!("{} bytes kept from an earlier run ({note})", earlier.size);
+            episode = base("downloaded", file, Some(earlier.size), None);
+            episode.episode_has_missing_recordings = Some(true);
+        }
+        tally.record(episode);
+        if quiet {
+            continue;
+        }
         progress.finish(&note);
     }
     if let Some(reason) = stopped.filter(|_| not_attempted > 0) {

@@ -242,7 +242,9 @@ no data left is recorded as skipped, and the command exits non-zero if any
 episode failed to download.
 A transfer that stops part way resumes from its last message, and running the
 command again into the same directory reuses the episodes that its manifest
-already lists as downloaded for the same version and selection. A local write
+already lists as downloaded for the same version and selection. An episode
+that was downloaded with missing recordings is downloaded again, in case its
+recordings have returned, and its earlier file is kept if that attempt fails. A local write
 error, such as a full disk, stops the run, and so does Ctrl-C; either way the
 manifest is still written.
 Narrow the payload with `--topics`, drop MCAP attachments with
