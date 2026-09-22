@@ -108,6 +108,8 @@ impl ApiError {
         matches!(self, Self::Cancelled)
     }
 
+    /// Whether the same request could succeed on a later attempt: a transport
+    /// error, a 429 response, or a 5xx response.
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {

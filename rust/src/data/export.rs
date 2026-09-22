@@ -212,7 +212,12 @@ async fn resumable_export(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompletionCheck {
+    /// Reindex and validate every response, as `data export` does.
     Reindex,
+    /// Accept a first response that ends cleanly with the MCAP closing magic
+    /// without a reindex, and fail unless some response reaches the end. The
+    /// stream server drops the connection on failure for non-visualization
+    /// requests, so a clean end with the magic is complete.
     EndMagic,
 }
 

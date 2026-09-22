@@ -1,3 +1,5 @@
+//! Dataset version download.
+
 use std::collections::HashMap;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -617,6 +619,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         selection: ManifestSelection {
             topics,
+            // The app always includes attachments and never writes this field, so a
+            // default download writes the same manifest as the app.
             include_attachments: (!args.include_attachments).then_some(false),
             episode_count: episodes.len(),
         },
