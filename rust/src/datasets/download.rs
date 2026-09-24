@@ -248,6 +248,7 @@ async fn write_episode(
     let mut progress = ExportProgress::labeled(label);
     let mut attempt = 1;
     loop {
+        progress.restart();
         let result = resumable_download(
             runtime,
             request.clone(),
@@ -262,6 +263,9 @@ async fn write_episode(
                 .map(|metadata| metadata.len())
                 .map_err(ApiError::Write)
         });
+        if let Ok(written) = &result {
+            progress.finish_at(*written);
+        }
         let Err(error) = &result else { return result };
         if attempt >= EPISODE_ATTEMPTS || !error.is_retryable() {
             return result;

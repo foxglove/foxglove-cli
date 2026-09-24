@@ -961,6 +961,7 @@ impl<R, W: Write> Drop for UploadProgressReader<R, W> {
 pub(crate) struct ExportProgress<W: Write> {
     label: String,
     downloaded: u64,
+    width: usize,
     last_report: Instant,
     writer: Option<W>,
 }
@@ -990,6 +991,7 @@ impl<W: Write> ExportProgress<W> {
         Self {
             label: label.to_owned(),
             downloaded: 0,
+            width: 0,
             last_report: Instant::now(),
             writer: Some(writer),
         }
@@ -1002,21 +1004,36 @@ impl<W: Write> ExportProgress<W> {
         }
     }
 
+    pub(crate) fn restart(&mut self) {
+        self.downloaded = 0;
+    }
+
+    pub(crate) fn finish_at(&mut self, downloaded: u64) {
+        self.downloaded = downloaded;
+        self.finish();
+    }
+
     fn report(&mut self) {
-        if let Some(writer) = self.writer.as_mut() {
-            let _ = write!(writer, "\r{}: {} bytes", self.label, self.downloaded);
-        }
+        self.write_line("");
         self.last_report = Instant::now();
     }
 
     fn finish(&mut self) {
-        if self.downloaded == 0 {
+        if self.downloaded == 0 && self.width == 0 {
             return;
         }
-        if let Some(writer) = self.writer.as_mut() {
-            let _ = writeln!(writer, "\r{}: {} bytes", self.label, self.downloaded);
-        }
+        self.write_line("\n");
         self.downloaded = 0;
+        self.width = 0;
+    }
+
+    fn write_line(&mut self, end: &str) {
+        let line = format!("{}: {} bytes", self.label, self.downloaded);
+        let padding = self.width.saturating_sub(line.len());
+        self.width = self.width.max(line.len());
+        if let Some(writer) = self.writer.as_mut() {
+            let _ = write!(writer, "\r{line}{:padding$}{end}", "");
+        }
     }
 
     #[cfg(test)]
@@ -1098,6 +1115,18 @@ mod tests {
         let output = String::from_utf8(progress.into_writer()).expect("utf8 progress");
         assert!(output.contains("exporting: 1025 bytes"));
         assert_eq!(output.matches('\n').count(), 1);
+    }
+
+    #[test]
+    fn export_progress_overwrites_a_longer_line() {
+        let mut progress = ExportProgress::new_with_writer("episode", Vec::new());
+        progress.advance(10_000);
+        progress.report();
+        progress.restart();
+        progress.finish_at(5);
+
+        let output = String::from_utf8(progress.into_writer()).expect("utf8 progress");
+        assert_eq!(output, "\repisode: 10000 bytes\repisode: 5 bytes    \n");
     }
     use std::io::Cursor;
 
