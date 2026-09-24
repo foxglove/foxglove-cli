@@ -45,7 +45,7 @@ Record deferred requested work and publication uncertainty when relevant. Keep t
 
 ## Deliver
 
-When a PR is requested, check for existing work covering the same source and scope before creating it. Use `guida/api-sync-<short-spec-sha>-<scope>` unless a branch is supplied. Stage only intended files; do not create an empty PR. For `gh`, use `--body-file` and explicit repository/base/head options.
+When a PR is requested, check for existing work covering the same source and scope before creating it. Use `<user>/api-sync-<short-spec-sha>-<scope>` unless a branch is supplied. Stage only intended files; do not create an empty PR. For `gh`, use `--body-file` and explicit repository/base/head options.
 
 Create a ready PR when checks pass and semantics are resolved; use a draft with explicit blockers otherwise. Verify remote state before retrying an uncertain push or PR creation. Do not merge, release, or modify the source API as part of a sync.
 
