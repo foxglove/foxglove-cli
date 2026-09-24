@@ -60,14 +60,14 @@ impl Record for Dataset {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub(crate) struct DatasetEpisode {
+struct DatasetEpisode {
     #[serde(rename = "addedAt")]
     added_at: String,
     #[serde(rename = "addedInVersion")]
     added_in_version: i64,
     #[serde(rename = "hasMissingRecordings", skip_serializing, default)]
-    pub(crate) has_missing_recordings: Option<bool>,
-    pub(crate) episode: Episode,
+    has_missing_recordings: Option<bool>,
+    episode: Episode,
 }
 
 impl Record for DatasetEpisode {
@@ -101,9 +101,9 @@ impl Record for DatasetEpisode {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct DatasetEpisodeListResponse {
+struct DatasetEpisodeListResponse {
     #[serde(default)]
-    pub(crate) episodes: Vec<DatasetEpisode>,
+    episodes: Vec<DatasetEpisode>,
 }
 
 #[derive(Serialize)]

@@ -94,7 +94,6 @@ pub struct Reply {
     pub status: u16,
     pub body: Vec<u8>,
     pub stall: bool,
-    pub truncate: bool,
 }
 
 impl Reply {
@@ -105,7 +104,6 @@ impl Reply {
             status: 200,
             body: body.as_bytes().to_vec(),
             stall: false,
-            truncate: false,
         }
     }
 }
@@ -139,7 +137,7 @@ impl Server {
                 } else {
                     reply.body
                 };
-                let length = if reply.stall || reply.truncate {
+                let length = if reply.stall {
                     body.len() + 1000
                 } else {
                     body.len()

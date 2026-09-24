@@ -224,31 +224,14 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 Member recordings are omitted unless you pass `--include-recordings`.
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
-episode plus a `manifest.json`, in the same layout and with the same manifest
-the in-app download produces, so the two are interchangeable:
+episode plus a `manifest.json`:
 
 ```
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
-Episode 1 of 128 — 41231 bytes written
+Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
-
-Without `--version` the newest committed version is used; a dataset's editable
-version is never downloaded, because its contents can change mid-transfer.
-An episode that has lost some of its recordings is downloaded with the data that
-remains and marked `episodeHasMissingRecordings` in the manifest. An episode with
-no data left is recorded as skipped, and the command exits non-zero if any
-episode failed to download.
-A transfer that stops part way resumes from its last message, and running the
-command again into the same directory reuses the episodes that its manifest
-already lists as downloaded for the same version and selection. An episode
-that was downloaded with missing recordings is downloaded again, in case its
-recordings have returned, and its earlier file is kept if that attempt fails. A local write
-error, such as a full disk, stops the run, and so does Ctrl-C; either way the
-manifest is still written.
-Narrow the payload with `--topics`, drop MCAP attachments with
-`--include-attachments=false`, and choose where it lands with `--output`.
 
 ### Extensions
 

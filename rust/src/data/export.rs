@@ -14,6 +14,7 @@ use crate::cli::DataExportArgs;
 use crate::format::{
     Attachment, Channel, Error as FormatError, McapWriter, Message, ProtobufDecoder, RecordSink,
     Ros1DecoderCache, RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
+    MCAP_MAGIC,
 };
 use crate::records::parse_timestamp_value;
 use crate::runtime::Runtime;
@@ -53,7 +54,17 @@ pub(crate) async fn export_data(
     let binary_file = destination.is_some() && request.output_format != "json";
     let result = match (request.output_format.as_str(), destination.as_deref()) {
         ("json", Some(path)) => staged_json_export(runtime, &request, path, &cancellation).await,
-        (_, Some(path)) => resumable_export(runtime, request, path, &cancellation).await,
+        (_, Some(path)) => {
+            resumable_download(
+                runtime,
+                request,
+                path,
+                &cancellation,
+                "exporting",
+                CompletionCheck::Reindex,
+            )
+            .await
+        }
         (_, None) => stream_to_stdout(runtime, &request, stdout, &cancellation).await,
     };
     match result {
@@ -193,23 +204,6 @@ struct PartialExport {
     info: ExportInfo,
 }
 
-async fn resumable_export(
-    runtime: &Runtime,
-    request: StreamRequest,
-    destination: &Path,
-    cancellation: &tokio_util::sync::CancellationToken,
-) -> Result<(), api::ApiError> {
-    resumable_download(
-        runtime,
-        request,
-        destination,
-        cancellation,
-        &mut PartialExportProgress::default(),
-        CompletionCheck::Reindex,
-    )
-    .await
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CompletionCheck {
     /// Reindex and validate every response, as `data export` does.
@@ -228,7 +222,7 @@ pub(crate) async fn resumable_download(
     mut request: StreamRequest,
     destination: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
-    progress: &mut dyn DownloadProgress,
+    label: &str,
     check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let staging = create_export_staging(destination).map_err(api::ApiError::Write)?;
@@ -238,7 +232,7 @@ pub(crate) async fn resumable_download(
         destination,
         &staging,
         cancellation,
-        progress,
+        label,
         check,
     )
     .await;
@@ -252,7 +246,7 @@ async fn resumable_export_inner(
     destination: &Path,
     staging: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
-    progress: &mut dyn DownloadProgress,
+    label: &str,
     check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let mut partials = Vec::new();
@@ -261,8 +255,7 @@ async fn resumable_export_inner(
     let mut repeated_starts = 0_u8;
     loop {
         let path = staging.join(format!("export-{}", partials.len()));
-        let ended_cleanly =
-            download_response(runtime, request, &path, cancellation, progress).await?;
+        let ended_cleanly = download_response(runtime, request, &path, cancellation, label).await?;
         if check == CompletionCheck::EndMagic
             && ended_cleanly
             && partials.is_empty()
@@ -350,7 +343,7 @@ async fn download_response(
     request: &StreamRequest,
     path: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
-    progress: &mut dyn DownloadProgress,
+    label: &str,
 ) -> Result<bool, api::ApiError> {
     let mut output =
         tokio::fs::File::from_std(create_export_file(path).map_err(api::ApiError::Write)?);
@@ -359,6 +352,7 @@ async fn download_response(
         .stream_with_cancellation(request, cancellation)
         .await?;
     let mut bytes = 0_u64;
+    let mut progress = ExportProgress::labeled(label);
     let download = async {
         while let Some(chunk) = stream.next_chunk().await? {
             bytes += u64::try_from(chunk.len()).expect("chunk length fits u64");
@@ -372,7 +366,6 @@ async fn download_response(
     }
     .await;
     drop(output);
-    progress.partial_finished();
     // A transport error after receiving bytes is a recoverable truncated
     // download. Local write failures and cancellation must preserve the
     // destination rather than being mistaken for a partial response.
@@ -421,8 +414,6 @@ fn create_export_file(path: &Path) -> io::Result<File> {
     options.open(path)
 }
 
-const MCAP_MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
-
 fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
     use std::io::{Read, Seek, SeekFrom};
 
@@ -433,7 +424,7 @@ fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
     file.seek(SeekFrom::End(-8))?;
     let mut tail = [0_u8; 8];
     file.read_exact(&mut tail)?;
-    Ok(&tail == MCAP_MAGIC)
+    Ok(tail == MCAP_MAGIC)
 }
 
 fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
@@ -968,29 +959,14 @@ impl<R, W: Write> Drop for UploadProgressReader<R, W> {
 
 /// Stderr progress for downloads with no known total.
 struct ExportProgress<W: Write> {
+    label: String,
     downloaded: u64,
     last_report: Instant,
     writer: Option<W>,
 }
 
-pub(crate) trait DownloadProgress {
+trait DownloadProgress {
     fn advance(&mut self, bytes: usize);
-    fn partial_finished(&mut self) {}
-}
-
-#[derive(Default)]
-struct PartialExportProgress(Option<ExportProgress<io::Stderr>>);
-
-impl DownloadProgress for PartialExportProgress {
-    fn advance(&mut self, bytes: usize) {
-        self.0
-            .get_or_insert_with(ExportProgress::new)
-            .advance(bytes);
-    }
-
-    fn partial_finished(&mut self) {
-        self.0 = None;
-    }
 }
 
 struct NoopProgress;
@@ -1001,13 +977,18 @@ impl DownloadProgress for NoopProgress {
 
 impl ExportProgress<io::Stderr> {
     fn new() -> Self {
-        Self::new_with_writer(io::stderr())
+        Self::labeled("exporting")
+    }
+
+    fn labeled(label: &str) -> Self {
+        Self::new_with_writer(label, io::stderr())
     }
 }
 
 impl<W: Write> ExportProgress<W> {
-    fn new_with_writer(writer: W) -> Self {
+    fn new_with_writer(label: &str, writer: W) -> Self {
         Self {
+            label: label.to_owned(),
             downloaded: 0,
             last_report: Instant::now(),
             writer: Some(writer),
@@ -1023,7 +1004,7 @@ impl<W: Write> ExportProgress<W> {
 
     fn report(&mut self) {
         if let Some(writer) = self.writer.as_mut() {
-            let _ = write!(writer, "\rexporting: {} bytes", self.downloaded);
+            let _ = write!(writer, "\r{}: {} bytes", self.label, self.downloaded);
         }
         self.last_report = Instant::now();
     }
@@ -1033,7 +1014,7 @@ impl<W: Write> ExportProgress<W> {
             return;
         }
         if let Some(writer) = self.writer.as_mut() {
-            let _ = writeln!(writer, "\rexporting: {} bytes", self.downloaded);
+            let _ = writeln!(writer, "\r{}: {} bytes", self.label, self.downloaded);
         }
         self.downloaded = 0;
     }
@@ -1106,7 +1087,7 @@ mod tests {
 
     #[test]
     fn export_progress_reports_downloaded_bytes() {
-        let mut progress = ExportProgress::new_with_writer(Vec::new());
+        let mut progress = ExportProgress::new_with_writer("exporting", Vec::new());
         progress.advance(1_024);
         assert!(progress.writer.as_ref().expect("writer").is_empty());
         progress.last_report = Instant::now()
