@@ -60,7 +60,7 @@ pub(crate) async fn export_data(
                 request,
                 path,
                 &cancellation,
-                "exporting",
+                &mut ExportProgress::new(),
                 CompletionCheck::Reindex,
             )
             .await
@@ -222,7 +222,7 @@ pub(crate) async fn resumable_download(
     mut request: StreamRequest,
     destination: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
-    label: &str,
+    progress: &mut ExportProgress<io::Stderr>,
     check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let staging = create_export_staging(destination).map_err(api::ApiError::Write)?;
@@ -232,7 +232,7 @@ pub(crate) async fn resumable_download(
         destination,
         &staging,
         cancellation,
-        label,
+        progress,
         check,
     )
     .await;
@@ -246,7 +246,7 @@ async fn resumable_export_inner(
     destination: &Path,
     staging: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
-    label: &str,
+    progress: &mut ExportProgress<io::Stderr>,
     check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let mut partials = Vec::new();
@@ -255,7 +255,8 @@ async fn resumable_export_inner(
     let mut repeated_starts = 0_u8;
     loop {
         let path = staging.join(format!("export-{}", partials.len()));
-        let ended_cleanly = download_response(runtime, request, &path, cancellation, label).await?;
+        let ended_cleanly =
+            download_response(runtime, request, &path, cancellation, progress).await?;
         if check == CompletionCheck::EndMagic
             && ended_cleanly
             && partials.is_empty()
@@ -343,7 +344,7 @@ async fn download_response(
     request: &StreamRequest,
     path: &Path,
     cancellation: &tokio_util::sync::CancellationToken,
-    label: &str,
+    progress: &mut ExportProgress<io::Stderr>,
 ) -> Result<bool, api::ApiError> {
     let mut output =
         tokio::fs::File::from_std(create_export_file(path).map_err(api::ApiError::Write)?);
@@ -352,7 +353,6 @@ async fn download_response(
         .stream_with_cancellation(request, cancellation)
         .await?;
     let mut bytes = 0_u64;
-    let mut progress = ExportProgress::labeled(label);
     let download = async {
         while let Some(chunk) = stream.next_chunk().await? {
             bytes += u64::try_from(chunk.len()).expect("chunk length fits u64");
@@ -958,7 +958,7 @@ impl<R, W: Write> Drop for UploadProgressReader<R, W> {
 }
 
 /// Stderr progress for downloads with no known total.
-struct ExportProgress<W: Write> {
+pub(crate) struct ExportProgress<W: Write> {
     label: String,
     downloaded: u64,
     last_report: Instant,
@@ -980,7 +980,7 @@ impl ExportProgress<io::Stderr> {
         Self::labeled("exporting")
     }
 
-    fn labeled(label: &str) -> Self {
+    pub(crate) fn labeled(label: &str) -> Self {
         Self::new_with_writer(label, io::stderr())
     }
 }

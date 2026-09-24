@@ -728,6 +728,17 @@ fn download_manifest(workspace: &Workspace) -> serde_json::Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
 }
 
+fn no_streamable_recordings() -> Reply {
+    Reply {
+        status: 404,
+        ..Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"error":"Episode has no recordings available for streaming","code":"NoStreamableRecordings"}"#,
+        )
+    }
+}
+
 fn episode_mcap() -> Vec<u8> {
     static EPISODE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
     EPISODE
@@ -801,14 +812,7 @@ fn episodes_that_cannot_be_downloaded_are_recorded_in_the_manifest() {
         dataset_episode("ep_truncated", false),
     ]);
     replies.extend(export_replies(episode_mcap()));
-    replies.push(Reply {
-        status: 404,
-        ..Reply::json(
-            "POST",
-            "/v1/data/stream",
-            r#"{"error":"Episode has no recordings available for streaming","code":"NoStreamableRecordings"}"#,
-        )
-    });
+    replies.push(no_streamable_recordings());
     for _ in 0..2 {
         replies.extend(export_replies(b"partial".to_vec()));
     }
@@ -838,29 +842,43 @@ fn episodes_that_cannot_be_downloaded_are_recorded_in_the_manifest() {
 #[ignore = "requires loopback sockets"]
 fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
     let workspace = Workspace::new();
-    let episodes = [dataset_episode("ep_one", false)];
-    let mut replies = dataset_replies(&episodes);
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
     replies.extend(export_replies(episode_mcap()));
     let server = Server::new(replies);
     assert_success(&download_dataset(&workspace, &server, &[]));
     server.finish();
 
-    let server = Server::new(dataset_replies(&episodes));
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", true),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.push(no_streamable_recordings());
+    let server = Server::new(replies);
     let output = download_dataset(&workspace, &server, &[]);
     assert_success(&output);
     server.finish();
+    let size = episode_mcap().len();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
+        stderr.contains(&format!("Episode 1 of 2: {size} bytes already downloaded")),
+        "{stderr}"
+    );
+    assert!(
         stderr.contains(&format!(
-            "Episode 1 of 1: {} bytes already downloaded",
-            episode_mcap().len()
+            "Episode 2 of 2: {size} bytes kept from an earlier run (skipped: "
         )),
         "{stderr}"
     );
-    assert_eq!(
-        download_manifest(&workspace)["episodes"][0]["status"],
-        "downloaded"
-    );
+    let manifest = download_manifest(&workspace);
+    for (index, missing_recordings) in [(0, false), (1, true)] {
+        let episode = &manifest["episodes"][index];
+        assert_eq!(episode["status"], "downloaded");
+        assert_eq!(episode["episodeHasMissingRecordings"], missing_recordings);
+    }
 }
 
 #[test]

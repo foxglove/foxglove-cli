@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
 use crate::api::{encode_path_segment, ApiError, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
-use crate::data::{resumable_download, CompletionCheck};
+use crate::data::{resumable_download, CompletionCheck, ExportProgress};
 use crate::records::DEFAULT_LIST_LIMIT;
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -127,7 +127,7 @@ fn safe_name(text: &str) -> String {
     safe
 }
 
-fn archive_root_name(dataset_name: &str, version_number: i64) -> String {
+fn default_directory_name(dataset_name: &str, version_number: i64) -> String {
     let slug: String = safe_name(dataset_name)
         .trim_matches('-')
         .chars()
@@ -245,6 +245,7 @@ async fn write_episode(
     label: &str,
     cancellation: &CancellationToken,
 ) -> Result<u64, ApiError> {
+    let mut progress = ExportProgress::labeled(label);
     let mut attempt = 1;
     loop {
         let result = resumable_download(
@@ -252,7 +253,7 @@ async fn write_episode(
             request.clone(),
             path,
             cancellation,
-            label,
+            &mut progress,
             CompletionCheck::EndMagic,
         )
         .await
@@ -519,7 +520,7 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         }
     };
 
-    let root = archive_root_name(&dataset.name, version.version_number);
+    let root = default_directory_name(&dataset.name, version.version_number);
     let directory = args
         .output
         .as_deref()
@@ -587,7 +588,7 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
 mod tests {
     use std::path::Path;
 
-    use super::{archive_root_name, episode_file_name, manifest_prefix, topic_list};
+    use super::{default_directory_name, episode_file_name, manifest_prefix, topic_list};
 
     #[test]
     fn the_directory_name_is_a_safe_slug_of_the_dataset_name() {
@@ -604,10 +605,10 @@ mod tests {
             ),
             ("東京 drive", "東京-drive-v4"),
         ] {
-            assert_eq!(archive_root_name(name, 4), expected, "{name:?}");
+            assert_eq!(default_directory_name(name, 4), expected, "{name:?}");
         }
         assert_eq!(
-            archive_root_name(&format!("--{}", "a".repeat(70)), 4),
+            default_directory_name(&format!("--{}", "a".repeat(70)), 4),
             format!("{}-v4", "a".repeat(64))
         );
     }
