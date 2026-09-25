@@ -5,6 +5,7 @@ use std::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 
 use super::{commit_hint, dataset_endpoint, dataset_not_found, version_not_found, DatasetEpisode};
+use crate::api::ApiError;
 use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
@@ -150,8 +151,7 @@ struct DatasetChangesetResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VersionListQuery {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    limit: Option<i64>,
+    limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -210,8 +210,9 @@ pub(crate) async fn list_versions(
     args: &DatasetVersionListArgs,
     format: Format,
 ) -> Outcome {
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = VersionListQuery {
-        limit: args.limit,
+        limit,
         offset: args.offset.unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
     };
@@ -226,7 +227,7 @@ pub(crate) async fn list_versions(
         Ok(response) => warn_if_truncated(
             format_output(&response.versions, format),
             response.versions.len(),
-            args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+            limit,
         ),
         Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to list dataset versions: {error}\n")),
@@ -328,6 +329,10 @@ pub(crate) async fn restore_version(
         Err(error) if error.is_not_found() => Outcome::failure(format!(
             "Committed version {} of dataset {} not found\n",
             args.version, args.dataset_id
+        )),
+        Err(ApiError::Response { status: 409, .. }) if !args.force => Outcome::failure(format!(
+            "Dataset {} has pending changes. Commit them first, or pass --force to discard them.\n",
+            args.dataset_id
         )),
         Err(error) => Outcome::failure(format!(
             "Failed to restore version {}: {error}\n",

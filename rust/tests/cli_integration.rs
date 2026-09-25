@@ -1588,6 +1588,27 @@ fn versions_are_listed_with_the_draft_marked() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn versions_are_listed_a_full_page_at_a_time_by_default() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions",
+        r#"{"versions":[]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["datasets", "versions", "list", "ds_one"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "2000")])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn a_version_reports_whether_its_recordings_are_missing() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
@@ -1779,7 +1800,7 @@ fn a_restore_over_pending_changes_fails_without_force() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "Failed to restore version 3: Editable version has staged changes; pass force to overwrite\n"
+        "Dataset ds_one has pending changes. Commit them first, or pass --force to discard them.\n"
     );
 }
 
