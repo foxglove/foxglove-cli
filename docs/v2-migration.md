@@ -31,6 +31,10 @@ wait. It reports the returned recording ID and `importStatus` on stderr: an
 accepted/queued request is not a completed transfer; `complete` means the data is
 already available. Missing or unavailable recordings return an error.
 
+`recordings delete ID` deletes a recording and its data. For an imported edge
+recording, only the imported data is removed: the Edge Site copy and session
+membership remain. You can transfer the recording again to restore its data.
+
 ### Deprecated import listing
 
 `recordings list` is not a drop-in replacement for `data imports list`:
@@ -55,9 +59,10 @@ Explicit `--project-id=` (or `--project-id ""`) bypasses both environment and
 configuration defaults. An empty environment value remains unset and allows the
 saved default. Unscoped does not mean unassigned-only or bypass permissions.
 
-Export and attachment listing now honor defaults consistently. If you previously
-relied on those commands ignoring your saved project, add `--project-id=` to
-preserve unscoped behavior. `pending-imports list --without-project` selects
+Export, attachment listing, and event listing now honor defaults consistently.
+Event creation also uses the resolved project when looking up its device. If you
+previously relied on these operations ignoring your saved project, add
+`--project-id=` to preserve unscoped behavior. `pending-imports list --without-project` selects
 unassigned records and suppresses defaults; it cannot be combined with a
 nonempty explicit project ID or a session key.
 

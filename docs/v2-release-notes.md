@@ -13,7 +13,7 @@ before upgrading scripts.
   `devices add --serial-number` flag. Import listing requires migration of filters
   and output, not just a command rename.
 - Preserve fractional timestamp precision and consistently apply configured
-  project defaults, including export and attachment listing. Explicit
+  project defaults, including export, attachment listing, and event listing/creation. Explicit
   `--project-id=` bypasses defaults.
 - Add dataset and episode listings, including dataset episode membership, and
   improve human-readable tables to fit terminal width.
