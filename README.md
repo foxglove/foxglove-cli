@@ -117,6 +117,8 @@ $ foxglove data imports list
 
 ### Exports
 
+Timestamp filters preserve fractional seconds up to nanosecond precision. Dates and timestamps without a timezone retain their existing midnight/UTC defaults. Unlike Go v1, fractional query and export boundaries are not rounded down to whole seconds.
+
 Retrieve data for a device, time range, and optional list of topics, and export it directly to the console (`--output-format json`) or to a new file (`--output-format mcap0` or `--output-format bag1`):
 
 ```

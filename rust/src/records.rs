@@ -39,7 +39,7 @@ pub(crate) const fn is_false(value: &bool) -> bool {
     !*value
 }
 
-/// Parse the ISO 8601 forms accepted by the Go CLI, at its second precision.
+/// Parse the ISO 8601 forms accepted by the Go CLI, preserving nanoseconds.
 /// Missing time components and timezones default to midnight and UTC.
 pub(crate) fn parse_timestamp_value(
     raw: &str,
@@ -52,10 +52,7 @@ pub(crate) fn parse_timestamp_value(
         .map_err(|error| error.to_string())
         .or_else(|_| parse_iso8601(raw))
         .map_err(|error| format!("failed to parse {label} time: {error}"))?;
-    parsed
-        .replace_nanosecond(0)
-        .map(Some)
-        .map_err(|error| format!("failed to parse {label} time: {error}"))
+    Ok(Some(parsed))
 }
 
 fn parse_iso8601(raw: &str) -> Result<OffsetDateTime, String> {
@@ -187,7 +184,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn timestamps_preserve_go_iso8601_forms_and_second_precision() {
+    fn timestamps_preserve_go_iso8601_forms_and_fractional_seconds() {
         for (input, expected) in [
             ("", ""),
             ("2026-09-14", "2026-09-14T00:00:00Z"),
@@ -195,13 +192,19 @@ mod tests {
             ("2026-09-14T12", "2026-09-14T12:00:00Z"),
             ("2026-09-14T12:34", "2026-09-14T12:34:00Z"),
             ("2026-09-14T12:34:56", "2026-09-14T12:34:56Z"),
-            ("2026-09-14T12:34:56.123456789", "2026-09-14T12:34:56Z"),
+            (
+                "2026-09-14T12:34:56.123456789",
+                "2026-09-14T12:34:56.123456789Z",
+            ),
             ("2026-09-14T12Z", "2026-09-14T12:00:00Z"),
             ("2026-09-14T12:34+05", "2026-09-14T12:34:00+05:00"),
-            ("2026-09-14T12:34:56.123+0545", "2026-09-14T12:34:56+05:45"),
+            (
+                "2026-09-14T12:34:56.123+0545",
+                "2026-09-14T12:34:56.123+05:45",
+            ),
             ("2026-09-14T12-06:30", "2026-09-14T12:00:00-06:30"),
             ("+2026-9-14T12:34:56Z", "2026-09-14T12:34:56Z"),
-            ("2026-09-14T1:2:3.123", "2026-09-14T01:02:03Z"),
+            ("2026-09-14T1:2:3.123", "2026-09-14T01:02:03.123Z"),
         ] {
             assert_eq!(
                 parse_timestamp(input, "start").unwrap(),

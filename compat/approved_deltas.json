@@ -1,6 +1,13 @@
 {
   "baseline": "v1.0.33",
   "deltas": {
+    "fractional-timestamp-precision": {
+      "reason": "Preserve fractional seconds (up to nanoseconds) in query parameters and export requests instead of truncating them to match Go. Subsecond export ranges are validated at their actual precision.",
+      "invariants": [
+        "Accepted ISO 8601 shorthand, offsets, and UTC defaults remain unchanged.",
+        "Whole-second inputs retain their existing wire representation."
+      ]
+    },
     "literal-api-path-segments": {
       "reason": "Treat user-provided API identifiers as literal path segments, including slashes and percent signs, rather than URL syntax. Go's URL joining can interpret these as separators or existing escapes. Reject empty identifiers and the standalone dot segments . and .. rather than silently addressing a different resource.",
       "invariants": [

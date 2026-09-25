@@ -712,3 +712,107 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn fractional_timestamp_query_parameters_are_preserved() {
+    let workspace = Workspace::new();
+    let timestamp = "2024-01-02T03:04:05.123456789+05:45";
+    for (args, endpoint, response, flags) in [
+        (
+            vec!["recordings", "list"],
+            "/v1/recordings",
+            "[]",
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["data", "coverage", "list"],
+            "/v1/data/coverage",
+            "[]",
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["topics", "list", "--recording-id", "rec_one"],
+            "/v1/data/topics",
+            "[]",
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["episodes", "list"],
+            "/v1/episodes",
+            r#"{"episodes":[]}"#,
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["pending-imports", "list"],
+            "/v1/data/pending-imports",
+            "[]",
+            vec![("--updated-since", "updatedSince")],
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", endpoint, response)]);
+        let mut command = workspace.command(&server.url);
+        command.args(&args).args(["--format", "json"]);
+        for (flag, _) in &flags {
+            command.args([flag, timestamp]);
+        }
+        let output = Process::spawn(&mut command).finish();
+        assert_success(&output);
+        let query = query_pairs(&server.finish()[0]);
+        for (_, parameter) in &flags {
+            assert_eq!(
+                query.get(*parameter).map(String::as_str),
+                Some(timestamp),
+                "{args:?}: {parameter}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn fractional_export_boundaries_are_preserved_in_request_body() {
+    let workspace = Workspace::new();
+    let mut reply = Reply::json(
+        "POST",
+        "/v1/data/stream",
+        r#"{"message":"fixture failure"}"#,
+    );
+    reply.status = 400;
+    let server = Server::new(vec![reply]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "data",
+        "export",
+        "--recording-id",
+        "rec_one",
+        "--start",
+        "2024-01-02T03:04:05.123456789Z",
+        "--end",
+        "2024-01-02T03:04:05.987654321Z",
+    ]))
+    .finish();
+    assert!(!output.status.success());
+    let requests = server.finish();
+    let body: serde_json::Value =
+        serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(body["start"], "2024-01-02T03:04:05.123456789Z");
+    assert_eq!(body["end"], "2024-01-02T03:04:05.987654321Z");
+}
+
+#[test]
+fn reversed_subsecond_export_range_is_rejected() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
+        "data",
+        "export",
+        "--recording-id",
+        "rec_one",
+        "--start",
+        "2024-01-02T03:04:05.9Z",
+        "--end",
+        "2024-01-02T03:04:05.1Z",
+    ]))
+    .finish();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("end must be after or equal to start"));
+}

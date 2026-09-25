@@ -1031,11 +1031,11 @@ mod tests {
     }
 
     #[test]
-    fn export_timestamp_matches_go_second_precision() {
+    fn export_timestamp_preserves_fractional_seconds() {
         let value = parse_timestamp_value("2024-03-01T01:02:03.123456789Z", "start")
             .expect("timestamp")
             .expect("value");
-        assert_eq!(value.nanosecond(), 0);
+        assert_eq!(value.nanosecond(), 123_456_789);
     }
 
     #[test]
