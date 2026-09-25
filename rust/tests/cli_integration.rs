@@ -1640,27 +1640,17 @@ fn change(side: &str, id: &str) -> String {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn comparing_versions_follows_the_cursor_through_every_page() {
+fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![
-        Reply::json(
-            "GET",
-            "/v1/datasets/ds_one/versions/3/compare",
-            &format!(
-                r#"{{"changes":[{},{}],"addedCount":2,"removedCount":1,"nextCursor":"page2"}}"#,
-                change("added", "ep_one"),
-                change("removed", "ep_two")
-            ),
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions/3/compare",
+        &format!(
+            r#"{{"changes":[{},{}],"addedCount":2,"removedCount":1,"nextCursor":"page2"}}"#,
+            change("added", "ep_one"),
+            change("removed", "ep_two")
         ),
-        Reply::json(
-            "GET",
-            "/v1/datasets/ds_one/versions/3/compare",
-            &format!(
-                r#"{{"changes":[{}],"addedCount":2,"removedCount":1,"nextCursor":null}}"#,
-                change("added", "ep_three")
-            ),
-        ),
-    ]);
+    )]);
     let output = run(
         &workspace,
         &server,
@@ -1678,21 +1668,13 @@ fn comparing_versions_follows_the_cursor_through_every_page() {
     );
     assert_success(&output);
     let requests = server.finish();
+    assert_eq!(requests.len(), 1);
     assert_eq!(
         query_pairs(&requests[0]),
         expected_pairs(&[
             ("include", "recordings"),
             ("limit", "2000"),
             ("version", "1")
-        ])
-    );
-    assert_eq!(
-        query_pairs(&requests[1]),
-        expected_pairs(&[
-            ("cursor", "page2"),
-            ("include", "recordings"),
-            ("limit", "2000"),
-            ("version", "1"),
         ])
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1702,38 +1684,43 @@ fn comparing_versions_follows_the_cursor_through_every_page() {
         .collect();
     assert_eq!(
         changes,
-        [
-            "Change,Episode ID",
-            "added,ep_one",
-            "removed,ep_two",
-            "added,ep_three"
-        ]
+        ["Change,Episode ID", "added,ep_one", "removed,ep_two"]
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "2 episodes added, 1 removed\n"
+        "2 episodes added, 1 removed\n\
+         More changes exist; run the same command with --cursor page2 to fetch the next page.\n"
     );
 }
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn comparing_versions_stops_at_an_empty_page() {
+fn comparing_versions_sends_the_given_cursor_and_limit() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "GET",
-        "/v1/datasets/ds_one/versions/2/compare",
-        r#"{"changes":[],"addedCount":0,"removedCount":0,"nextCursor":"again"}"#,
+        "/v1/datasets/ds_one/versions/3/compare",
+        &format!(
+            r#"{{"changes":[{}],"addedCount":2,"removedCount":1,"nextCursor":null}}"#,
+            change("added", "ep_three")
+        ),
     )]);
     let output = run(
         &workspace,
         &server,
-        &["datasets", "versions", "compare", "ds_one", "1", "2"],
+        &[
+            "datasets", "versions", "compare", "ds_one", "1", "3", "--cursor", "page2", "--limit",
+            "2",
+        ],
     );
     assert_success(&output);
-    assert_eq!(server.finish().len(), 1);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("cursor", "page2"), ("limit", "2"), ("version", "1")])
+    );
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "0 episodes added, 0 removed\n"
+        "2 episodes added, 1 removed\n"
     );
 }
 

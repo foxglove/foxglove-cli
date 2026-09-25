@@ -550,6 +550,12 @@ pub(crate) struct DatasetVersionCompareArgs {
     #[arg(value_name = "TARGET_VERSION", help = "Version to compare to")]
     pub(crate) target_version: i64,
     #[arg(
+        long,
+        help = "Cursor from a previous compare, to fetch the next page",
+        allow_hyphen_values = true
+    )]
+    pub(crate) cursor: Option<String>,
+    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -559,6 +565,12 @@ pub(crate) struct DatasetVersionCompareArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
+    #[arg(
+        long,
+        help = "Maximum number of changes to return (default: 2000)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) limit: Option<i64>,
 }
 
 #[derive(Debug, Args)]

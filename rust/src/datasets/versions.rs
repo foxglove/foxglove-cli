@@ -267,43 +267,44 @@ pub(crate) async fn compare_versions(
         dataset_endpoint(&args.dataset_id),
         args.target_version
     );
-    let mut changes = Vec::new();
-    let mut cursor: Option<String> = None;
-    let (added, removed) = loop {
-        let query = CompareQuery {
-            version: args.base_version,
-            limit: DEFAULT_LIST_LIMIT,
-            cursor: cursor.as_deref(),
-            include: include_recordings(args.include_recordings),
-        };
-        let page = match runtime
-            .client
-            .get::<_, DatasetChangesetResponse>(&endpoint, &query)
-            .await
-        {
-            Ok(page) => page,
-            Err(error) if error.is_not_found() => {
-                return Outcome::failure(format!(
-                    "Version {} or {} of dataset {} not found\n",
-                    args.base_version, args.target_version, args.dataset_id
-                ))
-            }
-            Err(error) => {
-                return Outcome::failure(format!("Failed to compare dataset versions: {error}\n"))
-            }
-        };
-        let empty = page.changes.is_empty();
-        changes.extend(page.changes);
-        match page.next_cursor {
-            Some(next) if !next.is_empty() && !empty => cursor = Some(next),
-            _ => break (page.added_count, page.removed_count),
+    let query = CompareQuery {
+        version: args.base_version,
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        cursor: args.cursor.as_deref(),
+        include: include_recordings(args.include_recordings),
+    };
+    let page = match runtime
+        .client
+        .get::<_, DatasetChangesetResponse>(&endpoint, &query)
+        .await
+    {
+        Ok(page) => page,
+        Err(error) if error.is_not_found() => {
+            return Outcome::failure(format!(
+                "Version {} or {} of dataset {} not found\n",
+                args.base_version, args.target_version, args.dataset_id
+            ))
+        }
+        Err(error) => {
+            return Outcome::failure(format!("Failed to compare dataset versions: {error}\n"))
         }
     };
-    let mut outcome = format_output(&changes, format);
+    let mut outcome = format_output(&page.changes, format);
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
-            format!("{} added, {removed} removed\n", plural(added, "episode")).as_bytes(),
+            format!(
+                "{} added, {} removed\n",
+                plural(page.added_count, "episode"),
+                page.removed_count
+            )
+            .as_bytes(),
         );
+        if let Some(next) = page.next_cursor.filter(|next| !next.is_empty()) {
+            outcome.stderr.extend_from_slice(
+                format!("More changes exist; run the same command with --cursor {next} to fetch the next page.\n")
+                    .as_bytes(),
+            );
+        }
     }
     outcome
 }
