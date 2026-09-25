@@ -119,7 +119,22 @@ pub(crate) async fn list_pending_imports(
     args: &PendingImportListArgs,
     format: Format,
 ) -> Outcome {
-    let project_id = args.project_id.clone().or_project(&runtime.project_id);
+    if args.without_project
+        && (args.project_id.as_deref().is_some_and(|id| !id.is_empty())
+            || args
+                .session_key
+                .as_deref()
+                .is_some_and(|key| !key.is_empty()))
+    {
+        return Outcome::failure(
+            "--without-project cannot be combined with a nonempty --project-id or --session-key\n",
+        );
+    }
+    let project_id = if args.without_project {
+        String::new()
+    } else {
+        args.project_id.clone().or_project(&runtime.project_id)
+    };
     let session_key = args.session_key.clone().unwrap_or_default();
     if !session_key.is_empty() && project_id.is_empty() {
         return Outcome::failure("--project-id is required when using --session-key\n");

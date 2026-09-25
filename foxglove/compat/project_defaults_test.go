@@ -2,6 +2,7 @@ package compat
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 )
 
@@ -47,6 +48,29 @@ func TestRustProjectDefaultContract(t *testing.T) {
 				}
 				assertCompatible(t, expected, actual)
 			})
+		}
+	}
+}
+
+func TestLegacyUnscopedProjectArgsMatchesCommandsNotValues(t *testing.T) {
+	for _, tc := range []struct {
+		args        []string
+		appendEmpty bool
+	}{
+		{[]string{"--debug", "data", "export"}, true},
+		{[]string{"--config", "events list", "--client-id=x", "attachments", "list"}, true},
+		{[]string{"--debug=false", "events", "add"}, true},
+		{[]string{"devices", "list", "--project-id", "events list"}, false},
+		{[]string{"devices", "add", "--name", "data export"}, false},
+		{[]string{"events", "list", "--project-id=prj_one"}, false},
+		{[]string{"--config", "attachments list", "version"}, false},
+	} {
+		expected := append([]string(nil), tc.args...)
+		if tc.appendEmpty {
+			expected = append(expected, "--project-id=")
+		}
+		if actual := legacyUnscopedProjectArgs(tc.args); !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("args %q: want %q, got %q", tc.args, expected, actual)
 		}
 	}
 }

@@ -638,7 +638,13 @@ func TestRustPhase1OfflineContract(t *testing.T) {
 			if actual.ExitCode != 0 || actual.Stderr != "" || actual.Stdout == "" || !strings.Contains(actual.Stdout, "Usage:") {
 				t.Fatalf("Rust command help is unavailable\n--- actual\n%+v", actual)
 			}
-			if goFlags, rustFlags := helpFlags(expected.Stdout), helpFlags(actual.Stdout); !reflect.DeepEqual(goFlags, rustFlags) {
+			goFlags, rustFlags := helpFlags(expected.Stdout), helpFlags(actual.Stdout)
+			// v2 adds project scoping to the existing event operations.
+			if id == "events-add" || id == "events-list" {
+				goFlags = append(goFlags, "--project-id")
+				sort.Strings(goFlags)
+			}
+			if !reflect.DeepEqual(goFlags, rustFlags) {
 				t.Fatalf("Rust command flags differ\n--- Go\n%v\n--- Rust\n%v", goFlags, rustFlags)
 			}
 		})
@@ -1624,6 +1630,34 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 	return runRustCaseWithFixture(t, testCase, nil)
 }
 
+// Legacy export/attachment/event cases compare unscoped Go behavior. The approved
+// consistent-project-defaults delta is covered independently by Rust tests.
+func legacyUnscopedProjectArgs(args []string) []string {
+	command := args
+globalFlags:
+	for len(command) > 0 {
+		switch {
+		case command[0] == "--debug", strings.HasPrefix(command[0], "--debug="), strings.HasPrefix(command[0], "--config="), strings.HasPrefix(command[0], "--client-id="):
+			command = command[1:]
+		case (command[0] == "--config" || command[0] == "--client-id") && len(command) > 1:
+			command = command[2:]
+		default:
+			break globalFlags
+		}
+	}
+	if len(command) < 2 || !((command[0] == "data" && command[1] == "export") ||
+		(command[0] == "attachments" && command[1] == "list") ||
+		(command[0] == "events" && (command[1] == "list" || command[1] == "add"))) {
+		return args
+	}
+	for _, arg := range args {
+		if arg == "--project-id" || strings.HasPrefix(arg, "--project-id=") {
+			return args
+		}
+	}
+	return append(args, "--project-id=")
+}
+
 func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureServer) commandSnapshot {
 	t.Helper()
 	temporaryDirectory := t.TempDir()
@@ -1654,7 +1688,7 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 		args[index] = arg
 	}
 	writeInitialFiles(t, temporaryDirectory, testCase.InitialFiles)
-	command := exec.Command(rustBinary, args...)
+	command := exec.Command(rustBinary, legacyUnscopedProjectArgs(args)...)
 	command.Dir = temporaryDirectory
 	command.Env = caseEnvironment(homeDirectory, testCase.Env)
 	command.Stdin = strings.NewReader(testCase.Stdin)
@@ -1683,6 +1717,10 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 		Stdout:   normalizeText(stdout.String(), replacements),
 		Stderr:   normalizeText(stderr.String(), replacements),
 	}
+	// Approved project-scope diagnostics: compare retained Go behavior while
+	// independent Rust tests verify the exact new stderr lines.
+	snapshot.Stderr = strings.TrimSuffix(snapshot.Stderr, "Using default project prj_default; pass --project-id= to omit project scope.\n")
+	snapshot.Stderr = strings.TrimPrefix(snapshot.Stderr, "[DEBUG] Project scope: unscoped (source: flag)\n")
 	if config, err := os.ReadFile(configPath); err == nil {
 		snapshot.Config = normalizeText(string(config), replacements)
 		if testCase.Config != "" && runtime.GOOS != "windows" {

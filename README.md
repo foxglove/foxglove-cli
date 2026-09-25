@@ -54,6 +54,25 @@ $ foxglove auth configure-api-key
 This will overwrite any previously set credential. Use the [API key settings page](https://app.foxglove.dev/~/settings/apikeys)
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
+### Project defaults
+
+Project-scoped commands use `--project-id` first, then `DEFAULT_PROJECT_ID`, then the saved `default_project_id` (`foxglove config set default_project_id prj_…`). An explicit `--project-id=` bypasses both defaults and omits the project filter. With nothing configured, existing unscoped API behavior is unchanged.
+
+The following commands use project defaults (all prefixed with `foxglove`):
+
+| Area | Commands |
+| --- | --- |
+| Data | `data import` for local files, `data export`, `data coverage list` |
+| Resource listings | `attachments list`, `datasets list`, `devices list`, `episodes list`, `events list`, `pending-imports list`, `recordings list`, `topics list` |
+| Device and event changes | `devices add`, `devices edit`, `events add` |
+| Sessions | `sessions list`, `sessions get`, `sessions add`, `sessions delete`, `sessions recordings list`, `sessions recordings add`, `sessions recordings remove` |
+
+Starting in v2.0.0, `data export`, `attachments list`, `events list`, and `events add` also honor these defaults. Users with a saved project may see narrower results; event creation uses the resolved project for device lookup. In v2.0.0, the data commands above are named `upload`, `export`, and `coverage list`.
+
+Defaults scope queries and creation; they never move an existing resource between projects or trigger an unscoped retry. `--session-key` requires a resolved project. `pending-imports list --without-project` selects unassigned resources, suppresses defaults, and cannot be combined with a nonempty `--project-id` or `--session-key`.
+
+Use `--debug` to show the effective project scope and its source (flag, environment, saved configuration, or unscoped). If a command fails while using an inherited default, stderr includes the default and the `--project-id=` opt-out. Successful commands get no additional project-scope messages unless debug output is requested.
+
 ### Devices
 
 Before importing data, you must first create a device:

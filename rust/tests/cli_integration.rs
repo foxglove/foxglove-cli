@@ -1045,3 +1045,272 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn export_and_attachments_resolve_project_precedence() {
+    let workspace = Workspace::new();
+    for (saved, environment, flags, expected) in [
+        ("", "", vec![], None),
+        ("prj_saved", "", vec![], Some("prj_saved")),
+        ("prj_saved", "prj_env", vec![], Some("prj_env")),
+        (
+            "prj_saved",
+            "prj_env",
+            vec!["--project-id", "prj_flag"],
+            Some("prj_flag"),
+        ),
+        ("prj_saved", "prj_env", vec!["--project-id="], None),
+        ("prj_saved", "prj_env", vec!["--project-id", ""], None),
+    ] {
+        fs::write(
+            workspace.0.join(".foxgloverc"),
+            format!("default_project_id: '{saved}'\n"),
+        )
+        .unwrap();
+        for export in [false, true] {
+            let mut reply = if export {
+                Reply::json(
+                    "POST",
+                    "/v1/data/stream",
+                    r#"{"message":"fixture failure"}"#,
+                )
+            } else {
+                Reply::json(
+                    "GET",
+                    "/v1/recording-attachments",
+                    r#"{"message":"fixture failure"}"#,
+                )
+            };
+            // A scoped failure must not trigger a second, unscoped request.
+            reply.status = 404;
+            let server = Server::new(vec![reply]);
+            let mut command = workspace.command(&server.url);
+            command.env("DEFAULT_PROJECT_ID", environment);
+            if export {
+                command.args(["--debug", "data", "export"]);
+                command.args(if expected.is_some() {
+                    ["--session-key", "session_key"]
+                } else {
+                    ["--recording-id", "rec_one"]
+                });
+            } else {
+                command.args(["attachments", "list"]);
+                if expected.is_some() {
+                    command.args(["--session-key", "session_key"]);
+                }
+            }
+            let output = Process::spawn(command.args(&flags)).finish();
+            assert!(!output.status.success());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(
+                stderr.contains("Using default project"),
+                expected.is_some() && flags.is_empty()
+            );
+            if export {
+                let source = if !flags.is_empty() {
+                    "flag"
+                } else if expected.is_none() {
+                    "unscoped"
+                } else if environment.is_empty() {
+                    "config"
+                } else {
+                    "environment"
+                };
+                assert!(stderr.contains(&format!(
+                    "[DEBUG] Project scope: {} (source: {source})",
+                    expected.unwrap_or("unscoped")
+                )));
+            }
+            let requests = server.finish();
+            assert_eq!(requests.len(), 1);
+            let project = if export {
+                let body: serde_json::Value =
+                    serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                assert!(stderr.contains(&format!("project_id: {:?}", expected.unwrap_or_default())));
+                body["projectId"].as_str().map(str::to_owned)
+            } else {
+                query_pairs(&requests[0]).get("projectId").cloned()
+            };
+            assert_eq!(
+                project.as_deref(),
+                expected,
+                "export={export}, flags={flags:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn export_and_attachments_session_keys_require_resolved_project() {
+    let workspace = Workspace::new();
+    for args in [vec!["data", "export"], vec!["attachments", "list"]] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .args(args)
+                .args(["--project-id=", "--session-key", "key"]),
+        )
+        .finish();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("required when using"));
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn pending_imports_without_project_suppresses_defaults() {
+    let workspace = Workspace::new();
+    for flags in [vec![], vec!["--project-id="]] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .args(["pending-imports", "list", "--without-project"])
+                .args(flags),
+        )
+        .finish();
+        assert_success(&output);
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query.get("hasProjectId").map(String::as_str), Some("false"));
+        assert!(!query.contains_key("projectId"));
+    }
+    for flags in [["--project-id", "prj_explicit"], ["--session-key", "key"]] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .args(["pending-imports", "list", "--without-project"])
+                .args(flags),
+        )
+        .finish();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr)
+            .contains("--without-project cannot be combined"));
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn project_default_scopes_device_edit_without_moving_device() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "PATCH",
+        "/v1/devices/dev_one",
+        r#"{"id":"dev_one","name":"Updated"}"#,
+    )]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["devices", "edit", "dev_one", "--name", "Updated"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0])
+            .get("projectId")
+            .map(String::as_str),
+        Some("prj_default")
+    );
+    let body: serde_json::Value =
+        serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert!(body.get("projectId").is_none());
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn events_resolve_project_defaults_for_lists_and_device_lookup() {
+    let workspace = Workspace::new();
+    for (saved, environment, flags, expected) in [
+        ("", "", vec![], None),
+        ("prj_saved", "", vec![], Some("prj_saved")),
+        ("prj_saved", "prj_env", vec![], Some("prj_env")),
+        (
+            "prj_saved",
+            "prj_env",
+            vec!["--project-id", "prj_flag"],
+            Some("prj_flag"),
+        ),
+        ("prj_saved", "prj_env", vec!["--project-id="], None),
+        ("prj_saved", "prj_env", vec!["--project-id", ""], None),
+    ] {
+        fs::write(
+            workspace.0.join(".foxgloverc"),
+            format!("default_project_id: '{saved}'\n"),
+        )
+        .unwrap();
+        for create in [false, true] {
+            let server = Server::new(vec![Reply::json(
+                if create { "POST" } else { "GET" },
+                "/v1/events",
+                if create { r#"{"id":"evt_one"}"# } else { "[]" },
+            )]);
+            let mut command = workspace.command(&server.url);
+            command
+                .env("DEFAULT_PROJECT_ID", environment)
+                .args(["events", if create { "add" } else { "list" }])
+                .args(&flags);
+            if create {
+                command.args([
+                    "--device-id",
+                    "dev_one",
+                    "--start",
+                    "2024-01-01T00:00:00Z",
+                    "--end",
+                    "2024-01-01T00:00:01Z",
+                ]);
+            }
+            let output = Process::spawn(&mut command).finish();
+            assert_success(&output);
+            let requests = server.finish();
+            let project = if create {
+                let body: serde_json::Value =
+                    serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
+                body["projectId"].as_str().map(str::to_owned)
+            } else {
+                query_pairs(&requests[0]).get("projectId").cloned()
+            };
+            assert_eq!(
+                project.as_deref(),
+                expected,
+                "create={create}, flags={flags:?}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn project_scope_feedback_is_quiet_on_success_and_unscoped_failures() {
+    let workspace = Workspace::new();
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        "default_project_id: prj_saved\n",
+    )
+    .unwrap();
+    for (args, method, path, status, debug, expected_stderr) in [
+        (vec!["recordings", "list", "--format", "json"], "GET", "/v1/recordings", 200, false, ""),
+        (vec!["recordings", "list", "--format", "json"], "GET", "/v1/recordings", 200, true, "[DEBUG] Project scope: prj_saved (source: config)\n"),
+        (vec!["recordings", "list", "--format", "json"], "GET", "/v1/recordings", 404, false, "Failed to list recordings: not found\nUsing default project prj_saved; pass --project-id= to omit project scope.\n"),
+        (vec!["recordings", "delete", "rec_missing"], "DELETE", "/v1/recordings/rec_missing", 500, true, "Failed to delete recording: fixture failure\n"),
+        (vec!["pending-imports", "list", "--without-project"], "GET", "/v1/data/pending-imports", 404, true, "[DEBUG] Project scope: unscoped (source: flag)\nFailed to list pending imports: not found\n"),
+    ] {
+        let mut reply = Reply::json(method, path, if status == 200 { "[]" } else { r#"{"message":"fixture failure"}"# });
+        reply.status = status;
+        let server = Server::new(vec![reply]);
+        let mut command = workspace.command(&server.url);
+        // An empty environment default must fall back to the saved project.
+        command.env("DEFAULT_PROJECT_ID", "").args(&args);
+        if debug { command.arg("--debug"); }
+        let output = Process::spawn(&mut command).finish();
+        assert_eq!(output.status.success(), status == 200);
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected_stderr, "{args:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), if status == 200 { "[]\n" } else { "" });
+        server.finish();
+    }
+}

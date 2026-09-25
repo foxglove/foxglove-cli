@@ -16,7 +16,7 @@ use crate::format::{
     Ros1DecoderCache, RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
     MCAP_MAGIC,
 };
-use crate::records::parse_timestamp_value;
+use crate::records::{parse_timestamp_value, ProjectFallback};
 use crate::runtime::Runtime;
 use crate::Outcome;
 use tokio::io::{AsyncRead, AsyncWriteExt, DuplexStream, ReadBuf};
@@ -34,7 +34,7 @@ pub(crate) async fn export_data(
     args: &DataExportArgs,
     stdout: &mut dyn Write,
 ) -> Outcome {
-    let request = match stream_request(args) {
+    let request = match stream_request(args, &runtime.project_id) {
         Ok(request) => request,
         Err(error) => return Outcome::failure(format!("Failed to build request: {error}\n")),
     };
@@ -142,13 +142,13 @@ async fn staged_json_export(
 
 /// Render an opt-in export request diagnostic while keeping normal command
 /// stderr unchanged.
-pub(crate) fn export_debug_request(args: &DataExportArgs) -> Option<String> {
-    stream_request(args)
+pub(crate) fn export_debug_request(runtime: &Runtime, args: &DataExportArgs) -> Option<String> {
+    stream_request(args, &runtime.project_id)
         .ok()
         .map(|request| format!("[DEBUG] exporting with request: {request:#?}\n"))
 }
 
-fn stream_request(args: &DataExportArgs) -> Result<StreamRequest, String> {
+fn stream_request(args: &DataExportArgs, default_project: &str) -> Result<StreamRequest, String> {
     let output_format_value = args.output_format.clone().unwrap_or_default();
     let output_format = if output_format_value.is_empty() {
         "mcap0".to_owned()
@@ -160,7 +160,7 @@ fn stream_request(args: &DataExportArgs) -> Result<StreamRequest, String> {
         recording_id: args.recording_id.clone().unwrap_or_default(),
         key: args.key.clone().unwrap_or_default(),
         import_id: args.import_id.clone().unwrap_or_default(),
-        project_id: args.project_id.clone().unwrap_or_default(),
+        project_id: args.project_id.clone().or_project(default_project),
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
         start: parse_timestamp_value(args.start.as_deref().unwrap_or_default(), "start")?,
