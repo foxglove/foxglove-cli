@@ -29,8 +29,8 @@ const NO_DATA_LEFT_REASON: &str = "No Primary Site holds data for any recording 
 
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
-/// Each checkpoint writes the full manifest again. A killed run can lose, and download
-/// again, at most this much finished work.
+/// Each checkpoint writes the full manifest again. A killed run can lose the episodes
+/// that finished in the last interval, and a rerun downloads them again.
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -410,7 +410,7 @@ fn manifest_entry(
 }
 
 /// Writes the manifest with the episodes done so far, plus the files an earlier run
-/// left for the episodes still to come, so an interrupted run loses nothing.
+/// left for the episodes still to come, so an interrupted run keeps the earlier files.
 fn checkpoint(
     directory: &Path,
     manifest: &mut Manifest,
