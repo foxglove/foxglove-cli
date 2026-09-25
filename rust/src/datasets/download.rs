@@ -16,7 +16,7 @@ use super::versions::{DatasetVersion, DatasetVersionListResponse};
 use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
 use crate::api::{encode_path_segment, ApiError, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
-use crate::data::{resumable_download, CompletionCheck, ExportProgress};
+use crate::export::{resumable_download, CompletionCheck, ExportProgress};
 use crate::records::DEFAULT_LIST_LIMIT;
 use crate::runtime::Runtime;
 use crate::Outcome;

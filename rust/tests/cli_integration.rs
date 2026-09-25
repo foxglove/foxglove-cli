@@ -181,7 +181,6 @@ fn large_mcap_export_preserves_server_bytes() {
     let server = Server::new(export_replies(payload.clone()));
     fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
     let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
         "export",
         "--recording-id",
         "rec",
@@ -205,7 +204,6 @@ fn invalid_record_length_preserves_destination() {
     let server = Server::new(export_replies(payload));
     fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
     let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
         "export",
         "--recording-id",
         "rec",
@@ -278,7 +276,6 @@ fn recovery_preserves_messages_and_schemaless_channels() {
     replies.extend(export_replies(recording(&messages[1..])));
     let server = Server::new(replies);
     let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
         "export",
         "--recording-id",
         "rec",
@@ -343,7 +340,6 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
             command.args(["auth", "login", "--base-url", &server.url]);
         } else {
             command.args([
-                "data",
                 "export",
                 "--recording-id",
                 "rec",
@@ -432,10 +428,10 @@ fn identifier_paths_are_escaped_for_every_command() {
             "{}",
         ),
         (
-            &["data", "import", "unused.mcap", "--edge-recording-id", KEY],
+            &["recordings", "transfer", KEY],
             "POST",
             "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
-            r#"{"id":"recording"}"#,
+            r#"{"id":"recording","importStatus":"pending"}"#,
         ),
         (
             &["extensions", "unpublish", KEY],
@@ -1150,7 +1146,7 @@ fn fractional_timestamp_query_parameters_are_preserved() {
             vec![("--start", "start"), ("--end", "end")],
         ),
         (
-            vec!["data", "coverage", "list"],
+            vec!["coverage", "list"],
             "/v1/data/coverage",
             "[]",
             vec![("--start", "start"), ("--end", "end")],
