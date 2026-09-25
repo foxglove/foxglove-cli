@@ -21,7 +21,7 @@ use tokio::io::{AsyncWriteExt, DuplexStream};
 
 const BINARY_OUTPUT_TERMINAL_ERROR: &str =
     "Binary output may screw up your terminal. Please redirect to a pipe or file.";
-const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
+pub(crate) const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Export recording data as MCAP, ROS bag, or JSON.
 ///

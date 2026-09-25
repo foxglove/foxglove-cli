@@ -6,10 +6,11 @@ use std::path::Path;
 use std::io::{self, Write};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::api::UploadRequest;
 use crate::cli::UploadArgs;
+use crate::export::PROGRESS_REPORT_INTERVAL;
 use crate::records::ProjectFallback;
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -74,8 +75,6 @@ pub(crate) async fn upload_file(runtime: &Runtime, args: &UploadArgs) -> Outcome
         Err(error) => Outcome::failure(format!("Failed to import {}: {error}\n", args.file)),
     }
 }
-
-const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
 /// A small stderr-only progress reader. Because it wraps the HTTP body, its
 /// byte count is exactly the amount the client has requested from the file.
