@@ -194,10 +194,9 @@ pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteAr
         .await
     {
         Ok(()) => Outcome::default(),
-        Err(error) if error.is_not_found() => Outcome {
-            stderr: b"Not found. The resource may have already been deleted.\n".to_vec(),
-            ..Outcome::default()
-        },
+        Err(error) if error.is_not_found() => {
+            Outcome::notice("Not found. The resource may have already been deleted.\n")
+        }
         Err(error) => Outcome::failure(format!("Failed to delete recording: {error}\n")),
     }
 }
