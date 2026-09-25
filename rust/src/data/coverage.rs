@@ -6,7 +6,7 @@ use crate::cli::CoverageListArgs;
 use crate::output::Format;
 use crate::records::{
     fetch_list, is_false, is_zero, null_to_default, parse_timestamp, DeviceSummary,
-    ProjectFallback, Record,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -50,6 +50,7 @@ struct CoverageListQuery {
     end: String,
     #[serde(skip_serializing_if = "is_false")]
     include_edge_recordings: bool,
+    limit: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -84,6 +85,7 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
         device_name: args.device_name.clone().unwrap_or_default(),
         end,
         include_edge_recordings: args.include_edge_recordings,
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         project_id,
         recording_id: args.recording_id.clone().unwrap_or_default(),
         session_id: args.session_id.clone().unwrap_or_default(),
