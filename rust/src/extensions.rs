@@ -104,7 +104,7 @@ pub(crate) async fn publish_extension(runtime: &Runtime, args: &FileArgs) -> Out
         }
     };
     let file = tokio::fs::File::from_std(file);
-    let reader = crate::data::UploadProgressReader::new(file, metadata.len());
+    let reader = crate::upload::UploadProgressReader::new(file, metadata.len());
     let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
         runtime
