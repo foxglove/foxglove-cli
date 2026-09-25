@@ -77,7 +77,7 @@ enum Status {
     Failed,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestEpisode {
     index: usize,
@@ -298,13 +298,7 @@ fn episode_request(
     })
 }
 
-#[derive(Clone, Copy)]
-struct EarlierFile {
-    size: u64,
-    partial: bool,
-}
-
-fn previously_downloaded(directory: &Path, current: &Manifest) -> HashMap<String, EarlierFile> {
+fn previously_downloaded(directory: &Path, current: &Manifest) -> HashMap<String, ManifestEpisode> {
     let Ok(encoded) = std::fs::read(directory.join(MANIFEST_FILE_NAME)) else {
         return HashMap::new();
     };
@@ -320,17 +314,120 @@ fn previously_downloaded(directory: &Path, current: &Manifest) -> HashMap<String
     previous
         .episodes
         .into_iter()
-        .filter(|episode| episode.status == Status::Downloaded)
-        .filter_map(|episode| {
-            Some((
-                episode_file_name(episode.index, &episode.id),
-                EarlierFile {
-                    size: episode.byte_size?,
-                    partial: episode.episode_has_missing_recordings == Some(true),
-                },
-            ))
-        })
+        .filter(|episode| episode.file.is_some() && episode.byte_size.is_some())
+        .map(|episode| (episode_file_name(episode.index, &episode.id), episode))
         .collect()
+}
+
+fn is_complete(earlier: &ManifestEpisode) -> bool {
+    earlier.status == Status::Downloaded && earlier.episode_has_missing_recordings != Some(true)
+}
+
+enum EpisodeResult {
+    Reused(u64),
+    Downloaded(u64),
+    Skipped,
+    Failed(String),
+    NotAttempted(String),
+}
+
+/// Builds the manifest entry and progress note for one episode. `kept` is a file an
+/// earlier run left that this run did not replace.
+fn manifest_entry(
+    index: usize,
+    entry: &DatasetEpisode,
+    result: &EpisodeResult,
+    kept: Option<u64>,
+    file: String,
+) -> (ManifestEpisode, Option<String>) {
+    let missing_recordings = entry.has_missing_recordings == Some(true);
+    let (status, byte_size, reason, missing, note) = match result {
+        EpisodeResult::Reused(size) => (
+            Status::Downloaded,
+            Some(*size),
+            None,
+            Some(false),
+            Some(format!("{size} bytes already downloaded")),
+        ),
+        EpisodeResult::Downloaded(size) => (
+            Status::Downloaded,
+            Some(*size),
+            None,
+            Some(missing_recordings),
+            missing_recordings.then(|| "some of its recordings are no longer available".to_owned()),
+        ),
+        EpisodeResult::Skipped => (
+            Status::Skipped,
+            None,
+            Some(NO_DATA_LEFT_REASON.to_owned()),
+            None,
+            Some(format!("skipped: {NO_DATA_LEFT_REASON}")),
+        ),
+        EpisodeResult::Failed(reason) => (
+            Status::Failed,
+            None,
+            Some(reason.clone()),
+            None,
+            Some(format!("failed: {reason}")),
+        ),
+        EpisodeResult::NotAttempted(reason) => (
+            Status::Failed,
+            None,
+            Some(format!("Not attempted: {reason}")),
+            None,
+            Some(format!("not attempted: {reason}")),
+        ),
+    };
+    let mut episode = ManifestEpisode {
+        index,
+        id: entry.episode.id.clone(),
+        file: byte_size.map(|_| file.clone()),
+        start_time: entry.episode.start_time.clone(),
+        end_time: entry.episode.end_time.clone(),
+        metadata: entry.episode.metadata.clone(),
+        byte_size,
+        status,
+        reason,
+        episode_has_missing_recordings: missing,
+    };
+    let Some(size) = kept else {
+        return (episode, note);
+    };
+    // A skip means no data is left to download, so the earlier file is the download. A
+    // failure stays a failure, with the earlier file listed so the next run can find it.
+    if status == Status::Skipped {
+        episode.status = Status::Downloaded;
+        episode.reason = None;
+    }
+    episode.file = Some(file);
+    episode.byte_size = Some(size);
+    episode.episode_has_missing_recordings = Some(true);
+    let note = note.map(|note| format!("{size} bytes kept from an earlier run ({note})"));
+    (episode, note)
+}
+
+/// Writes the manifest with the episodes done so far, plus the files an earlier run
+/// left for the episodes still to come, so an interrupted run loses nothing.
+fn checkpoint(
+    directory: &Path,
+    manifest: &mut Manifest,
+    remaining: &[DatasetEpisode],
+    earlier: &HashMap<String, ManifestEpisode>,
+    prefix: &str,
+) -> Result<(), String> {
+    let done = manifest.episodes.len();
+    for (offset, entry) in remaining.iter().enumerate() {
+        let name = episode_file_name(done + offset, &entry.episode.id);
+        if let Some(episode) = earlier.get(&name) {
+            manifest.episodes.push(ManifestEpisode {
+                file: Some(format!("{prefix}/{name}")),
+                ..episode.clone()
+            });
+        }
+    }
+    let result = write_manifest(directory, manifest);
+    manifest.episodes.truncate(done);
+    result
 }
 
 async fn download_episodes(
@@ -340,73 +437,33 @@ async fn download_episodes(
     manifest: &mut Manifest,
     directory: &Path,
     prefix: &str,
-    reusable: &HashMap<String, EarlierFile>,
+    earlier: &HashMap<String, ManifestEpisode>,
 ) -> bool {
     let cancellation = crate::api::ctrl_c_cancellation_token();
     let mut cancelled = false;
     let mut stopped: Option<String> = None;
     let mut not_attempted = 0_usize;
     for (index, entry) in episodes.iter().enumerate() {
-        let missing_recordings = entry.has_missing_recordings == Some(true);
-        let base = |status, file, byte_size, reason| ManifestEpisode {
-            index,
-            id: entry.episode.id.clone(),
-            file,
-            start_time: entry.episode.start_time.clone(),
-            end_time: entry.episode.end_time.clone(),
-            metadata: entry.episode.metadata.clone(),
-            byte_size,
-            status,
-            reason,
-            episode_has_missing_recordings: (status == Status::Downloaded)
-                .then_some(missing_recordings),
-        };
         let label = format!("Episode {} of {}", index + 1, episodes.len());
         let name = episode_file_name(index, &entry.episode.id);
         let path = directory.join(&name);
-        let earlier = reusable.get(&name).copied().filter(|earlier| {
-            std::fs::metadata(&path).is_ok_and(|file| file.len() == earlier.size)
+        let on_disk = earlier.get(&name).filter(|episode| {
+            std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
         });
-        let file = Some(format!("{prefix}/{name}"));
-        let mut quiet = false;
-        let (mut episode, mut note) = if let Some(earlier) = earlier.filter(|e| !e.partial) {
-            let mut episode = base(Status::Downloaded, file.clone(), Some(earlier.size), None);
-            episode.episode_has_missing_recordings = Some(false);
-            (
-                episode,
-                Some(format!("{} bytes already downloaded", earlier.size)),
-            )
+        let result = if let Some(complete) = on_disk.filter(|episode| is_complete(episode)) {
+            EpisodeResult::Reused(complete.byte_size.unwrap_or_default())
         } else if let Some(reason) = &stopped {
-            quiet = true;
-            (
-                base(
-                    Status::Failed,
-                    None,
-                    None,
-                    Some(format!("Not attempted: {reason}")),
-                ),
-                Some(format!("not attempted: {reason}")),
-            )
+            EpisodeResult::NotAttempted(reason.clone())
         } else {
             let result = match episode_request(entry, args, manifest.selection.topics.as_deref()) {
                 Ok(request) => write_episode(runtime, &request, &path, &label, &cancellation).await,
                 Err(error) => Err(error),
             };
             match result {
-                Ok(written) => (
-                    base(Status::Downloaded, file.clone(), Some(written), None),
-                    missing_recordings
-                        .then(|| "some of its recordings are no longer available".to_owned()),
-                ),
-                Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => (
-                    base(
-                        Status::Skipped,
-                        None,
-                        None,
-                        Some(NO_DATA_LEFT_REASON.to_owned()),
-                    ),
-                    Some(format!("skipped: {NO_DATA_LEFT_REASON}")),
-                ),
+                Ok(written) => EpisodeResult::Downloaded(written),
+                Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => {
+                    EpisodeResult::Skipped
+                }
                 Err(error) => {
                     let reason = error.to_string();
                     if error.is_cancelled() {
@@ -416,23 +473,31 @@ async fn download_episodes(
                         stopped =
                             Some(format!("an earlier episode could not be written: {reason}"));
                     }
-                    (
-                        base(Status::Failed, None, None, Some(reason.clone())),
-                        Some(format!("failed: {reason}")),
-                    )
+                    EpisodeResult::Failed(reason)
                 }
             }
         };
-        if let Some(earlier) = earlier.filter(|_| episode.status != Status::Downloaded) {
-            quiet = false;
-            keep_earlier_file(&mut episode, &mut note, earlier, file);
-        }
+        let kept = on_disk
+            .filter(|_| {
+                !matches!(
+                    result,
+                    EpisodeResult::Reused(_) | EpisodeResult::Downloaded(_)
+                )
+            })
+            .and_then(|episode| episode.byte_size);
+        let (episode, note) =
+            manifest_entry(index, entry, &result, kept, format!("{prefix}/{name}"));
         manifest.episodes.push(episode);
-        if quiet {
-            not_attempted += 1;
-            continue;
+        if matches!(result, EpisodeResult::Downloaded(_)) && stopped.is_none() {
+            if let Err(error) =
+                checkpoint(directory, manifest, &episodes[index + 1..], earlier, prefix)
+            {
+                stopped = Some(error.trim_end().to_owned());
+            }
         }
-        if let Some(note) = note {
+        if matches!(result, EpisodeResult::NotAttempted(_)) && kept.is_none() {
+            not_attempted += 1;
+        } else if let Some(note) = note {
             let _ = writeln!(std::io::stderr(), "{label}: {note}");
         }
     }
@@ -440,22 +505,6 @@ async fn download_episodes(
         report_not_attempted(not_attempted, &reason);
     }
     cancelled
-}
-
-fn keep_earlier_file(
-    episode: &mut ManifestEpisode,
-    note: &mut Option<String>,
-    earlier: EarlierFile,
-    file: Option<String>,
-) {
-    *note = note
-        .take()
-        .map(|note| format!("{} bytes kept from an earlier run ({note})", earlier.size));
-    episode.status = Status::Downloaded;
-    episode.file = file;
-    episode.byte_size = Some(earlier.size);
-    episode.reason = None;
-    episode.episode_has_missing_recordings = Some(true);
 }
 
 fn report_not_attempted(count: usize, reason: &str) {
@@ -466,12 +515,21 @@ fn report_not_attempted(count: usize, reason: &str) {
     );
 }
 
-fn write_manifest(directory: &Path, manifest: &Manifest) -> Result<(), String> {
+/// Replaces the manifest atomically, so a failed write never truncates the last one.
+fn write_manifest(directory: &Path, manifest: &mut Manifest) -> Result<(), String> {
+    manifest.generated_at = OffsetDateTime::now_utc()
+        .format(&Rfc3339)
+        .unwrap_or_default();
     let path = directory.join(MANIFEST_FILE_NAME);
+    let staging = directory.join(format!(".{MANIFEST_FILE_NAME}.{}.tmp", std::process::id()));
     let encoded = serde_json::to_vec_pretty(manifest)
         .map_err(|error| format!("Failed to build the manifest: {error}\n"))?;
-    std::fs::write(&path, encoded)
-        .map_err(|error| format!("Failed to write {}: {error}\n", path.display()))
+    std::fs::write(&staging, encoded)
+        .and_then(|()| std::fs::rename(&staging, &path))
+        .map_err(|error| {
+            let _ = std::fs::remove_file(&staging);
+            format!("Failed to write {}: {error}\n", path.display())
+        })
 }
 
 fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
@@ -491,7 +549,10 @@ fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
     );
     let partial = episodes
         .iter()
-        .filter(|episode| episode.episode_has_missing_recordings == Some(true))
+        .filter(|episode| {
+            episode.status == Status::Downloaded
+                && episode.episode_has_missing_recordings == Some(true)
+        })
         .count();
     if partial > 0 {
         let noun = if partial == 1 {
@@ -559,7 +620,7 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         episodes: Vec::with_capacity(episodes.len()),
     };
-    let reusable = previously_downloaded(&directory, &manifest);
+    let earlier = previously_downloaded(&directory, &manifest);
     let cancelled = download_episodes(
         runtime,
         args,
@@ -567,13 +628,10 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         &mut manifest,
         &directory,
         &prefix,
-        &reusable,
+        &earlier,
     )
     .await;
-    manifest.generated_at = OffsetDateTime::now_utc()
-        .format(&Rfc3339)
-        .unwrap_or_default();
-    if let Err(error) = write_manifest(&directory, &manifest) {
+    if let Err(error) = write_manifest(&directory, &mut manifest) {
         return Outcome::failure(error);
     }
 

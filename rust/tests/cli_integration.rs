@@ -883,6 +883,97 @@ fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn a_failed_refresh_keeps_the_earlier_file_and_fails_the_run() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", true)]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", true)]);
+    replies.push(Reply {
+        status: 403,
+        ..Reply::json("POST", "/v1/data/stream", r#"{"error":"Forbidden"}"#)
+    });
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    server.finish();
+    assert!(!output.status.success());
+    let size = episode_mcap().len();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "Episode 1 of 1: {size} bytes kept from an earlier run (failed: "
+        )) && stderr.contains("(1 failed, 0 skipped)"),
+        "{stderr}"
+    );
+    let root = workspace.0.join("Highway-merges-v4");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        episode_mcap()
+    );
+    let episode = &download_manifest(&workspace)["episodes"][0];
+    assert_eq!(episode["status"], "failed");
+    assert!(episode["reason"].is_string(), "{episode}");
+    assert_eq!(episode["byteSize"], size);
+    assert_eq!(
+        episode["file"],
+        "Highway-merges-v4/episode_0000_ep_one.mcap"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_killed_run_has_recorded_the_episodes_it_finished() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", false),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    let mut stalled = export_replies(episode_mcap());
+    stalled[1].stall = true;
+    replies.extend(stalled);
+    let server = Server::new(replies);
+    let process = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    );
+    for _ in 0..7 {
+        server
+            .requests
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+    }
+    drop(process);
+    server.finish();
+
+    let manifest = download_manifest(&workspace);
+    let episodes = manifest["episodes"].as_array().unwrap();
+    assert_eq!(episodes.len(), 1, "{manifest}");
+    assert_eq!(episodes[0]["id"], "ep_one");
+    assert_eq!(episodes[0]["status"], "downloaded");
+
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", false),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 5);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Episode 1 of 2: ") && stderr.contains("bytes already downloaded"),
+        "{stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn an_uncommitted_version_is_not_downloaded() {
     let workspace = Workspace::new();
     let server = Server::new(vec![
