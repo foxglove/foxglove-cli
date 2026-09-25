@@ -18,6 +18,7 @@ use crate::{
 };
 
 const ROOT_COMMAND: &str = "foxglove";
+const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 
 /// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -121,7 +122,7 @@ pub(crate) struct AttachmentListArgs {
     format: FormatArgs,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -320,7 +321,7 @@ pub(crate) struct DataExportArgs {
         allow_hyphen_values = true
     )]
     pub(crate) output_format: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -588,7 +589,7 @@ enum EventsCommand {
 pub(crate) struct EventAddArgs {
     #[arg(
         long,
-        help = "Project ID for device lookup",
+        help = "Project ID for device lookup (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)",
         allow_hyphen_values = true
     )]
     pub(crate) project_id: Option<String>,
@@ -610,7 +611,7 @@ pub(crate) struct EventAddArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EventListArgs {
-    #[arg(long, help = "Filter events by project", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[command(flatten)]
     format: FormatArgs,

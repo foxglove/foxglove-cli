@@ -1633,8 +1633,21 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 // Legacy export/attachment/event cases compare unscoped Go behavior. The approved
 // consistent-project-defaults delta is covered independently by Rust tests.
 func legacyUnscopedProjectArgs(args []string) []string {
-	command := strings.Join(args, " ")
-	if !strings.Contains(command, "data export") && !strings.Contains(command, "attachments list") && !strings.Contains(command, "events list") && !strings.Contains(command, "events add") {
+	command := args
+globalFlags:
+	for len(command) > 0 {
+		switch {
+		case command[0] == "--debug", strings.HasPrefix(command[0], "--debug="), strings.HasPrefix(command[0], "--config="), strings.HasPrefix(command[0], "--client-id="):
+			command = command[1:]
+		case (command[0] == "--config" || command[0] == "--client-id") && len(command) > 1:
+			command = command[2:]
+		default:
+			break globalFlags
+		}
+	}
+	if len(command) < 2 || !((command[0] == "data" && command[1] == "export") ||
+		(command[0] == "attachments" && command[1] == "list") ||
+		(command[0] == "events" && (command[1] == "list" || command[1] == "add"))) {
 		return args
 	}
 	for _, arg := range args {
