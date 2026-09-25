@@ -390,6 +390,11 @@ pub(crate) struct DatasetDownloadArgs {
     pub(crate) output: Option<String>,
     #[arg(
         long,
+        help = "Fail if any episode is skipped or downloaded with missing recordings"
+    )]
+    pub(crate) strict: bool,
+    #[arg(
+        long,
         help = "Comma-separated topic list (default: all topics)",
         allow_hyphen_values = true
     )]

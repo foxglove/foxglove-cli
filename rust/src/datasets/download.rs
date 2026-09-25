@@ -643,10 +643,12 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         ));
     }
 
-    let failed = manifest
-        .episodes
-        .iter()
-        .any(|episode| episode.status == Status::Failed);
+    let failed = manifest.episodes.iter().any(|episode| {
+        episode.status == Status::Failed
+            || args.strict
+                && (episode.status == Status::Skipped
+                    || episode.episode_has_missing_recordings == Some(true))
+    });
     Outcome {
         stderr: summary(&manifest.episodes, &directory).into_bytes(),
         exit_code: if cancelled { 130 } else { u8::from(failed) },

@@ -238,6 +238,9 @@ downloads partial episodes (`episodeHasMissingRecordings: true`) again. A
 `failed` episode can still list a `file` that an earlier run downloaded, with
 `episodeHasMissingRecordings` set to `true`.
 
+Skipped episodes and episodes with missing recordings don't fail the run. Pass
+`--strict` to make them fail it too.
+
 ### Extensions
 
 With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share

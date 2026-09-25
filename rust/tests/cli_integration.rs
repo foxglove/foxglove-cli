@@ -800,6 +800,16 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         ),
         "{stderr}"
     );
+
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &["--topics", "/a, /b", "--strict"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
 }
 
 #[test]
