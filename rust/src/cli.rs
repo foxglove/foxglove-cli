@@ -21,6 +21,14 @@ const ROOT_COMMAND: &str = "foxglove";
 
 /// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
+fn parse_bool(value: &str) -> Result<bool, String> {
+    match value {
+        "1" | "t" | "T" | "TRUE" | "true" | "True" => Ok(true),
+        "0" | "f" | "F" | "FALSE" | "false" | "False" => Ok(false),
+        _ => Err(format!("invalid boolean value: {value:?}")),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DatasetVersionSelector {
     Number(i64),
@@ -35,14 +43,6 @@ fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> 
         .parse()
         .map(DatasetVersionSelector::Number)
         .map_err(|_| format!("expected a version number or draft, got {value:?}"))
-}
-
-fn parse_bool(value: &str) -> Result<bool, String> {
-    match value {
-        "1" | "t" | "T" | "TRUE" | "true" | "True" => Ok(true),
-        "0" | "f" | "F" | "FALSE" | "false" | "False" => Ok(false),
-        _ => Err(format!("invalid boolean value: {value:?}")),
-    }
 }
 
 /// The complete command hierarchy. Parsing, help, dispatch metadata, and shell
@@ -708,7 +708,7 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) start: Option<String>,
     #[arg(
         long,
-        help = "Version to list, or draft for its pending changes (default: the newest committed version, or the draft before the first commit)",
+        help = "Version number to list, or draft to list the draft with its pending changes (default: the newest committed version, or the draft before the first commit)",
         allow_hyphen_values = true,
         value_parser = parse_dataset_version
     )]
