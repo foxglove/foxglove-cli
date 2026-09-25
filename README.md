@@ -233,9 +233,10 @@ Episode 1 of 128: 41231 bytes
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
 
-A rerun into the same directory skips episodes that already downloaded. A
+A rerun into the same directory skips episodes that downloaded in full and
+downloads partial episodes (`episodeHasMissingRecordings: true`) again. A
 `failed` episode can still list a `file` that an earlier run downloaded, with
-`episodeHasMissingRecordings` set.
+`episodeHasMissingRecordings` set to `true`.
 
 ### Extensions
 

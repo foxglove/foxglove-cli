@@ -29,6 +29,8 @@ const NO_DATA_LEFT_REASON: &str = "No Primary Site holds data for any recording 
 
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
+/// Each checkpoint writes the full manifest again. A killed run can lose, and download
+/// again, at most this much finished work.
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -415,7 +417,7 @@ fn checkpoint(
     remaining: &[DatasetEpisode],
     earlier: &HashMap<String, ManifestEpisode>,
     prefix: &str,
-) -> Result<(), String> {
+) -> std::io::Result<()> {
     let done = manifest.episodes.len();
     for (offset, entry) in remaining.iter().enumerate() {
         let name = episode_file_name(done + offset, &entry.episode.id);
@@ -498,10 +500,7 @@ async fn download_episodes(
             if let Err(error) =
                 checkpoint(directory, manifest, &episodes[index + 1..], earlier, prefix)
             {
-                stopped = Some(format!(
-                    "the manifest could not be written: {}",
-                    error.trim_end()
-                ));
+                stopped = Some(format!("the manifest could not be written: {error}"));
             }
         }
         if matches!(result, EpisodeResult::NotAttempted(_)) && kept.is_none() {
@@ -525,19 +524,16 @@ fn report_not_attempted(count: usize, reason: &str) {
 }
 
 /// Replaces the manifest atomically, so a failed write never truncates the last one.
-fn write_manifest(directory: &Path, manifest: &mut Manifest) -> Result<(), String> {
+fn write_manifest(directory: &Path, manifest: &mut Manifest) -> std::io::Result<()> {
     manifest.generated_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .unwrap_or_default();
-    let path = directory.join(MANIFEST_FILE_NAME);
     let staging = directory.join(format!(".{MANIFEST_FILE_NAME}.{}.tmp", std::process::id()));
-    let encoded = serde_json::to_vec_pretty(manifest)
-        .map_err(|error| format!("Failed to build the manifest: {error}\n"))?;
+    let encoded = serde_json::to_vec_pretty(manifest).map_err(std::io::Error::other)?;
     std::fs::write(&staging, encoded)
-        .and_then(|()| std::fs::rename(&staging, &path))
-        .map_err(|error| {
+        .and_then(|()| std::fs::rename(&staging, directory.join(MANIFEST_FILE_NAME)))
+        .inspect_err(|_| {
             let _ = std::fs::remove_file(&staging);
-            format!("Failed to write {}: {error}\n", path.display())
         })
 }
 
@@ -641,7 +637,10 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
     )
     .await;
     if let Err(error) = write_manifest(&directory, &mut manifest) {
-        return Outcome::failure(error);
+        return Outcome::failure(format!(
+            "Failed to write {}: {error}\n",
+            directory.join(MANIFEST_FILE_NAME).display()
+        ));
     }
 
     let failed = manifest
