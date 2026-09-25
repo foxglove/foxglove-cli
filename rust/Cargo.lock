@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "foxglove-rust"
-version = "1.0.33"
+version = "2.0.0-rc.1"
 dependencies = [
  "base64",
  "clap",
