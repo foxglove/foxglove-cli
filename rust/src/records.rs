@@ -48,13 +48,29 @@ pub(crate) fn parse_timestamp_value(
     if raw.is_empty() {
         return Ok(None);
     }
-    let parsed = OffsetDateTime::parse(raw, &Rfc3339)
-        .map_err(|error| error.to_string())
-        .or_else(|_| parse_iso8601(raw))
-        .map_err(|error| format!("failed to parse {label} time: {error}"))?;
-    parsed
+    parse_datetime(raw, label)?
         .replace_nanosecond(0)
         .map(Some)
+        .map_err(|error| format!("failed to parse {label} time: {error}"))
+}
+
+/// Parse the same forms as `parse_timestamp`, at millisecond precision.
+pub(crate) fn parse_timestamp_millis(raw: &str, label: &str) -> Result<String, String> {
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    let parsed = parse_datetime(raw, label)?;
+    parsed
+        .replace_millisecond(parsed.millisecond())
+        .map_err(|error| format!("failed to parse {label} time: {error}"))?
+        .format(&Rfc3339)
+        .map_err(|error| format!("failed to format {label} time: {error}"))
+}
+
+fn parse_datetime(raw: &str, label: &str) -> Result<OffsetDateTime, String> {
+    OffsetDateTime::parse(raw, &Rfc3339)
+        .map_err(|error| error.to_string())
+        .or_else(|_| parse_iso8601(raw))
         .map_err(|error| format!("failed to parse {label} time: {error}"))
 }
 
@@ -151,6 +167,27 @@ pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome
     }
 }
 
+/// Render one record: an object in JSON, or a single row in a table or CSV.
+pub(crate) fn format_record<T: Record>(record: &T, format: Format) -> Outcome {
+    if format != Format::Json {
+        return format_output(std::slice::from_ref(record), format);
+    }
+    let mut stdout = Vec::new();
+    match output::render_json(&mut stdout, record) {
+        Ok(()) => Outcome::success(stdout),
+        Err(error) => Outcome::failure(format!("failed to render output: {error}\n")),
+    }
+}
+
+/// Write a count with its noun, adding an `s` unless the count is one.
+pub(crate) fn plural(count: usize, noun: &str) -> String {
+    if count == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
+
 pub(crate) async fn fetch_list<T, Q>(
     runtime: &Runtime,
     format: Format,
@@ -209,6 +246,28 @@ mod tests {
                 "{input}"
             );
         }
+    }
+
+    #[test]
+    fn millisecond_timestamps_keep_fractions_down_to_the_millisecond() {
+        for (input, expected) in [
+            ("", ""),
+            ("2026-09-14", "2026-09-14T00:00:00Z"),
+            ("2026-09-14T12:34:56.25Z", "2026-09-14T12:34:56.25Z"),
+            ("2026-09-14T12:34:56.123456789", "2026-09-14T12:34:56.123Z"),
+            ("2026-09-14T12:34:56.9999Z", "2026-09-14T12:34:56.999Z"),
+            ("2026-09-14T12:34:56.5+0545", "2026-09-14T12:34:56.5+05:45"),
+            ("2026-09-14T1:2:3.004", "2026-09-14T01:02:03.004Z"),
+        ] {
+            assert_eq!(
+                parse_timestamp_millis(input, "start").unwrap(),
+                expected,
+                "{input}"
+            );
+        }
+        assert!(parse_timestamp_millis("2026-02-30", "end")
+            .unwrap_err()
+            .starts_with("failed to parse end time:"));
     }
 
     #[test]

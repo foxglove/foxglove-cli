@@ -380,6 +380,18 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
     }
 }
 
+type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);
+
+fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {
+    let workspace = Workspace::new();
+    for &(args, method, path, body) in cases {
+        let server = Server::new(vec![Reply::json(method, path, body)]);
+        let output = Process::spawn(workspace.command(&server.url).args(args)).finish();
+        assert_success(&output);
+        assert_eq!(server.finish().len(), 1, "{args:?}");
+    }
+}
+
 #[test]
 #[ignore = "requires loopback sockets"]
 fn identifier_paths_are_escaped_for_every_command() {
@@ -444,13 +456,92 @@ fn identifier_paths_are_escaped_for_every_command() {
             r#"{"episodes":[]}"#,
         ),
     ];
-    let workspace = Workspace::new();
-    for &(args, method, path, body) in cases {
-        let server = Server::new(vec![Reply::json(method, path, body)]);
-        let output = Process::spawn(workspace.command(&server.url).args(args)).finish();
-        assert_success(&output);
-        assert_eq!(server.finish().len(), 1, "{args:?}");
-    }
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn dataset_and_episode_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    const DATASET_PATH: &str = "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83";
+    const EPISODE_PATH: &str = "/v1/episodes/drive%231%3F%2F%5C%25%20snow%E2%98%83";
+    let cases: &[RequestCase] = &[
+        (
+            &["datasets", "get", KEY],
+            "GET",
+            DATASET_PATH,
+            r#"{"id":"ds","projectId":"","name":"","createdAt":"","updatedAt":""}"#,
+        ),
+        (
+            &["datasets", "edit", KEY, "--name", "renamed"],
+            "PATCH",
+            DATASET_PATH,
+            "{}",
+        ),
+        (&["datasets", "delete", KEY], "DELETE", DATASET_PATH, "{}"),
+        (
+            &["datasets", "commit", KEY],
+            "POST",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/commit",
+            r#"{"committed":{"versionNumber":1}}"#,
+        ),
+        (
+            &["datasets", "discard", KEY],
+            "POST",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/discard",
+            "{}",
+        ),
+        (
+            &["datasets", "episodes", "add", KEY, "ep"],
+            "PATCH",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
+            "{}",
+        ),
+        (
+            &["datasets", "episodes", "remove", KEY, "ep"],
+            "PATCH",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
+            "{}",
+        ),
+        (
+            &["datasets", "episodes", "list", KEY, "--version", "2"],
+            "GET",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2/episodes",
+            r#"{"episodes":[]}"#,
+        ),
+        (
+            &["datasets", "versions", "list", KEY],
+            "GET",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions",
+            r#"{"versions":[]}"#,
+        ),
+        (
+            &["datasets", "versions", "get", KEY, "2"],
+            "GET",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2",
+            r#"{"versionNumber":2}"#,
+        ),
+        (
+            &["datasets", "versions", "compare", KEY, "1", "2"],
+            "GET",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2/compare",
+            r#"{"changes":[],"addedCount":0,"removedCount":0,"nextCursor":null}"#,
+        ),
+        (
+            &["datasets", "versions", "restore", KEY, "1"],
+            "POST",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/1/restore",
+            "{}",
+        ),
+        (
+            &["episodes", "get", KEY],
+            "GET",
+            EPISODE_PATH,
+            r#"{"id":"ep","projectId":"","startTime":"","endTime":"","createdAt":""}"#,
+        ),
+        (&["episodes", "delete", KEY], "DELETE", EPISODE_PATH, "{}"),
+    ];
+    assert_each_request_reaches(cases);
 }
 
 #[test]
@@ -1041,6 +1132,873 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
             "both --start and --end must be specified, or neither\n",
+            "{args:?}"
+        );
+    }
+}
+
+fn json_body(request: &str) -> serde_json::Value {
+    serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
+}
+
+fn run(workspace: &Workspace, server: &Server, args: &[&str]) -> Output {
+    Process::spawn(workspace.command(&server.url).args(args)).finish()
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_a_dataset_sends_its_episodes_and_says_how_to_commit_them() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets",
+        r#"{"id":"ds_new","projectId":"prj_explicit","name":"Highway","createdAt":"","updatedAt":"","added":1,"removed":0,"alreadyPresent":1}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "add",
+            "--name",
+            "Highway",
+            "--description",
+            "Merges",
+            "--project-id",
+            "prj_explicit",
+            "--episode-id",
+            "ep_one",
+            "--episode-id",
+            "ep_two",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({
+            "projectId": "prj_explicit",
+            "name": "Highway",
+            "description": "Merges",
+            "episodeIds": ["ep_one", "ep_two"],
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Dataset created: ds_new\n\
+         Added 1 episode (1 already present)\n\
+         Run foxglove datasets commit ds_new to commit the draft as a new version.\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_an_empty_dataset_sends_only_its_name_and_project() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets",
+        r#"{"id":"ds_new","projectId":"prj_default","name":"Highway","createdAt":"","updatedAt":"","added":0,"removed":0,"alreadyPresent":0}"#,
+    )]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["datasets", "add", "--name", "Highway", "--description", ""]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"projectId": "prj_default", "name": "Highway"})
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Dataset created: ds_new\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_in_an_unknown_project_names_the_project() {
+    let workspace = Workspace::new();
+    for (mut args, path) in [
+        (vec!["datasets", "add", "--name", "Highway"], "/v1/datasets"),
+        (
+            vec!["episodes", "add", "--recording-id", "rec_one"],
+            "/v1/episodes",
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json("POST", path, r#"{"error":"Project not found"}"#)
+        }]);
+        args.extend(["--project-id", "prj_gone"]);
+        let output = run(&workspace, &server, &args);
+        server.finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Project not found: prj_gone\n",
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn editing_a_dataset_sends_only_the_fields_given_and_an_empty_description_clears_it() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec!["--name", "Renamed"],
+            serde_json::json!({"name": "Renamed"}),
+        ),
+        (
+            vec!["--description", ""],
+            serde_json::json!({"description": null}),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("PATCH", "/v1/datasets/ds_one", "{}")]);
+        let mut args = vec!["datasets", "edit", "ds_one"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Dataset updated: ds_one\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_a_dataset_renders_one_record() {
+    const DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway","description":"Merges","episodeCount":2,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}"#;
+    let workspace = Workspace::new();
+    for (format, expected) in [
+        (
+            "json",
+            "{\"id\":\"ds_one\",\"projectId\":\"prj_default\",\"name\":\"Highway\",\"description\":\"Merges\",\"episodeCount\":2,\"createdAt\":\"2024-01-02T03:04:05Z\",\"updatedAt\":\"2024-01-02T03:04:06Z\"}\n",
+        ),
+        (
+            "csv",
+            "ID,Name,Project ID,Description,Episode Count,Created At,Updated At\n\
+             ds_one,Highway,prj_default,Merges,2,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/datasets/ds_one", DATASET)]);
+        let output = run(
+            &workspace,
+            &server,
+            &["datasets", "get", "ds_one", "--format", format],
+        );
+        assert_success(&output);
+        server.finish();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn deleting_what_is_already_gone_is_not_an_error() {
+    let workspace = Workspace::new();
+    for (command, path, noun) in [
+        ("datasets", "/v1/datasets/one", "Dataset"),
+        ("episodes", "/v1/episodes/one", "Episode"),
+    ] {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json("DELETE", path, r#"{"error":"Not Found"}"#)
+        }]);
+        let output = run(&workspace, &server, &[command, "delete", "one"]);
+        assert_success(&output);
+        server.finish();
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "Not found. The resource may have already been deleted.\n{noun} deleted: one\n"
+            )
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn missing_datasets_episodes_and_versions_are_named_in_the_error() {
+    let workspace = Workspace::new();
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (
+            &["datasets", "get", "ds_one"],
+            "GET",
+            "/v1/datasets/ds_one",
+            "Dataset not found: ds_one\n",
+        ),
+        (
+            &["datasets", "commit", "ds_one"],
+            "POST",
+            "/v1/datasets/ds_one/commit",
+            "Dataset not found: ds_one\n",
+        ),
+        (
+            &["episodes", "get", "ep_one"],
+            "GET",
+            "/v1/episodes/ep_one",
+            "Episode not found: ep_one\n",
+        ),
+        (
+            &["datasets", "versions", "get", "ds_one", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9",
+            "Version 9 of dataset ds_one not found\n",
+        ),
+        (
+            &["datasets", "versions", "compare", "ds_one", "2", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9/compare",
+            "Version 2 or 9 of dataset ds_one not found\n",
+        ),
+        (
+            &["datasets", "versions", "restore", "ds_one", "9"],
+            "POST",
+            "/v1/datasets/ds_one/versions/9/restore",
+            "Committed version 9 of dataset ds_one not found\n",
+        ),
+    ];
+    for &(args, method, path, expected) in cases {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json(method, path, r#"{"error":"Not Found"}"#)
+        }]);
+        let output = run(&workspace, &server, args);
+        server.finish();
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_changes_report_what_the_api_applied() {
+    let workspace = Workspace::new();
+    for (args, response, body, stderr) in [
+        (
+            vec!["add", "ds_one", "ep_one", "ep_two", "ep_two"],
+            r#"{"added":1,"removed":0,"alreadyPresent":2}"#,
+            serde_json::json!({"add": ["ep_one", "ep_two", "ep_two"]}),
+            "Added 1 episode (2 already present)\n\
+             Run foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
+        (
+            vec!["remove", "ds_one", "ep_one", "ep_gone", "ep_one"],
+            r#"{"added":0,"removed":1,"alreadyPresent":0}"#,
+            serde_json::json!({"remove": ["ep_one", "ep_gone", "ep_one"]}),
+            "Removed 1 episode (1 not in the dataset)\n\
+             Run foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
+        (
+            vec!["remove", "ds_one", "ep_gone"],
+            r#"{"added":0,"removed":0,"alreadyPresent":0}"#,
+            serde_json::json!({"remove": ["ep_gone"]}),
+            "Removed 0 episodes (1 not in the dataset)\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/datasets/ds_one/episodes",
+            response,
+        )]);
+        let mut command = vec!["datasets", "episodes"];
+        command.extend(&args);
+        let output = run(&workspace, &server, &command);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), body, "{args:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), stderr, "{args:?}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_version_and_the_missing_recordings_filter_reach_the_dataset_episode_list() {
+    let workspace = Workspace::new();
+    for (flag, value) in [
+        ("--has-missing-recordings", "true"),
+        ("--has-missing-recordings=false", "false"),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/3/episodes",
+            &format!(
+                r#"{{"episodes":[{}]}}"#,
+                dataset_episode("ep_one", value == "true")
+            ),
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "datasets",
+                "episodes",
+                "list",
+                "ds_one",
+                "--version",
+                "3",
+                flag,
+                "--format",
+                "json",
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            query_pairs(&server.finish()[0]),
+            expected_pairs(&[("hasMissingRecordings", value), ("limit", "2000")])
+        );
+        let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            episodes[0]["hasMissingRecordings"],
+            value == "true",
+            "{flag}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_missing_version_is_named_in_the_error() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/9/episodes",
+            r#"{"error":"Version not found"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["datasets", "episodes", "list", "ds_one", "--version", "9"],
+    );
+    server.finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Version 9 of dataset ds_one not found\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn the_episode_list_fills_missing_recordings_from_the_filter() {
+    fn episodes(missing_recordings: &str) -> String {
+        format!(
+            r#"{{"episodes":[{{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},{missing_recordings}"createdAt":"2024-01-02T03:04:07Z"}}]}}"#
+        )
+    }
+    let workspace = Workspace::new();
+    for (flags, supplied, query, expected) in [
+        (
+            vec!["--has-missing-recordings"],
+            "",
+            Some("true"),
+            serde_json::json!(true),
+        ),
+        (
+            vec!["--has-missing-recordings=false"],
+            "",
+            Some("false"),
+            serde_json::json!(false),
+        ),
+        (
+            vec!["--include-recordings"],
+            r#""hasMissingRecordings":true,"#,
+            None,
+            serde_json::json!(true),
+        ),
+        (vec![], "", None, serde_json::Value::Null),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "GET",
+            "/v1/episodes",
+            &episodes(supplied),
+        )]);
+        let mut args = vec!["episodes", "list", "--format", "json"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(
+            query_pairs(&server.finish()[0])
+                .get("hasMissingRecordings")
+                .map(String::as_str),
+            query,
+            "{flags:?}"
+        );
+        let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(episodes[0]["hasMissingRecordings"], expected, "{flags:?}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn versions_are_listed_with_the_draft_marked() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions",
+        r#"{"versions":[{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":2,"addedEpisodeCount":2,"removedEpisodeCount":0},{"versionNumber":2,"createdAt":"2024-01-02T00:00:00Z","episodeCount":3,"addedEpisodeCount":1,"removedEpisodeCount":0}]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "versions",
+            "list",
+            "ds_one",
+            "--sort-order",
+            "asc",
+            "--limit",
+            "2",
+            "--offset",
+            "1",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "2"), ("offset", "1"), ("sortOrder", "asc")])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Showing the first 2 results. More may exist; use --offset to page through them.\n"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Version,Status,Committed At,Episode Count,Added,Removed,Created At\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z\n\
+         2,draft,,3,1,0,2024-01-02T00:00:00Z\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_version_reports_whether_its_recordings_are_missing() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions/1",
+        r#"{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":2,"addedEpisodeCount":2,"removedEpisodeCount":0,"hasMissingRecordings":true}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets", "versions", "get", "ds_one", "1", "--format", "csv",
+        ],
+    );
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Version,Status,Committed At,Episode Count,Added,Removed,Created At,Missing Recordings\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z,true\n"
+    );
+}
+
+fn change(side: &str, id: &str) -> String {
+    format!(
+        r#"{{"change":"{side}","addedAt":"2024-01-02T03:04:08Z","addedInVersion":1,"episode":{{"id":"{id}","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
+    )
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn comparing_versions_follows_the_cursor_through_every_page() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/3/compare",
+            &format!(
+                r#"{{"changes":[{},{}],"addedCount":2,"removedCount":1,"nextCursor":"page2"}}"#,
+                change("added", "ep_one"),
+                change("removed", "ep_two")
+            ),
+        ),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/3/compare",
+            &format!(
+                r#"{{"changes":[{}],"addedCount":2,"removedCount":1,"nextCursor":null}}"#,
+                change("added", "ep_three")
+            ),
+        ),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "versions",
+            "compare",
+            "ds_one",
+            "1",
+            "3",
+            "--include-recordings",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[
+            ("include", "recordings"),
+            ("limit", "2000"),
+            ("version", "1")
+        ])
+    );
+    assert_eq!(
+        query_pairs(&requests[1]),
+        expected_pairs(&[
+            ("cursor", "page2"),
+            ("include", "recordings"),
+            ("limit", "2000"),
+            ("version", "1"),
+        ])
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let changes: Vec<_> = stdout
+        .lines()
+        .map(|line| line.split(',').take(2).collect::<Vec<_>>().join(","))
+        .collect();
+    assert_eq!(
+        changes,
+        [
+            "Change,Episode ID",
+            "added,ep_one",
+            "removed,ep_two",
+            "added,ep_three"
+        ]
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "2 episodes added, 1 removed\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn comparing_versions_stops_at_an_empty_page() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions/2/compare",
+        r#"{"changes":[],"addedCount":0,"removedCount":0,"nextCursor":"again"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["datasets", "versions", "compare", "ds_one", "1", "2"],
+    );
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 1);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "0 episodes added, 0 removed\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn restoring_a_version_reports_the_changes_it_staged() {
+    let workspace = Workspace::new();
+    for (flags, query, response, stderr) in [
+        (
+            vec!["--force"],
+            vec![("force", "true")],
+            r#"{"added":2,"removed":1,"discardedAdds":1,"discardedRemoves":0}"#,
+            "Discarded 1 pending addition\n\
+             Restored version 3 into the draft: 2 episodes added, 1 removed\n\
+             Run foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
+        (
+            vec![],
+            vec![],
+            r#"{"added":0,"removed":0,"discardedAdds":0,"discardedRemoves":0}"#,
+            "The draft matches version 3\n",
+        ),
+        (
+            vec!["--force"],
+            vec![("force", "true")],
+            r#"{"added":0,"removed":0,"discardedAdds":2,"discardedRemoves":0}"#,
+            "Discarded 2 pending additions\nThe draft matches version 3\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/datasets/ds_one/versions/3/restore",
+            response,
+        )]);
+        let mut args = vec!["datasets", "versions", "restore", "ds_one", "3"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        let request = &server.finish()[0];
+        assert_eq!(query_pairs(request), expected_pairs(&query), "{flags:?}");
+        assert_eq!(json_body(request), serde_json::json!({}));
+        assert_eq!(String::from_utf8_lossy(&output.stderr), stderr, "{flags:?}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_restore_over_pending_changes_fails_without_force() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 409,
+        ..Reply::json(
+            "POST",
+            "/v1/datasets/ds_one/versions/3/restore",
+            r#"{"error":"Editable version has staged changes; pass force to overwrite"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["datasets", "versions", "restore", "ds_one", "3"],
+    );
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to restore version 3: Editable version has staged changes; pass force to overwrite\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn committing_and_discarding_report_the_counts() {
+    let workspace = Workspace::new();
+    for (command, path, response, stderr) in [
+        (
+            "commit",
+            "/v1/datasets/ds_one/commit",
+            r#"{"committed":{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":12,"addedEpisodeCount":3,"removedEpisodeCount":1},"editableVersionNumber":5}"#,
+            "Committed version 4 with 12 episodes (3 added, 1 removed)\n",
+        ),
+        (
+            "discard",
+            "/v1/datasets/ds_one/discard",
+            r#"{"discardedAdds":2,"discardedRemoves":1}"#,
+            "Discarded 2 pending additions and 1 pending removal\n",
+        ),
+        (
+            "discard",
+            "/v1/datasets/ds_one/discard",
+            r#"{"discardedAdds":0,"discardedRemoves":3}"#,
+            "Discarded 3 pending removals\n",
+        ),
+        (
+            "discard",
+            "/v1/datasets/ds_one/discard",
+            r#"{"discardedAdds":0,"discardedRemoves":0}"#,
+            "No pending changes to discard\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("POST", path, response)]);
+        let output = run(&workspace, &server, &["datasets", command, "ds_one"]);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), serde_json::json!({}));
+        assert_eq!(String::from_utf8_lossy(&output.stderr), stderr, "{command}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_an_episode_keeps_its_window_to_the_millisecond() {
+    let workspace = Workspace::new();
+    for (created, stderr) in [
+        (true, "Episode created: ep_new\n"),
+        (
+            false,
+            "Episode already exists: ep_new (its metadata is unchanged)\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/episodes",
+            &format!(r#"{{"episodes":[{{"id":"ep_new","created":{created}}}]}}"#),
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "episodes",
+                "add",
+                "--project-id",
+                "prj_explicit",
+                "--recording-id",
+                "rec_one",
+                "--recording-id",
+                "rec_two",
+                "--start",
+                "2024-01-02T03:04:05.250Z",
+                "--end",
+                "2024-01-02T03:04:06.1239Z",
+                "--metadata",
+                r#"{"run":7}"#,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({
+                "projectId": "prj_explicit",
+                "episodes": [{
+                    "recordings": ["rec_one", "rec_two"],
+                    "startTime": "2024-01-02T03:04:05.25Z",
+                    "endTime": "2024-01-02T03:04:06.123Z",
+                    "metadata": {"run": 7},
+                }],
+            })
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stderr), stderr);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_episode_window_left_out_is_inferred_by_the_api() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/episodes",
+        r#"{"episodes":[{"id":"ep_new","created":true}]}"#,
+    )]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["episodes", "add", "--recording-id", "rec_one"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"projectId": "prj_default", "episodes": [{"recordings": ["rec_one"]}]})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_an_episode_can_include_its_recordings() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/episodes/ep_one",
+        r#"{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"hasMissingRecordings":true,"createdAt":"2024-01-02T03:04:07Z"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "get",
+            "ep_one",
+            "--include-recordings",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("include", "recordings")])
+    );
+    let episode: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(episode["id"], "ep_one");
+    assert_eq!(episode["recordings"][0]["available"], false);
+    assert_eq!(episode["hasMissingRecordings"], true);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_episode_in_a_dataset_is_not_deleted() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 409,
+        ..Reply::json(
+            "DELETE",
+            "/v1/episodes/ep_one",
+            r#"{"error":"Cannot delete an episode that belongs to a dataset"}"#,
+        )
+    }]);
+    let output = run(&workspace, &server, &["episodes", "delete", "ep_one"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to delete episode: Cannot delete an episode that belongs to a dataset\n"
+    );
+}
+
+#[test]
+fn dataset_and_episode_writes_are_validated_before_sending_a_request() {
+    let workspace = Workspace::new();
+    for (args, expected) in [
+        (
+            vec!["datasets", "add", "--name", "Highway"],
+            "--project-id is required when creating a dataset\n",
+        ),
+        (
+            vec!["datasets", "add", "--name", " ", "--project-id", "prj"],
+            "--name cannot be empty\n",
+        ),
+        (vec!["datasets", "edit", "ds_one"], "Nothing to update\n"),
+        (
+            vec!["datasets", "edit", "ds_one", "--name", ""],
+            "--name cannot be empty\n",
+        ),
+        (
+            vec!["episodes", "add", "--recording-id", "rec_one"],
+            "--project-id is required when creating an episode\n",
+        ),
+        (
+            vec![
+                "episodes",
+                "add",
+                "--recording-id",
+                "rec_one",
+                "--start",
+                "2024-01-02",
+            ],
+            "both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec![
+                "episodes",
+                "add",
+                "--recording-id",
+                "rec_one",
+                "--metadata",
+                "[1]",
+            ],
+            "--metadata must be a JSON object: [1]\n",
+        ),
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
             "{args:?}"
         );
     }
