@@ -169,7 +169,6 @@ pub(crate) async fn list_episodes(
         .await
     {
         Ok(mut response) => {
-            // The API sets this only when recordings are included, but the filter decides it.
             for episode in &mut response.episodes {
                 episode.has_missing_recordings = episode
                     .has_missing_recordings
