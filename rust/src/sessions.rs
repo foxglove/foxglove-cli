@@ -5,7 +5,8 @@ use std::fmt::Write as _;
 
 use crate::api::encode_path_segment;
 use crate::cli::{
-    SessionAddArgs, SessionListArgs, SessionLookupArgs, SessionRecordingMutationArgs,
+    SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
+    SessionRecordingMutationArgs,
 };
 use crate::output::Format;
 use crate::records::{fetch_list, format_output, DeviceSummary, ProjectFallback, Record};
@@ -239,6 +240,11 @@ struct PatchSessionRecordingsRequest {
     remove_recording_ids: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct PatchSessionKeyRequest<'a> {
+    key: Option<&'a str>,
+}
+
 pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Outcome {
     let device_id = args.device_id.clone().unwrap_or_default();
     if device_id.is_empty() {
@@ -289,6 +295,42 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }
         Err(error) => Outcome::failure(format!("Failed to delete session: {error}\n")),
+    }
+}
+
+pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    let request = PatchSessionKeyRequest {
+        key: if args.remove_key {
+            None
+        } else {
+            args.key.as_deref()
+        },
+    };
+    match runtime
+        .client
+        .patch::<_, _, serde_json::Value>(
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
+            &query,
+            &request,
+        )
+        .await
+    {
+        Ok(_) => Outcome {
+            stderr: if let Some(key) = &args.key {
+                format!("Session key updated: {key}\n")
+            } else {
+                format!("Session key removed: {}\n", args.session)
+            }
+            .into_bytes(),
+            ..Outcome::default()
+        },
+        Err(error) if error.is_forbidden() => {
+            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
+        }
+        Err(error) => Outcome::failure(format!("Failed to update session key: {error}\n")),
     }
 }
 

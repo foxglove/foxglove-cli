@@ -404,6 +404,12 @@ fn identifier_paths_are_escaped_for_every_command() {
         ),
         (&["sessions", "delete", KEY], "DELETE", SESSION_PATH, "{}"),
         (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            SESSION_PATH,
+            "{}",
+        ),
+        (
             &["sessions", "recordings", "add", KEY, "rec"],
             "PATCH",
             SESSION_PATH,
@@ -538,6 +544,95 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
         (&["episodes", "delete", KEY], "DELETE", EPISODE_PATH, "{}"),
     ];
     assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_edit_sends_string_or_null_without_other_changes() {
+    let workspace = Workspace::new();
+    for (flags, expected_body) in [
+        (vec!["--key", "new-key"], r#"{"key":"new-key"}"#),
+        (vec!["--remove-key"], r#"{"key":null}"#),
+    ] {
+        let server = Server::new(vec![Reply::json("PATCH", "/v1/sessions/old-key", "{}")]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "default-project")
+                .args(["sessions", "edit", "old-key"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            if flags[0] == "--key" {
+                "Session key updated: new-key\n"
+            } else {
+                "Session key removed: old-key\n"
+            }
+        );
+        let requests = server.finish();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(query_pairs(&requests[0])["projectId"], "default-project");
+        let body: serde_json::Value =
+            serde_json::from_str(requests[0].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(
+            body,
+            serde_json::from_str::<serde_json::Value>(expected_body).unwrap()
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_edit_reports_api_error() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 409,
+        ..Reply::json(
+            "PATCH",
+            "/v1/sessions/session-id",
+            r#"{"error":"Session key already exists"}"#,
+        )
+    }]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "sessions",
+        "edit",
+        "session-id",
+        "--key",
+        "taken",
+    ]))
+    .finish();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to update session key: Session key already exists\n"
+    );
+    assert_eq!(server.finish().len(), 1);
+}
+
+#[test]
+fn session_key_edit_requires_exactly_one_change() {
+    let workspace = Workspace::new();
+    for flags in [
+        vec![],
+        vec!["--key", ""],
+        vec!["--key", "new-key", "--remove-key"],
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["sessions", "edit", "session-id"])
+                .args(&flags),
+        )
+        .finish();
+        assert!(!output.status.success(), "{flags:?}");
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("error:"));
+    }
 }
 
 #[test]
