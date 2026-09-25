@@ -51,8 +51,9 @@ pub enum ApiError {
     Forbidden,
     /// The API rejected the credentials and supplied additional detail.
     ForbiddenWithMessage(String),
-    /// The requested resource does not exist.
-    NotFound,
+    /// The requested resource does not exist, with the error code the API
+    /// gave, if any.
+    NotFound { code: Option<String> },
     /// The server returned a non-success response with its decoded message.
     Response { status: u16, message: String },
     /// The request could not be sent or its response could not be read.
@@ -99,13 +100,35 @@ impl ApiError {
     /// Whether the requested resource was not found.
     #[must_use]
     pub const fn is_not_found(&self) -> bool {
-        matches!(self, Self::NotFound)
+        matches!(self, Self::NotFound { .. })
+    }
+
+    /// The machine-readable error code the API returned, if any.
+    #[must_use]
+    pub fn code(&self) -> Option<&str> {
+        match self {
+            Self::Context { source, .. } => source.code(),
+            Self::NotFound { code } => code.as_deref(),
+            _ => None,
+        }
     }
 
     /// Whether this operation was cancelled by its caller.
     #[must_use]
     pub const fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled)
+    }
+
+    /// Whether the same request could succeed on a later attempt: a transport
+    /// error, a 429 response, or a 5xx response.
+    #[must_use]
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Context { source, .. } => source.is_retryable(),
+            Self::Transport(_) => true,
+            Self::Response { status, .. } => *status == 429 || *status >= 500,
+            _ => false,
+        }
     }
 }
 
@@ -117,7 +140,7 @@ impl fmt::Display for ApiError {
             Self::ForbiddenWithMessage(message) => {
                 write!(formatter, "{FORBIDDEN_MESSAGE}\n{message}")
             }
-            Self::NotFound => formatter.write_str("not found"),
+            Self::NotFound { .. } => formatter.write_str("not found"),
             Self::Response { message, .. } => formatter.write_str(message),
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
             Self::Serialization(error) => error.fmt(formatter),
@@ -141,7 +164,7 @@ impl std::error::Error for ApiError {
             Self::Unauthorized
             | Self::Forbidden
             | Self::ForbiddenWithMessage(_)
-            | Self::NotFound
+            | Self::NotFound { .. }
             | Self::Response { .. }
             | Self::Cancelled
             | Self::InvalidUrl(_)
@@ -161,6 +184,8 @@ pub struct StreamRequest {
     pub key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub import_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub episode_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub project_id: String,
     #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
@@ -206,8 +231,9 @@ impl StreamRequest {
         let session = !self.session_id.is_empty() || !self.session_key.is_empty();
         let device = !self.device_id.is_empty() || !self.device_name.is_empty();
         let import = !self.import_id.is_empty();
-        if !(recording || session || device || import) {
-            return Err("either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required".to_owned());
+        let episode = !self.episode_id.is_empty();
+        if !(recording || session || device || import || episode) {
+            return Err("either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required".to_owned());
         }
         if !self.session_key.is_empty() && self.project_id.is_empty() {
             return Err("project-id is required when using session-key".to_owned());
@@ -216,6 +242,7 @@ impl StreamRequest {
             && !import
             && !recording
             && !session
+            && !episode
             && (self.start.is_none() || self.end.is_none())
         {
             return Err(
@@ -1149,12 +1176,25 @@ fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
                 ApiError::ForbiddenWithMessage(message)
             }
         }
-        StatusCode::NOT_FOUND => ApiError::NotFound,
+        StatusCode::NOT_FOUND => ApiError::NotFound {
+            code: response_code(body),
+        },
         _ => ApiError::Response {
             status: status.as_u16(),
             message: response_message(body),
         },
     }
+}
+
+fn response_code(body: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct ErrorCode {
+        code: Option<String>,
+    }
+    serde_json::from_str::<ErrorCode>(body)
+        .ok()
+        .and_then(|response| response.code)
+        .filter(|code| !code.is_empty())
 }
 
 fn response_message(body: &str) -> String {
@@ -1410,7 +1450,17 @@ mod tests {
             forbidden.to_string(),
             "forbidden: have you signed in with `foxglove auth login`?\nrequires capability"
         );
-        assert!(ApiError::NotFound.is_not_found());
+        assert!(ApiError::NotFound { code: None }.is_not_found());
+        let unavailable = api_error_from_response(
+            StatusCode::NOT_FOUND,
+            r#"{"error":"Episode has no recordings available for streaming","code":"NoStreamableRecordings"}"#,
+        );
+        assert!(unavailable.is_not_found());
+        assert_eq!(unavailable.code(), Some("NoStreamableRecordings"));
+        assert_eq!(
+            api_error_from_response(StatusCode::NOT_FOUND, "not json").code(),
+            None
+        );
         assert!(ApiError::Cancelled.is_cancelled());
     }
 
