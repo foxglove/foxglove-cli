@@ -1624,6 +1624,21 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 	return runRustCaseWithFixture(t, testCase, nil)
 }
 
+// Legacy export/attachment cases compare unscoped Go behavior. The approved
+// consistent-project-defaults delta is covered independently by Rust tests.
+func legacyUnscopedProjectArgs(args []string) []string {
+	command := strings.Join(args, " ")
+	if !strings.Contains(command, "data export") && !strings.Contains(command, "attachments list") {
+		return args
+	}
+	for _, arg := range args {
+		if arg == "--project-id" || strings.HasPrefix(arg, "--project-id=") {
+			return args
+		}
+	}
+	return append(args, "--project-id=")
+}
+
 func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureServer) commandSnapshot {
 	t.Helper()
 	temporaryDirectory := t.TempDir()
@@ -1654,7 +1669,7 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 		args[index] = arg
 	}
 	writeInitialFiles(t, temporaryDirectory, testCase.InitialFiles)
-	command := exec.Command(rustBinary, args...)
+	command := exec.Command(rustBinary, legacyUnscopedProjectArgs(args)...)
 	command.Dir = temporaryDirectory
 	command.Env = caseEnvironment(homeDirectory, testCase.Env)
 	command.Stdin = strings.NewReader(testCase.Stdin)

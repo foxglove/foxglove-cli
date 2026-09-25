@@ -1052,7 +1052,9 @@ async fn dispatch_api_command(
             data::list_coverage(&runtime, &args, format).await
         }
         CliCommand::Data(DataCommand::Export(args)) => {
-            let diagnostic = debug.then(|| data::export_debug_request(&args)).flatten();
+            let diagnostic = debug
+                .then(|| data::export_debug_request(&runtime, &args))
+                .flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }

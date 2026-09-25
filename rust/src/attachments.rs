@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{AttachmentDownloadArgs, AttachmentListArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, Record};
+use crate::records::{fetch_list, ProjectFallback, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -83,7 +83,7 @@ pub(crate) async fn list_attachments(
 ) -> Outcome {
     let query = AttachmentListQuery {
         import_id: args.import_id.clone().unwrap_or_default(),
-        project_id: args.project_id.clone().unwrap_or_default(),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         session_id: args.session_id.clone().unwrap_or_default(),
         session_key: args.session_key.clone().unwrap_or_default(),
