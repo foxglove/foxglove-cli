@@ -1689,7 +1689,7 @@ fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
         "2 episodes added, 1 removed\n\
-         More changes exist; run the same command with --cursor page2 to fetch the next page.\n"
+         More changes exist; rerun with --cursor page2 to fetch the next page.\n"
     );
 }
 
@@ -1721,6 +1721,28 @@ fn comparing_versions_sends_the_given_cursor_and_limit() {
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
         "2 episodes added, 1 removed\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_empty_compare_page_offers_no_next_page() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions/2/compare",
+        r#"{"changes":[],"addedCount":0,"removedCount":0,"nextCursor":"again"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["datasets", "versions", "compare", "ds_one", "1", "2"],
+    );
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "0 episodes added, 0 removed\n"
     );
 }
 

@@ -299,9 +299,12 @@ pub(crate) async fn compare_versions(
             )
             .as_bytes(),
         );
-        if let Some(next) = page.next_cursor.filter(|next| !next.is_empty()) {
+        if let Some(next) = page
+            .next_cursor
+            .filter(|next| !next.is_empty() && !page.changes.is_empty())
+        {
             outcome.stderr.extend_from_slice(
-                format!("More changes exist; run the same command with --cursor {next} to fetch the next page.\n")
+                format!("More changes exist; rerun with --cursor {next} to fetch the next page.\n")
                     .as_bytes(),
             );
         }
