@@ -20,7 +20,9 @@ before cutting an RC with these notes. Current drafts: [commands #175](https://g
   [recordings](https://docs.foxglove.dev/docs/data/recordings), and
   [edge workflows](https://docs.foxglove.dev/docs/data/edge-sites/manage-data).
   Replace `data` paths, explain transfer initiation/status, and ensure recording
-  deletion is documented as available. A public-docs PR is still needed.
+  deletion is documented as available. Coordinate merging and publishing
+  [public-docs PR #19265](https://github.com/foxglove/app/pull/19265) with CLI v2
+  availability.
 - [ ] Publish and test a new `v2.0.0-rc.N` with the final interface. Leave existing
   `v1.0.34-rc.*` tags intact. Review curated notes for the full v1.0.33→v2 change;
   do not use only commits since the preceding RC.
