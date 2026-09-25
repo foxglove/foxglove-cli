@@ -231,6 +231,33 @@ pub(crate) async fn list_versions(
     }
 }
 
+pub(super) async fn draft_version(runtime: &Runtime, dataset_id: &str) -> Result<i64, Outcome> {
+    let query = VersionListQuery {
+        limit: 1,
+        offset: 0,
+        sort_order: "desc".to_owned(),
+    };
+    match runtime
+        .client
+        .get::<_, DatasetVersionListResponse>(
+            &format!("{}/versions", dataset_endpoint(dataset_id)),
+            &query,
+        )
+        .await
+    {
+        Ok(response) => match response.versions.first() {
+            Some(version) if version.committed_at.is_none() => Ok(version.version_number),
+            _ => Err(Outcome::failure(format!(
+                "Dataset {dataset_id} has no draft\n"
+            ))),
+        },
+        Err(error) if error.is_not_found() => Err(dataset_not_found(dataset_id)),
+        Err(error) => Err(Outcome::failure(format!(
+            "Failed to find the draft of dataset {dataset_id}: {error}\n"
+        ))),
+    }
+}
+
 pub(crate) async fn get_version(
     runtime: &Runtime,
     args: &DatasetVersionGetArgs,

@@ -236,7 +236,8 @@ Member recordings are omitted unless you pass `--include-recordings`.
 
 Create a dataset and change its episodes. Changes stay pending in the dataset's
 draft until you commit them as a new version, or discard them with
-`foxglove datasets discard`:
+`foxglove datasets discard`. `datasets episodes list --version draft` lists the
+draft, pending changes included:
 
 ```
 $ foxglove datasets add --name "Night merges" --episode-id ep_BCUw2zxpBnToJbOS
@@ -245,13 +246,14 @@ Added 1 episode
 Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
 $ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7sWd1ZrNc4YbEe
 $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
+$ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
 $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
 Committed version 1 with 2 episodes (2 added, 0 removed)
 ```
 
 List a dataset's versions, see which episodes changed between two of them, or
 restore an earlier one into the draft. `datasets episodes list --version` lists
-any version, including the draft:
+any version by number:
 
 ```
 $ foxglove datasets versions list ds_mHH1Cp4gPybCPR8y

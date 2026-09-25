@@ -1468,6 +1468,75 @@ fn a_version_and_the_missing_recordings_filter_reach_the_dataset_episode_list() 
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn the_draft_version_is_looked_up_before_listing_its_episodes() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions",
+            r#"{"versions":[{"versionNumber":5,"createdAt":"2024-01-03T00:00:00Z"}]}"#,
+        ),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/5/episodes",
+            &format!(r#"{{"episodes":[{}]}}"#, dataset_episode("ep_one", false)),
+        ),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "episodes",
+            "list",
+            "ds_one",
+            "--version",
+            "draft",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("limit", "1"), ("sortOrder", "desc")])
+    );
+    let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(episodes[0]["episode"]["id"], "ep_one");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_dataset_without_a_draft_says_so() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions",
+        r#"{"versions":[{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"}]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "episodes",
+            "list",
+            "ds_one",
+            "--version",
+            "draft",
+        ],
+    );
+    assert_eq!(server.finish().len(), 1);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Dataset ds_one has no draft\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn a_missing_version_is_named_in_the_error() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply {

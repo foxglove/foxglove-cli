@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::api::encode_path_segment;
 use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
-    DatasetGetArgs, DatasetIdArgs, DatasetListArgs,
+    DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
 use crate::episodes::{include_recordings, parse_time_range, Episode};
 use crate::output::Format;
@@ -201,7 +201,17 @@ pub(crate) async fn list_dataset_episodes(
         sort_order: args.sort_order.clone().unwrap_or_default(),
         start,
     };
-    let endpoint = match args.version {
+    let version = match args.version {
+        None => None,
+        Some(DatasetVersionSelector::Number(version)) => Some(version),
+        Some(DatasetVersionSelector::Draft) => {
+            match versions::draft_version(runtime, &args.dataset_id).await {
+                Ok(version) => Some(version),
+                Err(outcome) => return outcome,
+            }
+        }
+    };
+    let endpoint = match version {
         Some(version) => format!(
             "{}/versions/{version}/episodes",
             dataset_endpoint(&args.dataset_id)
@@ -217,7 +227,7 @@ pub(crate) async fn list_dataset_episodes(
             let count = response.episodes.len();
             warn_if_truncated(format_output(&response.episodes, format), count, limit)
         }
-        Err(error) if error.is_not_found() => match args.version {
+        Err(error) if error.is_not_found() => match version {
             Some(version) => version_not_found(&args.dataset_id, version),
             None => dataset_not_found(&args.dataset_id),
         },

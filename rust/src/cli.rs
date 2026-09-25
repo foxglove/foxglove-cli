@@ -21,6 +21,22 @@ const ROOT_COMMAND: &str = "foxglove";
 
 /// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DatasetVersionSelector {
+    Number(i64),
+    Draft,
+}
+
+fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> {
+    if value == "draft" {
+        return Ok(DatasetVersionSelector::Draft);
+    }
+    value
+        .parse()
+        .map(DatasetVersionSelector::Number)
+        .map_err(|_| format!("expected a version number or draft, got {value:?}"))
+}
+
 fn parse_bool(value: &str) -> Result<bool, String> {
     match value {
         "1" | "t" | "T" | "TRUE" | "true" | "True" => Ok(true),
@@ -692,10 +708,11 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) start: Option<String>,
     #[arg(
         long,
-        help = "Version to list (default: the newest committed version, or the draft before the first commit)",
-        allow_hyphen_values = true
+        help = "Version to list, or draft for its pending changes (default: the newest committed version, or the draft before the first commit)",
+        allow_hyphen_values = true,
+        value_parser = parse_dataset_version
     )]
-    pub(crate) version: Option<i64>,
+    pub(crate) version: Option<DatasetVersionSelector>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1690,6 +1707,23 @@ mod tests {
     fn invoke(args: &[&str]) -> super::Outcome {
         let args = args.iter().map(OsString::from).collect::<Vec<_>>();
         run(&args, &mut Cursor::new(Vec::<u8>::new()))
+    }
+
+    #[test]
+    fn a_dataset_version_is_a_number_or_draft() {
+        use super::{parse_dataset_version, DatasetVersionSelector};
+        assert_eq!(
+            parse_dataset_version("3"),
+            Ok(DatasetVersionSelector::Number(3))
+        );
+        assert_eq!(
+            parse_dataset_version("draft"),
+            Ok(DatasetVersionSelector::Draft)
+        );
+        assert_eq!(
+            parse_dataset_version("latest"),
+            Err("expected a version number or draft, got \"latest\"".to_owned())
+        );
     }
 
     #[test]
