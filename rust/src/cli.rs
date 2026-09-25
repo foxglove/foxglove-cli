@@ -75,6 +75,11 @@ enum CliCommand {
     Config(ConfigCommand),
     #[command(about = "Inspect data coverage", subcommand)]
     Coverage(CoverageCommand),
+    #[command(hide = true, disable_help_flag = true, disable_help_subcommand = true)]
+    Data {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        arguments: Vec<OsString>,
+    },
     #[command(about = "List datasets and their episodes", subcommand)]
     Datasets(DatasetsCommand),
     #[command(about = "List and manage devices", subcommand)]
@@ -998,6 +1003,11 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
         return root_help_outcome();
     };
     match command {
+        CliCommand::Data { .. } => Outcome::failure(
+            "The deprecated `foxglove data` commands were removed in v2.\n\
+             Use `foxglove upload FILE`, `foxglove export`, or `foxglove coverage list`.\n\
+             For an edge recording, use `foxglove recordings transfer ID` (no local file).\n",
+        ),
         CliCommand::Version => Outcome::success(format!("{}\n", runtime::version())),
         CliCommand::Config(ConfigCommand::Get(args)) => run_config_get(args.key, config.as_deref()),
         CliCommand::Config(ConfigCommand::Set(args)) => run_config_set(&args, config.as_deref()),
@@ -1128,6 +1138,7 @@ async fn dispatch_api_command(
         CliCommand::Auth(AuthCommand::ConfigureApiKey(_) | AuthCommand::Login(_))
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
+        | CliCommand::Data { .. }
         | CliCommand::Version => unreachable!("handled before API dispatch"),
     }
 }
@@ -1292,7 +1303,17 @@ fn completion_script(shell: &str, no_descriptions: bool) -> Outcome {
         "zsh" => Shell::Zsh,
         _ => return Outcome::failure(format!("unsupported completion shell: {shell}\n")),
     };
-    let mut command = Cli::command();
+    // Some completion generators include hidden commands, so omit diagnostic
+    // stubs from the completion tree while retaining the canonical definitions.
+    let definition = Cli::command();
+    let mut command = Command::new(ROOT_COMMAND)
+        .args(definition.get_arguments().cloned())
+        .subcommands(
+            definition
+                .get_subcommands()
+                .filter(|command| !command.is_hide_set())
+                .cloned(),
+        );
     if no_descriptions {
         command = without_descriptions(command);
     }
@@ -1474,7 +1495,16 @@ mod tests {
             let outcome = invoke(&["completion", shell]);
             assert_eq!(outcome.exit_code, 0);
             assert!(!outcome.stdout.is_empty());
-            assert!(String::from_utf8_lossy(&outcome.stdout).contains("foxglove"));
+            let script = String::from_utf8_lossy(&outcome.stdout);
+            assert!(script.contains("foxglove"));
+            let legacy_suggestion = match shell {
+                "bash" => "coverage data datasets",
+                "fish" => "-a \"data\"",
+                "powershell" => "CompletionResult]::new('data'",
+                "zsh" => "'data:",
+                _ => unreachable!(),
+            };
+            assert!(!script.contains(legacy_suggestion));
         }
     }
 

@@ -712,6 +712,9 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
 #[test]
 fn v2_command_paths_replace_data_without_aliases() {
     let workspace = Workspace::new();
+    let help = Process::spawn(workspace.command("http://127.0.0.1:1").arg("--help")).finish();
+    assert_success(&help);
+    assert!(!String::from_utf8_lossy(&help.stdout).contains("\n  data "));
     for args in [
         vec!["upload", "--help"],
         vec!["export", "--help"],
@@ -727,13 +730,37 @@ fn v2_command_paths_replace_data_without_aliases() {
         vec!["data", "import", "unused"],
         vec!["data", "coverage", "list"],
         vec!["data", "imports", "list"],
-        vec!["upload", "unused", "--edge-recording-id", "rec"],
+        vec!["data", "export", "--recording-id", "rec", "--help"],
+        vec![
+            "--config",
+            "missing-directory/config.yaml",
+            "data",
+            "--help",
+        ],
     ] {
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("Usage:"));
+        let message = String::from_utf8_lossy(&output.stderr);
+        assert!(message.contains("removed in v2"));
+        for replacement in [
+            "foxglove upload FILE",
+            "foxglove export",
+            "foxglove coverage list",
+            "foxglove recordings transfer ID",
+        ] {
+            assert!(message.contains(replacement));
+        }
         assert!(output.stdout.is_empty());
     }
+    let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
+        "upload",
+        "unused",
+        "--edge-recording-id",
+        "rec",
+    ]))
+    .finish();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unexpected argument"));
 }
 
 #[test]
