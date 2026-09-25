@@ -1717,6 +1717,10 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 		Stdout:   normalizeText(stdout.String(), replacements),
 		Stderr:   normalizeText(stderr.String(), replacements),
 	}
+	// Approved project-scope diagnostics: compare retained Go behavior while
+	// independent Rust tests verify the exact new stderr lines.
+	snapshot.Stderr = strings.TrimSuffix(snapshot.Stderr, "Using default project prj_default; pass --project-id= to omit project scope.\n")
+	snapshot.Stderr = strings.TrimPrefix(snapshot.Stderr, "[DEBUG] Project scope: unscoped (source: flag)\n")
 	if config, err := os.ReadFile(configPath); err == nil {
 		snapshot.Config = normalizeText(string(config), replacements)
 		if testCase.Config != "" && runtime.GOOS != "windows" {

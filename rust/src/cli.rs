@@ -1036,6 +1036,55 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
     }
 }
 
+/// Return the project selector only for operations that apply project scope.
+fn command_project_scope(
+    command: &CliCommand,
+    runtime: &runtime::Runtime,
+) -> Option<runtime::ProjectScope> {
+    let flag = match command {
+        CliCommand::Attachments(AttachmentsCommand::List(args)) => &args.project_id,
+        CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => &args.project_id,
+        CliCommand::Data(DataCommand::Export(args)) => &args.project_id,
+        CliCommand::Data(DataCommand::Import(args)) => {
+            if args
+                .edge_recording_id
+                .as_deref()
+                .is_some_and(|id| !id.is_empty())
+            {
+                return None;
+            }
+            &args.project_id
+        }
+        CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
+        CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
+        CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
+        CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
+        CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
+        CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
+            if args.without_project {
+                return Some(runtime.project_scope(Some("")));
+            }
+            &args.project_id
+        }
+        CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
+        CliCommand::Sessions(
+            SessionsCommand::Get(args)
+            | SessionsCommand::Delete(args)
+            | SessionsCommand::Recordings(SessionRecordingsCommand::List(args)),
+        ) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Recordings(
+            SessionRecordingsCommand::Add(args) | SessionRecordingsCommand::Remove(args),
+        )) => &args.project_id,
+        CliCommand::Topics(TopicsCommand::List(args)) => &args.project_id,
+        _ => return None,
+    };
+    Some(runtime.project_scope(flag.as_deref()))
+}
+
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
@@ -1047,27 +1096,63 @@ async fn dispatch_api_command(
         Ok(runtime) => runtime,
         Err(error) => return Outcome::failure(error),
     };
+    let scope = command_project_scope(&command, &runtime);
+    if debug {
+        if let Some(scope) = &scope {
+            let id = if scope.id.is_empty() {
+                "unscoped"
+            } else {
+                &scope.id
+            };
+            let _ = writeln!(
+                std::io::stderr(),
+                "[DEBUG] Project scope: {id} (source: {})",
+                scope.source
+            );
+        }
+    }
+    let mut outcome = execute_api_command(&runtime, command, debug, writer).await;
+    if outcome.exit_code != 0 && outcome.exit_code != 130 {
+        if let Some(scope) = scope.filter(|scope| scope.inherited) {
+            outcome.stderr.extend_from_slice(
+                format!(
+                    "Using default project {}; pass --project-id= to omit project scope.\n",
+                    scope.id
+                )
+                .as_bytes(),
+            );
+        }
+    }
+    outcome
+}
+
+async fn execute_api_command(
+    runtime: &runtime::Runtime,
+    command: CliCommand,
+    debug: bool,
+    writer: &mut dyn Write,
+) -> Outcome {
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
-            attachments::download_attachment(&runtime, &args, writer).await
+            attachments::download_attachment(runtime, &args, writer).await
         }
         CliCommand::Attachments(AttachmentsCommand::List(args)) => {
             let format = args.format.format;
-            attachments::list_attachments(&runtime, &args, format).await
+            attachments::list_attachments(runtime, &args, format).await
         }
-        CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
+        CliCommand::Auth(AuthCommand::Info) => auth::info(runtime).await,
         CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => {
             let format = args.format.format;
-            data::list_coverage(&runtime, &args, format).await
+            data::list_coverage(runtime, &args, format).await
         }
         CliCommand::Data(DataCommand::Export(args)) => {
             let diagnostic = debug
-                .then(|| data::export_debug_request(&runtime, &args))
+                .then(|| data::export_debug_request(runtime, &args))
                 .flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }
-            data::export_data(&runtime, &args, writer).await
+            data::export_data(runtime, &args, writer).await
         }
         CliCommand::Data(DataCommand::Import(args))
             if args
@@ -1075,66 +1160,64 @@ async fn dispatch_api_command(
                 .as_deref()
                 .is_some_and(|id| !id.is_empty()) =>
         {
-            data::import_from_edge(&runtime, &args).await
+            data::import_from_edge(runtime, &args).await
         }
-        CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
+        CliCommand::Data(DataCommand::Import(args)) => data::import_file(runtime, &args).await,
         CliCommand::Datasets(DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args))) => {
             let format = args.format.format;
-            datasets::list_dataset_episodes(&runtime, &args, format).await
+            datasets::list_dataset_episodes(runtime, &args, format).await
         }
         CliCommand::Datasets(DatasetsCommand::List(args)) => {
             let format = args.format.format;
-            datasets::list_datasets(&runtime, &args, format).await
+            datasets::list_datasets(runtime, &args, format).await
         }
-        CliCommand::Devices(DevicesCommand::Add(args)) => {
-            devices::add_device(&runtime, &args).await
-        }
+        CliCommand::Devices(DevicesCommand::Add(args)) => devices::add_device(runtime, &args).await,
         CliCommand::Devices(DevicesCommand::Edit(args)) => {
-            devices::edit_device(&runtime, &args).await
+            devices::edit_device(runtime, &args).await
         }
         CliCommand::Devices(DevicesCommand::List(args)) => {
             let format = args.format.format;
-            devices::list_devices(&runtime, &args, format).await
+            devices::list_devices(runtime, &args, format).await
         }
         CliCommand::Episodes(EpisodesCommand::List(args)) => {
             let format = args.format.format;
-            episodes::list_episodes(&runtime, &args, format).await
+            episodes::list_episodes(runtime, &args, format).await
         }
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
-            event_types::list_event_types(&runtime, args.format).await
+            event_types::list_event_types(runtime, args.format).await
         }
-        CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
+        CliCommand::Events(EventsCommand::Add(args)) => events::add_event(runtime, &args).await,
         CliCommand::Events(EventsCommand::List(args)) => {
             let format = args.format.format;
-            events::list_events(&runtime, &args, format).await
+            events::list_events(runtime, &args, format).await
         }
         CliCommand::Extensions(ExtensionsCommand::List(args)) => {
-            extensions::list_extensions(&runtime, args.format).await
+            extensions::list_extensions(runtime, args.format).await
         }
         CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
-            extensions::publish_extension(&runtime, &args).await
+            extensions::publish_extension(runtime, &args).await
         }
         CliCommand::Extensions(ExtensionsCommand::Unpublish(args)) => {
-            extensions::unpublish_extension(&runtime, &args).await
+            extensions::unpublish_extension(runtime, &args).await
         }
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
-            pending_imports::list_pending_imports(&runtime, &args, format).await
+            pending_imports::list_pending_imports(runtime, &args, format).await
         }
         CliCommand::Projects(ProjectsCommand::List(args)) => {
-            projects::list_projects(&runtime, args.format).await
+            projects::list_projects(runtime, args.format).await
         }
         CliCommand::Recordings(RecordingsCommand::Delete(args)) => {
-            recordings::delete_recording(&runtime, &args).await
+            recordings::delete_recording(runtime, &args).await
         }
         CliCommand::Recordings(RecordingsCommand::List(args)) => {
             let format = args.format.format;
-            recordings::list_recordings(&runtime, &args, format).await
+            recordings::list_recordings(runtime, &args, format).await
         }
-        CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
+        CliCommand::Sessions(command) => dispatch_session_command(runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
             let format = args.format.format;
-            topics::list_topics(&runtime, &args, format).await
+            topics::list_topics(runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::ConfigureApiKey(_) | AuthCommand::Login(_))
         | CliCommand::Completion(_)

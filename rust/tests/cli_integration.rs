@@ -769,6 +769,26 @@ fn export_and_attachments_resolve_project_precedence() {
             }
             let output = Process::spawn(command.args(&flags)).finish();
             assert!(!output.status.success());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(
+                stderr.contains("Using default project"),
+                expected.is_some() && flags.is_empty()
+            );
+            if export {
+                let source = if !flags.is_empty() {
+                    "flag"
+                } else if expected.is_none() {
+                    "unscoped"
+                } else if environment.is_empty() {
+                    "config"
+                } else {
+                    "environment"
+                };
+                assert!(stderr.contains(&format!(
+                    "[DEBUG] Project scope: {} (source: {source})",
+                    expected.unwrap_or("unscoped")
+                )));
+            }
             let requests = server.finish();
             assert_eq!(requests.len(), 1);
             let project = if export {
@@ -928,5 +948,36 @@ fn events_resolve_project_defaults_for_lists_and_device_lookup() {
                 "create={create}, flags={flags:?}"
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn project_scope_feedback_is_quiet_on_success_and_unscoped_failures() {
+    let workspace = Workspace::new();
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        "default_project_id: prj_saved\n",
+    )
+    .unwrap();
+    for (args, method, path, status, debug, expected_stderr) in [
+        (vec!["recordings", "list", "--format", "json"], "GET", "/v1/recordings", 200, false, ""),
+        (vec!["recordings", "list", "--format", "json"], "GET", "/v1/recordings", 200, true, "[DEBUG] Project scope: prj_saved (source: config)\n"),
+        (vec!["recordings", "list", "--format", "json"], "GET", "/v1/recordings", 404, false, "Failed to list recordings: not found\nUsing default project prj_saved; pass --project-id= to omit project scope.\n"),
+        (vec!["recordings", "delete", "rec_missing"], "DELETE", "/v1/recordings/rec_missing", 500, true, "Failed to delete recording: fixture failure\n"),
+        (vec!["pending-imports", "list", "--without-project"], "GET", "/v1/data/pending-imports", 404, true, "[DEBUG] Project scope: unscoped (source: flag)\nFailed to list pending imports: not found\n"),
+    ] {
+        let mut reply = Reply::json(method, path, if status == 200 { "[]" } else { r#"{"message":"fixture failure"}"# });
+        reply.status = status;
+        let server = Server::new(vec![reply]);
+        let mut command = workspace.command(&server.url);
+        // An empty environment default must fall back to the saved project.
+        command.env("DEFAULT_PROJECT_ID", "").args(&args);
+        if debug { command.arg("--debug"); }
+        let output = Process::spawn(&mut command).finish();
+        assert_eq!(output.status.success(), status == 200);
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected_stderr, "{args:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), if status == 200 { "[]\n" } else { "" });
+        server.finish();
     }
 }

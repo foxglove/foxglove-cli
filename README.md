@@ -71,6 +71,8 @@ Starting in v2.0.0, `data export`, `attachments list`, `events list`, and `event
 
 Defaults scope queries and creation; they never move an existing resource between projects or trigger an unscoped retry. `--session-key` requires a resolved project. `pending-imports list --without-project` selects unassigned resources, suppresses defaults, and cannot be combined with a nonempty `--project-id` or `--session-key`.
 
+Use `--debug` to show the effective project scope and its source (flag, environment, saved configuration, or unscoped). If a command fails while using an inherited default, stderr includes the default and the `--project-id=` opt-out. Successful commands get no additional project-scope messages unless debug output is requested.
+
 ### Devices
 
 Before importing data, you must first create a device:
