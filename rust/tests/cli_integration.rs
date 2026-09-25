@@ -884,6 +884,7 @@ fn events_resolve_project_defaults_for_lists_and_device_lookup() {
             Some("prj_flag"),
         ),
         ("prj_saved", "prj_env", vec!["--project-id="], None),
+        ("prj_saved", "prj_env", vec!["--project-id", ""], None),
     ] {
         fs::write(
             workspace.0.join(".foxgloverc"),
