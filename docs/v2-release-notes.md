@@ -15,8 +15,8 @@ before upgrading scripts.
 - Preserve fractional timestamp precision and consistently apply configured
   project defaults, including export, attachment listing, and event listing/creation. Explicit
   `--project-id=` bypasses defaults.
-- Add dataset and episode listings, including dataset episode membership, and
-  improve human-readable tables to fit terminal width.
+- Add dataset downloads and dataset/episode listings, including dataset episode
+  membership, and improve human-readable tables to fit terminal width.
 - Generate help and shell completion from the Rust command tree. API-backed
   device completion is no longer provided.
 - Correct literal API identifier encoding, signed ROS 1 JSON values, event query
