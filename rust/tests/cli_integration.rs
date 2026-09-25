@@ -932,16 +932,16 @@ fn a_killed_run_has_recorded_the_episodes_it_finished() {
         dataset_episode("ep_two", false),
     ]);
     replies.extend(export_replies(episode_mcap()));
-    let mut stalled = export_replies(episode_mcap());
-    stalled[1].stall = true;
-    replies.extend(stalled);
+    replies.extend(export_replies(episode_mcap()));
+    replies.last_mut().unwrap().stall = true;
+    let requests_before_kill = replies.len();
     let server = Server::new(replies);
     let process = Process::spawn(
         workspace
             .command(&server.url)
             .args(["datasets", "download", "ds_one"]),
     );
-    for _ in 0..7 {
+    for _ in 0..requests_before_kill {
         server
             .requests
             .recv_timeout(std::time::Duration::from_secs(10))

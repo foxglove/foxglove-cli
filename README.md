@@ -233,6 +233,10 @@ Episode 1 of 128: 41231 bytes
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
 
+A rerun into the same directory skips episodes that already downloaded. A
+`failed` episode can still list a `file` that an earlier run downloaded, with
+`episodeHasMissingRecordings` set.
+
 ### Extensions
 
 With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share

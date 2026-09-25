@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,6 +29,7 @@ const NO_DATA_LEFT_REASON: &str = "No Primary Site holds data for any recording 
 
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
+const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Default, Deserialize)]
 struct DatasetVersion {
@@ -443,6 +444,7 @@ async fn download_episodes(
     let mut cancelled = false;
     let mut stopped: Option<String> = None;
     let mut not_attempted = 0_usize;
+    let mut last_checkpoint: Option<Instant> = None;
     for (index, entry) in episodes.iter().enumerate() {
         let label = format!("Episode {} of {}", index + 1, episodes.len());
         let name = episode_file_name(index, &entry.episode.id);
@@ -488,11 +490,18 @@ async fn download_episodes(
         let (episode, note) =
             manifest_entry(index, entry, &result, kept, format!("{prefix}/{name}"));
         manifest.episodes.push(episode);
-        if matches!(result, EpisodeResult::Downloaded(_)) && stopped.is_none() {
+        if matches!(result, EpisodeResult::Downloaded(_))
+            && stopped.is_none()
+            && last_checkpoint.is_none_or(|last| last.elapsed() >= CHECKPOINT_INTERVAL)
+        {
+            last_checkpoint = Some(Instant::now());
             if let Err(error) =
                 checkpoint(directory, manifest, &episodes[index + 1..], earlier, prefix)
             {
-                stopped = Some(error.trim_end().to_owned());
+                stopped = Some(format!(
+                    "the manifest could not be written: {}",
+                    error.trim_end()
+                ));
             }
         }
         if matches!(result, EpisodeResult::NotAttempted(_)) && kept.is_none() {
