@@ -1074,15 +1074,8 @@ fn v2_command_paths_replace_data_without_aliases() {
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
         assert!(!output.status.success());
         let message = String::from_utf8_lossy(&output.stderr);
-        assert!(message.contains("removed in v2"));
-        for replacement in [
-            "foxglove upload FILE",
-            "foxglove export",
-            "foxglove coverage list",
-            "foxglove recordings transfer ID",
-        ] {
-            assert!(message.contains(replacement));
-        }
+        assert!(message.contains("unrecognized subcommand 'data'"));
+        assert!(!message.contains("removed in v2"));
         assert!(output.stdout.is_empty());
     }
     let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([

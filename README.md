@@ -117,8 +117,8 @@ This returns after the request is accepted and reports the recording ID and
 The v2 CLI removes the `data` command group. Use `upload FILE`, `export`, and
 `coverage list` in place of `data import FILE`, `data export`, and
 `data coverage list`. Replace edge-mode imports with `recordings transfer ID`;
-no local file argument is needed. Old paths return a migration notice and a
-nonzero exit status; they never execute the old operation.
+no local file argument is needed. Old paths are removed without aliases and return
+an unrecognized-command error.
 
 ### Exports
 
