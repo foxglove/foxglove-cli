@@ -180,7 +180,6 @@ fn large_mcap_export_preserves_server_bytes() {
     let server = Server::new(export_replies(payload.clone()));
     fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
     let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
         "export",
         "--recording-id",
         "rec",
@@ -204,7 +203,6 @@ fn invalid_record_length_preserves_destination() {
     let server = Server::new(export_replies(payload));
     fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
     let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
         "export",
         "--recording-id",
         "rec",
@@ -277,7 +275,6 @@ fn recovery_preserves_messages_and_schemaless_channels() {
     replies.extend(export_replies(recording(&messages[1..])));
     let server = Server::new(replies);
     let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
         "export",
         "--recording-id",
         "rec",
@@ -342,7 +339,6 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
             command.args(["auth", "login", "--base-url", &server.url]);
         } else {
             command.args([
-                "data",
                 "export",
                 "--recording-id",
                 "rec",
@@ -419,10 +415,10 @@ fn identifier_paths_are_escaped_for_every_command() {
             "{}",
         ),
         (
-            &["data", "import", "unused.mcap", "--edge-recording-id", KEY],
+            &["recordings", "transfer", KEY],
             "POST",
             "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
-            r#"{"id":"recording"}"#,
+            r#"{"id":"recording","importStatus":"pending"}"#,
         ),
         (
             &["extensions", "unpublish", KEY],
@@ -711,4 +707,82 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
             "{args:?}"
         );
     }
+}
+
+#[test]
+fn v2_command_paths_replace_data_without_aliases() {
+    let workspace = Workspace::new();
+    for args in [
+        vec!["upload", "--help"],
+        vec!["export", "--help"],
+        vec!["coverage", "list", "--help"],
+        vec!["recordings", "transfer", "--help"],
+    ] {
+        assert_success(
+            &Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish(),
+        );
+    }
+    for args in [
+        vec!["data", "export"],
+        vec!["data", "import", "unused"],
+        vec!["data", "coverage", "list"],
+        vec!["data", "imports", "list"],
+        vec!["upload", "unused", "--edge-recording-id", "rec"],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Usage:"));
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn edge_transfer_reports_actual_status_and_rejects_unavailable_recordings() {
+    let workspace = Workspace::new();
+    for status in ["pending", "importing", "complete"] {
+        let body = format!(r#"{{"id":"rec_returned","importStatus":"{status}"}}"#);
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/recordings/rec/import",
+            &body,
+        )]);
+        let output =
+            Process::spawn(
+                workspace
+                    .command(&server.url)
+                    .args(["recordings", "transfer", "rec"]),
+            )
+            .finish();
+        assert_success(&output);
+        assert!(output.stdout.is_empty());
+        let message = String::from_utf8_lossy(&output.stderr);
+        assert!(message.contains("rec_returned"));
+        assert!(message.contains(&format!("importStatus: {status}")));
+        assert_eq!(message.contains("already available"), status == "complete");
+        let requests = server.finish();
+        let body = requests[0].split_once("\r\n\r\n").unwrap().1;
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            serde_json::json!({})
+        );
+    }
+    let mut reply = Reply::json(
+        "POST",
+        "/v1/recordings/rec/import",
+        r#"{"message":"unavailable"}"#,
+    );
+    reply.status = 404;
+    let server = Server::new(vec![reply]);
+    let output =
+        Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["recordings", "transfer", "rec"]),
+        )
+        .finish();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Failed to transfer edge recording"));
+    server.finish();
 }

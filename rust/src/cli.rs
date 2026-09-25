@@ -73,8 +73,12 @@ enum CliCommand {
     Completion(CompletionCommand),
     #[command(about = "Manage CLI configuration values", subcommand)]
     Config(ConfigCommand),
-    #[command(about = "Data access and management", subcommand)]
-    Data(DataCommand),
+    #[command(about = "Inspect data coverage", subcommand)]
+    Coverage(CoverageCommand),
+    #[command(about = "Export data by recording, import, session, or device and time range")]
+    Export(DataExportArgs),
+    #[command(about = "Upload a local data file to Foxglove")]
+    Upload(DataImportArgs),
     #[command(about = "List datasets and their episodes", subcommand)]
     Datasets(DatasetsCommand),
     #[command(about = "List and manage devices", subcommand)]
@@ -223,16 +227,6 @@ struct ConfigSetArgs {
 }
 
 #[derive(Debug, Subcommand)]
-enum DataCommand {
-    #[command(about = "List coverage ranges", subcommand)]
-    Coverage(CoverageCommand),
-    #[command(about = "Export data by recording, import, session, or device and time range")]
-    Export(DataExportArgs),
-    #[command(about = "Import a data file to Foxglove Data Platform")]
-    Import(DataImportArgs),
-}
-
-#[derive(Debug, Subcommand)]
 enum CoverageCommand {
     #[command(about = "List coverage ranges")]
     List(CoverageListArgs),
@@ -348,8 +342,6 @@ pub(crate) struct DataImportArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "Edge recording ID", allow_hyphen_values = true)]
-    pub(crate) edge_recording_id: Option<String>,
     #[arg(long, help = "Recording key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
@@ -736,10 +728,20 @@ enum ProjectsCommand {
 
 #[derive(Debug, Subcommand)]
 enum RecordingsCommand {
+    #[command(
+        about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
+    )]
+    Transfer(RecordingTransferArgs),
     #[command(about = "Delete a recording from your organization")]
     Delete(RecordingDeleteArgs),
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RecordingTransferArgs {
+    #[arg(value_name = "RECORDING_ID")]
+    pub(crate) id: String,
 }
 
 #[derive(Debug, Args)]
@@ -1047,26 +1049,21 @@ async fn dispatch_api_command(
             attachments::list_attachments(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
-        CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => {
+        CliCommand::Coverage(CoverageCommand::List(args)) => {
             let format = args.format.format;
             data::list_coverage(&runtime, &args, format).await
         }
-        CliCommand::Data(DataCommand::Export(args)) => {
+        CliCommand::Export(args) => {
             let diagnostic = debug.then(|| data::export_debug_request(&args)).flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }
             data::export_data(&runtime, &args, writer).await
         }
-        CliCommand::Data(DataCommand::Import(args))
-            if args
-                .edge_recording_id
-                .as_deref()
-                .is_some_and(|id| !id.is_empty()) =>
-        {
-            data::import_from_edge(&runtime, &args).await
+        CliCommand::Upload(args) => data::import_file(&runtime, &args).await,
+        CliCommand::Recordings(RecordingsCommand::Transfer(args)) => {
+            recordings::transfer_recording(&runtime, &args).await
         }
-        CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
         CliCommand::Datasets(DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args))) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(&runtime, &args, format).await
@@ -1345,8 +1342,8 @@ mod tests {
         let cases = [
             (vec![], "debug"),
             (vec!["completion", "bash"], "no-descriptions"),
-            (vec!["data", "coverage", "list"], "include-edge-recordings"),
-            (vec!["data", "export"], "include-attachments"),
+            (vec!["coverage", "list"], "include-edge-recordings"),
+            (vec!["export"], "include-attachments"),
             (vec!["pending-imports", "list"], "show-completed"),
             (vec!["pending-imports", "list"], "show-quarantined"),
             (vec!["pending-imports", "list"], "without-project"),

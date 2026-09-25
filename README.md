@@ -90,30 +90,34 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       |
 ```
 
-### Imports
+### Uploads and recordings
 
-Import ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
-
-```
-$ foxglove data import ~/data/bags/gps.bag --device-name RobotA
-```
-
-List all imports:
+Upload ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
 
 ```
-$ foxglove data imports list
-    |              IMPORT ID               |      DEVICE ID       |              FILENAME              |     IMPORT TIME      |        START         |         END          | INPUT TYPE | OUTPUT TYPE | INPUT SIZE | TOTAL OUTPUT SIZE |
-    |--------------------------------------|----------------------|------------------------------------|----------------------|----------------------|----------------------|------------|-------------|------------|-------------------|
-    | 55c8480b-0fef-243a-ea74-f07063f51c6e | dev_flm75pLkfzUBX2DH | demo.bag                           | 2022-01-28T22:37:44Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:27Z | bag1       | mcap0       | 70311473   | 68833788          |
-    | 31285b3d-3f97-ea58-3751-a1597ae3f16f | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-21-58-17_1.bag | 2022-02-21T22:03:32Z | 2022-02-21T21:58:17Z | 2022-02-21T21:58:21Z | bag1       | mcap0       | 12823      | 8847              |
-    | 837cfa3e-541e-9540-1c7a-a1f1b3ef3694 | dev_jCuXYeFwCkZowpHs | gps4.bag                           | 2022-03-17T12:34:34Z | 2021-03-22T15:03:38Z | 2021-03-22T15:09:18Z | bag1       | mcap0       | 5321782    | 1619916           |
-    | 820e51d8-9f1d-8ec5-f586-41bbaa87d45d | dev_JOgi4YiCRgaoszKw | input.bag                          | 2021-11-02T16:34:49Z | 2016-11-18T23:46:10Z | 2016-11-18T23:51:25Z | bag1       | mcap0       | 1770886024 | 1571403963        |
-    | 8f563534-264d-ad79-b404-684c8639d4a0 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-19-44-47_1.bag | 2022-02-21T20:12:54Z | 2022-02-21T19:44:47Z | 2022-02-21T19:44:47Z | bag1       | mcap0       | 10964      | 8196              |
-    | b8c45da6-2110-8c77-370f-a6ec482cdcf6 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-22-49-04_0.bag | 2022-02-21T22:50:48Z | 2022-02-21T22:49:05Z | 2022-02-21T22:49:23Z | bag1       | mcap0       | 16734      | 10688             |
-    | 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_JtSXCGiM0RC2YHDO | nuscenes.bag                       | 2022-02-24T15:13:32Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
-    | 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_mHH1Cp4gPybCPR8y | nuscenes-0061-v1.bag               | 2022-01-11T22:05:09Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
-    | 5ad56d95-7dcc-f12a-9b09-0f4d4ec9e2e5 | dev_mHH1Cp4gPybCPR8y | input.bag                          | 2021-11-03T23:21:37Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:26Z | bag1       | mcap0       | 32761      | 38542             |
+$ foxglove upload ~/data/bags/gps.bag --device-name RobotA
 ```
+
+List recordings:
+
+```
+$ foxglove recordings list
+```
+
+Request transfer of an existing edge recording to its configured Primary Site:
+
+```sh
+foxglove recordings transfer rec_123
+```
+
+This returns after the request is accepted and reports the recording ID and
+`importStatus` on stderr. An accepted request may still be queued or processing;
+`complete` means the data is already available. It does not wait for completion.
+
+The v2 CLI removes the `data` command group. Use `upload FILE`, `export`, and
+`coverage list` in place of `data import FILE`, `data export`, and
+`data coverage list`. Replace edge-mode imports with `recordings transfer ID`;
+no local file argument is needed. Old paths are not aliases.
 
 ### Exports
 
@@ -121,7 +125,7 @@ Retrieve data for a device, time range, and optional list of topics, and export 
 
 ```
 # Output JSON (directly to console)
-$ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
     {"topic":"/tf","sequence":0,"log_time":1490149580.103843113,"publish_time":1490149580.103843113,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.117017840,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
     {"topic":"/tf","sequence":0,"log_time":1490149580.113944947,"publish_time":1490149580.113944947,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.127078895,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
     {"topic":"/tf","sequence":0,"log_time":1490149580.124028613,"publish_time":1490149580.124028613,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.137141823,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
@@ -129,10 +133,10 @@ $ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2
     {"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
 
 # Output MCAP file (output.mcap)
-$ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
 
 # Output ROS 1 bag file (output.bag)
-$ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
 ```
 
 If you've output a file, inspect its contents:

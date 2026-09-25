@@ -47,14 +47,15 @@ func helpFlags(help string) []string {
 }
 
 // These deprecated Go commands are intentionally absent from the Rust release
-// CLI; their supported replacements are `recordings list` and `data import`.
+// CLI; their supported replacements are `recordings list` and `upload`.
 var rustOmittedCommandSurface = map[string]struct{}{
+	"data":              {},
 	"data-imports":      {},
 	"data-imports-add":  {},
 	"data-imports-list": {},
 }
 
-var rustOmittedFlagHelpLine = regexp.MustCompile(`(?m)^.*--(?:json|serial-number).*\n`)
+var rustOmittedFlagHelpLine = regexp.MustCompile(`(?m)^.*--(?:json|serial-number|edge-recording-id).*\n`)
 
 func rustCommandSurfaceExpected(snapshot commandSnapshot) commandSnapshot {
 	snapshot.Stdout = rustOmittedFlagHelpLine.ReplaceAllString(snapshot.Stdout, "")
@@ -124,6 +125,30 @@ func assertCompatible(t *testing.T, expected, actual commandSnapshot) {
 		expected.Stderr != actual.Stderr {
 		t.Fatalf("stderr differs\n--- expected\n%q\n--- actual\n%q", expected.Stderr, actual.Stderr)
 	}
+}
+
+// Translate historical oracle invocations only in the harness. The public CLI
+// rejects the old paths; independent Rust tests cover that removal.
+func rustCommandArgs(args []string) []string {
+	for index := 0; index+1 < len(args); index++ {
+		if args[index] != "data" {
+			continue
+		}
+		result := append([]string(nil), args[:index]...)
+		switch args[index+1] {
+		case "export", "coverage":
+			return append(result, args[index+1:]...)
+		case "import":
+			for flag := index + 2; flag+1 < len(args); flag++ {
+				if args[flag] == "--edge-recording-id" {
+					return append(result, "recordings", "transfer", args[flag+1])
+				}
+			}
+			result = append(result, "upload")
+			return append(result, args[index+2:]...)
+		}
+	}
+	return args
 }
 
 func semanticConfig(t *testing.T, config string) any {
@@ -1108,7 +1133,7 @@ func TestRustPhase7ResilientExportContract(t *testing.T) {
 			{Method: http.MethodPost, Path: "/v1/data/stream", Body: `{"link":"{BASE_URL}/slow-export"}`, Headers: jsonHeaders},
 			{Method: http.MethodGet, Path: "/slow-export", Body: string(readFixture("gps.mcap")), DelayMillis: 1_000},
 		})
-		command := exec.Command(rustBinary, "data", "export", "--recording-id", "rec_fixture", "--output-file", output)
+		command := exec.Command(rustBinary, "export", "--recording-id", "rec_fixture", "--output-file", output)
 		command.Dir = temporaryDirectory
 		command.Env = isolatedEnvironment(homeDirectory)
 		if err := command.Start(); err != nil {
@@ -1654,7 +1679,7 @@ func runRustCaseWithFixture(t *testing.T, testCase oracleCase, fixture *fixtureS
 		args[index] = arg
 	}
 	writeInitialFiles(t, temporaryDirectory, testCase.InitialFiles)
-	command := exec.Command(rustBinary, args...)
+	command := exec.Command(rustBinary, rustCommandArgs(args)...)
 	command.Dir = temporaryDirectory
 	command.Env = caseEnvironment(homeDirectory, testCase.Env)
 	command.Stdin = strings.NewReader(testCase.Stdin)

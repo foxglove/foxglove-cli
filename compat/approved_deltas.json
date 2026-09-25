@@ -179,6 +179,14 @@
         "Schema-backed channels retain their schema definitions after ID remapping.",
         "Recovery preserves message contents and multiplicity."
       ]
+    },
+    "v2-command-paths": {
+      "reason": "Replace the data namespace with upload FILE, export, and coverage list; move edge import to recordings transfer RECORDING_ID without a dummy file argument. All old paths are removed without aliases.",
+      "invariants": [
+        "Local upload, export, and coverage flags, request semantics, and output remain unchanged.",
+        "Edge transfer sends the existing POST and reports its returned recording ID and importStatus on stderr; an accepted request is not reported as complete.",
+        "The compatibility harness alone translates historical paths; frozen Go source and historical goldens are unchanged."
+      ]
     }
   }
 }

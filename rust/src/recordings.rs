@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::encode_path_segment;
-use crate::cli::{RecordingDeleteArgs, RecordingListArgs};
+use crate::cli::{RecordingDeleteArgs, RecordingListArgs, RecordingTransferArgs};
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, is_zero, null_to_default, parse_timestamp, DeviceSummary,
@@ -199,6 +199,41 @@ pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteAr
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Failed to delete recording: {error}\n")),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TransferResponse {
+    id: String,
+    import_status: String,
+}
+
+pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransferArgs) -> Outcome {
+    match runtime
+        .client
+        .post::<_, TransferResponse>(
+            &format!("/v1/recordings/{}/import", encode_path_segment(&args.id)),
+            &serde_json::json!({}),
+        )
+        .await
+    {
+        Ok(response) => {
+            let message = if response.import_status == "complete" {
+                "Recording already available at its Primary Site"
+            } else {
+                "Transfer request accepted"
+            };
+            Outcome {
+                stderr: format!(
+                    "{message}: {} (importStatus: {})\n",
+                    response.id, response.import_status
+                )
+                .into_bytes(),
+                ..Outcome::default()
+            }
+        }
+        Err(error) => Outcome::failure(format!("Failed to transfer edge recording: {error}\n")),
     }
 }
 

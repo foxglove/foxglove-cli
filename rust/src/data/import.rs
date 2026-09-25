@@ -1,40 +1,14 @@
-//! File and edge-recording imports.
+//! Local file uploads.
 
 use std::fs::File;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
-
 use super::UploadProgressReader;
-use crate::api::{encode_path_segment, UploadRequest};
+use crate::api::UploadRequest;
 use crate::cli::DataImportArgs;
 use crate::records::ProjectFallback;
 use crate::runtime::Runtime;
 use crate::Outcome;
-
-#[derive(Deserialize)]
-struct ImportFromEdgeResponse {
-    #[allow(dead_code)]
-    id: String,
-}
-
-#[derive(Serialize)]
-struct EmptyRequest {}
-
-pub(crate) async fn from_edge(runtime: &Runtime, args: &DataImportArgs) -> Outcome {
-    let id = args.edge_recording_id.as_deref().unwrap_or_default();
-    match runtime
-        .client
-        .post::<_, ImportFromEdgeResponse>(
-            &format!("/v1/recordings/{}/import", encode_path_segment(id)),
-            &EmptyRequest {},
-        )
-        .await
-    {
-        Ok(_) => Outcome::default(),
-        Err(error) => Outcome::failure(format!("Failed to import edge recording: {error}\n")),
-    }
-}
 
 fn validate(path: &Path) -> Result<(), String> {
     let mut file = File::open(path).map_err(|error| error.to_string())?;
