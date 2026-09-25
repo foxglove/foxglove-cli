@@ -166,10 +166,7 @@ pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome
         .post::<_, CreateEventResponse>("/v1/events", &request)
         .await
     {
-        Ok(response) => Outcome {
-            stderr: format!("Created event: {}\n", response.id).into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(response) => Outcome::notice(format!("Created event: {}\n", response.id)),
         Err(error) => Outcome::failure(format!("Failed to add event: {error}\n")),
     }
 }

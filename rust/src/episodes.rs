@@ -168,12 +168,7 @@ pub(crate) async fn list_episodes(
         .get::<_, EpisodeListResponse>("/v1/episodes", &query)
         .await
     {
-        Ok(mut response) => {
-            for episode in &mut response.episodes {
-                episode.has_missing_recordings = episode
-                    .has_missing_recordings
-                    .or(args.has_missing_recordings);
-            }
+        Ok(response) => {
             let count = response.episodes.len();
             warn_if_truncated(format_output(&response.episodes, format), count, limit)
         }

@@ -1554,10 +1554,7 @@ fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outco
     };
     config.set(config_name(key), Value::String(value.clone()));
     match config.save() {
-        Ok(()) => Outcome {
-            stderr: format!("Configuration updated: {key} = {value}\n").into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Configuration updated: {key} = {value}\n")),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1572,10 +1569,7 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
         return Outcome::failure(format!("No value set for key '{key}'\n"));
     }
     match config.save() {
-        Ok(()) => Outcome {
-            stderr: format!("Configuration removed: {key}\n").into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Configuration removed: {key}\n")),
         Err(error) => Outcome::failure(error),
     }
 }

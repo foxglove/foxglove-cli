@@ -68,10 +68,7 @@ pub(crate) async fn export_data(
         (_, None) => stream_to_stdout(runtime, &request, stdout, &cancellation).await,
     };
     match result {
-        Ok(()) if binary_file => Outcome {
-            stderr: b"\n".to_vec(),
-            ..Outcome::default()
-        },
+        Ok(()) if binary_file => Outcome::notice("\n"),
         Ok(()) => Outcome::default(),
         Err(api::ApiError::Cancelled) => Outcome {
             exit_code: 130,

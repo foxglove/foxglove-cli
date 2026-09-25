@@ -24,6 +24,9 @@ pub(crate) struct DeviceSummary {
     pub(crate) id: String,
 }
 
+#[derive(Serialize)]
+pub(crate) struct EmptyRequest {}
+
 pub(crate) trait Record: Serialize {
     fn headers() -> &'static [&'static str];
     fn fields(&self) -> Vec<String>;
@@ -60,7 +63,7 @@ pub(crate) fn parse_timestamp_millis(raw: &str, label: &str) -> Result<String, S
     }
     let parsed = parse_datetime(raw, label)?;
     parsed
-        .replace_millisecond(parsed.millisecond())
+        .replace_nanosecond(u32::from(parsed.millisecond()) * 1_000_000)
         .map_err(|error| format!("failed to parse {label} time: {error}"))?
         .format(&Rfc3339)
         .map_err(|error| format!("failed to format {label} time: {error}"))

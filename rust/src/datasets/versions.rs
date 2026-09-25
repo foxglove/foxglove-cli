@@ -13,8 +13,8 @@ use crate::cli::{
 use crate::episodes::include_recordings;
 use crate::output::Format;
 use crate::records::{
-    format_output, format_record, is_false, is_zero, plural, warn_if_truncated, Record,
-    DEFAULT_LIST_LIMIT,
+    format_output, format_record, is_false, is_zero, plural, warn_if_truncated, EmptyRequest,
+    Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -174,9 +174,6 @@ struct RestoreQuery {
     #[serde(skip_serializing_if = "is_false")]
     force: bool,
 }
-
-#[derive(Serialize)]
-struct EmptyRequest {}
 
 #[derive(Deserialize)]
 struct CommitResponse {

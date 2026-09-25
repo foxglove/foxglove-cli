@@ -1493,7 +1493,7 @@ fn a_missing_version_is_named_in_the_error() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn the_episode_list_fills_missing_recordings_from_the_filter() {
+fn the_episode_list_sends_the_missing_recordings_filter_and_passes_the_field_through() {
     fn episodes(missing_recordings: &str) -> String {
         format!(
             r#"{{"episodes":[{{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},{missing_recordings}"createdAt":"2024-01-02T03:04:07Z"}}]}}"#
@@ -1505,13 +1505,13 @@ fn the_episode_list_fills_missing_recordings_from_the_filter() {
             vec!["--has-missing-recordings"],
             "",
             Some("true"),
-            serde_json::json!(true),
+            serde_json::Value::Null,
         ),
         (
             vec!["--has-missing-recordings=false"],
             "",
             Some("false"),
-            serde_json::json!(false),
+            serde_json::Value::Null,
         ),
         (
             vec!["--include-recordings"],
