@@ -843,6 +843,8 @@ enum SessionsCommand {
     Add(SessionAddArgs),
     #[command(about = "Delete a session")]
     Delete(SessionLookupArgs),
+    #[command(about = "Change or remove a session key")]
+    Edit(SessionEditArgs),
     #[command(about = "Get a session by ID or key")]
     Get(SessionLookupArgs),
     #[command(about = "List sessions in your organization")]
@@ -867,6 +869,25 @@ pub(crate) struct SessionLookupArgs {
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION_ID_OR_KEY")]
     pub(crate) session: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SessionEditArgs {
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "SESSION_ID_OR_KEY")]
+    pub(crate) session: String,
+    #[arg(
+        long,
+        help = "New session key",
+        required_unless_present = "remove_key",
+        conflicts_with = "remove_key",
+        value_parser = clap::builder::NonEmptyStringValueParser::new(),
+        allow_hyphen_values = true
+    )]
+    pub(crate) key: Option<String>,
+    #[arg(long, help = "Remove the existing session key")]
+    pub(crate) remove_key: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1180,6 +1201,7 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
+        SessionsCommand::Edit(args) => sessions::edit_session_key(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
         SessionsCommand::List(args) => {
             let format = args.format.format;
