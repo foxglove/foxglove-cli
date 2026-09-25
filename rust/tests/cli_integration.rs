@@ -810,6 +810,24 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
     let output = download_dataset(&workspace, &server, &["--topics", "/a, /b", "--strict"]);
     server.finish();
     assert_eq!(output.status.code(), Some(1));
+
+    let workspace = Workspace::new();
+    let episodes = [
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_gone", false),
+    ];
+    let mut replies = dataset_replies(&episodes);
+    replies.extend(export_replies(episode_mcap()));
+    replies.push(no_streamable_recordings());
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+    let mut replies = dataset_replies(&episodes);
+    replies.push(no_streamable_recordings());
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &["--strict"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
 }
 
 #[test]
