@@ -867,6 +867,10 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         serde_json::json!(["/a", "/b"])
     );
     assert_eq!(
+        manifest["selection"]["digest"],
+        "9fb275812cf27c6fc9747e249fef9132e3ccd5edf1aeb68b22b8452797db8b0c"
+    );
+    assert_eq!(
         manifest["episodes"][0]["file"],
         "Highway-merges-v4/episode_0000_ep_one.mcap"
     );

@@ -27,6 +27,7 @@ percent-encoding = { version = "=2.3.2", default-features = false, features = ["
 prost = { version = "=0.14.1", default-features = false, features = ["std"] }
 prost-reflect = { version = "=0.16.5", default-features = false, features = ["serde"] }
 reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls-native-roots", "stream"] }
+ring = { version = "=0.17.14", default-features = false }
 serde = { version = "=1.0.228", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "=1.0.151", default-features = false, features = ["std"] }
 serde_yaml_ng = { version = "=0.10.0" }

@@ -49,6 +49,7 @@ struct ManifestVersion {
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestSelection {
+    digest: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     topics: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,6 +148,47 @@ fn topic_list(raw: Option<&str>) -> Option<Vec<String>> {
         .map(ToOwned::to_owned)
         .collect();
     (!topics.is_empty()).then_some(topics)
+}
+
+/// The lowercase hex SHA-256 the app writes as `selection.digest`: a hash of the JSON of
+/// the dataset ID, version number, episode IDs and topics, with both lists sorted by
+/// UTF-16 code units as JavaScript's default sort orders strings.
+fn selection_digest(
+    dataset_id: &str,
+    version_number: i64,
+    episode_ids: &[&str],
+    topics: Option<&[String]>,
+) -> String {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Canonical<'a> {
+        dataset_id: &'a str,
+        version_number: i64,
+        episode_ids: Vec<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        topics: Option<Vec<&'a str>>,
+    }
+    let canonical = Canonical {
+        dataset_id,
+        version_number,
+        episode_ids: sorted_by_utf16(episode_ids.iter().copied()),
+        topics: topics.map(|topics| sorted_by_utf16(topics.iter().map(String::as_str))),
+    };
+    let encoded = serde_json::to_vec(&canonical).expect("strings and an integer serialize");
+    let digest = ring::digest::digest(&ring::digest::SHA256, &encoded);
+    digest
+        .as_ref()
+        .iter()
+        .fold(String::with_capacity(64), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
+}
+
+fn sorted_by_utf16<'a>(values: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    let mut values: Vec<&str> = values.collect();
+    values.sort_by(|left, right| left.encode_utf16().cmp(right.encode_utf16()));
+    values
 }
 
 async fn fetch_dataset(runtime: &Runtime, id: &str) -> Result<Dataset, ApiError> {
@@ -583,6 +625,17 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
     }
 
     let prefix = manifest_prefix(&directory, &root);
+    let topics = topic_list(args.topics.as_deref());
+    let episode_ids: Vec<&str> = episodes
+        .iter()
+        .map(|entry| entry.episode.id.as_str())
+        .collect();
+    let digest = selection_digest(
+        &dataset.id,
+        version.version_number,
+        &episode_ids,
+        topics.as_deref(),
+    );
     let mut manifest = Manifest {
         format_version: MANIFEST_FORMAT_VERSION,
         generated_at: String::new(),
@@ -596,7 +649,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
             committed_at: version.committed_at.unwrap_or_default(),
         },
         selection: ManifestSelection {
-            topics: topic_list(args.topics.as_deref()),
+            digest,
+            topics,
             // The app always includes attachments and never writes this field, so a
             // default download writes the same manifest as the app.
             include_attachments: (!args.include_attachments).then_some(false),
@@ -639,7 +693,9 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
 mod tests {
     use std::path::Path;
 
-    use super::{default_directory_name, episode_file_name, manifest_prefix, topic_list};
+    use super::{
+        default_directory_name, episode_file_name, manifest_prefix, selection_digest, topic_list,
+    };
 
     #[test]
     fn the_directory_name_is_a_safe_slug_of_the_dataset_name() {
@@ -696,5 +752,52 @@ mod tests {
             topic_list(Some("/a, /b ,,/c")),
             Some(vec!["/a".to_owned(), "/b".to_owned(), "/c".to_owned()])
         );
+    }
+
+    #[test]
+    fn the_selection_digest_matches_the_app() {
+        let topics = |names: &[&str]| {
+            names
+                .iter()
+                .map(|&name| name.to_owned())
+                .collect::<Vec<_>>()
+        };
+        // Expected values are the app's `selectionDigest` output for the same selections.
+        for (dataset_id, version, episode_ids, topics, expected) in [
+            (
+                "ds_one",
+                4,
+                vec!["ep_one", "ep_two"],
+                Some(topics(&["/a", "/b"])),
+                "9fb275812cf27c6fc9747e249fef9132e3ccd5edf1aeb68b22b8452797db8b0c",
+            ),
+            (
+                "ds_one",
+                4,
+                vec!["ep_two", "ep_one"],
+                None,
+                "58d18b18dacd48d71bef7c2eca868174e9fffd7476a30dfc1276af6307220158",
+            ),
+            (
+                "ds_one",
+                4,
+                vec!["ep_one"],
+                Some(topics(&["/\u{FF76}", "/\u{20000}"])),
+                "4cac8176676610a409fd0b9b1142eb9ed0dc6ad0c29ae47017d9e6b52864855a",
+            ),
+            (
+                "ds_\"one\\",
+                12,
+                vec!["ep\u{1}", "ep\n"],
+                Some(topics(&["/é", "/a\tb"])),
+                "2631f16ca8cd083943883b0dcf2f5c00fa9b567f69f81cb3a634b5dc58cbd9d6",
+            ),
+        ] {
+            assert_eq!(
+                selection_digest(dataset_id, version, &episode_ids, topics.as_deref()),
+                expected,
+                "{dataset_id:?} {episode_ids:?} {topics:?}"
+            );
+        }
     }
 }
