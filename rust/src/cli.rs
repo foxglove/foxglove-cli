@@ -1236,7 +1236,6 @@ impl Outcome {
         }
     }
 
-    /// A success that reports what it did on stderr and writes nothing to stdout.
     pub(crate) fn notice(stderr: impl Into<Vec<u8>>) -> Self {
         Self {
             stderr: stderr.into(),

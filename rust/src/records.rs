@@ -54,7 +54,6 @@ pub(crate) fn parse_timestamp_value(
         .map_err(|error| format!("failed to parse {label} time: {error}"))
 }
 
-/// Parse the same forms as `parse_timestamp`, at millisecond precision.
 pub(crate) fn parse_timestamp_millis(raw: &str, label: &str) -> Result<String, String> {
     if raw.is_empty() {
         return Ok(String::new());
@@ -167,7 +166,6 @@ pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome
     }
 }
 
-/// Render one record: an object in JSON, or a single row in a table or CSV.
 pub(crate) fn format_record<T: Record>(record: &T, format: Format) -> Outcome {
     if format != Format::Json {
         return format_output(std::slice::from_ref(record), format);
@@ -179,7 +177,6 @@ pub(crate) fn format_record<T: Record>(record: &T, format: Format) -> Outcome {
     }
 }
 
-/// Write a count with its noun, adding an `s` unless the count is one.
 pub(crate) fn plural(count: usize, noun: &str) -> String {
     if count == 1 {
         format!("1 {noun}")
