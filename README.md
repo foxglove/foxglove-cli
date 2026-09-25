@@ -110,16 +110,6 @@ Request transfer of an existing edge recording to its configured Primary Site:
 foxglove recordings transfer rec_123
 ```
 
-This returns after the request is accepted and reports the recording ID and
-`importStatus` on stderr. An accepted request may still be queued or processing;
-`complete` means the data is already available. It does not wait for completion.
-
-The v2 CLI removes the `data` command group. Use `upload FILE`, `export`, and
-`coverage list` in place of `data import FILE`, `data export`, and
-`data coverage list`. Replace edge-mode imports with `recordings transfer ID`;
-no local file argument is needed. Old paths are removed without aliases and return
-an unrecognized-command error.
-
 ### Exports
 
 Retrieve data for a device, time range, and optional list of topics, and export it directly to the console (`--output-format json`) or to a new file (`--output-format mcap0` or `--output-format bag1`):

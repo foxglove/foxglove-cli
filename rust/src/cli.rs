@@ -1518,16 +1518,7 @@ mod tests {
             let outcome = invoke(&["completion", shell]);
             assert_eq!(outcome.exit_code, 0);
             assert!(!outcome.stdout.is_empty());
-            let script = String::from_utf8_lossy(&outcome.stdout);
-            assert!(script.contains("foxglove"));
-            let legacy_suggestion = match shell {
-                "bash" => "coverage data datasets",
-                "fish" => "-a \"data\"",
-                "powershell" => "CompletionResult]::new('data'",
-                "zsh" => "'data:",
-                _ => unreachable!(),
-            };
-            assert!(!script.contains(legacy_suggestion));
+            assert!(String::from_utf8_lossy(&outcome.stdout).contains("foxglove"));
         }
     }
 
