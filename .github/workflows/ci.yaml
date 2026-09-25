@@ -152,7 +152,9 @@ jobs:
           (cd dist && sha256sum -c CHECKSUMS.txt)
           rm dist/*.sha256
       - name: Generate release notes
-        run: git log --oneline --no-merges --first-parent "$(git describe --tags --abbrev=0 HEAD^)"..HEAD > CHANGELOG.txt
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/release-notes.sh "$RELEASE_TAG" > CHANGELOG.txt
       - name: Publish six Rust artifacts
         uses: softprops/action-gh-release@v3
         with:
