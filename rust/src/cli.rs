@@ -13,8 +13,8 @@ use serde_yaml_ng::Value;
 use crate::config::Config;
 use crate::output::Format;
 use crate::{
-    attachments, auth, data, datasets, devices, episodes, event_types, events, extensions,
-    pending_imports, projects, recordings, runtime, sessions, topics,
+    attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
+    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -86,7 +86,7 @@ enum CliCommand {
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
     #[command(about = "Export data by recording, import, session, or device and time range")]
-    Export(DataExportArgs),
+    Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
@@ -100,7 +100,7 @@ enum CliCommand {
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
     #[command(about = "Upload a local data file to Foxglove")]
-    Upload(DataImportArgs),
+    Upload(UploadArgs),
     #[command(about = "Print Foxglove CLI version")]
     Version,
 }
@@ -279,7 +279,7 @@ pub(crate) struct CoverageListArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct DataExportArgs {
+pub(crate) struct ExportArgs {
     #[arg(
         long,
         help = "MCAP chunk compression: empty, zstd, or lz4 (default: lz4)",
@@ -337,7 +337,7 @@ pub(crate) struct DataExportArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct DataImportArgs {
+pub(crate) struct UploadArgs {
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
@@ -1091,16 +1091,16 @@ async fn dispatch_api_command(
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
         CliCommand::Coverage(CoverageCommand::List(args)) => {
             let format = args.format.format;
-            data::list_coverage(&runtime, &args, format).await
+            coverage::list(&runtime, &args, format).await
         }
         CliCommand::Export(args) => {
-            let diagnostic = debug.then(|| data::export_debug_request(&args)).flatten();
+            let diagnostic = debug.then(|| export::export_debug_request(&args)).flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }
-            data::export_data(&runtime, &args, writer).await
+            export::export_data(&runtime, &args, writer).await
         }
-        CliCommand::Upload(args) => data::import_file(&runtime, &args).await,
+        CliCommand::Upload(args) => upload::upload_file(&runtime, &args).await,
         CliCommand::Recordings(RecordingsCommand::Transfer(args)) => {
             recordings::transfer_recording(&runtime, &args).await
         }
