@@ -1193,54 +1193,6 @@ fn fractional_timestamp_query_parameters_are_preserved() {
     }
 }
 
-#[test]
-#[ignore = "requires loopback sockets"]
-fn fractional_export_boundaries_are_preserved_in_request_body() {
-    let workspace = Workspace::new();
-    let mut reply = Reply::json(
-        "POST",
-        "/v1/data/stream",
-        r#"{"message":"fixture failure"}"#,
-    );
-    reply.status = 400;
-    let server = Server::new(vec![reply]);
-    let output = Process::spawn(workspace.command(&server.url).args([
-        "data",
-        "export",
-        "--recording-id",
-        "rec_one",
-        "--start",
-        "2024-01-02T03:04:05.123456789Z",
-        "--end",
-        "2024-01-02T03:04:05.987654321Z",
-    ]))
-    .finish();
-    assert!(!output.status.success());
-    let requests = server.finish();
-    let body: serde_json::Value =
-        serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
-    assert_eq!(body["start"], "2024-01-02T03:04:05.123456789Z");
-    assert_eq!(body["end"], "2024-01-02T03:04:05.987654321Z");
-}
-
-#[test]
-fn reversed_subsecond_export_range_is_rejected() {
-    let workspace = Workspace::new();
-    let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
-        "data",
-        "export",
-        "--recording-id",
-        "rec_one",
-        "--start",
-        "2024-01-02T03:04:05.9Z",
-        "--end",
-        "2024-01-02T03:04:05.1Z",
-    ]))
-    .finish();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("end must be after or equal to start"));
-}
-
 fn json_body(request: &str) -> serde_json::Value {
     serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }

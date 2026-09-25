@@ -37,10 +37,6 @@ when you run Cargo in this checkout:
 
 Create a [free Foxglove account](https://app.foxglove.dev/signup) to start importing and interacting with data.
 
-### Timestamps
-
-Timestamp filters and export boundaries preserve fractional seconds up to nanosecond precision. Date-only inputs default to midnight, and timestamps without a timezone default to UTC.
-
 ### Authentication
 
 Log in to your Foxglove account from the command line:
