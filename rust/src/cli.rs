@@ -29,6 +29,22 @@ fn parse_bool(value: &str) -> Result<bool, String> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DatasetVersionSelector {
+    Number(i64),
+    Draft,
+}
+
+fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> {
+    if value == "draft" {
+        return Ok(DatasetVersionSelector::Draft);
+    }
+    value
+        .parse()
+        .map(DatasetVersionSelector::Number)
+        .map_err(|_| format!("expected a version number or draft, got {value:?}"))
+}
+
 /// The complete command hierarchy. Parsing, help, dispatch metadata, and shell
 /// completions are all generated from these types.
 #[derive(Debug, Parser)]
@@ -75,11 +91,11 @@ enum CliCommand {
     Config(ConfigCommand),
     #[command(about = "Inspect data coverage", subcommand)]
     Coverage(CoverageCommand),
-    #[command(about = "List datasets and their episodes", subcommand)]
+    #[command(about = "List and manage datasets", subcommand)]
     Datasets(DatasetsCommand),
     #[command(about = "List and manage devices", subcommand)]
     Devices(DevicesCommand),
-    #[command(about = "List episodes", subcommand)]
+    #[command(about = "List and manage episodes", subcommand)]
     Episodes(EpisodesCommand),
     #[command(name = "event-types", about = "List event types", subcommand)]
     EventTypes(EventTypesCommand),
@@ -356,12 +372,78 @@ pub(crate) struct UploadArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetsCommand {
+    #[command(about = "Create a dataset")]
+    Add(DatasetAddArgs),
+    #[command(about = "Commit a dataset's pending changes as a new version")]
+    Commit(DatasetIdArgs),
+    #[command(about = "Delete a dataset")]
+    Delete(DatasetIdArgs),
+    #[command(about = "Discard a dataset's pending changes")]
+    Discard(DatasetIdArgs),
     #[command(about = "Download a committed dataset version")]
     Download(DatasetDownloadArgs),
-    #[command(about = "List the episodes in a dataset", subcommand)]
+    #[command(about = "Edit a dataset's name or description")]
+    Edit(DatasetEditArgs),
+    #[command(about = "List, add, or remove the episodes in a dataset", subcommand)]
     Episodes(DatasetEpisodesCommand),
+    #[command(about = "Get a dataset")]
+    Get(DatasetGetArgs),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
+    #[command(about = "List, compare, and restore dataset versions", subcommand)]
+    Versions(DatasetVersionsCommand),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetAddArgs {
+    #[arg(
+        long,
+        help = "Optional display description",
+        allow_hyphen_values = true
+    )]
+    pub(crate) description: Option<String>,
+    #[arg(long, help = "Episode to add to the dataset; repeat to add more", allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) episode_id: Vec<String>,
+    #[arg(
+        long,
+        help = "Display name, unique within the project",
+        allow_hyphen_values = true
+    )]
+    pub(crate) name: String,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetIdArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEditArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "New display description; pass an empty value to clear it",
+        allow_hyphen_values = true
+    )]
+    pub(crate) description: Option<String>,
+    #[arg(
+        long,
+        help = "New display name, unique within the project",
+        allow_hyphen_values = true
+    )]
+    pub(crate) name: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -401,8 +483,120 @@ pub(crate) struct DatasetDownloadArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetEpisodesCommand {
+    #[command(about = "Add episodes to a dataset as pending changes")]
+    Add(DatasetEpisodeMutationArgs),
     #[command(about = "List the episodes in a dataset")]
     List(DatasetEpisodeListArgs),
+    #[command(about = "Remove episodes from a dataset as pending changes")]
+    Remove(DatasetEpisodeMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodeMutationArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "EPISODE_ID", required = true)]
+    pub(crate) episode_ids: Vec<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum DatasetVersionsCommand {
+    #[command(about = "List the episodes added and removed between two versions")]
+    Compare(DatasetVersionCompareArgs),
+    #[command(about = "Get a dataset version")]
+    Get(DatasetVersionGetArgs),
+    #[command(about = "List a dataset's versions")]
+    List(DatasetVersionListArgs),
+    #[command(about = "Restore a committed version's episodes as pending changes")]
+    Restore(DatasetVersionRestoreArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (0-2000, default: 2000)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(
+        long,
+        help = "Sort order by version number: asc or desc (default: desc)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) sort_order: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionCompareArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "BASE_VERSION", help = "Version to compare from")]
+    pub(crate) base_version: i64,
+    #[arg(value_name = "TARGET_VERSION", help = "Version to compare to")]
+    pub(crate) target_version: i64,
+    #[arg(
+        long,
+        help = "Cursor from a previous compare, to fetch the next page",
+        allow_hyphen_values = true
+    )]
+    pub(crate) cursor: Option<String>,
+    #[arg(
+        long, help = "Include the member recordings of each episode",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_recordings: bool,
+    #[arg(
+        long,
+        help = "Maximum number of changes to return (default: 2000)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) limit: Option<i64>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionRestoreArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+    #[arg(
+        long, help = "Discard the dataset's pending changes before restoring",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -450,6 +644,15 @@ pub(crate) struct DatasetEpisodeListArgs {
     )]
     pub(crate) end: Option<String>,
     #[arg(
+        long, help = "Filter to episodes with, or without, recordings that are no longer available",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -495,6 +698,13 @@ pub(crate) struct DatasetEpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long,
+        help = "Version number to list, or draft to list the draft with its pending changes (default: the newest committed version, or the draft before the first commit)",
+        allow_hyphen_values = true,
+        value_parser = parse_dataset_version
+    )]
+    pub(crate) version: Option<DatasetVersionSelector>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -535,8 +745,62 @@ pub(crate) struct DeviceListArgs {
 
 #[derive(Debug, Subcommand)]
 enum EpisodesCommand {
+    #[command(
+        about = "Create an episode, or get the existing one with the same window and recordings"
+    )]
+    Add(EpisodeAddArgs),
+    #[command(about = "Delete an episode")]
+    Delete(EpisodeIdArgs),
+    #[command(about = "Get an episode")]
+    Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeAddArgs {
+    #[arg(
+        long,
+        help = "End of the episode window (ISO 8601); give with --start (default: the end of its recordings)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Metadata as a JSON object", allow_hyphen_values = true)]
+    pub(crate) metadata: Option<String>,
+    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Recording in the episode; repeat to add more", required = true, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) recording_id: Vec<String>,
+    #[arg(
+        long,
+        help = "Start of the episode window (ISO 8601); give with --end (default: the start of its recordings)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeIdArgs {
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(
+        long, help = "Include the member recordings of the episode",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_recordings: bool,
 }
 
 #[derive(Debug, Args)]
@@ -549,6 +813,15 @@ pub(crate) struct EpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(
+        long, help = "Filter to episodes with, or without, recordings that are no longer available",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
     #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
@@ -996,6 +1269,13 @@ impl Outcome {
             ..Self::default()
         }
     }
+
+    pub(crate) fn notice(stderr: impl Into<Vec<u8>>) -> Self {
+        Self {
+            stderr: stderr.into(),
+            ..Self::default()
+        }
+    }
 }
 
 pub async fn run_async(
@@ -1115,10 +1395,7 @@ async fn dispatch_api_command(
             let format = args.format.format;
             devices::list_devices(&runtime, &args, format).await
         }
-        CliCommand::Episodes(EpisodesCommand::List(args)) => {
-            let format = args.format.format;
-            episodes::list_episodes(&runtime, &args, format).await
-        }
+        CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
             event_types::list_event_types(&runtime, args.format).await
         }
@@ -1164,14 +1441,68 @@ async fn dispatch_api_command(
 
 async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsCommand) -> Outcome {
     match command {
+        DatasetsCommand::Add(args) => datasets::add_dataset(runtime, &args).await,
+        DatasetsCommand::Commit(args) => datasets::commit_dataset(runtime, &args).await,
+        DatasetsCommand::Delete(args) => datasets::delete_dataset(runtime, &args).await,
+        DatasetsCommand::Discard(args) => datasets::discard_dataset(runtime, &args).await,
         DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
+        DatasetsCommand::Edit(args) => datasets::edit_dataset(runtime, &args).await,
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Add(args)) => {
+            datasets::patch_dataset_episodes(runtime, &args, true).await
+        }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await
         }
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Remove(args)) => {
+            datasets::patch_dataset_episodes(runtime, &args, false).await
+        }
+        DatasetsCommand::Get(args) => {
+            let format = args.format.format;
+            datasets::get_dataset(runtime, &args, format).await
+        }
         DatasetsCommand::List(args) => {
             let format = args.format.format;
             datasets::list_datasets(runtime, &args, format).await
+        }
+        DatasetsCommand::Versions(command) => {
+            dispatch_dataset_version_command(runtime, command).await
+        }
+    }
+}
+
+async fn dispatch_dataset_version_command(
+    runtime: &runtime::Runtime,
+    command: DatasetVersionsCommand,
+) -> Outcome {
+    match command {
+        DatasetVersionsCommand::Compare(args) => {
+            let format = args.format.format;
+            datasets::compare_versions(runtime, &args, format).await
+        }
+        DatasetVersionsCommand::Get(args) => {
+            let format = args.format.format;
+            datasets::get_version(runtime, &args, format).await
+        }
+        DatasetVersionsCommand::List(args) => {
+            let format = args.format.format;
+            datasets::list_versions(runtime, &args, format).await
+        }
+        DatasetVersionsCommand::Restore(args) => datasets::restore_version(runtime, &args).await,
+    }
+}
+
+async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
+    match command {
+        EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
+        EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
+        EpisodesCommand::Get(args) => {
+            let format = args.format.format;
+            episodes::get_episode(runtime, &args, format).await
+        }
+        EpisodesCommand::List(args) => {
+            let format = args.format.format;
+            episodes::list_episodes(runtime, &args, format).await
         }
     }
 }
@@ -1240,10 +1571,7 @@ fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outco
     };
     config.set(config_name(key), Value::String(value.clone()));
     match config.save() {
-        Ok(()) => Outcome {
-            stderr: format!("Configuration updated: {key} = {value}\n").into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Configuration updated: {key} = {value}\n")),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1258,10 +1586,7 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
         return Outcome::failure(format!("No value set for key '{key}'\n"));
     }
     match config.save() {
-        Ok(()) => Outcome {
-            stderr: format!("Configuration removed: {key}\n").into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Configuration removed: {key}\n")),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1382,6 +1707,23 @@ mod tests {
     fn invoke(args: &[&str]) -> super::Outcome {
         let args = args.iter().map(OsString::from).collect::<Vec<_>>();
         run(&args, &mut Cursor::new(Vec::<u8>::new()))
+    }
+
+    #[test]
+    fn a_dataset_version_is_a_number_or_draft() {
+        use super::{parse_dataset_version, DatasetVersionSelector};
+        assert_eq!(
+            parse_dataset_version("3"),
+            Ok(DatasetVersionSelector::Number(3))
+        );
+        assert_eq!(
+            parse_dataset_version("draft"),
+            Ok(DatasetVersionSelector::Draft)
+        );
+        assert_eq!(
+            parse_dataset_version("latest"),
+            Err("expected a version number or draft, got \"latest\"".to_owned())
+        );
     }
 
     #[test]

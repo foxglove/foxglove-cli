@@ -168,10 +168,7 @@ pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceWriteArgs) -> Out
         .post::<_, DeviceResponse>("/v1/devices", &request)
         .await
     {
-        Ok(response) => Outcome {
-            stderr: format!("Device created: {}\n", response.id).into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(response) => Outcome::notice(format!("Device created: {}\n", response.id)),
         Err(error) => Outcome::failure(format!("Failed to create device: {error}\n")),
     }
 }
@@ -206,10 +203,7 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
         )
         .await
     {
-        Ok(response) => Outcome {
-            stderr: format!("Device updated: {}\n", response.name).into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(response) => Outcome::notice(format!("Device updated: {}\n", response.name)),
         Err(error) => Outcome::failure(format!("Failed to edit device: {error}\n")),
     }
 }

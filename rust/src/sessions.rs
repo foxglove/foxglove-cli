@@ -259,10 +259,7 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
             if !response.key.is_empty() {
                 let _ = writeln!(stderr, "Session key: {}", response.key);
             }
-            Outcome {
-                stderr: stderr.into_bytes(),
-                ..Outcome::default()
-            }
+            Outcome::notice(stderr)
         }
         Err(error) if error.is_forbidden() => {
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
@@ -283,18 +280,11 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
         )
         .await
     {
-        Ok(()) => Outcome {
-            stderr: format!("Session deleted: {}\n", args.session).into_bytes(),
-            ..Outcome::default()
-        },
-        Err(error) if error.is_not_found() => Outcome {
-            stderr: format!(
-                "Not found. The resource may have already been deleted.\nSession deleted: {}\n",
-                args.session
-            )
-            .into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Session deleted: {}\n", args.session)),
+        Err(error) if error.is_not_found() => Outcome::notice(format!(
+            "Not found. The resource may have already been deleted.\nSession deleted: {}\n",
+            args.session
+        )),
         Err(error) if error.is_forbidden() => {
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }
@@ -331,15 +321,11 @@ pub(crate) async fn patch_session_recordings(
         )
         .await
     {
-        Ok(_) => Outcome {
-            stderr: format!(
-                "Recording {} {} session\n",
-                args.recording,
-                if add { "added to" } else { "removed from" }
-            )
-            .into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(_) => Outcome::notice(format!(
+            "Recording {} {} session\n",
+            args.recording,
+            if add { "added to" } else { "removed from" }
+        )),
         Err(error) if error.is_forbidden() => {
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }

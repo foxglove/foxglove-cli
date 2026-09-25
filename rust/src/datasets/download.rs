@@ -12,6 +12,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 
+use super::versions::{DatasetVersion, DatasetVersionListResponse};
 use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
 use crate::api::{encode_path_segment, ApiError, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
@@ -29,20 +30,6 @@ const NO_DATA_LEFT_REASON: &str = "No Primary Site holds data for any recording 
 
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
-
-#[derive(Clone, Debug, Default, Deserialize)]
-struct DatasetVersion {
-    #[serde(rename = "versionNumber")]
-    version_number: i64,
-    #[serde(rename = "committedAt", default)]
-    committed_at: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct DatasetVersionListResponse {
-    #[serde(default)]
-    versions: Vec<DatasetVersion>,
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

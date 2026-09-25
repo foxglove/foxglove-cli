@@ -128,7 +128,7 @@ func assertCompatible(t *testing.T, expected, actual commandSnapshot) {
 }
 
 // Translate historical oracle invocations only in the harness. The public CLI
-// rejects the old paths; independent Rust tests cover that removal.
+// rejects the old paths.
 func rustCommandArgs(args []string) []string {
 	for index := 0; index+1 < len(args); index++ {
 		if args[index] != "data" {
