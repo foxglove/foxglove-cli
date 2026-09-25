@@ -5,7 +5,9 @@ use serde_json::Value;
 
 use crate::cli::{EventAddArgs, EventListArgs};
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, null_to_default, DeviceSummary, Record};
+use crate::records::{
+    compact_json, fetch_list, null_to_default, DeviceSummary, Record, DEFAULT_LIST_LIMIT,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -74,7 +76,7 @@ pub(crate) async fn list_events(
             ));
         }
     }
-    let limit = args.limit.unwrap_or(100);
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query: Vec<(String, String)> = [
         ("device.id", args.device_id.clone().unwrap_or_default()),
@@ -84,14 +86,7 @@ pub(crate) async fn list_events(
             "eventTypeId",
             args.event_type_id.clone().unwrap_or_default(),
         ),
-        (
-            "limit",
-            if limit == 0 {
-                String::new()
-            } else {
-                limit.to_string()
-            },
-        ),
+        ("limit", limit.to_string()),
         (
             "offset",
             if offset == 0 {

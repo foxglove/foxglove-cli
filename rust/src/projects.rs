@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::output::Format;
-use crate::records::{fetch_list, Record};
+use crate::records::{fetch_list, Record, DEFAULT_LIST_LIMIT};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -37,13 +37,17 @@ impl Record for Project {
     }
 }
 
-pub(crate) async fn list_projects(runtime: &Runtime, format: Format) -> Outcome {
+pub(crate) async fn list_projects(
+    runtime: &Runtime,
+    format: Format,
+    limit: Option<i64>,
+) -> Outcome {
     fetch_list::<Project, _>(
         runtime,
         format,
         "Failed to list projects",
         "/v1/projects",
-        &(),
+        &[("limit", limit.unwrap_or(DEFAULT_LIST_LIMIT))],
     )
     .await
 }
