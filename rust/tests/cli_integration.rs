@@ -868,3 +868,64 @@ fn project_default_scopes_device_edit_without_moving_device() {
         serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
     assert!(body.get("projectId").is_none());
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn events_resolve_project_defaults_for_lists_and_device_lookup() {
+    let workspace = Workspace::new();
+    for (saved, environment, flags, expected) in [
+        ("", "", vec![], None),
+        ("prj_saved", "", vec![], Some("prj_saved")),
+        ("prj_saved", "prj_env", vec![], Some("prj_env")),
+        (
+            "prj_saved",
+            "prj_env",
+            vec!["--project-id", "prj_flag"],
+            Some("prj_flag"),
+        ),
+        ("prj_saved", "prj_env", vec!["--project-id="], None),
+    ] {
+        fs::write(
+            workspace.0.join(".foxgloverc"),
+            format!("default_project_id: '{saved}'\n"),
+        )
+        .unwrap();
+        for create in [false, true] {
+            let server = Server::new(vec![Reply::json(
+                if create { "POST" } else { "GET" },
+                "/v1/events",
+                if create { r#"{"id":"evt_one"}"# } else { "[]" },
+            )]);
+            let mut command = workspace.command(&server.url);
+            command
+                .env("DEFAULT_PROJECT_ID", environment)
+                .args(["events", if create { "add" } else { "list" }])
+                .args(&flags);
+            if create {
+                command.args([
+                    "--device-id",
+                    "dev_one",
+                    "--start",
+                    "2024-01-01T00:00:00Z",
+                    "--end",
+                    "2024-01-01T00:00:01Z",
+                ]);
+            }
+            let output = Process::spawn(&mut command).finish();
+            assert_success(&output);
+            let requests = server.finish();
+            let project = if create {
+                let body: serde_json::Value =
+                    serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
+                body["projectId"].as_str().map(str::to_owned)
+            } else {
+                query_pairs(&requests[0]).get("projectId").cloned()
+            };
+            assert_eq!(
+                project.as_deref(),
+                expected,
+                "create={create}, flags={flags:?}"
+            );
+        }
+    }
+}

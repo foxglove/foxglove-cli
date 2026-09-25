@@ -5,7 +5,9 @@ use serde_json::Value;
 
 use crate::cli::{EventAddArgs, EventListArgs};
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, null_to_default, DeviceSummary, Record};
+use crate::records::{
+    compact_json, fetch_list, null_to_default, DeviceSummary, ProjectFallback, Record,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -100,6 +102,10 @@ pub(crate) async fn list_events(
                 offset.to_string()
             },
         ),
+        (
+            "projectId",
+            args.project_id.clone().or_project(&runtime.project_id),
+        ),
         ("query", args.query.clone().unwrap_or_default()),
         ("sortBy", args.sort_by.clone().unwrap_or_default()),
         (
@@ -130,6 +136,8 @@ pub(crate) async fn list_events(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateEventRequest {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
     device_id: String,
     end: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -155,6 +163,7 @@ pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome
         metadata.insert(key.to_owned(), value.to_owned());
     }
     let request = CreateEventRequest {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id: args.device_id.clone().unwrap_or_default(),
         end: args.end.clone().unwrap_or_default(),
         event_type_id: args.event_type_id.clone().unwrap_or_default(),

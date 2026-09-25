@@ -58,7 +58,7 @@ to add the capabilities you intend to use (e.g. `data.upload` for importing data
 
 Project-scoped commands use `--project-id` first, then `DEFAULT_PROJECT_ID`, then the saved `default_project_id` (`foxglove config set default_project_id prj_…`). An explicit `--project-id=` bypasses both defaults and omits the project filter. With nothing configured, existing unscoped API behavior is unchanged.
 
-In v2, export and attachment listing also honor these defaults, so existing users with a saved project may see narrower results. Defaults scope queries and creation; they never move an existing resource between projects or trigger an unscoped retry. `--session-key` requires a resolved project. `pending-imports list --without-project` selects unassigned resources, suppresses defaults, and cannot be combined with a nonempty `--project-id` or `--session-key`.
+In v2, export, attachment listing, and event listing/creation also honor these defaults, so existing users with a saved project may see narrower results. Defaults scope queries and creation; they never move an existing resource between projects or trigger an unscoped retry. `--session-key` requires a resolved project. `pending-imports list --without-project` selects unassigned resources, suppresses defaults, and cannot be combined with a nonempty `--project-id` or `--session-key`.
 
 ### Devices
 

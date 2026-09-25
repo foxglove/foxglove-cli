@@ -2,7 +2,7 @@
   "baseline": "v1.0.33",
   "deltas": {
     "consistent-project-defaults": {
-      "reason": "Export and attachment listing honor project defaults like other scoped commands. Pending imports --without-project suppresses defaults and rejects contradictory explicit project/session-key filters.",
+      "reason": "Export, attachment listing, and event listing/creation honor project defaults like other scoped commands. Pending imports --without-project suppresses defaults and rejects contradictory explicit project/session-key filters.",
       "invariants": [
         "Explicit project flags override environment and saved defaults; explicit empty flags bypass defaults.",
         "Session keys require a resolved project, scoped failures do not trigger unscoped retries, and defaults never move resources.",

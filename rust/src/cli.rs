@@ -586,6 +586,12 @@ enum EventsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct EventAddArgs {
+    #[arg(
+        long,
+        help = "Project ID for device lookup",
+        allow_hyphen_values = true
+    )]
+    pub(crate) project_id: Option<String>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(
@@ -604,6 +610,8 @@ pub(crate) struct EventAddArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EventListArgs {
+    #[arg(long, help = "Filter events by project", allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
     #[command(flatten)]
     format: FormatArgs,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]

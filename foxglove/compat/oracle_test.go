@@ -638,7 +638,13 @@ func TestRustPhase1OfflineContract(t *testing.T) {
 			if actual.ExitCode != 0 || actual.Stderr != "" || actual.Stdout == "" || !strings.Contains(actual.Stdout, "Usage:") {
 				t.Fatalf("Rust command help is unavailable\n--- actual\n%+v", actual)
 			}
-			if goFlags, rustFlags := helpFlags(expected.Stdout), helpFlags(actual.Stdout); !reflect.DeepEqual(goFlags, rustFlags) {
+			goFlags, rustFlags := helpFlags(expected.Stdout), helpFlags(actual.Stdout)
+			// v2 adds project scoping to the existing event operations.
+			if id == "events-add" || id == "events-list" {
+				goFlags = append(goFlags, "--project-id")
+				sort.Strings(goFlags)
+			}
+			if !reflect.DeepEqual(goFlags, rustFlags) {
 				t.Fatalf("Rust command flags differ\n--- Go\n%v\n--- Rust\n%v", goFlags, rustFlags)
 			}
 		})
@@ -1624,11 +1630,11 @@ func runRustCase(t *testing.T, testCase oracleCase) commandSnapshot {
 	return runRustCaseWithFixture(t, testCase, nil)
 }
 
-// Legacy export/attachment cases compare unscoped Go behavior. The approved
+// Legacy export/attachment/event cases compare unscoped Go behavior. The approved
 // consistent-project-defaults delta is covered independently by Rust tests.
 func legacyUnscopedProjectArgs(args []string) []string {
 	command := strings.Join(args, " ")
-	if !strings.Contains(command, "data export") && !strings.Contains(command, "attachments list") {
+	if !strings.Contains(command, "data export") && !strings.Contains(command, "attachments list") && !strings.Contains(command, "events list") && !strings.Contains(command, "events add") {
 		return args
 	}
 	for _, arg := range args {
