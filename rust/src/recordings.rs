@@ -8,7 +8,7 @@ use crate::cli::{RecordingDeleteArgs, RecordingListArgs};
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, is_zero, null_to_default, parse_timestamp, DeviceSummary,
-    ProjectFallback, Record,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -118,7 +118,6 @@ struct RecordingListQuery {
     end: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     import_status: String,
-    #[serde(skip_serializing_if = "is_zero")]
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -158,7 +157,7 @@ pub(crate) async fn list_recordings(
         Ok(value) => value,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
-    let limit = args.limit.unwrap_or(2000);
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query = RecordingListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),

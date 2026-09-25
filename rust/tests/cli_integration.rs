@@ -605,6 +605,64 @@ fn expected_pairs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
+    let workspace = Workspace::new();
+    let cases: &[(&str, &str, &[&str])] = &[
+        ("/v1/recording-attachments", "[]", &["attachments", "list"]),
+        ("/v1/data/coverage", "[]", &["data", "coverage", "list"]),
+        ("/v1/datasets", "[]", &["datasets", "list"]),
+        (
+            "/v1/datasets/ds_one/episodes",
+            r#"{"episodes":[]}"#,
+            &["datasets", "episodes", "list", "ds_one"],
+        ),
+        (
+            "/v1/datasets/ds_one/versions",
+            r#"{"versions":[]}"#,
+            &["datasets", "versions", "list", "ds_one"],
+        ),
+        ("/v1/devices", "[]", &["devices", "list"]),
+        ("/v1/episodes", r#"{"episodes":[]}"#, &["episodes", "list"]),
+        ("/v1/event-types", "[]", &["event-types", "list"]),
+        ("/v1/events", "[]", &["events", "list"]),
+        ("/v1/extensions", "[]", &["extensions", "list"]),
+        (
+            "/v1/data/pending-imports",
+            "[]",
+            &["pending-imports", "list"],
+        ),
+        ("/v1/projects", "[]", &["projects", "list"]),
+        ("/v1/recordings", "[]", &["recordings", "list"]),
+        ("/v1/sessions", "[]", &["sessions", "list"]),
+        (
+            "/v1/data/topics",
+            "[]",
+            &["topics", "list", "--device-id", "dev_one"],
+        ),
+    ];
+
+    for (limit, expected) in [(None, "50"), (Some("7"), "7")] {
+        for &(path, body, command) in cases {
+            let server = Server::new(vec![Reply::json("GET", path, body)]);
+            let mut args = command.to_vec();
+            if let Some(limit) = limit {
+                args.extend(["--limit", limit]);
+            }
+            let output = Process::spawn(workspace.command(&server.url).args(args)).finish();
+            assert_success(&output);
+            assert_eq!(
+                query_pairs(&server.finish()[0])
+                    .get("limit")
+                    .map(String::as_str),
+                Some(expected),
+                "{command:?}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn dataset_list_filters_reach_the_api() {
     const DATASETS: &str = r#"[{"id":"ds_one","projectId":"prj_explicit","name":"Highway","description":"Merges","episodeCount":2,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}]"#;
     let workspace = Workspace::new();
@@ -725,7 +783,7 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
-        expected_pairs(&[("limit", "2000"), ("sortBy", "addedAt"),])
+        expected_pairs(&[("limit", "50"), ("sortBy", "addedAt"),])
     );
 }
 
@@ -1455,7 +1513,7 @@ fn a_version_and_the_missing_recordings_filter_reach_the_dataset_episode_list() 
         assert_success(&output);
         assert_eq!(
             query_pairs(&server.finish()[0]),
-            expected_pairs(&[("hasMissingRecordings", value), ("limit", "2000")])
+            expected_pairs(&[("hasMissingRecordings", value), ("limit", "50")])
         );
         let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         assert_eq!(
@@ -1657,7 +1715,7 @@ fn versions_are_listed_with_the_draft_marked() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn versions_are_listed_a_full_page_at_a_time_by_default() {
+fn versions_are_listed_with_the_standard_default_limit() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "GET",
@@ -1672,7 +1730,7 @@ fn versions_are_listed_a_full_page_at_a_time_by_default() {
     assert_success(&output);
     assert_eq!(
         query_pairs(&server.finish()[0]),
-        expected_pairs(&[("limit", "2000")])
+        expected_pairs(&[("limit", "50")])
     );
 }
 
@@ -1740,11 +1798,7 @@ fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
     assert_eq!(requests.len(), 1);
     assert_eq!(
         query_pairs(&requests[0]),
-        expected_pairs(&[
-            ("include", "recordings"),
-            ("limit", "2000"),
-            ("version", "1")
-        ])
+        expected_pairs(&[("include", "recordings"), ("limit", "50"), ("version", "1")])
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let changes: Vec<_> = stdout

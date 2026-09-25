@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::TopicListArgs;
 use crate::output::Format;
-use crate::records::{fetch_list, is_false, is_zero, parse_timestamp, ProjectFallback, Record};
+use crate::records::{
+    fetch_list, is_false, is_zero, parse_timestamp, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -57,7 +59,6 @@ struct TopicListQuery {
     end: String,
     #[serde(skip_serializing_if = "is_false")]
     include_schemas: bool,
-    #[serde(skip_serializing_if = "is_zero")]
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -110,7 +111,7 @@ pub(crate) async fn list_topics(
         Ok(value) => value,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
-    let limit = args.limit.unwrap_or_default();
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query = TopicListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),

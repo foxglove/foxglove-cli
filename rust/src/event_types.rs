@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, null_to_default, Record};
+use crate::records::{compact_json, fetch_list, null_to_default, Record, DEFAULT_LIST_LIMIT};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -58,13 +58,17 @@ impl Record for EventType {
     }
 }
 
-pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
+pub(crate) async fn list_event_types(
+    runtime: &Runtime,
+    format: Format,
+    limit: Option<i64>,
+) -> Outcome {
     fetch_list::<EventType, _>(
         runtime,
         format,
         "Failed to list event types",
         "/v1/event-types",
-        &(),
+        &[("limit", limit.unwrap_or(DEFAULT_LIST_LIMIT))],
     )
     .await
 }
