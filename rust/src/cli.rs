@@ -361,10 +361,47 @@ pub(crate) struct DataImportArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetsCommand {
+    #[command(about = "Download a committed dataset version")]
+    Download(DatasetDownloadArgs),
     #[command(about = "List the episodes in a dataset", subcommand)]
     Episodes(DatasetEpisodesCommand),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetDownloadArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long, help = "Include MCAP attachments",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_attachments: bool,
+    #[arg(long, short = 'o', help = "Output directory (default: the dataset name and version)", value_hint = ValueHint::DirPath, allow_hyphen_values = true)]
+    pub(crate) output: Option<String>,
+    #[arg(
+        long,
+        help = "Fail if any episode is skipped or downloaded with missing recordings"
+    )]
+    pub(crate) strict: bool,
+    #[arg(
+        long,
+        help = "Comma-separated topic list (default: all topics)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) topics: Option<String>,
+    #[arg(
+        long,
+        help = "Committed version to download (default: the newest committed version)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) version: Option<i64>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -734,7 +771,7 @@ enum ProjectsCommand {
 #[derive(Debug, Subcommand)]
 enum RecordingsCommand {
     #[command(
-        about = "Delete a recording and its imported data; retain the Edge Site copy",
+        about = "Delete a recording from your organization",
         long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain. Use `recordings transfer RECORDING_ID` to restore its data."
     )]
     Delete(RecordingDeleteArgs),
@@ -1077,14 +1114,7 @@ async fn dispatch_api_command(
         CliCommand::Recordings(RecordingsCommand::Transfer(args)) => {
             recordings::transfer_recording(&runtime, &args).await
         }
-        CliCommand::Datasets(DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args))) => {
-            let format = args.format.format;
-            datasets::list_dataset_episodes(&runtime, &args, format).await
-        }
-        CliCommand::Datasets(DatasetsCommand::List(args)) => {
-            let format = args.format.format;
-            datasets::list_datasets(&runtime, &args, format).await
-        }
+        CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
         CliCommand::Devices(DevicesCommand::Add(args)) => {
             devices::add_device(&runtime, &args).await
         }
@@ -1140,6 +1170,20 @@ async fn dispatch_api_command(
         | CliCommand::Config(_)
         | CliCommand::Data { .. }
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsCommand) -> Outcome {
+    match command {
+        DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
+            let format = args.format.format;
+            datasets::list_dataset_episodes(runtime, &args, format).await
+        }
+        DatasetsCommand::List(args) => {
+            let format = args.format.format;
+            datasets::list_datasets(runtime, &args, format).await
+        }
     }
 }
 

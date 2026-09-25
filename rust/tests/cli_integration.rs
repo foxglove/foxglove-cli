@@ -3,6 +3,7 @@ mod support;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Cursor;
+use std::process::Output;
 
 use foxglove_rust::format::{Channel, McapWriter, Message, RecordSink, Schema};
 use support::{assert_success, Process, Reply, Server, Workspace};
@@ -682,6 +683,338 @@ fn a_full_page_reports_that_more_results_may_exist() {
             Some(requested)
         );
     }
+}
+
+const DOWNLOAD_DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway merges","createdAt":"","updatedAt":""}"#;
+
+fn dataset_episode(id: &str, missing_recordings: bool) -> String {
+    format!(
+        r#"{{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":{missing_recordings},"episode":{{"id":"{id}","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
+    )
+}
+
+fn dataset_replies(episodes: &[String]) -> Vec<Reply> {
+    vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions",
+            r#"{"versions":[{"versionNumber":5},{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"},{"versionNumber":3,"committedAt":"2024-01-01T00:00:00Z"}]}"#,
+        ),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/4/episodes",
+            &format!(r#"{{"episodes":[{}]}}"#, episodes.join(",")),
+        ),
+    ]
+}
+
+fn download_dataset(workspace: &Workspace, server: &Server, args: &[&str]) -> Output {
+    Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"])
+            .args(args),
+    )
+    .finish()
+}
+
+fn download_manifest(workspace: &Workspace) -> serde_json::Value {
+    let path = workspace.0.join("Highway-merges-v4").join("manifest.json");
+    serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+fn no_streamable_recordings() -> Reply {
+    Reply {
+        status: 404,
+        ..Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"error":"Episode has no recordings available for streaming","code":"NoStreamableRecordings"}"#,
+        )
+    }
+}
+
+fn episode_mcap() -> Vec<u8> {
+    static EPISODE: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    EPISODE
+        .get_or_init(|| recording(&[message(1, 1, vec![1])]))
+        .clone()
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &["--topics", "/a, /b"]);
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[1]),
+        expected_pairs(&[("sortOrder", "desc")])
+    );
+
+    let root = workspace.0.join("Highway-merges-v4");
+    for file in ["episode_0000_ep_one.mcap", "episode_0001_ep_two.mcap"] {
+        assert_eq!(fs::read(root.join(file)).unwrap(), episode_mcap());
+    }
+    let manifest = download_manifest(&workspace);
+    assert_eq!(manifest["version"]["versionNumber"], 4);
+    assert_eq!(
+        manifest["selection"]["topics"],
+        serde_json::json!(["/a", "/b"])
+    );
+    assert_eq!(
+        manifest["episodes"][0]["file"],
+        "Highway-merges-v4/episode_0000_ep_one.mcap"
+    );
+    assert_eq!(manifest["episodes"][0]["byteSize"], episode_mcap().len());
+    assert_eq!(
+        manifest["episodes"][0]["episodeHasMissingRecordings"],
+        false
+    );
+    assert_eq!(manifest["episodes"][1]["episodeHasMissingRecordings"], true);
+
+    let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
+    let stream: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(stream["episodeId"], "ep_one");
+    assert_eq!(stream["topics"], serde_json::json!(["/a", "/b"]));
+    assert_eq!(stream["start"], "2024-01-02T03:04:05Z");
+    assert_eq!(stream["end"], "2024-01-02T03:04:06Z");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "Downloaded 2 of 2 episodes to Highway-merges-v4 (0 failed, 0 skipped)\n1 downloaded episode has missing recordings"
+        ),
+        "{stderr}"
+    );
+
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &["--topics", "/a, /b", "--strict"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+
+    let workspace = Workspace::new();
+    let episodes = [
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_gone", false),
+    ];
+    let mut replies = dataset_replies(&episodes);
+    replies.extend(export_replies(episode_mcap()));
+    replies.push(no_streamable_recordings());
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+    let mut replies = dataset_replies(&episodes);
+    replies.push(no_streamable_recordings());
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &["--strict"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episodes_that_cannot_be_downloaded_are_recorded_in_the_manifest() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_gone", true),
+        dataset_episode("ep_truncated", false),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    replies.push(no_streamable_recordings());
+    for _ in 0..2 {
+        replies.extend(export_replies(b"partial".to_vec()));
+    }
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    assert!(!output.status.success());
+    server.finish();
+
+    let root = workspace.0.join("Highway-merges-v4");
+    assert!(!root.join("episode_0002_ep_truncated.mcap").exists());
+    let manifest = download_manifest(&workspace);
+    let statuses: Vec<_> = manifest["episodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|episode| episode["status"].as_str().unwrap())
+        .collect();
+    assert_eq!(statuses, ["downloaded", "skipped", "failed"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Downloaded 1 of 3 episodes to Highway-merges-v4 (1 failed, 1 skipped)"),
+        "{stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", true),
+        dataset_episode("ep_two", true),
+    ]);
+    replies.push(no_streamable_recordings());
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    assert_success(&output);
+    server.finish();
+    let size = episode_mcap().len();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!("Episode 1 of 2: {size} bytes already downloaded")),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(&format!(
+            "Episode 2 of 2: {size} bytes kept from an earlier run (skipped: "
+        )),
+        "{stderr}"
+    );
+    let manifest = download_manifest(&workspace);
+    for (index, missing_recordings) in [(0, false), (1, true)] {
+        let episode = &manifest["episodes"][index];
+        assert_eq!(episode["status"], "downloaded");
+        assert_eq!(episode["episodeHasMissingRecordings"], missing_recordings);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_failed_refresh_keeps_the_earlier_file_and_fails_the_run() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", true)]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", true)]);
+    replies.push(Reply {
+        status: 403,
+        ..Reply::json("POST", "/v1/data/stream", r#"{"error":"Forbidden"}"#)
+    });
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    server.finish();
+    assert!(!output.status.success());
+    let size = episode_mcap().len();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "Episode 1 of 1: {size} bytes kept from an earlier run (failed: "
+        )) && stderr.contains("(1 failed, 0 skipped)"),
+        "{stderr}"
+    );
+    let root = workspace.0.join("Highway-merges-v4");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        episode_mcap()
+    );
+    let episode = &download_manifest(&workspace)["episodes"][0];
+    assert_eq!(episode["status"], "failed");
+    assert!(episode["reason"].is_string(), "{episode}");
+    assert_eq!(episode["byteSize"], size);
+    assert_eq!(
+        episode["file"],
+        "Highway-merges-v4/episode_0000_ep_one.mcap"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_killed_run_has_recorded_the_episodes_it_finished() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", false),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    replies.extend(export_replies(episode_mcap()));
+    replies.last_mut().unwrap().stall = true;
+    let requests_before_kill = replies.len();
+    let server = Server::new(replies);
+    let process = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["datasets", "download", "ds_one"]),
+    );
+    for _ in 0..requests_before_kill {
+        server
+            .requests
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+    }
+    drop(process);
+    server.finish();
+
+    let manifest = download_manifest(&workspace);
+    let episodes = manifest["episodes"].as_array().unwrap();
+    assert_eq!(episodes.len(), 1, "{manifest}");
+    assert_eq!(episodes[0]["id"], "ep_one");
+    assert_eq!(episodes[0]["status"], "downloaded");
+
+    let mut replies = dataset_replies(&[
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", false),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 5);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Episode 1 of 2: ") && stderr.contains("bytes already downloaded"),
+        "{stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_uncommitted_version_is_not_downloaded() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/5",
+            r#"{"versionNumber":5}"#,
+        ),
+    ]);
+    let output = download_dataset(&workspace, &server, &["--version", "5"]);
+    server.finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Version 5 is not a committed version of this dataset\n"
+    );
 }
 
 #[test]
