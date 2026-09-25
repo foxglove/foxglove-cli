@@ -219,6 +219,9 @@ pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransf
         .await
     {
         Ok(response) => {
+            // This command initiates an asynchronous request: HTTP success determines
+            // its exit status, while importStatus reports processing state, not the
+            // outcome of waiting for completion. Preserve even unfamiliar statuses.
             let message = match response.import_status.as_str() {
                 "complete" => "Recording already available at its Primary Site",
                 "pending" | "importing" => "Transfer request accepted",

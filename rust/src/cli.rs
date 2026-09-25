@@ -729,7 +729,7 @@ enum ProjectsCommand {
 #[derive(Debug, Subcommand)]
 enum RecordingsCommand {
     #[command(
-        about = "Delete a recording from your organization",
+        about = "Delete a recording and its imported data; retain the Edge Site copy",
         long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain. Use `recordings transfer RECORDING_ID` to restore its data."
     )]
     Delete(RecordingDeleteArgs),
