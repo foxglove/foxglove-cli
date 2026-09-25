@@ -123,7 +123,7 @@
       "reason": "Preserve Clap's native diagnostics and usage text for parser-level failures instead of reproducing Cobra's wording."
     },
     "deprecated-data-import-commands": {
-      "reason": "The Rust release CLI omits the deprecated `data imports`, `data imports add`, and `data imports list` commands; `recordings list` and `data import` are their supported replacements.",
+      "reason": "The Rust release CLI omits the deprecated `data imports`, `data imports add`, and `data imports list` commands; `upload` replaces local imports; `recordings list` replaces import listing with different time filters and output (see docs/v2-migration.md).",
       "omittedCommandSurface": [
         "data-imports",
         "data-imports-add",
@@ -131,7 +131,7 @@
       ]
     },
     "deprecated-flags": {
-      "reason": "The Rust release CLI omits the deprecated `--json` alias and ignored `devices add --serial-number` flag. Use `--format json` or `data export --output-format json` instead."
+      "reason": "The Rust release CLI omits the deprecated `--json` alias and ignored `devices add --serial-number` flag. Use `--format json` or `export --output-format json` instead."
     },
     "json-output-file": {
       "reason": "Honor --output-file for JSON exports; the Go CLI silently writes JSON to stdout instead.",
