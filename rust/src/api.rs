@@ -635,6 +635,27 @@ impl FoxgloveClient {
             .await
     }
 
+    /// Execute an authenticated JSON POST with query parameters and decode its
+    /// JSON response.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn post_with_query<Q, B, T>(
+        &self,
+        endpoint: &str,
+        query: &Q,
+        body: &B,
+    ) -> Result<T, ApiError>
+    where
+        Q: Serialize + ?Sized,
+        B: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        self.send_json_with_query(Method::POST, endpoint, query, Some(body), None)
+            .await
+    }
+
     /// Execute an authenticated JSON PATCH and decode its JSON response.
     ///
     /// # Errors

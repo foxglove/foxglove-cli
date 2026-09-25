@@ -2,7 +2,8 @@ foxglove/foxglove
 *.swp
 *.swo
 tags
-.claude/
+.claude/*
+!.claude/skills/
 
 **/target/
 **/*.rs.bk

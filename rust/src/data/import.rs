@@ -3,12 +3,12 @@
 use std::fs::File;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::UploadProgressReader;
 use crate::api::{encode_path_segment, UploadRequest};
 use crate::cli::DataImportArgs;
-use crate::records::ProjectFallback;
+use crate::records::{EmptyRequest, ProjectFallback};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -17,9 +17,6 @@ struct ImportFromEdgeResponse {
     #[allow(dead_code)]
     id: String,
 }
-
-#[derive(Serialize)]
-struct EmptyRequest {}
 
 pub(crate) async fn from_edge(runtime: &Runtime, args: &DataImportArgs) -> Outcome {
     let id = args.edge_recording_id.as_deref().unwrap_or_default();

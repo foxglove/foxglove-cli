@@ -3,11 +3,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::cli::EpisodeListArgs;
+use crate::api::encode_path_segment;
+use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_output, is_zero, parse_timestamp, warn_if_truncated, ProjectFallback,
-    Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_output, format_record, is_zero, parse_timestamp, parse_timestamp_millis,
+    warn_if_truncated, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -40,6 +41,12 @@ pub(crate) struct Episode {
     pub(crate) metadata: Value,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) recordings: Option<Vec<EpisodeRecording>>,
+    #[serde(
+        rename = "hasMissingRecordings",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
 }
@@ -95,6 +102,8 @@ pub(crate) struct EpisodeListResponse {
 struct EpisodeListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
     limit: i64,
@@ -144,6 +153,7 @@ pub(crate) async fn list_episodes(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
         end,
+        has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
         offset: args.offset.unwrap_or_default(),
@@ -163,6 +173,141 @@ pub(crate) async fn list_episodes(
             warn_if_truncated(format_output(&response.episodes, format), count, limit)
         }
         Err(error) => Outcome::failure(format!("Failed to list episodes: {error}\n")),
+    }
+}
+
+fn episode_endpoint(id: &str) -> String {
+    format!("/v1/episodes/{}", encode_path_segment(id))
+}
+
+#[derive(Serialize)]
+struct EpisodeGetQuery {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    include: String,
+}
+
+pub(crate) async fn get_episode(
+    runtime: &Runtime,
+    args: &EpisodeGetArgs,
+    format: Format,
+) -> Outcome {
+    let query = EpisodeGetQuery {
+        include: include_recordings(args.include_recordings),
+    };
+    match runtime
+        .client
+        .get::<_, Episode>(&episode_endpoint(&args.episode_id), &query)
+        .await
+    {
+        Ok(episode) => format_record(&episode, format),
+        Err(error) if error.is_not_found() => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get episode: {error}\n")),
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateEpisodesRequest {
+    project_id: String,
+    episodes: Vec<EpisodeInput>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EpisodeInput {
+    recordings: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    start_time: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    end_time: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct CreateEpisodesResponse {
+    #[serde(default)]
+    episodes: Vec<CreatedEpisode>,
+}
+
+#[derive(Deserialize)]
+struct CreatedEpisode {
+    id: String,
+    created: bool,
+}
+
+fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
+    let start_time = parse_timestamp_millis(args.start.as_deref().unwrap_or_default(), "start")?;
+    let end_time = parse_timestamp_millis(args.end.as_deref().unwrap_or_default(), "end")?;
+    if start_time.is_empty() != end_time.is_empty() {
+        return Err("both --start and --end must be specified, or neither".to_owned());
+    }
+    let metadata = args
+        .metadata
+        .as_deref()
+        .map(|raw| match serde_json::from_str::<Value>(raw) {
+            Ok(value @ Value::Object(_)) => Ok(value),
+            _ => Err(format!("--metadata must be a JSON object: {raw}")),
+        })
+        .transpose()?;
+    Ok(EpisodeInput {
+        recordings: args.recording_id.clone(),
+        start_time,
+        end_time,
+        metadata,
+    })
+}
+
+pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Outcome {
+    let episode = match episode_input(args) {
+        Ok(episode) => episode,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    let project_id = args.project_id.clone().or_project(&runtime.project_id);
+    if project_id.is_empty() {
+        return Outcome::failure("--project-id is required when creating an episode\n");
+    }
+    let request = CreateEpisodesRequest {
+        project_id,
+        episodes: vec![episode],
+    };
+    match runtime
+        .client
+        .post::<_, CreateEpisodesResponse>("/v1/episodes", &request)
+        .await
+    {
+        Ok(response) => match response.episodes.first() {
+            Some(episode) if episode.created => {
+                Outcome::notice(format!("Episode created: {}\n", episode.id))
+            }
+            Some(episode) if args.metadata.is_some() => Outcome::notice(format!(
+                "Episode already exists: {} (its metadata is unchanged)\n",
+                episode.id
+            )),
+            Some(episode) => Outcome::notice(format!("Episode already exists: {}\n", episode.id)),
+            None => Outcome::failure("Failed to create episode: the API returned no episode\n"),
+        },
+        Err(error) if error.is_not_found() => {
+            Outcome::failure(format!("Project not found: {}\n", request.project_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to create episode: {error}\n")),
+    }
+}
+
+pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> Outcome {
+    match runtime
+        .client
+        .delete(&episode_endpoint(&args.episode_id))
+        .await
+    {
+        Ok(()) => Outcome::notice(format!("Episode deleted: {}\n", args.episode_id)),
+        Err(error) if error.is_not_found() => Outcome::notice(format!(
+            "Not found. The resource may have already been deleted.\nEpisode deleted: {}\n",
+            args.episode_id
+        )),
+        Err(error) => Outcome::failure(format!("Failed to delete episode: {error}\n")),
     }
 }
 

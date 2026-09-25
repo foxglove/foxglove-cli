@@ -71,15 +71,10 @@ pub(crate) async fn unpublish_extension(runtime: &Runtime, args: &ExtensionIdArg
         ))
         .await
     {
-        Ok(()) => Outcome {
-            stderr: b"Extension deleted\n".to_vec(),
-            ..Outcome::default()
-        },
-        Err(error) if error.is_not_found() => Outcome {
-            stderr: b"Not found. The resource may have already been deleted.\nExtension deleted\n"
-                .to_vec(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice("Extension deleted\n"),
+        Err(error) if error.is_not_found() => Outcome::notice(
+            "Not found. The resource may have already been deleted.\nExtension deleted\n",
+        ),
         Err(error) => Outcome::failure(format!("Failed to delete extension: {error}\n")),
     }
 }
@@ -119,10 +114,7 @@ pub(crate) async fn publish_extension(runtime: &Runtime, args: &FileArgs) -> Out
     }
     .await;
     match result {
-        Ok(()) => Outcome {
-            stderr: b"Extension published\n".to_vec(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice("Extension published\n"),
         Err(error) if error.is_cancelled() => Outcome {
             exit_code: 130,
             ..Outcome::default()

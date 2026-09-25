@@ -211,11 +211,22 @@ ID | Name | Project ID | Description | Episode Count | Created At | Updated At
 ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
 ```
 
-List episodes, optionally narrowing to a time range or a member recording:
+List episodes, optionally narrowing to a time range, a member recording, or
+episodes whose recordings are no longer all available:
 
 ```
 $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recordings
-$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg
+$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
+```
+
+Create an episode from one or more recordings. The window defaults to the span
+of its recordings, and an existing episode with the same window and recordings
+is reused:
+
+```
+$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
+    --start 2026-04-19T13:22:44Z --end 2026-04-19T13:23:14Z
+Episode created: ep_BCUw2zxpBnToJbOS
 ```
 
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
@@ -226,6 +237,33 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 ```
 
 Member recordings are omitted unless you pass `--include-recordings`.
+
+Create a dataset and change its episodes. Changes stay pending in the dataset's
+draft until you commit them as a new version, or discard them with
+`foxglove datasets discard`. `datasets episodes list --version draft` lists the
+draft, pending changes included:
+
+```
+$ foxglove datasets add --name "Night merges" --episode-id ep_BCUw2zxpBnToJbOS
+Dataset created: ds_Qp4sT7vKx2NbLm9W
+Added 1 episode
+Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
+$ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7sWd1ZrNc4YbEe
+$ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
+$ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
+$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
+Committed version 1 with 2 episodes (2 added, 0 removed)
+```
+
+List a dataset's versions, see which episodes changed between two of them, or
+restore an earlier one into the draft. `datasets episodes list --version` lists
+any version by number:
+
+```
+$ foxglove datasets versions list ds_mHH1Cp4gPybCPR8y
+$ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
+$ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
+```
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode plus a `manifest.json`:
