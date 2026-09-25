@@ -740,7 +740,7 @@ fn v2_command_paths_replace_data_without_aliases() {
 #[ignore = "requires loopback sockets"]
 fn edge_transfer_reports_actual_status_and_rejects_unavailable_recordings() {
     let workspace = Workspace::new();
-    for status in ["pending", "importing", "complete"] {
+    for status in ["pending", "importing", "complete", "failed", "none"] {
         let body = format!(r#"{{"id":"rec_returned","importStatus":"{status}"}}"#);
         let server = Server::new(vec![Reply::json(
             "POST",
@@ -760,6 +760,10 @@ fn edge_transfer_reports_actual_status_and_rejects_unavailable_recordings() {
         assert!(message.contains("rec_returned"));
         assert!(message.contains(&format!("importStatus: {status}")));
         assert_eq!(message.contains("already available"), status == "complete");
+        assert_eq!(
+            message.contains("request accepted"),
+            matches!(status, "pending" | "importing")
+        );
         let requests = server.finish();
         let body = requests[0].split_once("\r\n\r\n").unwrap().1;
         assert_eq!(

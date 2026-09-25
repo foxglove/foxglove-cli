@@ -219,10 +219,10 @@ pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransf
         .await
     {
         Ok(response) => {
-            let message = if response.import_status == "complete" {
-                "Recording already available at its Primary Site"
-            } else {
-                "Transfer request accepted"
+            let message = match response.import_status.as_str() {
+                "complete" => "Recording already available at its Primary Site",
+                "pending" | "importing" => "Transfer request accepted",
+                _ => "Recording transfer status",
             };
             Outcome {
                 stderr: format!(

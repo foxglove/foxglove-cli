@@ -75,10 +75,6 @@ enum CliCommand {
     Config(ConfigCommand),
     #[command(about = "Inspect data coverage", subcommand)]
     Coverage(CoverageCommand),
-    #[command(about = "Export data by recording, import, session, or device and time range")]
-    Export(DataExportArgs),
-    #[command(about = "Upload a local data file to Foxglove")]
-    Upload(DataImportArgs),
     #[command(about = "List datasets and their episodes", subcommand)]
     Datasets(DatasetsCommand),
     #[command(about = "List and manage devices", subcommand)]
@@ -89,6 +85,8 @@ enum CliCommand {
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
+    #[command(about = "Export data by recording, import, session, or device and time range")]
+    Export(DataExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
@@ -101,6 +99,8 @@ enum CliCommand {
     Sessions(SessionsCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
+    #[command(about = "Upload a local data file to Foxglove")]
+    Upload(DataImportArgs),
     #[command(about = "Print Foxglove CLI version")]
     Version,
 }
@@ -729,16 +729,16 @@ enum ProjectsCommand {
 #[derive(Debug, Subcommand)]
 enum RecordingsCommand {
     #[command(
-        about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
-    )]
-    Transfer(RecordingTransferArgs),
-    #[command(
         about = "Delete a recording from your organization",
-        long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain, and the recording can be transferred again."
+        long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain. Use `recordings transfer RECORDING_ID` to restore its data."
     )]
     Delete(RecordingDeleteArgs),
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
+    #[command(
+        about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
+    )]
+    Transfer(RecordingTransferArgs),
 }
 
 #[derive(Debug, Args)]
