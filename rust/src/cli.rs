@@ -732,7 +732,10 @@ enum RecordingsCommand {
         about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
     )]
     Transfer(RecordingTransferArgs),
-    #[command(about = "Delete a recording from your organization")]
+    #[command(
+        about = "Delete a recording from your organization",
+        long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain, and the recording can be transferred again."
+    )]
     Delete(RecordingDeleteArgs),
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
