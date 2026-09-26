@@ -71,6 +71,14 @@ Datasets, dataset episodes, dataset versions, episodes, and
 `nextCursor`, which you pass to `--cursor`. The other commands that accept
 `--limit` page with `--offset`.
 
+### Project defaults
+
+Project-aware commands use `--project-id` first, then `DEFAULT_PROJECT_ID`, then the saved `default_project_id` (`foxglove config set default_project_id prj_…`). An explicit `--project-id=` bypasses both defaults and omits project scope. With nothing configured, existing unscoped API behavior is unchanged.
+
+This applies to `upload`, `export`, `coverage list`, `attachments list`, `events list`, `events add`, `recordings list`, `topics list`, `devices add`, `devices edit`, `devices list`, `datasets list`, `episodes list`, `pending-imports list`, and session commands that accept `--project-id`. In v2.0.0, export, attachment listing, and events newly honor these defaults, so users with a saved project may see narrower results. Event creation uses the project only to disambiguate device lookup; it does not move a device. `--session-key` requires a resolved project. `pending-imports list --without-project` selects unassigned resources, suppresses defaults, and cannot be combined with a nonempty `--project-id` or `--session-key`.
+
+Use `--debug` with any project-aware command to print the resolved project and its source (`--project-id`, `DEFAULT_PROJECT_ID`, saved configuration, or `--without-project`). Normal output is unchanged.
+
 ### Devices
 
 Before importing data, you must first create a device:
