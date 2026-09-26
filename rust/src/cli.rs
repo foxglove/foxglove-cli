@@ -29,6 +29,17 @@ fn parse_bool(value: &str) -> Result<bool, String> {
     }
 }
 
+fn parse_list_limit(value: &str) -> Result<i64, String> {
+    let limit = value
+        .parse::<i64>()
+        .map_err(|_| "must be an integer between 1 and 2000".to_owned())?;
+    if (1..=2000).contains(&limit) {
+        Ok(limit)
+    } else {
+        Err("must be an integer between 1 and 2000".to_owned())
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DatasetVersionSelector {
     Number(i64),
@@ -141,10 +152,17 @@ pub(crate) struct AttachmentListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
@@ -258,12 +276,6 @@ enum CoverageCommand {
 pub(crate) struct CoverageListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(
-        long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
-    )]
-    pub(crate) limit: Option<i64>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
@@ -531,8 +543,9 @@ pub(crate) struct DatasetVersionListArgs {
     pub(crate) dataset_id: String,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -587,8 +600,9 @@ pub(crate) struct DatasetVersionCompareArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of changes to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
 }
@@ -617,8 +631,9 @@ pub(crate) struct DatasetListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -676,8 +691,9 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -753,10 +769,17 @@ pub(crate) struct DeviceListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
@@ -852,8 +875,9 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -893,7 +917,7 @@ pub(crate) struct EpisodeListArgs {
 #[derive(Debug, Subcommand)]
 enum EventTypesCommand {
     #[command(about = "List event types")]
-    List(ListFormatArgs),
+    List(FormatArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -940,8 +964,9 @@ pub(crate) struct EventListArgs {
     pub(crate) event_type_id: Option<String>,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Result offset", allow_hyphen_values = true)]
@@ -965,7 +990,7 @@ pub(crate) struct EventListArgs {
 #[derive(Debug, Subcommand)]
 enum ExtensionsCommand {
     #[command(about = "List Studio extensions created for your organization")]
-    List(ListFormatArgs),
+    List(FormatArgs),
     #[command(about = "Publish a Studio extension (.foxe) to your organization")]
     Publish(FileArgs),
     #[command(about = "Delete and unpublish a Studio extension from your organization")]
@@ -996,10 +1021,17 @@ pub(crate) struct PendingImportListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
@@ -1061,7 +1093,7 @@ pub(crate) struct PendingImportListArgs {
 #[derive(Debug, Subcommand)]
 enum ProjectsCommand {
     #[command(about = "List projects")]
-    List(ListFormatArgs),
+    List(FormatArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1111,8 +1143,9 @@ pub(crate) struct RecordingListArgs {
     pub(crate) import_status: Option<String>,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -1181,10 +1214,17 @@ pub(crate) struct SessionListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Filter by device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Filter by device name", allow_hyphen_values = true)]
@@ -1245,8 +1285,9 @@ pub(crate) struct TopicListArgs {
     pub(crate) include_schemas: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of topics to skip", allow_hyphen_values = true)]
@@ -1282,18 +1323,6 @@ struct FormatArgs {
         default_value = "table"
     )]
     format: Format,
-}
-
-#[derive(Debug, Args)]
-struct ListFormatArgs {
-    #[command(flatten)]
-    format: FormatArgs,
-    #[arg(
-        long,
-        help = "Maximum number of items to return (default: 50)",
-        allow_hyphen_values = true
-    )]
-    limit: Option<i64>,
 }
 
 /// Captured process output and status for one invocation.
@@ -1447,7 +1476,7 @@ async fn dispatch_api_command(
         }
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
-            event_types::list_event_types(&runtime, args.format.format, args.limit).await
+            event_types::list_event_types(&runtime, args.format).await
         }
         CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
         CliCommand::Events(EventsCommand::List(args)) => {
@@ -1455,7 +1484,7 @@ async fn dispatch_api_command(
             events::list_events(&runtime, &args, format).await
         }
         CliCommand::Extensions(ExtensionsCommand::List(args)) => {
-            extensions::list_extensions(&runtime, args.format.format, args.limit).await
+            extensions::list_extensions(&runtime, args.format).await
         }
         CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
             extensions::publish_extension(&runtime, &args).await
@@ -1468,7 +1497,7 @@ async fn dispatch_api_command(
             pending_imports::list_pending_imports(&runtime, &args, format).await
         }
         CliCommand::Projects(ProjectsCommand::List(args)) => {
-            projects::list_projects(&runtime, args.format.format, args.limit).await
+            projects::list_projects(&runtime, args.format).await
         }
         CliCommand::Recordings(RecordingsCommand::Delete(args)) => {
             recordings::delete_recording(&runtime, &args).await

@@ -192,13 +192,14 @@ pub(crate) async fn fetch_list<T, Q>(
     prefix: &str,
     endpoint: &str,
     query: &Q,
+    limit: i64,
 ) -> Outcome
 where
     T: Record + DeserializeOwned,
     Q: Serialize + ?Sized,
 {
     match runtime.client.get::<_, Vec<T>>(endpoint, query).await {
-        Ok(records) => format_output(&records, format),
+        Ok(records) => warn_if_truncated(format_output(&records, format), records.len(), limit),
         Err(error) => Outcome::failure(format!("{prefix}: {error}\n")),
     }
 }
@@ -220,6 +221,15 @@ impl ProjectFallback for Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_full_page_warns_how_to_continue() {
+        let outcome = warn_if_truncated(Outcome::success([]), 50, 50);
+        assert_eq!(
+            outcome.stderr,
+            b"Showing the first 50 results. More may exist; use --offset to page through them.\n"
+        );
+    }
 
     #[test]
     fn timestamps_preserve_accepted_iso8601_forms_and_fractional_seconds() {

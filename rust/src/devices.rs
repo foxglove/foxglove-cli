@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 use crate::api::encode_path_segment;
 use crate::cli::{DeviceEditArgs, DeviceListArgs, DeviceWriteArgs};
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, ProjectFallback, Record, DEFAULT_LIST_LIMIT};
+use crate::records::{
+    compact_json, fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -53,6 +55,8 @@ impl Record for Device {
 #[serde(rename_all = "camelCase")]
 struct DeviceListQuery {
     limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
 }
@@ -71,6 +75,7 @@ pub(crate) async fn list_devices(
 ) -> Outcome {
     let query = DeviceListQuery {
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     fetch_list::<Device, _>(
@@ -79,6 +84,7 @@ pub(crate) async fn list_devices(
         "Failed to list devices",
         "/v1/devices",
         &query,
+        query.limit,
     )
     .await
 }

@@ -17,9 +17,10 @@ use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
 use crate::api::{encode_path_segment, ApiError, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
 use crate::export::{resumable_download, CompletionCheck, ExportProgress};
-use crate::records::DEFAULT_LIST_LIMIT;
 use crate::runtime::Runtime;
 use crate::Outcome;
+
+const DOWNLOAD_PAGE_SIZE: i64 = 2000;
 
 const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
@@ -202,7 +203,7 @@ async fn fetch_all_episodes(
     let mut episodes = Vec::new();
     loop {
         let query = [
-            ("limit".to_owned(), DEFAULT_LIST_LIMIT.to_string()),
+            ("limit".to_owned(), DOWNLOAD_PAGE_SIZE.to_string()),
             ("offset".to_owned(), episodes.len().to_string()),
             ("sortBy".to_owned(), "startTime".to_owned()),
             ("sortOrder".to_owned(), "asc".to_owned()),
@@ -219,7 +220,7 @@ async fn fetch_all_episodes(
             .await?;
         let received = page.episodes.len();
         episodes.extend(page.episodes);
-        if i64::try_from(received).is_ok_and(|received| received < DEFAULT_LIST_LIMIT) {
+        if i64::try_from(received).is_ok_and(|received| received < DOWNLOAD_PAGE_SIZE) {
             return Ok(episodes);
         }
     }

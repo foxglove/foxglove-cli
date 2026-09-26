@@ -605,7 +605,6 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
     let workspace = Workspace::new();
     let cases: &[(&str, &str, &[&str])] = &[
         ("/v1/recording-attachments", "[]", &["attachments", "list"]),
-        ("/v1/data/coverage", "[]", &["data", "coverage", "list"]),
         ("/v1/datasets", "[]", &["datasets", "list"]),
         (
             "/v1/datasets/ds_one/episodes",
@@ -619,15 +618,12 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         ),
         ("/v1/devices", "[]", &["devices", "list"]),
         ("/v1/episodes", r#"{"episodes":[]}"#, &["episodes", "list"]),
-        ("/v1/event-types", "[]", &["event-types", "list"]),
         ("/v1/events", "[]", &["events", "list"]),
-        ("/v1/extensions", "[]", &["extensions", "list"]),
         (
             "/v1/data/pending-imports",
             "[]",
             &["pending-imports", "list"],
         ),
-        ("/v1/projects", "[]", &["projects", "list"]),
         ("/v1/recordings", "[]", &["recordings", "list"]),
         ("/v1/sessions", "[]", &["sessions", "list"]),
         (
@@ -654,6 +650,25 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
                 "{command:?}"
             );
         }
+    }
+}
+
+#[test]
+fn list_limits_must_be_between_one_and_two_thousand() {
+    for limit in ["0", "2001", "-1", "not-a-number"] {
+        let output = Process::spawn(Workspace::new().command("http://127.0.0.1:1").args([
+            "recordings",
+            "list",
+            "--limit",
+            limit,
+        ]))
+        .finish();
+        assert!(!output.status.success(), "--limit {limit}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("must be an integer between 1 and 2000"),
+            "--limit {limit}"
+        );
     }
 }
 
@@ -806,7 +821,6 @@ fn a_full_page_reports_that_more_results_may_exist() {
             "Showing the first 3 results. More may exist; use --offset to page through them.\n",
         ),
         (2, "3", ""),
-        (0, "0", ""),
     ] {
         let body = page(returned);
         let server = Server::new(vec![Reply {

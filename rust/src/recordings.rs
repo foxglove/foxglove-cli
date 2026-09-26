@@ -182,6 +182,7 @@ pub(crate) async fn list_recordings(
         "Failed to list recordings",
         "/v1/recordings",
         &query,
+        limit,
     )
     .await
 }

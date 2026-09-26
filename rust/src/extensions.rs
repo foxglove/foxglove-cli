@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::api::encode_path_segment;
 use crate::cli::{ExtensionIdArgs, FileArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, Record, DEFAULT_LIST_LIMIT};
+use crate::records::{fetch_list, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -51,17 +51,14 @@ impl Record for Extension {
     }
 }
 
-pub(crate) async fn list_extensions(
-    runtime: &Runtime,
-    format: Format,
-    limit: Option<i64>,
-) -> Outcome {
+pub(crate) async fn list_extensions(runtime: &Runtime, format: Format) -> Outcome {
     fetch_list::<Extension, _>(
         runtime,
         format,
         "Failed to list extensions",
         "/v1/extensions",
-        &[("limit", limit.unwrap_or(DEFAULT_LIST_LIMIT))],
+        &(),
+        0,
     )
     .await
 }

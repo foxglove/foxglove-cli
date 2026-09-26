@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::PendingImportListArgs;
 use crate::output::Format;
 use crate::records::{
-    fetch_list, is_false, null_to_default, parse_timestamp, ProjectFallback, Record,
+    fetch_list, is_false, is_zero, null_to_default, parse_timestamp, ProjectFallback, Record,
     DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
@@ -98,6 +98,8 @@ struct PendingImportListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     key: String,
     limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -145,6 +147,7 @@ pub(crate) async fn list_pending_imports(
         has_project_id: args.without_project.then_some(false),
         key: args.key.clone().unwrap_or_default(),
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
         project_id,
         request_id: args.request_id.clone().unwrap_or_default(),
         session_id: args.session_id.clone().unwrap_or_default(),
@@ -160,6 +163,7 @@ pub(crate) async fn list_pending_imports(
         "Failed to list pending imports",
         "/v1/data/pending-imports",
         &query,
+        query.limit,
     )
     .await
 }
