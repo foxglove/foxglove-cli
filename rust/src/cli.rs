@@ -18,6 +18,7 @@ use crate::{
 };
 
 const ROOT_COMMAND: &str = "foxglove";
+const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 
 /// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -141,7 +142,7 @@ pub(crate) struct AttachmentListArgs {
     format: FormatArgs,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -272,7 +273,7 @@ pub(crate) struct CoverageListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_edge_recordings: bool,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -330,7 +331,7 @@ pub(crate) struct ExportArgs {
         allow_hyphen_values = true
     )]
     pub(crate) output_format: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -888,6 +889,8 @@ enum EventsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct EventAddArgs {
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(
@@ -924,6 +927,8 @@ pub(crate) struct EventListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Result offset", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
     #[arg(long, help = "Property or metadata query", allow_hyphen_values = true)]
     pub(crate) query: Option<String>,
     #[arg(long, help = "Fields to query by", allow_hyphen_values = true, action = clap::ArgAction::Append)]
@@ -1349,6 +1354,47 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
     }
 }
 
+/// Keep this selector map in sync with handlers that call `or_project`.
+fn command_project_scope(
+    command: &CliCommand,
+    runtime: &runtime::Runtime,
+) -> Option<runtime::ProjectScope> {
+    let flag = match command {
+        CliCommand::Attachments(AttachmentsCommand::List(args)) => &args.project_id,
+        CliCommand::Coverage(CoverageCommand::List(args)) => &args.project_id,
+        CliCommand::Export(args) => &args.project_id,
+        CliCommand::Upload(args) => &args.project_id,
+        CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
+        CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
+        CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
+        CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
+        CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
+        CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
+            if args.without_project {
+                return Some(runtime.project_scope(Some("")));
+            }
+            &args.project_id
+        }
+        CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Get(args) | SessionsCommand::Delete(args)) => {
+            &args.project_id
+        }
+        CliCommand::Sessions(SessionsCommand::Recordings(SessionRecordingsCommand::List(args))) => {
+            &args.project_id
+        }
+        CliCommand::Sessions(SessionsCommand::Recordings(
+            SessionRecordingsCommand::Add(args) | SessionRecordingsCommand::Remove(args),
+        )) => &args.project_id,
+        CliCommand::Topics(TopicsCommand::List(args)) => &args.project_id,
+        _ => return None,
+    };
+    Some(runtime.project_scope(flag.as_deref()))
+}
+
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
@@ -1360,6 +1406,20 @@ async fn dispatch_api_command(
         Ok(runtime) => runtime,
         Err(error) => return Outcome::failure(error),
     };
+    if debug {
+        if let Some(scope) = command_project_scope(&command, &runtime) {
+            let id = if scope.id.is_empty() {
+                "unscoped"
+            } else {
+                &scope.id
+            };
+            let _ = writeln!(
+                std::io::stderr(),
+                "[DEBUG] Project scope: {id} (source: {})",
+                scope.source
+            );
+        }
+    }
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
             attachments::download_attachment(&runtime, &args, writer).await
@@ -1374,7 +1434,9 @@ async fn dispatch_api_command(
             coverage::list(&runtime, &args, format).await
         }
         CliCommand::Export(args) => {
-            let diagnostic = debug.then(|| export::export_debug_request(&args)).flatten();
+            let diagnostic = debug
+                .then(|| export::export_debug_request(&runtime, &args))
+                .flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }

@@ -19,12 +19,20 @@ pub(crate) fn user_agent() -> String {
 pub(crate) struct Runtime {
     pub(crate) client: FoxgloveClient,
     pub(crate) project_id: String,
+    project_source: &'static str,
     pub(crate) config: Config,
 }
 
 pub(crate) fn load(config_path: Option<&Path>, client_id: Option<&str>) -> Result<Runtime, String> {
     let config = Config::load_from_path(config_path)?;
     let project_id = config.get_string("default_project_id").unwrap_or_default();
+    let project_source = if project_id.is_empty() {
+        "unscoped"
+    } else if config.is_env_set("default_project_id") {
+        "environment"
+    } else {
+        "config"
+    };
     let base_url = config
         .get_string("base_url")
         .filter(|value| !value.is_empty())
@@ -40,6 +48,27 @@ pub(crate) fn load(config_path: Option<&Path>, client_id: Option<&str>) -> Resul
     Ok(Runtime {
         client,
         project_id,
+        project_source,
         config,
     })
+}
+
+pub(crate) struct ProjectScope {
+    pub(crate) id: String,
+    pub(crate) source: &'static str,
+}
+
+impl Runtime {
+    pub(crate) fn project_scope(&self, explicit: Option<&str>) -> ProjectScope {
+        if let Some(id) = explicit {
+            return ProjectScope {
+                id: id.to_owned(),
+                source: "flag",
+            };
+        }
+        ProjectScope {
+            id: self.project_id.clone(),
+            source: self.project_source,
+        }
+    }
 }

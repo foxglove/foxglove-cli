@@ -62,6 +62,16 @@ func rustCommandSurfaceExpected(snapshot commandSnapshot) commandSnapshot {
 	return snapshot
 }
 
+func withoutProjectDefaultFlag(flags []string) []string {
+	result := make([]string, 0, len(flags))
+	for _, flag := range flags {
+		if flag != "--project-id" {
+			result = append(result, flag)
+		}
+	}
+	return result
+}
+
 var (
 	oracleBinary   string
 	rustBinary     string
@@ -130,6 +140,7 @@ func assertCompatible(t *testing.T, expected, actual commandSnapshot) {
 // Translate historical oracle invocations only in the harness. The public CLI
 // rejects the old paths.
 func rustCommandArgs(args []string) []string {
+	result := args
 	for index := 0; index+1 < len(args); index++ {
 		if args[index] != "data" {
 			continue
@@ -137,7 +148,8 @@ func rustCommandArgs(args []string) []string {
 		result := append([]string(nil), args[:index]...)
 		switch args[index+1] {
 		case "export", "coverage":
-			return append(result, args[index+1:]...)
+			result = append(result, args[index+1:]...)
+			return legacyUnscopedProjectArgs(result)
 		case "import":
 			for flag := index + 2; flag+1 < len(args); flag++ {
 				if args[flag] == "--edge-recording-id" {
@@ -147,6 +159,35 @@ func rustCommandArgs(args []string) []string {
 			result = append(result, "upload")
 			return append(result, args[index+2:]...)
 		}
+	}
+	return legacyUnscopedProjectArgs(result)
+}
+
+// Keep Go oracle cases unscoped only for commands whose v2 behavior changed.
+// Token matching avoids interpreting arbitrary flag values as command names.
+func legacyUnscopedProjectArgs(args []string) []string {
+	command := args
+	for len(command) > 0 {
+		switch {
+		case command[0] == "--debug", strings.HasPrefix(command[0], "--debug="), strings.HasPrefix(command[0], "--config="), strings.HasPrefix(command[0], "--client-id="):
+			command = command[1:]
+		case (command[0] == "--config" || command[0] == "--client-id") && len(command) > 1:
+			command = command[2:]
+		default:
+			goto foundCommand
+		}
+	}
+foundCommand:
+	changed := len(command) >= 1 && command[0] == "export" ||
+		len(command) >= 2 && ((command[0] == "attachments" && command[1] == "list") ||
+			(command[0] == "events" && (command[1] == "list" || command[1] == "add")))
+	if changed {
+		for _, arg := range args {
+			if arg == "--project-id" || strings.HasPrefix(arg, "--project-id=") {
+				return args
+			}
+		}
+		return append(args, "--project-id=")
 	}
 	return args
 }
@@ -663,7 +704,11 @@ func TestRustPhase1OfflineContract(t *testing.T) {
 			if actual.ExitCode != 0 || actual.Stderr != "" || actual.Stdout == "" || !strings.Contains(actual.Stdout, "Usage:") {
 				t.Fatalf("Rust command help is unavailable\n--- actual\n%+v", actual)
 			}
-			if goFlags, rustFlags := helpFlags(expected.Stdout), helpFlags(actual.Stdout); !reflect.DeepEqual(goFlags, rustFlags) {
+			goFlags, rustFlags := helpFlags(expected.Stdout), helpFlags(actual.Stdout)
+			if id == "events-add" || id == "events-list" {
+				rustFlags = withoutProjectDefaultFlag(rustFlags)
+			}
+			if !reflect.DeepEqual(goFlags, rustFlags) {
 				t.Fatalf("Rust command flags differ\n--- Go\n%v\n--- Rust\n%v", goFlags, rustFlags)
 			}
 		})

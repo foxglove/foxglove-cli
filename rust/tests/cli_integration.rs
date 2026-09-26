@@ -2098,3 +2098,84 @@ fn dataset_and_episode_writes_are_validated_before_sending_a_request() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
+    let workspace = Workspace::new();
+    for (args, method, path, in_body) in [
+        (
+            vec!["export", "--recording-id", "rec_one"],
+            "POST",
+            "/v1/data/stream",
+            true,
+        ),
+        (
+            vec!["attachments", "list"],
+            "GET",
+            "/v1/recording-attachments",
+            false,
+        ),
+        (vec!["events", "list"], "GET", "/v1/events", false),
+        (
+            vec![
+                "events",
+                "add",
+                "--device-id",
+                "dev_one",
+                "--start",
+                "2024-01-01T00:00:00Z",
+                "--end",
+                "2024-01-01T00:00:01Z",
+            ],
+            "POST",
+            "/v1/events",
+            true,
+        ),
+    ] {
+        for (flag, expected) in [
+            (Vec::new(), Some("prj_default")),
+            (vec!["--project-id="], None),
+        ] {
+            let server = Server::new(vec![Reply {
+                status: 404,
+                ..Reply::json(method, path, r#"{"message":"not found"}"#)
+            }]);
+            let mut command = workspace.command(&server.url);
+            command
+                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .args(&args)
+                .args(&flag);
+            let output = Process::spawn(&mut command).finish();
+            assert!(!output.status.success());
+            let request = &server.finish()[0];
+            let project = if in_body {
+                serde_json::from_str::<serde_json::Value>(request.split_once("\r\n\r\n").unwrap().1)
+                    .unwrap()["projectId"]
+                    .as_str()
+                    .map(str::to_owned)
+            } else {
+                query_pairs(request).get("projectId").cloned()
+            };
+            assert_eq!(project.as_deref(), expected, "{args:?}, {flag:?}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn unassigned_pending_imports_omit_project_defaults() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["pending-imports", "list", "--without-project"]),
+    )
+    .finish();
+    assert_success(&output);
+    let query = query_pairs(&server.finish()[0]);
+    assert_eq!(query.get("hasProjectId").map(String::as_str), Some("false"));
+    assert!(!query.contains_key("projectId"));
+}

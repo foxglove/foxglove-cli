@@ -1,6 +1,14 @@
 {
   "baseline": "v1.0.33",
   "deltas": {
+    "consistent-project-defaults": {
+      "reason": "Export, attachment listing, and events honor project defaults like other scoped commands. Pending imports --without-project suppresses defaults and rejects contradictory explicit project/session-key filters.",
+      "invariants": [
+        "Explicit project flags override environment and saved defaults; explicit empty flags bypass defaults.",
+        "Session keys require a resolved project, scoped failures do not trigger unscoped retries, and defaults never move resources.",
+        "Go comparison cases use explicit empty project flags for formerly unscoped operations; Rust tests independently cover the new defaults."
+      ]
+    },
     "literal-api-path-segments": {
       "reason": "Treat user-provided API identifiers as literal path segments, including slashes and percent signs, rather than URL syntax. Go's URL joining can interpret these as separators or existing escapes. Reject empty identifiers and the standalone dot segments . and .. rather than silently addressing a different resource.",
       "invariants": [
