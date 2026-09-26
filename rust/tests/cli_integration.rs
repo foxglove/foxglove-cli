@@ -310,7 +310,7 @@ fn recovery_preserves_messages_and_schemaless_channels() {
     assert_eq!(server.finish().len(), 4);
 }
 
-#[cfg(all(unix, feature = "compat-test"))]
+#[cfg(unix)]
 #[test]
 #[ignore = "requires loopback sockets and Unix signal delivery"]
 fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {

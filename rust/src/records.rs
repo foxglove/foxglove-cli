@@ -42,7 +42,7 @@ pub(crate) const fn is_false(value: &bool) -> bool {
     !*value
 }
 
-/// Parse the ISO 8601 forms accepted by the Go CLI, preserving nanoseconds.
+/// Parse accepted ISO 8601 forms while preserving nanoseconds.
 /// Missing time components and timezones default to midnight and UTC.
 pub(crate) fn parse_timestamp_value(
     raw: &str,
@@ -84,7 +84,7 @@ fn parse_iso8601(raw: &str) -> Result<OffsetDateTime, String> {
         (clock, "Z".to_owned())
     } else if let Some(index) = clock.find(['+', '-']) {
         let (clock, zone) = clock.split_at(index);
-        // Go accepts offsets written as +HH, +HHMM, or +HH:MM.
+        // Accept offsets written as +HH, +HHMM, or +HH:MM.
         let zone = match zone.len() {
             3 => format!("{zone}:00"),
             5 if zone.is_ascii() => format!("{}:{}", &zone[..3], &zone[3..]),
@@ -103,7 +103,7 @@ fn parse_iso8601(raw: &str) -> Result<OffsetDateTime, String> {
             _ => clock.to_owned(),
         }
     };
-    // The Go parser also accepts unpadded clock components.
+    // Accept unpadded clock components.
     let clock = clock
         .split(':')
         .map(|component| {
@@ -221,7 +221,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn timestamps_preserve_go_iso8601_forms_and_fractional_seconds() {
+    fn timestamps_preserve_accepted_iso8601_forms_and_fractional_seconds() {
         for (input, expected) in [
             ("", ""),
             ("2026-09-14", "2026-09-14T00:00:00Z"),

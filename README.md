@@ -135,7 +135,6 @@ If you've output a file, inspect its contents:
 ```
 # MCAP file
 $ mcap info output.mcap
-    library: mcap go #(devel); fg-data-platform-db07abe7
     profile: ros1
     messages: 6728
     duration: 5m39.304931438s
@@ -318,8 +317,7 @@ To enable this, consult your shell instructions under `$ foxglove completion <sh
 
 ## Development
 
-See the [Rust development guide](rust/README.md) for building, testing, and
-working with the Go compatibility oracle.
+See the [Rust development guide](rust/README.md) for building and testing.
 
 ## Stay in touch
 
