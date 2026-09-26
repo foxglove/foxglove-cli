@@ -1,7 +1,7 @@
 //! Shared response records, query parsing, and list rendering.
 
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::{Date, OffsetDateTime};
@@ -146,7 +146,60 @@ pub(crate) fn warn_if_truncated(mut outcome: Outcome, count: usize, limit: i64) 
     outcome
 }
 
+pub(crate) fn warn_if_has_next_cursor(mut outcome: Outcome, next_cursor: Option<&str>) -> Outcome {
+    if outcome.exit_code == 0 {
+        if let Some(cursor) = next_cursor.filter(|cursor| !cursor.is_empty()) {
+            outcome.stderr.extend_from_slice(
+                format!(
+                    "More results exist; rerun with --cursor {cursor} to fetch the next page.\n"
+                )
+                .as_bytes(),
+            );
+        }
+    }
+    outcome
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListOutput<'a, T> {
+    data: &'a [T],
+    #[serde(skip_serializing_if = "NextCursor::is_not_paginated")]
+    next_cursor: NextCursor<'a>,
+}
+
+pub(crate) enum NextCursor<'a> {
+    NotPaginated,
+    Page(Option<&'a str>),
+}
+
+impl NextCursor<'_> {
+    fn is_not_paginated(&self) -> bool {
+        matches!(self, Self::NotPaginated)
+    }
+}
+
+impl Serialize for NextCursor<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::NotPaginated => serializer.serialize_unit(),
+            Self::Page(cursor) => cursor.serialize(serializer),
+        }
+    }
+}
+
 pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome {
+    format_list_output(records, format, NextCursor::NotPaginated)
+}
+
+pub(crate) fn format_list_output<T: Record>(
+    records: &[T],
+    format: Format,
+    next_cursor: NextCursor<'_>,
+) -> Outcome {
     let mut stdout = Vec::new();
     let result = match format {
         Format::Table => output::render_table(
@@ -154,7 +207,13 @@ pub(crate) fn format_output<T: Record>(records: &[T], format: Format) -> Outcome
             T::headers(),
             &records.iter().map(Record::fields).collect::<Vec<_>>(),
         ),
-        Format::Json => output::render_json(&mut stdout, records),
+        Format::Json => output::render_json(
+            &mut stdout,
+            &ListOutput {
+                data: records,
+                next_cursor,
+            },
+        ),
         Format::Csv => output::render_csv(
             &mut stdout,
             T::headers(),
@@ -221,6 +280,53 @@ impl ProjectFallback for Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Serialize)]
+    struct TestRecord {
+        id: &'static str,
+    }
+
+    impl Record for TestRecord {
+        fn headers() -> &'static [&'static str] {
+            &["ID"]
+        }
+
+        fn fields(&self) -> Vec<String> {
+            vec![self.id.to_owned()]
+        }
+    }
+
+    #[test]
+    fn json_lists_are_enveloped_with_a_cursor() {
+        let outcome = format_list_output(
+            &[TestRecord { id: "one" }],
+            Format::Json,
+            NextCursor::Page(Some("next_page")),
+        );
+        assert_eq!(
+            outcome.stdout,
+            b"{\"data\":[{\"id\":\"one\"}],\"nextCursor\":\"next_page\"}\n"
+        );
+    }
+
+    #[test]
+    fn json_lists_without_pagination_omit_the_cursor() {
+        let outcome = format_output(&[TestRecord { id: "one" }], Format::Json);
+        assert_eq!(outcome.stdout, b"{\"data\":[{\"id\":\"one\"}]}\n");
+    }
+
+    #[test]
+    fn final_paginated_json_list_has_a_null_cursor() {
+        let outcome = format_list_output(
+            &[TestRecord { id: "one" }],
+            Format::Json,
+            NextCursor::Page(None),
+        );
+        assert_eq!(
+            outcome.stdout,
+            b"{\"data\":[{\"id\":\"one\"}],\"nextCursor\":null}\n"
+        );
+    }
 
     #[test]
     fn a_full_page_warns_how_to_continue() {

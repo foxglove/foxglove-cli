@@ -7,8 +7,8 @@ use crate::api::encode_path_segment;
 use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_output, format_record, is_zero, parse_timestamp, parse_timestamp_millis,
-    warn_if_truncated, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
+    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -99,7 +99,9 @@ pub(crate) struct EpisodeListResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct EpisodeListQuery {
+struct EpisodeListQuery<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -107,8 +109,6 @@ struct EpisodeListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
     limit: i64,
-    #[serde(skip_serializing_if = "is_zero")]
-    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -152,11 +152,11 @@ pub(crate) async fn list_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
+        cursor: args.cursor.as_deref(),
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
-        offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
@@ -165,13 +165,17 @@ pub(crate) async fn list_episodes(
     };
     match runtime
         .client
-        .get::<_, EpisodeListResponse>("/v1/episodes", &query)
+        .get_page::<_, EpisodeListResponse>("/v1/episodes", &query)
         .await
     {
-        Ok(response) => {
-            let count = response.episodes.len();
-            warn_if_truncated(format_output(&response.episodes, format), count, limit)
-        }
+        Ok(page) => warn_if_has_next_cursor(
+            format_list_output(
+                &page.data.episodes,
+                format,
+                NextCursor::Page(page.next_cursor.as_deref()),
+            ),
+            page.next_cursor.as_deref(),
+        ),
         Err(error) => Outcome::failure(format!("Failed to list episodes: {error}\n")),
     }
 }

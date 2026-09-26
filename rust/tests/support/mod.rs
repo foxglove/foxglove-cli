@@ -93,6 +93,7 @@ pub struct Reply {
     pub path: &'static str,
     pub status: u16,
     pub body: Vec<u8>,
+    pub headers: Vec<(&'static str, &'static str)>,
     pub stall: bool,
 }
 
@@ -103,8 +104,14 @@ impl Reply {
             path,
             status: 200,
             body: body.as_bytes().to_vec(),
+            headers: Vec::new(),
             stall: false,
         }
+    }
+
+    pub fn with_header(mut self, name: &'static str, value: &'static str) -> Self {
+        self.headers.push((name, value));
+        self
     }
 }
 
@@ -142,7 +149,11 @@ impl Server {
                 } else {
                     body.len()
                 };
-                write!(stream, "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n", reply.status).unwrap();
+                write!(stream, "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {length}\r\n", reply.status).unwrap();
+                for (name, value) in reply.headers {
+                    write!(stream, "{name}: {value}\r\n").unwrap();
+                }
+                write!(stream, "Connection: close\r\n\r\n").unwrap();
                 stream.write_all(&body).unwrap();
                 stream.flush().unwrap();
                 sender.send(request).unwrap();

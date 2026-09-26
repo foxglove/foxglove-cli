@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::versions::{DatasetVersion, DatasetVersionListResponse};
 use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
-use crate::api::{encode_path_segment, ApiError, StreamRequest};
+use crate::api::{encode_path_segment, ApiError, PagedResponse, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
 use crate::export::{resumable_download, CompletionCheck, ExportProgress};
 use crate::runtime::Runtime;
@@ -201,16 +201,19 @@ async fn fetch_all_episodes(
     version_number: i64,
 ) -> Result<Vec<DatasetEpisode>, ApiError> {
     let mut episodes = Vec::new();
+    let mut cursor: Option<String> = None;
     loop {
-        let query = [
+        let mut query = vec![
             ("limit".to_owned(), DOWNLOAD_PAGE_SIZE.to_string()),
-            ("offset".to_owned(), episodes.len().to_string()),
             ("sortBy".to_owned(), "startTime".to_owned()),
             ("sortOrder".to_owned(), "asc".to_owned()),
         ];
-        let page: DatasetEpisodeListResponse = runtime
+        if let Some(next) = cursor.as_deref() {
+            query.push(("cursor".to_owned(), next.to_owned()));
+        }
+        let page: PagedResponse<DatasetEpisodeListResponse> = runtime
             .client
-            .get(
+            .get_page(
                 &format!(
                     "/v1/datasets/{}/versions/{version_number}/episodes",
                     encode_path_segment(id)
@@ -218,10 +221,10 @@ async fn fetch_all_episodes(
                 &query,
             )
             .await?;
-        let received = page.episodes.len();
-        episodes.extend(page.episodes);
-        if i64::try_from(received).is_ok_and(|received| received < DOWNLOAD_PAGE_SIZE) {
-            return Ok(episodes);
+        episodes.extend(page.data.episodes);
+        match page.next_cursor {
+            Some(next) if !next.is_empty() => cursor = Some(next),
+            _ => return Ok(episodes),
         }
     }
 }

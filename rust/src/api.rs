@@ -293,6 +293,13 @@ pub struct UploadResponse {
     pub link: String,
 }
 
+/// A decoded collection response together with its opaque pagination cursors.
+#[derive(Debug)]
+pub struct PagedResponse<T> {
+    pub data: T,
+    pub next_cursor: Option<String>,
+}
+
 /// Metadata needed by the upload redirect request.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -573,6 +580,30 @@ impl FoxgloveClient {
     {
         self.get_with_cancellation(endpoint, query, &CancellationToken::new())
             .await
+    }
+
+    /// Execute an authenticated GET and retain its pagination cursors.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn get_page<Q, T>(
+        &self,
+        endpoint: &str,
+        query: &Q,
+    ) -> Result<PagedResponse<T>, ApiError>
+    where
+        Q: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let request = self
+            .request_with_auth(Method::GET, endpoint, true)?
+            .query(query);
+        let response =
+            ensure_success_response(request.send().await.map_err(ApiError::Transport)?).await?;
+        let next_cursor = pagination_cursor(&response, "fg-pagination-next-cursor");
+        let data = response.json::<T>().await.map_err(ApiError::Decode)?;
+        Ok(PagedResponse { data, next_cursor })
     }
 
     /// Execute an authenticated GET with cancellation support.
@@ -1170,6 +1201,15 @@ async fn ensure_success_response(response: Response) -> Result<Response, ApiErro
     } else {
         Err(error_from_response(response).await)
     }
+}
+
+fn pagination_cursor(response: &Response, name: &str) -> Option<String> {
+    response
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 async fn ensure_ok_response(response: Response) -> Result<Response, ApiError> {

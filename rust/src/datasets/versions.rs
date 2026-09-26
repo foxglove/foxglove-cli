@@ -13,8 +13,8 @@ use crate::cli::{
 use crate::episodes::include_recordings;
 use crate::output::Format;
 use crate::records::{
-    format_output, format_record, is_false, is_zero, plural, warn_if_truncated, EmptyRequest,
-    Record, DEFAULT_LIST_LIMIT,
+    format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
+    NextCursor, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -150,10 +150,10 @@ struct DatasetChangesetResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct VersionListQuery {
+struct VersionListQuery<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cursor: Option<&'a str>,
     limit: i64,
-    #[serde(skip_serializing_if = "is_zero")]
-    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     sort_order: String,
 }
@@ -209,22 +209,25 @@ pub(crate) async fn list_versions(
 ) -> Outcome {
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = VersionListQuery {
+        cursor: args.cursor.as_deref(),
         limit,
-        offset: args.offset.unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
     };
     match runtime
         .client
-        .get::<_, DatasetVersionListResponse>(
+        .get_page::<_, DatasetVersionListResponse>(
             &format!("{}/versions", dataset_endpoint(&args.dataset_id)),
             &query,
         )
         .await
     {
-        Ok(response) => warn_if_truncated(
-            format_output(&response.versions, format),
-            response.versions.len(),
-            limit,
+        Ok(page) => warn_if_has_next_cursor(
+            format_list_output(
+                &page.data.versions,
+                format,
+                NextCursor::Page(page.next_cursor.as_deref()),
+            ),
+            page.next_cursor.as_deref(),
         ),
         Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to list dataset versions: {error}\n")),
@@ -233,8 +236,8 @@ pub(crate) async fn list_versions(
 
 pub(super) async fn draft_version(runtime: &Runtime, dataset_id: &str) -> Result<i64, Outcome> {
     let query = VersionListQuery {
+        cursor: None,
         limit: 1,
-        offset: 0,
         sort_order: "desc".to_owned(),
     };
     match runtime
@@ -313,7 +316,11 @@ pub(crate) async fn compare_versions(
             return Outcome::failure(format!("Failed to compare dataset versions: {error}\n"))
         }
     };
-    let mut outcome = format_output(&page.changes, format);
+    let mut outcome = format_list_output(
+        &page.changes,
+        format,
+        NextCursor::Page(page.next_cursor.as_deref()),
+    );
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(

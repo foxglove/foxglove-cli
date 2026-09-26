@@ -22,8 +22,8 @@ use crate::cli::{
 use crate::episodes::{include_recordings, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_output, format_record, is_zero, null_to_default, plural,
-    warn_if_truncated, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_list_output, format_record, null_to_default, plural,
+    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -123,10 +123,10 @@ struct DatasetEpisodeListResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DatasetListQuery {
+struct DatasetListQuery<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cursor: Option<&'a str>,
     limit: i64,
-    #[serde(skip_serializing_if = "is_zero")]
-    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -137,7 +137,9 @@ struct DatasetListQuery {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DatasetEpisodeListQuery {
+struct DatasetEpisodeListQuery<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -145,8 +147,6 @@ struct DatasetEpisodeListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
     limit: i64,
-    #[serde(skip_serializing_if = "is_zero")]
-    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -164,18 +164,25 @@ pub(crate) async fn list_datasets(
 ) -> Outcome {
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetListQuery {
+        cursor: args.cursor.as_deref(),
         limit,
-        offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
     };
     match runtime
         .client
-        .get::<_, Vec<Dataset>>("/v1/datasets", &query)
+        .get_page::<_, Vec<Dataset>>("/v1/datasets", &query)
         .await
     {
-        Ok(datasets) => warn_if_truncated(format_output(&datasets, format), datasets.len(), limit),
+        Ok(page) => warn_if_has_next_cursor(
+            format_list_output(
+                &page.data,
+                format,
+                NextCursor::Page(page.next_cursor.as_deref()),
+            ),
+            page.next_cursor.as_deref(),
+        ),
         Err(error) => Outcome::failure(format!("Failed to list datasets: {error}\n")),
     }
 }
@@ -191,11 +198,11 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
+        cursor: args.cursor.as_deref(),
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
-        offset: args.offset.unwrap_or_default(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
@@ -220,13 +227,17 @@ pub(crate) async fn list_dataset_episodes(
     };
     match runtime
         .client
-        .get::<_, DatasetEpisodeListResponse>(&endpoint, &query)
+        .get_page::<_, DatasetEpisodeListResponse>(&endpoint, &query)
         .await
     {
-        Ok(response) => {
-            let count = response.episodes.len();
-            warn_if_truncated(format_output(&response.episodes, format), count, limit)
-        }
+        Ok(page) => warn_if_has_next_cursor(
+            format_list_output(
+                &page.data.episodes,
+                format,
+                NextCursor::Page(page.next_cursor.as_deref()),
+            ),
+            page.next_cursor.as_deref(),
+        ),
         Err(error) if error.is_not_found() => match version {
             Some(version) => version_not_found(&args.dataset_id, version),
             None => dataset_not_found(&args.dataset_id),

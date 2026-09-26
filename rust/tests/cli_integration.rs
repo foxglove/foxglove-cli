@@ -143,7 +143,7 @@ fn repeated_event_query_fields_reach_the_api() {
         }
         let output = Process::spawn(&mut command).finish();
         assert_success(&output);
-        assert_eq!(output.stdout, b"[]\n");
+        assert_eq!(output.stdout, b"{\"data\":[]}\n");
         let requests = server.finish();
         let target = requests[0].split_whitespace().nth(1).unwrap();
         let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
@@ -685,8 +685,8 @@ fn dataset_list_filters_reach_the_api() {
         "prj_explicit",
         "--limit",
         "10",
-        "--offset",
-        "5",
+        "--cursor",
+        "next_page",
         "--sort-by",
         "name",
         "--sort-order",
@@ -705,7 +705,7 @@ fn dataset_list_filters_reach_the_api() {
         query_pairs(&server.finish()[0]),
         expected_pairs(&[
             ("limit", "10"),
-            ("offset", "5"),
+            ("cursor", "next_page"),
             ("projectId", "prj_explicit"),
             ("sortBy", "name"),
             ("sortOrder", "desc"),
@@ -733,8 +733,8 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         "--include-recordings",
         "--limit",
         "10",
-        "--offset",
-        "5",
+        "--cursor",
+        "next_page",
         "--sort-by",
         "startTime",
         "--sort-order",
@@ -755,7 +755,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
             ("end", "2024-01-03T00:00:00Z"),
             ("include", "recordings"),
             ("limit", "10"),
-            ("offset", "5"),
+            ("cursor", "next_page"),
             ("projectId", "prj_explicit"),
             ("recordingId", "rec_one"),
             ("sortBy", "startTime"),
@@ -818,15 +818,16 @@ fn a_full_page_reports_that_more_results_may_exist() {
         (
             3,
             "3",
-            "Showing the first 3 results. More may exist; use --offset to page through them.\n",
+            "More results exist; rerun with --cursor next_page to fetch the next page.\n",
         ),
         (2, "3", ""),
     ] {
         let body = page(returned);
-        let server = Server::new(vec![Reply {
-            body: body.into_bytes(),
-            ..Reply::json("GET", "/v1/episodes", "")
-        }]);
+        let mut reply = Reply::json("GET", "/v1/episodes", &body);
+        if returned == 3 {
+            reply = reply.with_header("fg-pagination-next-cursor", "next_page");
+        }
+        let server = Server::new(vec![reply]);
         let output = Process::spawn(
             workspace
                 .command(&server.url)
@@ -987,6 +988,54 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
     let output = download_dataset(&workspace, &server, &["--strict"]);
     server.finish();
     assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn downloading_a_dataset_version_follows_the_next_cursor() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", false)]);
+    replies[2] = Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions/4/episodes",
+        &format!(r#"{{"episodes":[{}]}}"#, dataset_episode("ep_one", false)),
+    )
+    .with_header("fg-pagination-next-cursor", "page_two");
+    replies.push(Reply::json(
+        "GET",
+        "/v1/datasets/ds_one/versions/4/episodes",
+        &format!(r#"{{"episodes":[{}]}}"#, dataset_episode("ep_two", false)),
+    ));
+    replies.extend(export_replies(episode_mcap()));
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[2]),
+        expected_pairs(&[
+            ("limit", "2000"),
+            ("sortBy", "startTime"),
+            ("sortOrder", "asc"),
+        ])
+    );
+    assert_eq!(
+        query_pairs(&requests[3]),
+        expected_pairs(&[
+            ("cursor", "page_two"),
+            ("limit", "2000"),
+            ("sortBy", "startTime"),
+            ("sortOrder", "asc"),
+        ])
+    );
+    assert_eq!(
+        download_manifest(&workspace)["episodes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
 }
 
 #[test]
@@ -1582,8 +1631,9 @@ fn a_version_and_the_missing_recordings_filter_reach_the_dataset_episode_list() 
             expected_pairs(&[("hasMissingRecordings", value), ("limit", "50")])
         );
         let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(episodes["nextCursor"].is_null(), "{flag}");
         assert_eq!(
-            episodes[0]["hasMissingRecordings"],
+            episodes["data"][0]["hasMissingRecordings"],
             value == "true",
             "{flag}"
         );
@@ -1627,7 +1677,7 @@ fn the_draft_version_is_looked_up_before_listing_its_episodes() {
         expected_pairs(&[("limit", "1"), ("sortOrder", "desc")])
     );
     let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(episodes[0]["episode"]["id"], "ep_one");
+    assert_eq!(episodes["data"][0]["episode"]["id"], "ep_one");
 }
 
 #[test]
@@ -1731,7 +1781,10 @@ fn the_episode_list_sends_the_missing_recordings_filter_and_passes_the_field_thr
             "{flags:?}"
         );
         let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(episodes[0]["hasMissingRecordings"], expected, "{flags:?}");
+        assert_eq!(
+            episodes["data"][0]["hasMissingRecordings"], expected,
+            "{flags:?}"
+        );
     }
 }
 
@@ -1756,8 +1809,8 @@ fn versions_are_listed_with_the_draft_marked() {
             "asc",
             "--limit",
             "2",
-            "--offset",
-            "1",
+            "--cursor",
+            "next_page",
             "--format",
             "csv",
         ],
@@ -1765,12 +1818,13 @@ fn versions_are_listed_with_the_draft_marked() {
     assert_success(&output);
     assert_eq!(
         query_pairs(&server.finish()[0]),
-        expected_pairs(&[("limit", "2"), ("offset", "1"), ("sortOrder", "asc")])
+        expected_pairs(&[
+            ("cursor", "next_page"),
+            ("limit", "2"),
+            ("sortOrder", "asc")
+        ])
     );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stderr),
-        "Showing the first 2 results. More may exist; use --offset to page through them.\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "Version,Status,Committed At,Episode Count,Added,Removed,Created At\n\

@@ -548,12 +548,8 @@ pub(crate) struct DatasetVersionListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(
         long,
         help = "Sort order by version number: asc or desc (default: desc)",
@@ -636,12 +632,8 @@ pub(crate) struct DatasetListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(long, help = "Filter datasets by project", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
@@ -696,12 +688,8 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(
         long,
         help = "Filter to episodes containing this recording display ID",
@@ -880,12 +868,8 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(long, help = "Filter episodes by project", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
