@@ -1133,6 +1133,62 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
     }
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn fractional_timestamp_query_parameters_are_preserved() {
+    let workspace = Workspace::new();
+    let timestamp = "2024-01-02T03:04:05.123456789+05:45";
+    for (args, endpoint, response, flags) in [
+        (
+            vec!["recordings", "list"],
+            "/v1/recordings",
+            "[]",
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["coverage", "list"],
+            "/v1/data/coverage",
+            "[]",
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["topics", "list", "--recording-id", "rec_one"],
+            "/v1/data/topics",
+            "[]",
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["episodes", "list"],
+            "/v1/episodes",
+            r#"{"episodes":[]}"#,
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["pending-imports", "list"],
+            "/v1/data/pending-imports",
+            "[]",
+            vec![("--updated-since", "updatedSince")],
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", endpoint, response)]);
+        let mut command = workspace.command(&server.url);
+        command.args(&args).args(["--format", "json"]);
+        for (flag, _) in &flags {
+            command.args([flag, timestamp]);
+        }
+        let output = Process::spawn(&mut command).finish();
+        assert_success(&output);
+        let query = query_pairs(&server.finish()[0]);
+        for (_, parameter) in &flags {
+            assert_eq!(
+                query.get(*parameter).map(String::as_str),
+                Some(timestamp),
+                "{args:?}: {parameter}"
+            );
+        }
+    }
+}
+
 fn json_body(request: &str) -> serde_json::Value {
     serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }

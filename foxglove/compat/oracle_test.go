@@ -992,8 +992,8 @@ func TestRustPhase6ExportErrorsAndOptions(t *testing.T) {
 			ID: "all-stream-options",
 			Args: []string{
 				"data", "export", "--device-id", "dev_fixture",
-				"--start", "2024-01-02T03:04:05.123456789Z",
-				"--end", "2024-01-02T04:05:06.987654321Z",
+				"--start", "2024-01-02T03:04:05Z",
+				"--end", "2024-01-02T04:05:06Z",
 				"--output-format", "mcap0", "--compression", "zstd",
 				"--include-attachments", "--topics", "/one,,/two",
 				"--replay-policy", "lastPerChannel", "--replay-lookback-seconds", "2.5",
