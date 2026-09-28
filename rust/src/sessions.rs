@@ -138,7 +138,7 @@ pub(crate) async fn list_sessions(
         "Failed to list sessions",
         "/v1/sessions",
         &query,
-        query.limit,
+        Some(query.limit),
     )
     .await
 }

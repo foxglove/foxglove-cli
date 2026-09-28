@@ -102,7 +102,7 @@ pub(crate) async fn list_attachments(
         "Failed to list attachments",
         "/v1/recording-attachments",
         &query,
-        query.limit,
+        Some(query.limit),
     )
     .await
 }

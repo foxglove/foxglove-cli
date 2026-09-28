@@ -251,14 +251,20 @@ pub(crate) async fn fetch_list<T, Q>(
     prefix: &str,
     endpoint: &str,
     query: &Q,
-    limit: i64,
+    limit: Option<i64>,
 ) -> Outcome
 where
     T: Record + DeserializeOwned,
     Q: Serialize + ?Sized,
 {
     match runtime.client.get::<_, Vec<T>>(endpoint, query).await {
-        Ok(records) => warn_if_truncated(format_output(&records, format), records.len(), limit),
+        Ok(records) => {
+            let outcome = format_output(&records, format);
+            match limit {
+                Some(limit) => warn_if_truncated(outcome, records.len(), limit),
+                None => outcome,
+            }
+        }
         Err(error) => Outcome::failure(format!("{prefix}: {error}\n")),
     }
 }

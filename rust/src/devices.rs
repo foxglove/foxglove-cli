@@ -84,7 +84,7 @@ pub(crate) async fn list_devices(
         "Failed to list devices",
         "/v1/devices",
         &query,
-        query.limit,
+        Some(query.limit),
     )
     .await
 }

@@ -118,7 +118,7 @@ pub(crate) async fn list_events(
         "Failed to list events",
         "/v1/events",
         &query,
-        limit,
+        Some(limit),
     )
     .await
 }

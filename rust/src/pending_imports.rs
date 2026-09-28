@@ -163,7 +163,7 @@ pub(crate) async fn list_pending_imports(
         "Failed to list pending imports",
         "/v1/data/pending-imports",
         &query,
-        query.limit,
+        Some(query.limit),
     )
     .await
 }

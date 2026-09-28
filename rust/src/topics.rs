@@ -135,7 +135,7 @@ pub(crate) async fn list_topics(
         "Failed to list topics",
         "/v1/data/topics",
         &query,
-        limit,
+        Some(limit),
     )
     .await
 }

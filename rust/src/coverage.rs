@@ -97,7 +97,7 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
         "Failed to list coverage",
         "/v1/data/coverage",
         &query,
-        0,
+        None,
     )
     .await
 }
