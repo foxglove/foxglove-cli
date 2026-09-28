@@ -220,12 +220,12 @@ pub struct StreamRequest {
 
 impl StreamRequest {
     /// Validate source selection and output-specific options before a request
-    /// is sent, matching the Go client's command-level contract.
+    /// is sent.
     ///
     /// # Errors
     ///
-    /// Returns a compatibility error when the source or output options are
-    /// incomplete or contradictory.
+    /// Returns an error when the source or output options are incomplete or
+    /// contradictory.
     pub fn validate(&self) -> Result<(), String> {
         let recording = !self.recording_id.is_empty() || !self.key.is_empty();
         let session = !self.session_id.is_empty() || !self.session_key.is_empty();

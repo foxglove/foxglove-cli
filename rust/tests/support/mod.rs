@@ -60,7 +60,7 @@ impl Process {
         Self(Some(command.spawn().unwrap()))
     }
 
-    #[cfg(all(unix, feature = "compat-test"))]
+    #[cfg(all(unix, feature = "test-support"))]
     pub fn interrupt(&self) {
         assert!(Command::new("kill")
             .args(["-INT", &self.0.as_ref().unwrap().id().to_string()])

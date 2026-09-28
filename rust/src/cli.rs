@@ -19,7 +19,7 @@ use crate::{
 
 const ROOT_COMMAND: &str = "foxglove";
 
-/// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
+/// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
 fn parse_bool(value: &str) -> Result<bool, String> {
     match value {
@@ -1727,7 +1727,7 @@ mod tests {
     }
 
     #[test]
-    fn boolean_flags_accept_go_values_and_preserve_defaults() {
+    fn boolean_flags_accept_standard_values_and_preserve_defaults() {
         let cases = [
             (vec![], "debug"),
             (vec!["completion", "bash"], "no-descriptions"),

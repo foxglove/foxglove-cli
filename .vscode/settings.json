@@ -1,8 +1,0 @@
-// -*- jsonc -*-
-{
-    // https://golangci-lint.run/usage/integrations/
-    "go.lintTool": "golangci-lint",
-    "go.lintFlags": [
-        "--fast"
-    ]
-}

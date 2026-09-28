@@ -105,8 +105,7 @@ async fn device_properties(
     if pairs.is_empty() {
         return Ok(None);
     }
-    // The Go form encoder uses the exported Go field name here because this
-    // request type has no form tag; preserve that wire spelling.
+    // The custom-properties endpoint requires this exact query parameter name.
     let query = vec![("ResourceType".to_owned(), "device".to_owned())];
     let definitions = runtime
         .client

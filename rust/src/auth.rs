@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_yaml_ng::Value;
 use std::io::Write;
 use std::process::Child;
-#[cfg(not(feature = "compat-test"))]
+#[cfg(not(feature = "test-support"))]
 use std::process::Command;
 use std::time::Duration;
 
@@ -204,12 +204,12 @@ async fn complete_login(
     Ok(bearer_token)
 }
 
-#[cfg(feature = "compat-test")]
+#[cfg(feature = "test-support")]
 fn open_browser(_url: &str) -> Option<Child> {
     None
 }
 
-#[cfg(not(feature = "compat-test"))]
+#[cfg(not(feature = "test-support"))]
 fn open_browser(url: &str) -> Option<Child> {
     #[cfg(target_os = "linux")]
     let mut command = Command::new("xdg-open");
