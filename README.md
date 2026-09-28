@@ -71,10 +71,6 @@ Datasets, dataset episodes, dataset versions, episodes, and
 `nextCursor`, which you pass to `--cursor`. The other commands that accept
 `--limit` page with `--offset`.
 
-### Project defaults
-
-Commands with project defaults use `--project-id`, then `DEFAULT_PROJECT_ID`, then saved `default_project_id`. In v2, export, attachment listing, and events also honor these defaults. Pass `--project-id=` to bypass defaults (creation of datasets and episodes requires a project); use `--debug` to inspect the resolved scope.
-
 ### Devices
 
 Before importing data, you must first create a device:
