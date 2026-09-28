@@ -2055,7 +2055,7 @@ fn getting_an_episode_can_include_its_recordings() {
     let server = Server::new(vec![Reply::json(
         "GET",
         "/v1/episodes/ep_one",
-        r#"{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"hasMissingRecordings":true,"createdAt":"2024-01-02T03:04:07Z"}"#,
+        r#"{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false},{"id":"rec_two","path":"two.mcap","location":{"bucket":"robot-logs","path":"fleet/two.mcap"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":true}],"hasMissingRecordings":true,"createdAt":"2024-01-02T03:04:07Z"}"#,
     )]);
     let output = run(
         &workspace,
@@ -2077,6 +2077,11 @@ fn getting_an_episode_can_include_its_recordings() {
     let episode: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(episode["id"], "ep_one");
     assert_eq!(episode["recordings"][0]["available"], false);
+    assert!(episode["recordings"][0].get("location").is_none());
+    assert_eq!(
+        episode["recordings"][1]["location"],
+        serde_json::json!({"bucket": "robot-logs", "path": "fleet/two.mcap"})
+    );
     assert_eq!(episode["hasMissingRecordings"], true);
 }
 
