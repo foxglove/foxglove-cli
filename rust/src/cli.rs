@@ -20,6 +20,7 @@ use crate::{
 
 const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
+const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -433,7 +434,7 @@ pub(crate) struct DatasetAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) name: String,
-    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
 
@@ -633,7 +634,7 @@ pub(crate) struct DatasetListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
     pub(crate) cursor: Option<String>,
-    #[arg(long, help = "Filter datasets by project", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
@@ -795,7 +796,7 @@ pub(crate) struct EpisodeAddArgs {
     pub(crate) end: Option<String>,
     #[arg(long, help = "Metadata as a JSON object", allow_hyphen_values = true)]
     pub(crate) metadata: Option<String>,
-    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording in the episode; repeat to add more", required = true, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) recording_id: Vec<String>,
@@ -869,7 +870,7 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
     pub(crate) cursor: Option<String>,
-    #[arg(long, help = "Filter episodes by project", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
@@ -1232,7 +1233,7 @@ enum SessionRecordingsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SessionRecordingMutationArgs {
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION")]
     pub(crate) session: String,
@@ -1279,7 +1280,7 @@ pub(crate) struct TopicListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of topics to skip", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -1425,10 +1426,12 @@ fn command_project_scope(
         CliCommand::Coverage(CoverageCommand::List(args)) => &args.project_id,
         CliCommand::Export(args) => &args.project_id,
         CliCommand::Upload(args) => &args.project_id,
+        CliCommand::Datasets(DatasetsCommand::Add(args)) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
         CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
+        CliCommand::Episodes(EpisodesCommand::Add(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::List(args)) => &args.project_id,

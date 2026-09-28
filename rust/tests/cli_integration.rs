@@ -2376,18 +2376,21 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
 #[ignore = "requires loopback sockets"]
 fn unassigned_pending_imports_omit_project_defaults() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
-    let output = Process::spawn(
-        workspace
-            .command(&server.url)
-            .env("DEFAULT_PROJECT_ID", "prj_default")
-            .args(["pending-imports", "list", "--without-project"]),
-    )
-    .finish();
-    assert_success(&output);
-    let query = query_pairs(&server.finish()[0]);
-    assert_eq!(query.get("hasProjectId").map(String::as_str), Some("false"));
-    assert!(!query.contains_key("projectId"));
+    for flags in [vec![], vec!["--project-id="], vec!["--project-id", ""]] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .args(["pending-imports", "list", "--without-project"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query.get("hasProjectId").map(String::as_str), Some("false"));
+        assert!(!query.contains_key("projectId"));
+    }
 }
 
 #[test]
@@ -2433,12 +2436,12 @@ fn project_scope_debug_reports_each_resolution_source() {
         (
             "prj_environment",
             vec![],
-            "[DEBUG] Project scope: prj_environment (source: environment)\n",
+            "[DEBUG] Project scope: prj_environment (source: DEFAULT_PROJECT_ID)\n",
         ),
         (
             "",
             vec![],
-            "[DEBUG] Project scope: prj_saved (source: config)\n",
+            "[DEBUG] Project scope: prj_saved (source: default_project_id)\n",
         ),
     ] {
         let output = Process::spawn(
@@ -2469,4 +2472,36 @@ fn project_scope_debug_reports_each_resolution_source() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr)
         .starts_with("[DEBUG] Project scope: unscoped (source: --without-project)\n"));
+}
+
+#[test]
+fn project_required_creation_reports_debug_scope() {
+    let workspace = Workspace::new();
+    for (command, args) in [
+        ("datasets", vec!["--name", "test"]),
+        ("episodes", vec!["--recording-id", "rec_one"]),
+    ] {
+        for flags in [vec![], vec!["--project-id="]] {
+            let output = Process::spawn(
+                workspace
+                    .command("http://127.0.0.1:1")
+                    .env("DEFAULT_PROJECT_ID", "prj_default")
+                    .args(["--debug", command, "add"])
+                    .args(&args)
+                    .args(&flags),
+            )
+            .finish();
+            assert!(!output.status.success());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let expected = if flags.is_empty() {
+                "[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"
+            } else {
+                "[DEBUG] Project scope: unscoped (source: --project-id)\n"
+            };
+            assert!(stderr.starts_with(expected), "{command}: {stderr}");
+            if !flags.is_empty() {
+                assert!(stderr.contains("--project-id is required when creating"));
+            }
+        }
+    }
 }
