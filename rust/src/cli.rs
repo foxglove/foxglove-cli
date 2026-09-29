@@ -263,7 +263,7 @@ struct ConfigSetArgs {
     key: ConfigKey,
     #[arg(
         value_name = "VALUE",
-        help = "Value to save; cannot be empty (use `config unset` to remove a value)"
+        help = "Value to save; surrounding whitespace is removed and the value cannot be empty"
     )]
     value: String,
 }
@@ -1682,26 +1682,20 @@ fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Ou
         Ok(config) => config,
         Err(outcome) => return outcome,
     };
-    let name = config_name(key);
-    match config.get_string(name) {
-        Some(value) if config.is_env_set(name) => Outcome {
+    match config.get_string(config_name(key)) {
+        Some(value) => Outcome {
             stdout: format!("{value}\n").into_bytes(),
-            stderr: format!(
-                "{key} is set by the {} environment variable\n",
-                name.to_ascii_uppercase()
-            )
-            .into_bytes(),
+            stderr: environment_note(&config, key).into_bytes(),
             ..Outcome::default()
         },
-        Some(value) => Outcome::success(format!("{value}\n")),
         None => Outcome::failure(format!("No value set for key '{key}'\n")),
     }
 }
 
 fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outcome {
     let key = config_key_name(args.key);
-    let value = args.value.clone();
-    if value.trim().is_empty() {
+    let value = args.value.trim().to_owned();
+    if value.is_empty() {
         return Outcome::failure(format!(
             "{key} cannot be empty; use `foxglove config unset {key}` to remove it\n"
         ));
@@ -1712,7 +1706,10 @@ fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outco
     };
     config.set(config_name(key), Value::String(value.clone()));
     match config.save() {
-        Ok(()) => Outcome::notice(format!("Configuration updated: {key} = {value}\n")),
+        Ok(()) => Outcome::notice(format!(
+            "Configuration updated: {key} = {value}\n{}",
+            environment_note(&config, key)
+        )),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1724,11 +1721,29 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
         Err(outcome) => return outcome,
     };
     if !config.remove(config_name(key)) {
-        return Outcome::failure(format!("No value set for key '{key}'\n"));
+        return Outcome::failure(format!(
+            "No value set for key '{key}'\n{}",
+            environment_note(&config, key)
+        ));
     }
     match config.save() {
-        Ok(()) => Outcome::notice(format!("Configuration removed: {key}\n")),
+        Ok(()) => Outcome::notice(format!(
+            "Configuration removed: {key}\n{}",
+            environment_note(&config, key)
+        )),
         Err(error) => Outcome::failure(error),
+    }
+}
+
+fn environment_note(config: &Config, key: &str) -> String {
+    let name = config_name(key);
+    if config.is_env_set(name) {
+        format!(
+            "{} is set in the environment and takes precedence over the saved {key}\n",
+            crate::config::environment_name(name)
+        )
+    } else {
+        String::new()
     }
 }
 

@@ -63,18 +63,21 @@ fn clearing_project_default_requires_project_for_session_key() {
 }
 
 #[test]
-fn config_set_rejects_blank_project_id() {
+fn config_set_trims_and_rejects_blank_project_id() {
     let workspace = Workspace::new();
     let config = workspace.0.join("config.yaml");
     fs::write(&config, "default_project_id: prj_saved\n").unwrap();
-    for value in ["", "   "] {
-        let output = Process::spawn(
+    let set = |value: &str| {
+        Process::spawn(
             workspace
                 .command("http://127.0.0.1:1")
                 .args(["config", "set", "project-id", value, "--config"])
                 .arg(&config),
         )
-        .finish();
+        .finish()
+    };
+    for value in ["", "   "] {
+        let output = set(value);
         assert_eq!(output.status.code(), Some(1), "{value:?}");
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
@@ -85,32 +88,61 @@ fn config_set_rejects_blank_project_id() {
         fs::read_to_string(&config).unwrap(),
         "default_project_id: prj_saved\n"
     );
+    let output = set(" prj_1 ");
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Configuration updated: project-id = prj_1\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&config).unwrap(),
+        "default_project_id: prj_1\n"
+    );
 }
 
 #[test]
-fn config_get_reports_environment_project_id_source() {
+fn config_commands_note_environment_project_id() {
+    const NOTE: &str =
+        "DEFAULT_PROJECT_ID is set in the environment and takes precedence over the saved project-id\n";
     let workspace = Workspace::new();
     let config = workspace.0.join("config.yaml");
     fs::write(&config, "default_project_id: prj_saved\n").unwrap();
-    for (environment, stdout, stderr) in [
-        (None, "prj_saved\n", ""),
-        (
-            Some("prj_env"),
-            "prj_env\n",
-            "project-id is set by the DEFAULT_PROJECT_ID environment variable\n",
-        ),
-    ] {
-        let mut command = workspace.command("http://127.0.0.1:1");
+    let run = |command: &str, environment: Option<&str>| {
+        let mut process = workspace.command("http://127.0.0.1:1");
         if let Some(environment) = environment {
-            command.env("DEFAULT_PROJECT_ID", environment);
+            process.env("DEFAULT_PROJECT_ID", environment);
         }
-        let output = Process::spawn(
-            command
-                .args(["config", "get", "project-id", "--config"])
+        Process::spawn(
+            process
+                .args(["config", command, "project-id", "--config"])
                 .arg(&config),
         )
-        .finish();
-        assert_success(&output);
+        .finish()
+    };
+    for (command, environment, success, stdout, stderr) in [
+        ("get", None, true, "prj_saved\n", String::new()),
+        ("get", Some("prj_env"), true, "prj_env\n", NOTE.to_owned()),
+        (
+            "unset",
+            Some("prj_env"),
+            true,
+            "",
+            format!("Configuration removed: project-id\n{NOTE}"),
+        ),
+        (
+            "unset",
+            Some("prj_env"),
+            false,
+            "",
+            format!("No value set for key 'project-id'\n{NOTE}"),
+        ),
+    ] {
+        let output = run(command, environment);
+        assert_eq!(
+            output.status.success(),
+            success,
+            "{command} {environment:?}"
+        );
         assert_eq!(String::from_utf8_lossy(&output.stdout), stdout);
         assert_eq!(String::from_utf8_lossy(&output.stderr), stderr);
     }

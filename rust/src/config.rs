@@ -217,7 +217,7 @@ impl Drop for TemporaryGuard<'_> {
     }
 }
 
-fn environment_name(key: &str) -> String {
+pub(crate) fn environment_name(key: &str) -> String {
     key.to_ascii_uppercase()
 }
 
