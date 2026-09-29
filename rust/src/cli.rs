@@ -263,7 +263,7 @@ struct ConfigSetArgs {
     key: ConfigKey,
     #[arg(
         value_name = "VALUE",
-        help = "Value to save; surrounding whitespace is removed and the value cannot be empty"
+        help = "Value to save. Whitespace is trimmed and the value cannot be empty"
     )]
     value: String,
 }
