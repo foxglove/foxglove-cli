@@ -2515,3 +2515,78 @@ fn project_required_creation_reports_debug_scope() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn debug_logs_requests_without_credentials_or_signatures() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/extensions", "[]")]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("BEARER_TOKEN", "fixture-secret-token")
+            .args(["extensions", "list", "--format", "json", "--debug"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("[DEBUG] GET /v1/extensions -> 200 OK ("),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("fixture-secret-token"), "{stderr}");
+
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"link":"{BASE_URL}/download?X-Amz-Signature=fixture-signature"}"#,
+        ),
+        Reply {
+            body: recording(&[]),
+            ..Reply::json("GET", "/download", "")
+        },
+    ]);
+    let download = format!("[DEBUG] GET {}/download?<redacted> -> 200 OK (", server.url);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("BEARER_TOKEN", "fixture-secret-token")
+            .args(["--debug", "export", "--recording-id", "rec"])
+            .args(["--output-file", "output.mcap"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[DEBUG] POST /v1/data/stream -> 200 OK ("),
+        "{stderr}"
+    );
+    assert!(stderr.contains(&download), "{stderr}");
+    for secret in ["fixture-secret-token", "fixture-signature"] {
+        assert!(!stderr.contains(secret), "{stderr}");
+    }
+
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/data/stream",
+        r#"{"link":"http://127.0.0.1:1/download?X-Amz-Signature=fixture-signature"}"#,
+    )]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["--debug", "export", "--recording-id", "rec"])
+            .args(["--output-file", "output.mcap"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[DEBUG] GET http://127.0.0.1:1/download?<redacted> -> failed ("),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("fixture-signature"), "{stderr}");
+}

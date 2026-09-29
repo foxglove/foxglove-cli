@@ -23,7 +23,11 @@ pub(crate) struct Runtime {
     pub(crate) config: Config,
 }
 
-pub(crate) fn load(config_path: Option<&Path>, client_id: Option<&str>) -> Result<Runtime, String> {
+pub(crate) fn load(
+    config_path: Option<&Path>,
+    client_id: Option<&str>,
+    debug: bool,
+) -> Result<Runtime, String> {
     let config = Config::load_from_path(config_path)?;
     let project_id = config.get_string("default_project_id").unwrap_or_default();
     let project_source = if project_id.is_empty() {
@@ -44,7 +48,8 @@ pub(crate) fn load(config_path: Option<&Path>, client_id: Option<&str>) -> Resul
         token,
         user_agent(),
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| error.to_string())?
+    .with_debug(debug);
     Ok(Runtime {
         client,
         project_id,
