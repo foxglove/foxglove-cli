@@ -247,9 +247,7 @@ fn columns<T: Record>(
     if let Some(index) = headers.iter().position(|header| Some(*header) == omitted) {
         headers.remove(index);
         for row in &mut rows {
-            if index < row.len() {
-                row.remove(index);
-            }
+            row.remove(index);
         }
     }
     (headers, rows)

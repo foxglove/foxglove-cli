@@ -87,7 +87,7 @@ impl Record for Episode {
             "Project ID",
             "Start Time",
             "End Time",
-            "Recordings",
+            RECORDINGS_HEADER,
             "Metadata",
             "Created At",
         ]
@@ -144,10 +144,12 @@ pub(crate) fn include_recordings(requested: bool) -> String {
     }
 }
 
+pub(crate) const RECORDINGS_HEADER: &str = "Recordings";
+
 /// The API returns recordings only when they are requested, so table and CSV
 /// output leave out the otherwise empty column.
 pub(crate) fn omitted_recordings_column(requested: bool) -> Option<&'static str> {
-    (!requested).then_some("Recordings")
+    (!requested).then_some(RECORDINGS_HEADER)
 }
 
 pub(crate) fn parse_time_range(

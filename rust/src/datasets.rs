@@ -19,7 +19,9 @@ use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
     DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
-use crate::episodes::{include_recordings, omitted_recordings_column, parse_time_range, Episode};
+use crate::episodes::{
+    include_recordings, omitted_recordings_column, parse_time_range, Episode, RECORDINGS_HEADER,
+};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_list_output_without, format_record, null_to_default,
@@ -92,7 +94,7 @@ impl Record for DatasetEpisode {
             "Project ID",
             "Start Time",
             "End Time",
-            "Recordings",
+            RECORDINGS_HEADER,
             "Metadata",
             "Added At",
             "Added In Version",

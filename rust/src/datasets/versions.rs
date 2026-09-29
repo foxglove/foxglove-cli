@@ -10,7 +10,7 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::{include_recordings, omitted_recordings_column};
+use crate::episodes::{include_recordings, omitted_recordings_column, RECORDINGS_HEADER};
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_list_output_without, format_record, is_false, plural,
@@ -120,7 +120,7 @@ impl Record for DatasetEpisodeChange {
             "Project ID",
             "Start Time",
             "End Time",
-            "Recordings",
+            RECORDINGS_HEADER,
             "Metadata",
             "Added At",
             "Added In Version",
