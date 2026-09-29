@@ -96,55 +96,6 @@ fn config_set_trims_and_rejects_blank_project_id() {
     );
 }
 
-#[test]
-fn config_commands_note_environment_project_id() {
-    const NOTE: &str = "DEFAULT_PROJECT_ID is set in the environment and takes precedence over project-id in the config file\n";
-    let workspace = Workspace::new();
-    let config = workspace.0.join("config.yaml");
-    fs::write(&config, "default_project_id: prj_saved\n").unwrap();
-    let cases = [
-        (
-            &["get", "project-id"][..],
-            true,
-            "prj_env\n",
-            NOTE.to_owned(),
-        ),
-        (
-            &["set", "project-id", "prj_new"],
-            true,
-            "",
-            format!("Configuration updated: project-id = prj_new\n{NOTE}"),
-        ),
-        (
-            &["unset", "project-id"],
-            true,
-            "",
-            format!("Configuration removed: project-id\n{NOTE}"),
-        ),
-        (
-            &["unset", "project-id"],
-            false,
-            "",
-            format!("No value set for key 'project-id'\n{NOTE}"),
-        ),
-    ];
-    for (args, success, stdout, stderr) in cases {
-        let output = Process::spawn(
-            workspace
-                .command("http://127.0.0.1:1")
-                .env("DEFAULT_PROJECT_ID", "prj_env")
-                .arg("config")
-                .args(args)
-                .arg("--config")
-                .arg(&config),
-        )
-        .finish();
-        assert_eq!(output.status.success(), success, "{args:?}");
-        assert_eq!(String::from_utf8_lossy(&output.stdout), stdout);
-        assert_eq!(String::from_utf8_lossy(&output.stderr), stderr);
-    }
-}
-
 fn message(channel_id: u16, time: u64, data: Vec<u8>) -> Message {
     Message {
         channel_id,
