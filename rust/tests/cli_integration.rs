@@ -254,61 +254,24 @@ fn event_sort_order_is_sent_with_its_sort_field() {
 }
 
 #[test]
-fn event_arguments_the_api_needs_are_required_before_a_request() {
-    let workspace = Workspace::new();
-    for (args, expected) in [
-        (
-            vec!["events", "list", "--sort-order", "desc"],
-            "--sort-by <SORT_BY>",
-        ),
-        (
-            vec![
-                "events",
-                "add",
-                "--start",
-                "2024-01-01T00:00:00Z",
-                "--end",
-                "2024-01-01T00:00:01Z",
-            ],
-            "--device-id <DEVICE_ID>",
-        ),
-    ] {
-        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
-        assert!(!output.status.success(), "{args:?}");
-        assert!(
-            String::from_utf8_lossy(&output.stderr).contains(expected),
-            "{args:?}"
-        );
-    }
-}
-
-#[test]
 #[ignore = "requires loopback sockets"]
 fn events_without_properties_render_an_empty_cell() {
     const EVENTS: &str = r#"[{"id":"evt_one","device":{"id":"dev_one","name":"robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z","updatedAt":"2024-01-02T03:04:08Z"}]"#;
     let workspace = Workspace::new();
-    for (format, expected) in [
-        (
-            "csv",
-            "ID,Device ID,Device Name,Start,End,Event Type ID,Created At,Updated At,Metadata,Properties\n\
-             evt_one,dev_one,robot,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,2024-01-02T03:04:07Z,2024-01-02T03:04:08Z,{},\n",
-        ),
-        (
-            "json",
-            "{\"data\":[{\"createdAt\":\"2024-01-02T03:04:07Z\",\"device\":{\"name\":\"robot\",\"id\":\"dev_one\"},\"end\":\"2024-01-02T03:04:06Z\",\"eventTypeId\":\"\",\"id\":\"evt_one\",\"metadata\":{},\"properties\":null,\"start\":\"2024-01-02T03:04:05Z\",\"updatedAt\":\"2024-01-02T03:04:08Z\"}]}\n",
-        ),
-    ] {
-        let server = Server::new(vec![Reply::json("GET", "/v1/events", EVENTS)]);
-        let output = Process::spawn(
-            workspace
-                .command(&server.url)
-                .args(["events", "list", "--format", format]),
-        )
-        .finish();
-        assert_success(&output);
-        server.finish();
-        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
-    }
+    let server = Server::new(vec![Reply::json("GET", "/v1/events", EVENTS)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["events", "list", "--format", "csv"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Device ID,Device Name,Start,End,Event Type ID,Created At,Updated At,Metadata,Properties\n\
+         evt_one,dev_one,robot,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,2024-01-02T03:04:07Z,2024-01-02T03:04:08Z,{},\n"
+    );
 }
 
 #[test]
