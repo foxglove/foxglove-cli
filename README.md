@@ -284,9 +284,8 @@ Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 
 ### Extensions
 
-On Foxglove's Free, Pro, and Enterprise [plans](https://foxglove.dev/pricing),
-you can upload and share [extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
-within your organization.
+Depending on your Foxglove [plan](https://foxglove.dev/pricing), you can upload and share
+[extensions](https://foxglove.dev/docs/studio/extensions/getting-started) within your organization.
 
 Create and package an extension with the
 [`foxglove-extension`](https://github.com/foxglove/create-foxglove-extension/)
@@ -321,10 +320,11 @@ Certain shells (bash, zsh, fish, and PowerShell) support generated
 autocompletion for commands, flags, and file paths.
 
 `foxglove completion <shell>` prints the completion script for that shell. Load
-it as your shell's documentation describes; for example, in bash:
+it as your shell's documentation describes; for example, to enable bash
+completion in every new shell:
 
 ```
-$ source <(foxglove completion bash)
+$ echo 'eval "$(foxglove completion bash)"' >> ~/.bashrc
 ```
 
 ## Development
