@@ -134,7 +134,9 @@ enum CliCommand {
 
 #[derive(Debug, Subcommand)]
 enum AttachmentsCommand {
-    #[command(about = "Download an MCAP attachment by ID")]
+    #[command(
+        about = "Download an MCAP attachment by ID to stdout (redirect it to a file or pipe)"
+    )]
     Download(AttachmentDownloadArgs),
     #[command(about = "List MCAP attachments")]
     List(AttachmentListArgs),

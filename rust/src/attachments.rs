@@ -1,10 +1,11 @@
 //! Attachment commands.
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{AttachmentDownloadArgs, AttachmentListArgs};
+use crate::export::BINARY_OUTPUT_TERMINAL_ERROR;
 use crate::output::Format;
 use crate::records::{fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT};
 use crate::runtime::Runtime;
@@ -103,6 +104,9 @@ pub(crate) async fn download_attachment(
     args: &AttachmentDownloadArgs,
     stdout_writer: &mut dyn Write,
 ) -> Outcome {
+    if let Some(outcome) = terminal_outcome(std::io::stdout().is_terminal()) {
+        return outcome;
+    }
     let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
         let mut response = runtime
@@ -124,5 +128,26 @@ pub(crate) async fn download_attachment(
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Failed to fetch attachment: {error}\n")),
+    }
+}
+
+fn terminal_outcome(stdout_is_terminal: bool) -> Option<Outcome> {
+    stdout_is_terminal.then(|| Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{terminal_outcome, BINARY_OUTPUT_TERMINAL_ERROR};
+
+    #[test]
+    fn downloads_refuse_a_terminal_and_allow_pipes_and_files() {
+        let outcome = terminal_outcome(true).expect("terminal is refused");
+        assert_eq!(outcome.exit_code, 1);
+        assert!(outcome.stdout.is_empty());
+        assert_eq!(
+            outcome.stderr,
+            format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n").as_bytes()
+        );
+        assert!(terminal_outcome(false).is_none());
     }
 }
