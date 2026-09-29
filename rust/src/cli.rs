@@ -237,7 +237,7 @@ struct CompletionArgs {
 enum ConfigCommand {
     #[command(
         about = "Get a configuration value",
-        long_about = "Get a configuration value. DEFAULT_PROJECT_ID, when set, takes precedence over the saved project-id."
+        long_about = "Get a configuration value. DEFAULT_PROJECT_ID, when set, takes precedence over project-id in the config file."
     )]
     Get(ConfigKeyArgs),
     #[command(about = "Set a configuration value")]
@@ -1739,7 +1739,7 @@ fn environment_note(config: &Config, key: &str) -> String {
     let name = config_name(key);
     if config.is_env_set(name) {
         format!(
-            "{} is set in the environment and takes precedence over the saved {key}\n",
+            "{} is set in the environment and takes precedence over {key} in the config file\n",
             crate::config::environment_name(name)
         )
     } else {
