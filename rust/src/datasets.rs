@@ -19,11 +19,11 @@ use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
     DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
-use crate::episodes::{include_recordings, parse_time_range, Episode};
+use crate::episodes::{include_recordings, omitted_recordings_column, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_list_output, format_record, null_to_default, plural,
-    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_list_output, format_list_output_without, format_record, null_to_default,
+    plural, warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -231,10 +231,11 @@ pub(crate) async fn list_dataset_episodes(
         .await
     {
         Ok(page) => warn_if_has_next_cursor(
-            format_list_output(
+            format_list_output_without(
                 &page.data.episodes,
                 format,
                 NextCursor::Page(page.next_cursor.as_deref()),
+                omitted_recordings_column(args.include_recordings),
             ),
             page.next_cursor.as_deref(),
         ),

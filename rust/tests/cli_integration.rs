@@ -820,8 +820,8 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Episode ID,Project ID,Start Time,End Time,Recordings,Metadata,Added At,Added In Version,Created At\n\
-         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z\n"
+        "Episode ID,Project ID,Start Time,End Time,Metadata,Added At,Added In Version,Created At\n\
+         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -2236,6 +2236,60 @@ fn getting_an_episode_can_include_its_recordings() {
         serde_json::json!({"bucket": "robot-logs", "path": "fleet/two.mcap"})
     );
     assert_eq!(episode["hasMissingRecordings"], true);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_csv_shows_recordings_only_when_they_are_requested() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec![],
+            "ID,Project ID,Start Time,End Time,Metadata,Created At\n\
+             ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,{},2024-01-02T03:04:07Z\n",
+        ),
+        (
+            vec!["--include-recordings"],
+            "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At\n\
+             ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,{},2024-01-02T03:04:07Z\n",
+        ),
+    ] {
+        let body = if flags.is_empty() {
+            r#"{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}"#
+        } else {
+            r#"{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":true}],"createdAt":"2024-01-02T03:04:07Z"}"#
+        };
+        let server = Server::new(vec![Reply::json("GET", "/v1/episodes/ep_one", body)]);
+        let mut args = vec!["episodes", "get", "ep_one", "--format", "csv"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        server.finish();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{flags:?}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn coverage_without_a_device_summary_shows_its_device_id() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/data/coverage",
+        r#"[{"deviceId":"dev_one","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"}]"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["coverage", "list", "--format", "csv"],
+    );
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Device ID,Device Name,Start,End,Status\n\
+         dev_one,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported\n"
+    );
 }
 
 #[test]

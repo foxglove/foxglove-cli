@@ -29,8 +29,13 @@ impl Record for Coverage {
     }
 
     fn fields(&self) -> Vec<String> {
+        let device_id = if self.device.id.is_empty() {
+            &self.device_id
+        } else {
+            &self.device.id
+        };
         vec![
-            self.device.id.clone(),
+            device_id.clone(),
             self.device.name.clone(),
             self.start.clone(),
             self.end.clone(),
@@ -105,6 +110,15 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
 #[cfg(test)]
 mod tests {
     use super::Coverage;
+    use crate::records::Record;
+
+    #[test]
+    fn device_id_falls_back_to_the_top_level_field() {
+        let record: Coverage = serde_json::from_value(serde_json::json!({"deviceId":"dev_one","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"})).unwrap();
+        assert_eq!(record.fields()[..2], ["dev_one", ""]);
+        let record: Coverage = serde_json::from_value(serde_json::json!({"deviceId":"dev_one","device":{"id":"dev_one","name":"Robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"})).unwrap();
+        assert_eq!(record.fields()[..2], ["dev_one", "Robot"]);
+    }
 
     #[test]
     fn missing_and_null_fields_render_explicit_defaults() {

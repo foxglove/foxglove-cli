@@ -7,8 +7,9 @@ use crate::api::encode_path_segment;
 use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
-    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, format_list_output_without, format_record_without, parse_timestamp,
+    parse_timestamp_millis, warn_if_has_next_cursor, NextCursor, ProjectFallback, Record,
+    DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -143,6 +144,12 @@ pub(crate) fn include_recordings(requested: bool) -> String {
     }
 }
 
+/// The API returns recordings only when they are requested, so table and CSV
+/// output leave out the otherwise empty column.
+pub(crate) fn omitted_recordings_column(requested: bool) -> Option<&'static str> {
+    (!requested).then_some("Recordings")
+}
+
 pub(crate) fn parse_time_range(
     start: Option<&str>,
     end: Option<&str>,
@@ -183,10 +190,11 @@ pub(crate) async fn list_episodes(
         .await
     {
         Ok(page) => warn_if_has_next_cursor(
-            format_list_output(
+            format_list_output_without(
                 &page.data.episodes,
                 format,
                 NextCursor::Page(page.next_cursor.as_deref()),
+                omitted_recordings_column(args.include_recordings),
             ),
             page.next_cursor.as_deref(),
         ),
@@ -217,7 +225,11 @@ pub(crate) async fn get_episode(
         .get::<_, Episode>(&episode_endpoint(&args.episode_id), &query)
         .await
     {
-        Ok(episode) => format_record(&episode, format),
+        Ok(episode) => format_record_without(
+            &episode,
+            format,
+            omitted_recordings_column(args.include_recordings),
+        ),
         Err(error) if error.is_not_found() => {
             Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
         }

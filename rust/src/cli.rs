@@ -581,7 +581,7 @@ pub(crate) struct DatasetVersionCompareArgs {
     )]
     pub(crate) cursor: Option<String>,
     #[arg(
-        long, help = "Include the member recordings of each episode",
+        long, help = "Include the member recordings of each episode, shown in a Recordings column in table and CSV output",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -668,7 +668,7 @@ pub(crate) struct DatasetEpisodeListArgs {
     )]
     pub(crate) has_missing_recordings: Option<bool>,
     #[arg(
-        long, help = "Include the member recordings of each episode",
+        long, help = "Include the member recordings of each episode, shown in a Recordings column in table and CSV output",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -817,7 +817,7 @@ pub(crate) struct EpisodeGetArgs {
     #[arg(value_name = "EPISODE_ID")]
     pub(crate) episode_id: String,
     #[arg(
-        long, help = "Include the member recordings of the episode",
+        long, help = "Include the member recordings of the episode, shown in a Recordings column in table and CSV output",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -848,7 +848,7 @@ pub(crate) struct EpisodeListArgs {
     )]
     pub(crate) has_missing_recordings: Option<bool>,
     #[arg(
-        long, help = "Include the member recordings of each episode",
+        long, help = "Include the member recordings of each episode, shown in a Recordings column in table and CSV output",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
