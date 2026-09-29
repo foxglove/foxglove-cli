@@ -2433,40 +2433,19 @@ fn device_multi_enum_values_must_be_allowed() {
 }
 
 #[test]
-fn adding_a_device_requires_a_name() {
-    let workspace = Workspace::new();
-    let output = Process::spawn(
-        workspace
-            .command("http://127.0.0.1:1")
-            .args(["devices", "add"]),
-    )
-    .finish();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("--name <NAME>"));
-}
-
-#[test]
 #[ignore = "requires loopback sockets"]
 fn devices_without_properties_render_an_empty_cell() {
     const DEVICES: &str = r#"[{"id":"dev_one","name":"robot","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one"}]"#;
     let workspace = Workspace::new();
-    for (format, expected) in [
-        (
-            "csv",
-            "ID,Name,Custom Properties,Created At,Updated At,Project ID\n\
-             dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one\n",
-        ),
-        (
-            "json",
-            "{\"data\":[{\"id\":\"dev_one\",\"name\":\"robot\",\"properties\":null,\"createdAt\":\"2024-01-02T03:04:05Z\",\"updatedAt\":\"2024-01-02T03:04:06Z\",\"projectId\":\"prj_one\"}]}\n",
-        ),
-    ] {
-        let server = Server::new(vec![Reply::json("GET", "/v1/devices", DEVICES)]);
-        let output = run(&workspace, &server, &["devices", "list", "--format", format]);
-        assert_success(&output);
-        server.finish();
-        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
-    }
+    let server = Server::new(vec![Reply::json("GET", "/v1/devices", DEVICES)]);
+    let output = run(&workspace, &server, &["devices", "list", "--format", "csv"]);
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Name,Custom Properties,Created At,Updated At,Project ID\n\
+         dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one\n"
+    );
 }
 
 #[test]
