@@ -153,9 +153,6 @@ pub(crate) async fn get_session(runtime: &Runtime, args: &SessionLookupArgs) -> 
         .await;
     match result {
         Ok(session) => session_outcome(&session),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) if error.is_not_found() => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
@@ -210,9 +207,6 @@ pub(crate) async fn list_session_recordings(
             Outcome::success("No recordings in this session.\n")
         }
         Ok(session) => format_output(&session.recordings, Format::Table),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!("Failed to list session recordings: {error}\n")),
     }
 }
@@ -270,9 +264,6 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
             }
             Outcome::notice(stderr)
         }
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!("Failed to create session: {error}\n")),
     }
 }
@@ -294,9 +285,6 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
             "Not found. The resource may have already been deleted.\nSession deleted: {}\n",
             args.session
         )),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!("Failed to delete session: {error}\n")),
     }
 }
@@ -364,9 +352,6 @@ pub(crate) async fn patch_session_recordings(
             args.recording,
             if add { "added to" } else { "removed from" }
         )),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!(
             "Failed to {} recording {} session: {error}\n",
             if add { "add" } else { "remove" },

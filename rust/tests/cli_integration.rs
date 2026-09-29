@@ -666,6 +666,73 @@ fn session_key_edit_reports_api_errors() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn session_commands_report_the_api_reason_when_forbidden() {
+    let workspace = Workspace::new();
+    for (args, method, path, capability, failure) in [
+        (
+            vec!["sessions", "get", "ses_one"],
+            "GET",
+            "/v1/sessions/ses_one",
+            "sessions.list",
+            "Failed to get session",
+        ),
+        (
+            vec!["sessions", "recordings", "list", "ses_one"],
+            "GET",
+            "/v1/sessions/ses_one",
+            "sessions.list",
+            "Failed to list session recordings",
+        ),
+        (
+            vec!["sessions", "add", "--device-id", "dev_one"],
+            "POST",
+            "/v1/sessions",
+            "sessions.create",
+            "Failed to create session",
+        ),
+        (
+            vec!["sessions", "delete", "ses_one"],
+            "DELETE",
+            "/v1/sessions/ses_one",
+            "sessions.delete",
+            "Failed to delete session",
+        ),
+        (
+            vec!["sessions", "recordings", "add", "ses_one", "rec_one"],
+            "PATCH",
+            "/v1/sessions/ses_one",
+            "sessions.update",
+            "Failed to add recording to session",
+        ),
+        (
+            vec!["sessions", "recordings", "remove", "ses_one", "rec_one"],
+            "PATCH",
+            "/v1/sessions/ses_one",
+            "sessions.update",
+            "Failed to remove recording from session",
+        ),
+    ] {
+        let reason = format!("This operation requires the `{capability}` capability.");
+        let body = serde_json::json!({"error": reason, "code": "MissingApiKeyCapability"});
+        let server = Server::new(vec![Reply {
+            status: 403,
+            ..Reply::json(method, path, &body.to_string())
+        }]);
+        let output = run(&workspace, &server, &args);
+        assert_eq!(server.finish().len(), 1, "{args:?}");
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "{failure}: forbidden: have you signed in with `foxglove auth login`?\n{reason}\n"
+            ),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
 fn session_key_edit_requires_exactly_one_change() {
     let workspace = Workspace::new();
     for (flags, expected) in [
