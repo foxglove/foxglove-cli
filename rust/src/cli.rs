@@ -318,7 +318,7 @@ pub(crate) struct CoverageListArgs {
 pub(crate) struct ExportArgs {
     #[arg(
         long,
-        help = "MCAP chunk compression: empty, zstd, or lz4 (default: lz4)",
+        help = "MCAP chunk compression: zstd, lz4, or \"\" for none (default: lz4)",
         allow_hyphen_values = true
     )]
     pub(crate) compression: Option<String>,
@@ -326,7 +326,11 @@ pub(crate) struct ExportArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "End time (ISO 8601)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "End time (ISO 8601); give with --start",
+        allow_hyphen_values = true
+    )]
     pub(crate) end: Option<String>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
@@ -346,7 +350,7 @@ pub(crate) struct ExportArgs {
     pub(crate) output_file: Option<String>,
     #[arg(
         long,
-        help = "Output format: mcap0, bag1, or json (default: mcap0)",
+        help = "Output format: mcap, bag1, or json (default: mcap). mcap0 is a deprecated alias for mcap; json supports only ros1msg and protobuf schemas",
         allow_hyphen_values = true
     )]
     pub(crate) output_format: Option<String>,
@@ -366,7 +370,11 @@ pub(crate) struct ExportArgs {
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true)]
     pub(crate) session_key: Option<String>,
-    #[arg(long, help = "Start time (ISO 8601)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Start time (ISO 8601); give with --end",
+        allow_hyphen_values = true
+    )]
     pub(crate) start: Option<String>,
     #[arg(long, help = "Comma-separated topic list", allow_hyphen_values = true)]
     pub(crate) topics: Option<String>,

@@ -233,7 +233,7 @@ impl StreamRequest {
         let import = !self.import_id.is_empty();
         let episode = !self.episode_id.is_empty();
         if !(recording || session || device || import || episode) {
-            return Err("either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required".to_owned());
+            return Err("either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required".to_owned());
         }
         if !self.session_key.is_empty() && self.project_id.is_empty() {
             return Err("project-id is required when using session-key".to_owned());

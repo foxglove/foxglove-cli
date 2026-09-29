@@ -36,8 +36,11 @@ pub(crate) async fn export_data(
         Ok(request) => request,
         Err(error) => return Outcome::failure(format!("Failed to build request: {error}\n")),
     };
-    if !matches!(request.output_format.as_str(), "mcap0" | "bag1" | "json") {
-        return Outcome::failure("Export failed: invalid format: supply mcap0, bag1, or json\n");
+    if !matches!(
+        request.output_format.as_str(),
+        "mcap" | "mcap0" | "bag1" | "json"
+    ) {
+        return Outcome::failure("Export failed: invalid format: supply mcap, bag1, or json\n");
     }
     let destination = args
         .output_file
@@ -84,7 +87,7 @@ async fn stream_to_stdout(
 ) -> Result<(), api::ApiError> {
     let mut stream_request = request.clone();
     if stream_request.output_format == "json" {
-        stream_request.output_format = "mcap0".into();
+        stream_request.output_format = "mcap".into();
     }
     let mut stream = runtime
         .client
@@ -120,7 +123,7 @@ async fn staged_json_export(
     let result = async {
         let mut output = create_export_file(&staged).map_err(api::ApiError::Write)?;
         let mut stream_request = request.clone();
-        stream_request.output_format = "mcap0".into();
+        stream_request.output_format = "mcap".into();
         let mut stream = runtime
             .client
             .stream_with_cancellation(&stream_request, cancellation)
@@ -146,7 +149,7 @@ pub(crate) fn export_debug_request(runtime: &Runtime, args: &ExportArgs) -> Opti
 fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequest, String> {
     let output_format_value = args.output_format.clone().unwrap_or_default();
     let output_format = if output_format_value.is_empty() {
-        "mcap0".to_owned()
+        "mcap".to_owned()
     } else {
         output_format_value
     };
@@ -177,6 +180,9 @@ fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequ
         session_key: args.session_key.clone().unwrap_or_default(),
     };
     request.validate()?;
+    if request.start.is_some() != request.end.is_some() {
+        return Err("both --start and --end must be specified, or neither".to_owned());
+    }
     Ok(request)
 }
 

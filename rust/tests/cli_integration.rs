@@ -225,6 +225,77 @@ fn invalid_record_length_preserves_destination() {
     assert_eq!(server.finish().len(), 2);
 }
 
+#[test]
+fn export_arguments_are_validated_before_sending_a_request() {
+    let workspace = Workspace::new();
+    let half_open =
+        "Failed to build request: both --start and --end must be specified, or neither\n";
+    for (args, expected) in [
+        (
+            vec!["--recording-id", "rec", "--start", "2024-01-02T00:00:00Z"],
+            half_open,
+        ),
+        (
+            vec!["--recording-id", "rec", "--end", "2024-01-03T00:00:00Z"],
+            half_open,
+        ),
+        (
+            vec![],
+            "Failed to build request: either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required\n",
+        ),
+        (
+            vec!["--recording-id", "rec", "--output-format", "mcap1"],
+            "Export failed: invalid format: supply mcap, bag1, or json\n",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .arg("export")
+                .args(&args),
+        )
+        .finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn export_output_and_compression_formats_reach_the_api() {
+    let workspace = Workspace::new();
+    for (flags, format, compression) in [
+        (vec![], "mcap", None),
+        (vec!["--output-format", "mcap"], "mcap", None),
+        (vec!["--output-format", "mcap0"], "mcap0", None),
+        (vec!["--output-format", "json"], "mcap", None),
+        (vec!["--compression", ""], "mcap", Some("")),
+        (vec!["--compression", "zstd"], "mcap", Some("zstd")),
+    ] {
+        let server = Server::new(export_replies(recording(&[])));
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["export", "--recording-id", "rec"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        let body = json_body(&server.finish()[0]);
+        assert_eq!(body["outputFormat"], format, "{flags:?}");
+        assert_eq!(
+            body.get("compressionFormat")
+                .and_then(|value| value.as_str()),
+            compression,
+            "{flags:?}"
+        );
+    }
+}
+
 #[derive(Default)]
 struct Records {
     channels: BTreeMap<u16, Channel>,
