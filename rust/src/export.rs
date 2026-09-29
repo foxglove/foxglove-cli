@@ -248,6 +248,7 @@ async fn resumable_export_inner(
     let mut complete_found = false;
     let mut empty_downloads = 0_u8;
     let mut repeated_starts = 0_u8;
+    let requested_start = request.start;
     loop {
         let path = staging.join(format!("export-{}", partials.len()));
         let ended_cleanly =
@@ -306,9 +307,13 @@ async fn resumable_export_inner(
         if request.end.is_none() {
             request.end = Some(OffsetDateTime::now_utc());
         }
-        // Earlier responses already hold every message a replay would repeat.
-        request.replay_policy.clear();
-        request.replay_lookback_seconds = 0.0;
+        // Once a response reaches the requested start, earlier responses hold
+        // every message a replay would repeat. Before that, replayed messages
+        // may still be missing, so the replay is requested again.
+        if requested_start.is_none_or(|requested| start >= requested) {
+            request.replay_policy.clear();
+            request.replay_lookback_seconds = 0.0;
+        }
     }
     if check == CompletionCheck::EndMagic && !complete_found {
         return Err(api::ApiError::Conversion(
