@@ -9,14 +9,9 @@ use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct EventTypeProperty {
-    key: String,
-    label: String,
+struct EventTypeCustomProperty {
+    id: String,
     required: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    values: Vec<String>,
-    #[serde(rename = "valueType")]
-    value_type: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -28,8 +23,9 @@ struct EventType {
     created_at: String,
     id: String,
     name: String,
-    #[serde(default)]
-    properties: Option<Vec<EventTypeProperty>>,
+    #[serde(rename = "customProperties")]
+    #[serde(default, deserialize_with = "null_to_default")]
+    custom_properties: Vec<EventTypeCustomProperty>,
     #[serde(rename = "updatedAt")]
     updated_at: String,
 }
@@ -40,7 +36,7 @@ impl Record for EventType {
             "ID",
             "Name",
             "Color",
-            "Properties",
+            "Custom Properties",
             "Created At",
             "Updated At",
         ]
@@ -51,7 +47,7 @@ impl Record for EventType {
             self.id.clone(),
             self.name.clone(),
             self.color_name.clone(),
-            compact_json(&serde_json::to_value(&self.properties).unwrap_or(Value::Null)),
+            compact_json(&serde_json::to_value(&self.custom_properties).unwrap_or(Value::Null)),
             self.created_at.clone(),
             self.updated_at.clone(),
         ]
@@ -77,7 +73,10 @@ mod tests {
     #[test]
     fn missing_and_null_fields_render_explicit_defaults() {
         let original = serde_json::json!({"id":"evtt_fixture","name":"Fixture","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"});
-        for (field, expected) in [("colorName", serde_json::json!(""))] {
+        for (field, expected) in [
+            ("colorName", serde_json::json!("")),
+            ("customProperties", serde_json::json!([])),
+        ] {
             let mut with_null = original.clone();
             with_null[field] = serde_json::Value::Null;
             for response in [original.clone(), with_null] {

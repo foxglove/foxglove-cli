@@ -1341,6 +1341,40 @@ fn fractional_timestamp_query_parameters_are_preserved() {
     }
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_types_are_listed_with_their_custom_properties() {
+    const EVENT_TYPES: &str = r#"[{"id":"evtt_one","name":"Stop","colorName":"red","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","customProperties":[{"id":"cp_one","required":true},{"id":"cp_two","required":false}]}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+        Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "list", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Name,Color,Custom Properties,Created At,Updated At\n\
+         evtt_one,Stop,red,\"[{\"\"id\"\":\"\"cp_one\"\",\"\"required\"\":true},{\"\"id\"\":\"\"cp_two\"\",\"\"required\"\":false}]\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "list", "--format", "json"],
+    );
+    assert_success(&output);
+    let event_types: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        event_types["data"][0]["customProperties"],
+        serde_json::json!([{"id": "cp_one", "required": true}, {"id": "cp_two", "required": false}])
+    );
+    server.finish();
+}
+
 fn json_body(request: &str) -> serde_json::Value {
     serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }
