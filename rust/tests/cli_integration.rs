@@ -310,6 +310,68 @@ fn recovery_preserves_messages_and_schemaless_channels() {
     assert_eq!(server.finish().len(), 4);
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn resumed_exports_do_not_request_a_replay_again() {
+    const SECOND: u64 = 1_000_000_000;
+    const JAN_1_2024: u64 = 1_704_067_200 * SECOND;
+    let workspace = Workspace::new();
+    let messages = [
+        message(1, JAN_1_2024 + SECOND / 2, vec![0]),
+        message(1, JAN_1_2024 + SECOND, vec![1]),
+        message(1, JAN_1_2024 + 2 * SECOND, vec![2]),
+        message(1, JAN_1_2024 + 3 * SECOND, vec![3]),
+    ];
+    let mut partial = recording(&messages[..3]);
+    partial.truncate(partial.len() - 4);
+    let mut replies = export_replies(partial);
+    replies.extend(export_replies(recording(&messages[2..])));
+    let server = Server::new(replies);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "export",
+        "--recording-id",
+        "rec",
+        "--start",
+        "2024-01-01T00:00:01Z",
+        "--end",
+        "2024-01-01T00:00:03Z",
+        "--replay-policy",
+        "lastPerChannel",
+        "--replay-lookback-seconds",
+        "5",
+        "--output-file",
+        "output.mcap",
+    ]))
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 4);
+    let first = json_body(&requests[0]);
+    assert_eq!(first["replayPolicy"], "lastPerChannel");
+    assert_eq!(first["replayLookbackSeconds"], 5.0);
+    let resumed = json_body(&requests[2]);
+    assert_eq!(resumed["start"], "2024-01-01T00:00:02Z");
+    assert!(resumed.get("replayPolicy").is_none(), "{resumed}");
+    assert!(resumed.get("replayLookbackSeconds").is_none(), "{resumed}");
+    let mut records = Records::default();
+    foxglove_rust::format::read_mcap(
+        &mut fs::File::open(workspace.0.join("output.mcap")).unwrap(),
+        &mut records,
+    )
+    .unwrap();
+    assert_eq!(
+        records
+            .messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>(),
+        messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
 #[cfg(all(unix, feature = "test-support"))]
 #[test]
 #[ignore = "requires loopback sockets and Unix signal delivery"]

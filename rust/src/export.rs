@@ -306,6 +306,9 @@ async fn resumable_export_inner(
         if request.end.is_none() {
             request.end = Some(OffsetDateTime::now_utc());
         }
+        // Earlier responses already hold every message a replay would repeat.
+        request.replay_policy.clear();
+        request.replay_lookback_seconds = 0.0;
     }
     if check == CompletionCheck::EndMagic && !complete_found {
         return Err(api::ApiError::Conversion(
