@@ -105,47 +105,41 @@ fn config_commands_note_environment_project_id() {
     let cases = [
         (
             &["get", "project-id"][..],
-            Some("prj_env"),
             true,
             "prj_env\n",
             NOTE.to_owned(),
         ),
         (
             &["set", "project-id", "prj_new"],
-            Some("prj_env"),
             true,
             "",
             format!("Configuration updated: project-id = prj_new\n{NOTE}"),
         ),
         (
             &["unset", "project-id"],
-            Some("prj_env"),
             true,
             "",
             format!("Configuration removed: project-id\n{NOTE}"),
         ),
         (
             &["unset", "project-id"],
-            Some("prj_env"),
             false,
             "",
             format!("No value set for key 'project-id'\n{NOTE}"),
         ),
     ];
-    for (args, environment, success, stdout, stderr) in cases {
-        let mut command = workspace.command("http://127.0.0.1:1");
-        if let Some(environment) = environment {
-            command.env("DEFAULT_PROJECT_ID", environment);
-        }
+    for (args, success, stdout, stderr) in cases {
         let output = Process::spawn(
-            command
+            workspace
+                .command("http://127.0.0.1:1")
+                .env("DEFAULT_PROJECT_ID", "prj_env")
                 .arg("config")
                 .args(args)
                 .arg("--config")
                 .arg(&config),
         )
         .finish();
-        assert_eq!(output.status.success(), success, "{args:?} {environment:?}");
+        assert_eq!(output.status.success(), success, "{args:?}");
         assert_eq!(String::from_utf8_lossy(&output.stdout), stdout);
         assert_eq!(String::from_utf8_lossy(&output.stderr), stderr);
     }
