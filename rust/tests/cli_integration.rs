@@ -2988,7 +2988,7 @@ fn upload_reports_the_request_id() {
 }
 
 #[test]
-fn api_keys_are_reported_unverified_without_a_request() {
+fn auth_info_reports_api_keys_unverified_by_effective_token() {
     let workspace = Workspace::new();
     let api_key_config = workspace.0.join("api-key.yaml");
     let output = Process::spawn(
@@ -3018,9 +3018,10 @@ fn api_keys_are_reported_unverified_without_a_request() {
         "auth_type: 1\nbearer_token: session-token\n",
     )
     .unwrap();
-    for (config, env_token) in [
-        (&api_key_config, None),
-        (&session_config, Some("fox_sk_override")),
+    for (config, env_token, api_key) in [
+        (&api_key_config, None, true),
+        (&session_config, Some("fox_sk_override"), true),
+        (&api_key_config, Some("session-override"), false),
     ] {
         let mut command = workspace.command("http://127.0.0.1:1");
         command.env_remove("BEARER_TOKEN");
@@ -3029,11 +3030,16 @@ fn api_keys_are_reported_unverified_without_a_request() {
         }
         let output =
             Process::spawn(command.args(["auth", "info", "--config"]).arg(config)).finish();
-        assert_success(&output);
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            "API key configured (not verified)\n"
-        );
+        if api_key {
+            assert_success(&output);
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "API key configured (not verified)\n"
+            );
+        } else {
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).starts_with("Info command failed:"));
+        }
     }
 }
 
