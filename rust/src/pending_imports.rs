@@ -105,10 +105,6 @@ struct PendingImportListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     request_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
-    session_id: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    session_key: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
     site_id: String,
     #[serde(skip_serializing_if = "is_false")]
     show_completed: bool,
@@ -123,11 +119,16 @@ pub(crate) async fn list_pending_imports(
     args: &PendingImportListArgs,
     format: Format,
 ) -> Outcome {
-    let project_id = args.project_id.clone().or_project(&runtime.project_id);
-    let session_key = args.session_key.clone().unwrap_or_default();
-    if !session_key.is_empty() && project_id.is_empty() {
-        return Outcome::failure("--project-id is required when using --session-key\n");
+    if args.without_project && args.project_id.as_deref().is_some_and(|id| !id.is_empty()) {
+        return Outcome::failure(
+            "--without-project cannot be combined with a nonempty --project-id\n",
+        );
     }
+    let project_id = if args.without_project {
+        String::new()
+    } else {
+        args.project_id.clone().or_project(&runtime.project_id)
+    };
     let updated_since = match parse_timestamp(
         args.updated_since.as_deref().unwrap_or_default(),
         "updated since",
@@ -150,8 +151,6 @@ pub(crate) async fn list_pending_imports(
         offset: args.offset.unwrap_or_default(),
         project_id,
         request_id: args.request_id.clone().unwrap_or_default(),
-        session_id: args.session_id.clone().unwrap_or_default(),
-        session_key,
         site_id: args.site_id.clone().unwrap_or_default(),
         show_completed: args.show_completed,
         show_quarantined: args.show_quarantined,
