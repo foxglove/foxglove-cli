@@ -313,7 +313,9 @@ async fn resumable_export_inner(
         // already hold those messages, so the merged file would contain them
         // twice. Once the resume point reaches the requested start, drop the
         // replay. Before that, the earlier responses may not hold the whole
-        // replay yet, so keep requesting it and accept possible repeats.
+        // replay yet, so keep requesting it. The merged file can then repeat
+        // replayed messages or include older messages from before the
+        // requested start.
         if requested_start.is_none_or(|requested| start >= requested) {
             request.replay_policy.clear();
             request.replay_lookback_seconds = 0.0;
