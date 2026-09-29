@@ -307,11 +307,13 @@ async fn resumable_export_inner(
         if request.end.is_none() {
             request.end = Some(OffsetDateTime::now_utc());
         }
-        // Once a response reaches the requested start, earlier responses hold
-        // every message a replay would repeat. A response that stops before
-        // then may lack some replayed messages, so the replay is requested
-        // again; the merged file can then repeat replayed messages or include
-        // other messages from before the requested start.
+        // The resumed request starts at the last message received. With a
+        // replay policy, the server would first resend the latest message on
+        // each channel from before that point, and the earlier responses
+        // already hold those messages, so the merged file would contain them
+        // twice. Once the resume point reaches the requested start, drop the
+        // replay. Before that, the earlier responses may not hold the whole
+        // replay yet, so keep requesting it and accept possible repeats.
         if requested_start.is_none_or(|requested| start >= requested) {
             request.replay_policy.clear();
             request.replay_lookback_seconds = 0.0;
