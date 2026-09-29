@@ -653,6 +653,25 @@ fn session_key_edit_requires_exactly_one_change() {
 }
 
 #[test]
+fn session_key_edit_reports_debug_project_scope() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["--debug", "sessions", "edit", "..", "--key", "new-key"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("API path segments must not be"), "{stderr}");
+}
+
+#[test]
 fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
     for key in ["", ".", ".."] {

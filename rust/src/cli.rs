@@ -1193,7 +1193,7 @@ pub(crate) struct SessionLookupArgs {
 #[derive(Debug, Args)]
 #[command(group(ArgGroup::new("key_change").args(["key", "remove_key"]).required(true)))]
 pub(crate) struct SessionEditArgs {
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION_ID_OR_KEY")]
     pub(crate) session: String,
@@ -1458,6 +1458,7 @@ fn command_project_scope(
         }
         CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Edit(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(
             SessionsCommand::Get(args)
