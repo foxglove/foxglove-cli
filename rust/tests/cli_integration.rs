@@ -62,6 +62,40 @@ fn clearing_project_default_requires_project_for_session_key() {
     );
 }
 
+#[test]
+fn config_set_trims_and_rejects_blank_project_id() {
+    let workspace = Workspace::new();
+    let config = workspace.0.join("config.yaml");
+    fs::write(&config, "default_project_id: prj_saved\n").unwrap();
+    let set = |value: &str| {
+        Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["config", "set", "project-id", value, "--config"])
+                .arg(&config),
+        )
+        .finish()
+    };
+    for value in ["", "   "] {
+        let output = set(value);
+        assert_eq!(output.status.code(), Some(1), "{value:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "project-id cannot be empty; use `foxglove config unset project-id` to remove it\n",
+        );
+    }
+    let output = set(" prj_1 ");
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Configuration updated: project-id = prj_1\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&config).unwrap(),
+        "default_project_id: prj_1\n"
+    );
+}
+
 fn message(channel_id: u16, time: u64, data: Vec<u8>) -> Message {
     Message {
         channel_id,
