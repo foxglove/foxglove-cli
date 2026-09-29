@@ -641,6 +641,32 @@ fn login_stops_polling_when_device_code_expires() {
     assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_requires_a_device_code_id() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/auth/device-code",
+        r#"{"userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
+    )]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]))
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Login failed: failed to fetch device code: response did not include an ID\n"
+    );
+    assert_eq!(server.finish().len(), 1);
+    assert!(!workspace.0.join(".foxgloverc").exists());
+}
+
 #[cfg(all(unix, feature = "test-support"))]
 #[test]
 #[ignore = "requires loopback sockets and Unix signal delivery"]
