@@ -1020,9 +1020,7 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "Filter by error message", allow_hyphen_values = true)]
-    pub(crate) error: Option<String>,
-    #[arg(long, help = "Filename", allow_hyphen_values = true)]
+    #[arg(long, help = "Exact filename to match", allow_hyphen_values = true)]
     pub(crate) filename: Option<String>,
     #[arg(long, help = "Key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
