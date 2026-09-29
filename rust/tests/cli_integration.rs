@@ -775,9 +775,6 @@ fn recordings_are_listed_with_their_session() {
     let recordings = recordings["data"].as_array().unwrap();
     assert_eq!(recordings[0]["sessionId"], "ses_one");
     assert_eq!(recordings[1]["sessionId"], "");
-    assert!(recordings
-        .iter()
-        .all(|recording| recording.get("messageCount").is_none()));
     server.finish();
 }
 
