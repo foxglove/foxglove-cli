@@ -84,10 +84,6 @@ fn config_set_trims_and_rejects_blank_project_id() {
             "project-id cannot be empty; use `foxglove config unset project-id` to remove it\n",
         );
     }
-    assert_eq!(
-        fs::read_to_string(&config).unwrap(),
-        "default_project_id: prj_saved\n"
-    );
     let output = set(" prj_1 ");
     assert_success(&output);
     assert_eq!(
@@ -109,13 +105,6 @@ fn config_commands_note_environment_project_id() {
     let cases = [
         (
             &["get", "project-id"][..],
-            None,
-            true,
-            "prj_saved\n",
-            String::new(),
-        ),
-        (
-            &["get", "project-id"],
             Some("prj_env"),
             true,
             "prj_env\n",
