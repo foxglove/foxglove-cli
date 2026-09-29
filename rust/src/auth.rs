@@ -41,8 +41,8 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
         .config
         .get_string("auth_type")
         .and_then(|value| value.parse::<i32>().ok());
-    if auth_type == Some(2) || (auth_type != Some(1) && token.starts_with("fox_sk_")) {
-        return Outcome::success("Authenticated with API key\n");
+    if token.starts_with("fox_sk_") || auth_type == Some(2) {
+        return Outcome::success("API key configured (not verified)\n");
     }
     match runtime
         .client
@@ -126,7 +126,10 @@ pub(crate) async fn login(
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(bearer_token));
     match config.save() {
-        Ok(()) => Outcome::default(),
+        Ok(()) => Outcome::notice(format!(
+            "Signed in. Session saved to {}\n",
+            config.path().display()
+        )),
         Err(error) => Outcome {
             stderr: format!(
                 "Login failed: failed to configure auth: {}\n",

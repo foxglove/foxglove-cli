@@ -2986,3 +2986,85 @@ fn upload_reports_the_request_id() {
     );
     assert!(requests[1].ends_with(&*String::from_utf8_lossy(&data)));
 }
+
+#[test]
+fn api_keys_are_reported_unverified_without_a_request() {
+    let workspace = Workspace::new();
+    let api_key_config = workspace.0.join("api-key.yaml");
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .args([
+                "auth",
+                "configure-api-key",
+                "--api-key",
+                "garbage",
+                "--config",
+            ])
+            .arg(&api_key_config),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        format!(
+            "API key saved to {} (not verified)\n",
+            api_key_config.display()
+        )
+    );
+    let session_config = workspace.0.join("session.yaml");
+    fs::write(
+        &session_config,
+        "auth_type: 1\nbearer_token: session-token\n",
+    )
+    .unwrap();
+    for (config, env_token) in [
+        (&api_key_config, None),
+        (&session_config, Some("fox_sk_override")),
+    ] {
+        let mut command = workspace.command("http://127.0.0.1:1");
+        command.env_remove("BEARER_TOKEN");
+        if let Some(token) = env_token {
+            command.env("BEARER_TOKEN", token);
+        }
+        let output =
+            Process::spawn(command.args(["auth", "info", "--config"]).arg(config)).finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "API key configured (not verified)\n"
+        );
+    }
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_confirms_saved_session() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/auth/device-code",
+            r#"{"deviceCode":"fixture","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
+        ),
+        Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#),
+        Reply::json("POST", "/v1/signin", r#"{"bearerToken":"session-token"}"#),
+    ]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        format!(
+            "Signed in. Session saved to {}\n",
+            workspace.0.join(".foxgloverc").display()
+        )
+    );
+    assert_eq!(server.finish().len(), 3);
+}

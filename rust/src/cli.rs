@@ -188,9 +188,15 @@ pub(crate) struct AttachmentListArgs {
 
 #[derive(Debug, Subcommand)]
 enum AuthCommand {
-    #[command(about = "Configure an API key")]
+    #[command(
+        about = "Configure an API key",
+        long_about = "Configure an API key. The key is saved without being verified."
+    )]
     ConfigureApiKey(ConfigureApiKeyArgs),
-    #[command(about = "Display information about the currently authenticated user")]
+    #[command(
+        about = "Display information about the currently authenticated user",
+        long_about = "Display information about the currently authenticated user. A session token is checked with the API; an API key is reported as configured without being verified."
+    )]
     Info,
     #[command(about = "Log in to Foxglove Data Platform")]
     Login(LoginArgs),
@@ -1855,7 +1861,10 @@ fn configure_api_key(
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(token));
     match config.save() {
-        Ok(()) => Outcome::default(),
+        Ok(()) => Outcome::notice(format!(
+            "API key saved to {} (not verified)\n",
+            config.path().display()
+        )),
         Err(error) => Outcome {
             stderr: format!("Configuration failed: {}\n", error.trim_end()).into_bytes(),
             exit_code: 1,
