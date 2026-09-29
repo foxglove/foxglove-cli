@@ -1360,10 +1360,7 @@ fn event_types_are_listed_with_their_custom_properties() {
         },
         Reply::json("GET", "/v1/event-types", EVENT_TYPES),
     ]);
-    for properties in [
-        "stop_reason (required), operator",
-        "cp_one (required), cp_two",
-    ] {
+    let list_csv = |properties: &str| {
         let output = run(
             &workspace,
             &server,
@@ -1377,7 +1374,12 @@ fn event_types_are_listed_with_their_custom_properties() {
                  evtt_one,Stop,red,\"{properties}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
             )
         );
-    }
+        output
+    };
+    list_csv("stop_reason (required), operator");
+    let output = list_csv("cp_one (required), cp_two");
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .starts_with("Showing custom property IDs; failed to load their keys: "));
     let output = run(
         &workspace,
         &server,

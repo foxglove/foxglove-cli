@@ -82,12 +82,13 @@ pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outco
         Ok(event_types) => event_types,
         Err(error) => return Outcome::failure(format!("Failed to list event types: {error}\n")),
     };
+    let mut lookup_error = None;
     if format != Format::Json
         && event_types
             .iter()
             .any(|event_type| !event_type.custom_properties.is_empty())
     {
-        if let Ok(definitions) = runtime
+        match runtime
             .client
             .get::<_, Vec<CustomPropertyDefinition>>(
                 "/v1/custom-properties",
@@ -95,19 +96,28 @@ pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outco
             )
             .await
         {
-            let keys = definitions
-                .into_iter()
-                .map(|definition| (definition.id, definition.key))
-                .collect::<HashMap<_, _>>();
-            for property in event_types
-                .iter_mut()
-                .flat_map(|event_type| &mut event_type.custom_properties)
-            {
-                property.key = keys.get(&property.id).cloned();
+            Ok(definitions) => {
+                let keys = definitions
+                    .into_iter()
+                    .map(|definition| (definition.id, definition.key))
+                    .collect::<HashMap<_, _>>();
+                for property in event_types
+                    .iter_mut()
+                    .flat_map(|event_type| &mut event_type.custom_properties)
+                {
+                    property.key = keys.get(&property.id).cloned();
+                }
             }
+            Err(error) => lookup_error = Some(error),
         }
     }
-    format_output(&event_types, format)
+    let mut outcome = format_output(&event_types, format);
+    if let Some(error) = lookup_error {
+        outcome.stderr.extend_from_slice(
+            format!("Showing custom property IDs; failed to load their keys: {error}\n").as_bytes(),
+        );
+    }
+    outcome
 }
 
 #[cfg(test)]
