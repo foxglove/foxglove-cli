@@ -327,6 +327,8 @@ completion in every new shell:
 $ echo 'eval "$(foxglove completion bash)"' >> ~/.bashrc
 ```
 
+On macOS, add the line to `~/.bash_profile` instead.
+
 ## Development
 
 See the [Rust development guide](rust/README.md) for building and testing.
