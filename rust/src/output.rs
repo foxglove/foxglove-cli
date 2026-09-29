@@ -44,7 +44,8 @@ pub fn render_csv(
 }
 
 /// Render a table. When stdout is a terminal or `COLUMNS` is set, cells other
-/// than IDs wrap so the table fits that width; otherwise rows are not wrapped.
+/// than IDs wrap to fit that width. ID columns never wrap, so a table with many
+/// IDs can be wider than that width. Otherwise rows are not wrapped.
 ///
 /// # Errors
 ///
