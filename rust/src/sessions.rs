@@ -334,7 +334,7 @@ pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) 
         Err(error) if error.is_not_found() => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
-        Err(error) => Outcome::failure(format!("Failed to update session key: {error}\n")),
+        Err(error) => Outcome::failure(format!("Failed to edit session: {error}\n")),
     }
 }
 

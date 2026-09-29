@@ -597,7 +597,7 @@ fn session_key_edit_reports_api_errors() {
         (
             400,
             r#"{"error":"A session with this key already exists in this project"}"#,
-            "Failed to update session key: A session with this key already exists in this project\n",
+            "Failed to edit session: A session with this key already exists in this project\n",
         ),
         (
             404,
