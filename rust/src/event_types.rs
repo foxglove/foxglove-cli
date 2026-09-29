@@ -1,10 +1,10 @@
 //! Event type commands.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use std::collections::HashMap;
 
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, null_to_default, Record};
+use crate::records::{format_output, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -12,6 +12,14 @@ use crate::Outcome;
 struct EventTypeCustomProperty {
     id: String,
     required: bool,
+    #[serde(skip)]
+    key: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CustomPropertyDefinition {
+    id: String,
+    key: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -47,7 +55,18 @@ impl Record for EventType {
             self.id.clone(),
             self.name.clone(),
             self.color_name.clone(),
-            compact_json(&serde_json::to_value(&self.custom_properties).unwrap_or(Value::Null)),
+            self.custom_properties
+                .iter()
+                .map(|property| {
+                    let name = property.key.as_deref().unwrap_or(&property.id);
+                    if property.required {
+                        format!("{name} (required)")
+                    } else {
+                        name.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
             self.created_at.clone(),
             self.updated_at.clone(),
         ]
@@ -55,15 +74,40 @@ impl Record for EventType {
 }
 
 pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
-    fetch_list::<EventType, _>(
-        runtime,
-        format,
-        "Failed to list event types",
-        "/v1/event-types",
-        &(),
-        None,
-    )
-    .await
+    let mut event_types = match runtime
+        .client
+        .get::<_, Vec<EventType>>("/v1/event-types", &())
+        .await
+    {
+        Ok(event_types) => event_types,
+        Err(error) => return Outcome::failure(format!("Failed to list event types: {error}\n")),
+    };
+    if format != Format::Json
+        && event_types
+            .iter()
+            .any(|event_type| !event_type.custom_properties.is_empty())
+    {
+        if let Ok(definitions) = runtime
+            .client
+            .get::<_, Vec<CustomPropertyDefinition>>(
+                "/v1/custom-properties",
+                &[("resourceType", "event")],
+            )
+            .await
+        {
+            let keys = definitions
+                .into_iter()
+                .map(|definition| (definition.id, definition.key))
+                .collect::<HashMap<_, _>>();
+            for property in event_types
+                .iter_mut()
+                .flat_map(|event_type| &mut event_type.custom_properties)
+            {
+                property.key = keys.get(&property.id).cloned();
+            }
+        }
+    }
+    format_output(&event_types, format)
 }
 
 #[cfg(test)]

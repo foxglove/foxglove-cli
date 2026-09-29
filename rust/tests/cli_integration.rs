@@ -1348,19 +1348,36 @@ fn event_types_are_listed_with_their_custom_properties() {
     let workspace = Workspace::new();
     let server = Server::new(vec![
         Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+        Reply::json(
+            "GET",
+            "/v1/custom-properties",
+            r#"[{"id":"cp_one","key":"stop_reason"},{"id":"cp_two","key":"operator"}]"#,
+        ),
+        Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+        Reply {
+            status: 403,
+            ..Reply::json("GET", "/v1/custom-properties", r#"{"error":"Forbidden"}"#)
+        },
         Reply::json("GET", "/v1/event-types", EVENT_TYPES),
     ]);
-    let output = run(
-        &workspace,
-        &server,
-        &["event-types", "list", "--format", "csv"],
-    );
-    assert_success(&output);
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        "ID,Name,Color,Custom Properties,Created At,Updated At\n\
-         evtt_one,Stop,red,\"[{\"\"id\"\":\"\"cp_one\"\",\"\"required\"\":true},{\"\"id\"\":\"\"cp_two\"\",\"\"required\"\":false}]\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
-    );
+    for properties in [
+        "stop_reason (required), operator",
+        "cp_one (required), cp_two",
+    ] {
+        let output = run(
+            &workspace,
+            &server,
+            &["event-types", "list", "--format", "csv"],
+        );
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            format!(
+                "ID,Name,Color,Custom Properties,Created At,Updated At\n\
+                 evtt_one,Stop,red,\"{properties}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
+            )
+        );
+    }
     let output = run(
         &workspace,
         &server,
