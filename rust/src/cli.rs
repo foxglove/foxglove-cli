@@ -209,11 +209,8 @@ pub(crate) struct LoginArgs {
 
 #[derive(Debug, Subcommand)]
 enum CompletionCommand {
-    #[command(
-        about = "Generate completions for Bash",
-        mut_arg("no_descriptions", |arg| arg.help("No effect: Bash completions have no descriptions"))
-    )]
-    Bash(CompletionArgs),
+    #[command(about = "Generate completions for Bash")]
+    Bash,
     #[command(about = "Generate completions for Fish")]
     Fish(CompletionArgs),
     #[command(about = "Generate completions for PowerShell")]
@@ -1395,7 +1392,7 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
         }
         CliCommand::Completion(shell) => {
             let (shell, no_descriptions) = match shell {
-                CompletionCommand::Bash(args) => ("bash", args.no_descriptions),
+                CompletionCommand::Bash => ("bash", false),
                 CompletionCommand::Fish(args) => ("fish", args.no_descriptions),
                 CompletionCommand::Powershell(args) => ("powershell", args.no_descriptions),
                 CompletionCommand::Zsh(args) => ("zsh", args.no_descriptions),
@@ -1857,7 +1854,7 @@ mod tests {
     fn boolean_flags_accept_standard_values_and_preserve_defaults() {
         let cases = [
             (vec![], "debug"),
-            (vec!["completion", "bash"], "no-descriptions"),
+            (vec!["completion", "fish"], "no-descriptions"),
             (vec!["coverage", "list"], "include-edge-recordings"),
             (vec!["export"], "include-attachments"),
             (vec!["pending-imports", "list"], "show-completed"),
@@ -2016,24 +2013,5 @@ mod tests {
         assert_ne!(described.stdout, plain.stdout);
         assert!(!String::from_utf8_lossy(&plain.stdout)
             .contains("List devices registered to your organization"));
-    }
-
-    #[test]
-    fn bash_completion_help_says_no_descriptions_has_no_effect() {
-        for (shell, help) in [
-            ("bash", "No effect: Bash completions have no descriptions"),
-            ("fish", "Disable completion descriptions"),
-        ] {
-            let outcome = invoke(&["completion", shell, "--help"]);
-            assert_eq!(outcome.exit_code, 0, "{shell}");
-            assert!(
-                String::from_utf8_lossy(&outcome.stdout).contains(help),
-                "{shell}"
-            );
-        }
-        assert_eq!(
-            invoke(&["completion", "bash"]).stdout,
-            invoke(&["completion", "bash", "--no-descriptions"]).stdout
-        );
     }
 }
