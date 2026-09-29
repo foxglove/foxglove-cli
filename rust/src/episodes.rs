@@ -218,7 +218,7 @@ pub(crate) async fn get_episode(
         .await
     {
         Ok(episode) => format_record(&episode, format),
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("episode") => {
             Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
         }
         Err(error) => Outcome::failure(format!("Failed to get episode: {error}\n")),
@@ -307,7 +307,7 @@ pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Out
             Some(episode) => Outcome::notice(format!("Episode already exists: {}\n", episode.id)),
             None => Outcome::failure("Failed to create episode: the API returned no episode\n"),
         },
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("project") => {
             Outcome::failure(format!("Project not found: {}\n", request.project_id))
         }
         Err(error) => Outcome::failure(format!("Failed to create episode: {error}\n")),
@@ -321,10 +321,9 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
         .await
     {
         Ok(()) => Outcome::notice(format!("Episode deleted: {}\n", args.episode_id)),
-        Err(error) if error.is_not_found() => Outcome::notice(format!(
-            "Not found. The resource may have already been deleted.\nEpisode deleted: {}\n",
-            args.episode_id
-        )),
+        Err(error) if error.is_not_found_for("episode") => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
         Err(error) => Outcome::failure(format!("Failed to delete episode: {error}\n")),
     }
 }

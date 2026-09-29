@@ -229,7 +229,7 @@ pub(crate) async fn list_versions(
             ),
             page.next_cursor.as_deref(),
         ),
-        Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to list dataset versions: {error}\n")),
     }
 }
@@ -254,7 +254,7 @@ pub(super) async fn draft_version(runtime: &Runtime, dataset_id: &str) -> Result
                 "Dataset {dataset_id} has no draft\n"
             ))),
         },
-        Err(error) if error.is_not_found() => Err(dataset_not_found(dataset_id)),
+        Err(error) if error.is_not_found_for("dataset") => Err(dataset_not_found(dataset_id)),
         Err(error) => Err(Outcome::failure(format!(
             "Failed to find the draft of dataset {dataset_id}: {error}\n"
         ))),
@@ -279,7 +279,9 @@ pub(crate) async fn get_version(
         .await
     {
         Ok(version) => format_record(&version, format),
-        Err(error) if error.is_not_found() => version_not_found(&args.dataset_id, args.version),
+        Err(error) if error.is_not_found_for("version") => {
+            version_not_found(&args.dataset_id, args.version)
+        }
         Err(error) => Outcome::failure(format!("Failed to get dataset version: {error}\n")),
     }
 }
@@ -306,7 +308,7 @@ pub(crate) async fn compare_versions(
         .await
     {
         Ok(page) => page,
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("version") => {
             return Outcome::failure(format!(
                 "Version {} or {} of dataset {} not found\n",
                 args.base_version, args.target_version, args.dataset_id
@@ -358,7 +360,7 @@ pub(crate) async fn restore_version(
         .await
     {
         Ok(response) => Outcome::notice(restore_summary(&response, args)),
-        Err(error) if error.is_not_found() => Outcome::failure(format!(
+        Err(error) if error.is_not_found_for("version") => Outcome::failure(format!(
             "Committed version {} of dataset {} not found\n",
             args.version, args.dataset_id
         )),
@@ -425,7 +427,7 @@ pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
             committed.added_episode_count,
             committed.removed_episode_count
         )),
-        Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to commit dataset: {error}\n")),
     }
 }
@@ -446,7 +448,7 @@ pub(crate) async fn discard_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> 
             "Discarded {}\n",
             pending_changes(response.discarded_adds, response.discarded_removes)
         )),
-        Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to discard dataset changes: {error}\n")),
     }
 }

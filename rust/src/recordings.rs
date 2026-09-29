@@ -193,9 +193,9 @@ pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteAr
         .delete(&format!("/v1/recordings/{}", encode_path_segment(&args.id)))
         .await
     {
-        Ok(()) => Outcome::default(),
-        Err(error) if error.is_not_found() => {
-            Outcome::notice("Not found. The resource may have already been deleted.\n")
+        Ok(()) => Outcome::notice(format!("Recording deleted: {}\n", args.id)),
+        Err(error) if error.is_not_found_for("recording") => {
+            Outcome::failure(format!("Recording not found: {}\n", args.id))
         }
         Err(error) => Outcome::failure(format!("Failed to delete recording: {error}\n")),
     }
@@ -268,7 +268,10 @@ mod tests {
                 format!("{message}: rec_example (importStatus: {status})\n").as_bytes()
             );
         }
-        let outcome = transfer_outcome(Err(ApiError::NotFound { code: None }));
+        let outcome = transfer_outcome(Err(ApiError::NotFound {
+            code: None,
+            message: String::new(),
+        }));
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.stdout.is_empty());
         assert_eq!(

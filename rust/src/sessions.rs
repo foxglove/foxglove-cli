@@ -153,7 +153,7 @@ pub(crate) async fn get_session(runtime: &Runtime, args: &SessionLookupArgs) -> 
         .await;
     match result {
         Ok(session) => session_outcome(&session),
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("session") => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
         Err(error) => Outcome::failure(format!("Failed to get session: {error}\n")),
@@ -281,10 +281,9 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
         .await
     {
         Ok(()) => Outcome::notice(format!("Session deleted: {}\n", args.session)),
-        Err(error) if error.is_not_found() => Outcome::notice(format!(
-            "Not found. The resource may have already been deleted.\nSession deleted: {}\n",
-            args.session
-        )),
+        Err(error) if error.is_not_found_for("session") => {
+            Outcome::failure(format!("Session not found: {}\n", args.session))
+        }
         Err(error) => Outcome::failure(format!("Failed to delete session: {error}\n")),
     }
 }
@@ -311,7 +310,7 @@ pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) 
             Some(key) => format!("Session updated: {}\nSession key: {key}\n", session.id),
             None => format!("Session updated: {}\nSession key removed\n", session.id),
         }),
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("session") => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
         Err(error) => Outcome::failure(format!("Failed to edit session: {error}\n")),
