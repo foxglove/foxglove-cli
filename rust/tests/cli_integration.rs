@@ -564,7 +564,7 @@ fn session_add_sends_key() {
             "--device-id",
             "dev_one",
             "--key",
-            "drive-41",
+            " drive-41\r",
         ],
     );
     assert_success(&output);
@@ -587,6 +587,11 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
     for (flags, expected_body, expected_stderr) in [
         (
             vec!["--key", "new-key"],
+            serde_json::json!({"key": "new-key"}),
+            "Session updated: ses_one\nSession key: new-key\n",
+        ),
+        (
+            vec!["--key", " new-key\r"],
             serde_json::json!({"key": "new-key"}),
             "Session updated: ses_one\nSession key: new-key\n",
         ),
@@ -634,6 +639,11 @@ fn session_key_edit_reports_api_errors() {
             "Failed to edit session: A session with this key already exists in this project\n",
         ),
         (
+            403,
+            r#"{"error":"This operation requires the `sessions.update` capability.","code":"MissingApiKeyCapability"}"#,
+            "Failed to edit session: forbidden: have you signed in with `foxglove auth login`?\nThis operation requires the `sessions.update` capability.\n",
+        ),
+        (
             404,
             r#"{"error":"Not Found"}"#,
             "Session not found: session-id\n",
@@ -665,7 +675,11 @@ fn session_key_edit_requires_exactly_one_change() {
         ),
         (
             vec!["--key", ""],
-            "error: a value is required for '--key <KEY>' but none was supplied\n",
+            "error: invalid value '' for '--key <KEY>': cannot be empty\n",
+        ),
+        (
+            vec!["--key", " "],
+            "error: invalid value ' ' for '--key <KEY>': cannot be empty\n",
         ),
         (
             vec!["--key", "new-key", "--remove-key"],

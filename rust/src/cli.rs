@@ -40,6 +40,16 @@ fn parse_list_limit(value: &str) -> Result<i64, String> {
         .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
 }
 
+/// Trim surrounding whitespace from a session key, such as a CR from a CRLF
+/// file, and reject a key that is blank.
+fn parse_session_key(value: &str) -> Result<String, String> {
+    let key = value.trim();
+    if key.is_empty() {
+        return Err("cannot be empty".to_owned());
+    }
+    Ok(key.to_owned())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DatasetVersionSelector {
     Number(i64),
@@ -1179,7 +1189,7 @@ pub(crate) struct SessionAddArgs {
     #[arg(
         long,
         help = "Session key, unique within the project",
-        value_parser = clap::builder::NonEmptyStringValueParser::new(),
+        value_parser = parse_session_key,
         allow_hyphen_values = true
     )]
     pub(crate) key: Option<String>,
@@ -1205,7 +1215,7 @@ pub(crate) struct SessionEditArgs {
     #[arg(
         long,
         help = "New session key, unique within the project",
-        value_parser = clap::builder::NonEmptyStringValueParser::new(),
+        value_parser = parse_session_key,
         allow_hyphen_values = true
     )]
     pub(crate) key: Option<String>,

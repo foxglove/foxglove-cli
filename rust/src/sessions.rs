@@ -323,9 +323,6 @@ pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) 
             Some(key) => format!("Session updated: {}\nSession key: {key}\n", session.id),
             None => format!("Session updated: {}\nSession key removed\n", session.id),
         }),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) if error.is_not_found() => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
