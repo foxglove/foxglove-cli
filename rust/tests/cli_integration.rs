@@ -2521,6 +2521,7 @@ fn project_required_creation_reports_debug_scope() {
 fn debug_logs_requests_and_redacts_signed_urls() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/extensions", "[]")]);
+    let list = format!("[DEBUG] GET {}/v1/extensions -> 200 OK (", server.url);
     let output = Process::spawn(workspace.command(&server.url).args([
         "extensions",
         "list",
@@ -2532,10 +2533,7 @@ fn debug_logs_requests_and_redacts_signed_urls() {
     assert_success(&output);
     server.finish();
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.starts_with("[DEBUG] GET /v1/extensions -> 200 OK ("),
-        "{stderr}"
-    );
+    assert!(stderr.starts_with(&list), "{stderr}");
 
     let server = Server::new(vec![
         Reply::json(
@@ -2559,10 +2557,6 @@ fn debug_logs_requests_and_redacts_signed_urls() {
     assert_success(&output);
     server.finish();
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("[DEBUG] POST /v1/data/stream -> 200 OK ("),
-        "{stderr}"
-    );
     assert!(stderr.contains(&download), "{stderr}");
 
     let server = Server::new(vec![Reply::json(

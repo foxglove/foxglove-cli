@@ -398,8 +398,9 @@ impl FoxgloveClient {
         })
     }
 
-    /// Log each request's method, target, status, and duration to stderr.
-    /// Signed storage URLs are logged without their query string.
+    /// Log each request's method, URL, status, and time until the response
+    /// headers arrive to stderr. Signed storage URLs are logged without their
+    /// query string.
     #[must_use]
     pub fn with_debug(mut self, debug: bool) -> Self {
         self.debug = debug;
@@ -544,7 +545,7 @@ impl FoxgloveClient {
                 device_code,
             })?);
         let response = self
-            .send(request, Some(cancellation), false)
+            .send(request, Some(cancellation))
             .await
             .map_err(|error| {
                 error.contextualize("token request failure", "failed to parse response body")
@@ -611,7 +612,7 @@ impl FoxgloveClient {
         let request = self
             .request_with_auth(Method::GET, endpoint, true)?
             .query(query);
-        let response = ensure_success_response(self.send(request, None, false).await?).await?;
+        let response = ensure_success_response(self.send(request, None).await?).await?;
         let next_cursor = pagination_cursor(&response, "fg-pagination-next-cursor");
         let data = response.json::<T>().await.map_err(ApiError::Decode)?;
         Ok(PagedResponse { data, next_cursor })
@@ -762,9 +763,7 @@ impl FoxgloveClient {
         Q: Serialize + ?Sized,
     {
         let request = self.request(Method::DELETE, endpoint)?.query(query);
-        let response = self
-            .send(request, Some(&CancellationToken::new()), false)
-            .await?;
+        let response = self.send(request, Some(&CancellationToken::new())).await?;
         ensure_ok(response).await
     }
 
@@ -780,11 +779,7 @@ impl FoxgloveClient {
         cancellation: &CancellationToken,
     ) -> Result<(), ApiError> {
         let response = self
-            .send(
-                self.request(Method::DELETE, endpoint)?,
-                Some(cancellation),
-                false,
-            )
+            .send(self.request(Method::DELETE, endpoint)?, Some(cancellation))
             .await?;
         with_optional_cancellation(Some(cancellation), ensure_ok(response)).await
     }
@@ -825,12 +820,11 @@ impl FoxgloveClient {
         // Signed storage URLs must not inherit the API bearer token, but they
         // use the same CLI identity as ordinary requests.
         let response = self
-            .send(
+            .send_signed(
                 self.http
                     .get(url)
                     .header(reqwest::header::USER_AGENT, &self.user_agent),
-                Some(cancellation),
-                true,
+                cancellation,
             )
             .await?;
         with_optional_cancellation(Some(cancellation), ensure_success_response(response))
@@ -886,7 +880,7 @@ impl FoxgloveClient {
             .request(Method::POST, "/v1/extension-upload")?
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
             .body(reqwest::Body::wrap_stream(ReaderStream::new(reader)));
-        let response = self.send(request, Some(cancellation), false).await?;
+        let response = self.send(request, Some(cancellation)).await?;
         with_optional_cancellation(Some(cancellation), ensure_ok(response)).await
     }
 
@@ -918,7 +912,7 @@ impl FoxgloveClient {
             .map_err(|error| ApiError::InvalidUrl(format!("invalid upload URL: {error}")))?;
         let body = reqwest::Body::wrap_stream(ReaderStream::new(reader));
         let response = self
-            .send(
+            .send_signed(
                 self.http
                     .put(url)
                     .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
@@ -926,8 +920,7 @@ impl FoxgloveClient {
                     // API client, without its bearer token but with its identity.
                     .header(reqwest::header::USER_AGENT, &self.user_agent)
                     .body(body),
-                Some(cancellation),
-                true,
+                cancellation,
             )
             .await?;
         with_optional_cancellation(Some(cancellation), ensure_upload_success(response)).await
@@ -960,11 +953,7 @@ impl FoxgloveClient {
             encode_path_segment(id)
         );
         let response = self
-            .send(
-                self.request(Method::GET, &endpoint)?,
-                Some(cancellation),
-                false,
-            )
+            .send(self.request(Method::GET, &endpoint)?, Some(cancellation))
             .await?;
         with_optional_cancellation(Some(cancellation), ensure_success_response(response))
             .await
@@ -990,7 +979,7 @@ impl FoxgloveClient {
             .request_with_auth(method, endpoint, authenticated)?
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .body(encode_json(body)?);
-        let response = self.send(request, cancellation, false).await?;
+        let response = self.send(request, cancellation).await?;
         with_optional_cancellation(cancellation, async {
             let response = ensure_ok_response(response).await?;
             response.json::<T>().await.map_err(ApiError::Decode)
@@ -1017,7 +1006,7 @@ impl FoxgloveClient {
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .body(encode_json(body)?);
         }
-        let response = self.send(request, cancellation, false).await?;
+        let response = self.send(request, cancellation).await?;
         with_optional_cancellation(cancellation, async {
             let response = ensure_ok_response(response).await?;
             response.json::<T>().await.map_err(ApiError::Decode)
@@ -1026,6 +1015,23 @@ impl FoxgloveClient {
     }
 
     async fn send(
+        &self,
+        request: RequestBuilder,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<Response, ApiError> {
+        self.send_logged(request, cancellation, false).await
+    }
+
+    /// Send to a signed storage URL, keeping its query out of logs and errors.
+    async fn send_signed(
+        &self,
+        request: RequestBuilder,
+        cancellation: &CancellationToken,
+    ) -> Result<Response, ApiError> {
+        self.send_logged(request, Some(cancellation), true).await
+    }
+
+    async fn send_logged(
         &self,
         request: RequestBuilder,
         cancellation: Option<&CancellationToken>,
@@ -1210,15 +1216,11 @@ impl ResponseStream {
 }
 
 fn debug_target(url: &Url, signed: bool) -> String {
+    let origin = url.origin().ascii_serialization();
     match (signed, url.query()) {
-        (false, Some(query)) => format!("{}?{query}", url.path()),
-        (false, None) => url.path().to_owned(),
-        (true, Some(_)) => format!(
-            "{}{}?<redacted>",
-            url.origin().ascii_serialization(),
-            url.path()
-        ),
-        (true, None) => format!("{}{}", url.origin().ascii_serialization(), url.path()),
+        (false, Some(query)) => format!("{origin}{}?{query}", url.path()),
+        (true, Some(_)) => format!("{origin}{}?<redacted>", url.path()),
+        (_, None) => format!("{origin}{}", url.path()),
     }
 }
 
@@ -1495,7 +1497,10 @@ mod tests {
     fn debug_targets_keep_api_queries_and_redact_signed_queries() {
         let api =
             reqwest::Url::parse("https://api.example.test/v1/recordings?projectId=prj_1").unwrap();
-        assert_eq!(debug_target(&api, false), "/v1/recordings?projectId=prj_1");
+        assert_eq!(
+            debug_target(&api, false),
+            "https://api.example.test/v1/recordings?projectId=prj_1"
+        );
         let signed = reqwest::Url::parse(
             "https://user:secret@storage.example.test/bucket/object?X-Amz-Signature=secret",
         )
