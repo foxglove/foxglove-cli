@@ -2313,7 +2313,7 @@ fn dataset_and_episode_writes_are_validated_before_sending_a_request() {
     }
 }
 
-const DEVICE_PROPERTIES: &str = r#"[{"id":"cp_note","key":"note","label":"Note","resourceType":"device","valueType":"multiline-string","hasAssociatedData":false},{"id":"cp_tags","key":"tags","label":"Tags","resourceType":"device","valueType":"multi-enum","values":["red","blue"],"enumValues":["red","blue"],"hasAssociatedData":false},{"id":"cp_mode","key":"mode","label":"Mode","resourceType":"device","valueType":"enum","values":["auto"],"enumValues":["auto"],"hasAssociatedData":false}]"#;
+const DEVICE_PROPERTIES: &str = r#"[{"id":"cp_note","key":"note","label":"Note","resourceType":"device","valueType":"multiline-string","hasAssociatedData":false},{"id":"cp_tags","key":"tags","label":"Tags","resourceType":"device","valueType":"multi-enum","enumValues":["red","blue"],"hasAssociatedData":false},{"id":"cp_mode","key":"mode","label":"Mode","resourceType":"device","valueType":"enum","enumValues":["auto"],"hasAssociatedData":false}]"#;
 
 #[test]
 #[ignore = "requires loopback sockets"]
@@ -2446,6 +2446,31 @@ fn devices_without_properties_render_an_empty_cell() {
         "ID,Name,Custom Properties,Created At,Updated At,Project ID\n\
          dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one\n"
     );
+}
+
+#[test]
+fn device_names_cannot_be_empty() {
+    let workspace = Workspace::new();
+    for args in [
+        vec!["devices", "add", "--name", "", "-p", "mode:auto"],
+        vec![
+            "devices",
+            "edit",
+            "dev_one",
+            "--name",
+            " ",
+            "-p",
+            "mode:auto",
+        ],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "--name cannot be empty\n",
+            "{args:?}"
+        );
+    }
 }
 
 #[test]

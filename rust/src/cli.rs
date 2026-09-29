@@ -21,7 +21,7 @@ use crate::{
 const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
-const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to give several values";
+const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -745,7 +745,7 @@ pub(crate) struct DeviceAddArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct DeviceWriteArgs {
+pub(crate) struct DeviceUpdateArgs {
     #[arg(long, help = "Name of the device", allow_hyphen_values = true)]
     pub(crate) name: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
@@ -757,7 +757,7 @@ pub(crate) struct DeviceWriteArgs {
 #[derive(Debug, Args)]
 pub(crate) struct DeviceEditArgs {
     #[command(flatten)]
-    pub(crate) update: DeviceWriteArgs,
+    pub(crate) update: DeviceUpdateArgs,
     #[arg(value_name = "DEVICE_ID")]
     pub(crate) id: String,
 }

@@ -98,8 +98,8 @@ struct CustomPropertyDefinition {
     key: String,
     #[serde(rename = "valueType")]
     value_type: String,
-    #[serde(default)]
-    values: Vec<String>,
+    #[serde(rename = "enumValues", default)]
+    enum_values: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -160,10 +160,20 @@ async fn device_properties(
                 "0" | "f" | "F" | "FALSE" | "false" | "False" => Value::Bool(false),
                 _ => return Err(format!("invalid value for boolean: {raw_value}")),
             },
-            "enum" if definition.values.iter().any(|value| value == raw_value) => {
+            "enum"
+                if definition
+                    .enum_values
+                    .iter()
+                    .any(|value| value == raw_value) =>
+            {
                 Value::String(raw_value.to_owned())
             }
-            "multi-enum" if definition.values.iter().any(|value| value == raw_value) => {
+            "multi-enum"
+                if definition
+                    .enum_values
+                    .iter()
+                    .any(|value| value == raw_value) =>
+            {
                 let mut values = match properties.remove(key) {
                     Some(Value::Array(values)) => values,
                     _ => Vec::new(),
@@ -183,6 +193,9 @@ async fn device_properties(
 }
 
 pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceAddArgs) -> Outcome {
+    if args.name.trim().is_empty() {
+        return Outcome::failure("--name cannot be empty\n");
+    }
     let properties = match device_properties(runtime, &args.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to create device: {error}\n")),
@@ -203,6 +216,14 @@ pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceAddArgs) -> Outco
 }
 
 pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Outcome {
+    if args
+        .update
+        .name
+        .as_deref()
+        .is_some_and(|name| name.trim().is_empty())
+    {
+        return Outcome::failure("--name cannot be empty\n");
+    }
     let properties = match device_properties(runtime, &args.update.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
