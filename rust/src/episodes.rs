@@ -14,10 +14,24 @@ use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub(crate) struct RecordingObjectLocation {
+    pub(crate) bucket: String,
+    pub(crate) path: String,
+    #[serde(
+        rename = "azureStorageAccountName",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub(crate) azure_storage_account_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct EpisodeRecording {
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) path: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) location: Option<RecordingObjectLocation>,
     #[serde(default)]
     pub(crate) start: String,
     #[serde(default)]
@@ -351,6 +365,57 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(record.recording_ids(), "rec_one,rec_two");
+    }
+
+    #[test]
+    fn a_recording_location_is_kept_in_json_output() {
+        let record: Episode = serde_json::from_value(serde_json::json!({
+            "id": "ep_fixture",
+            "projectId": "prj_default",
+            "startTime": "2024-01-02T03:04:05Z",
+            "endTime": "2024-01-02T03:04:06Z",
+            "metadata": {},
+            "createdAt": "2024-01-02T03:04:07Z",
+            "recordings": [
+                {
+                    "id": "rec_s3",
+                    "path": "one.mcap",
+                    "location": {"bucket": "robot-logs", "path": "fleet/one.mcap"},
+                    "start": "",
+                    "end": "",
+                    "available": true,
+                },
+                {
+                    "id": "rec_azure",
+                    "path": "two.mcap",
+                    "location": {
+                        "bucket": "robot-logs",
+                        "path": "fleet/two.mcap",
+                        "azureStorageAccountName": "fleetstorage",
+                    },
+                    "start": "",
+                    "end": "",
+                    "available": true,
+                },
+                {"id": "rec_imported", "path": "three.mcap", "start": "", "end": "", "available": true},
+            ],
+        }))
+        .unwrap();
+        let output = serde_json::to_value(&record).unwrap();
+        let recordings = &output["recordings"];
+        assert_eq!(
+            recordings[0]["location"],
+            serde_json::json!({"bucket": "robot-logs", "path": "fleet/one.mcap"})
+        );
+        assert_eq!(
+            recordings[1]["location"],
+            serde_json::json!({
+                "bucket": "robot-logs",
+                "path": "fleet/two.mcap",
+                "azureStorageAccountName": "fleetstorage",
+            })
+        );
+        assert!(recordings[2].get("location").is_none());
     }
 
     #[test]
