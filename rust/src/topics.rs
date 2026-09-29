@@ -98,6 +98,12 @@ pub(crate) async fn list_topics(
     {
         return Outcome::failure("provide one of --device-id, --device-name, --recording-id, --recording-key, --session-id, or --session-key\n");
     }
+    if !args.device_id.as_deref().unwrap_or_default().is_empty()
+        && (args.start.as_deref().unwrap_or_default().is_empty()
+            || args.end.as_deref().unwrap_or_default().is_empty())
+    {
+        return Outcome::failure("--start and --end are required when using --device-id\n");
+    }
     let project_id = args.project_id.clone().or_project(&runtime.project_id);
     let session_key = args.session_key.clone().unwrap_or_default();
     if !session_key.is_empty() && project_id.is_empty() {

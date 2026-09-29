@@ -284,8 +284,8 @@ Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 
 ### Extensions
 
-With a Foxglove [Team plan](https://foxglove.dev/pricing), you can upload and share
-[extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
+On Foxglove's Free, Pro, and Enterprise [plans](https://foxglove.dev/pricing),
+you can upload and share [extensions](https://foxglove.dev/docs/studio/extensions/getting-started)
 within your organization.
 
 Create and package an extension with the
@@ -304,18 +304,8 @@ the last published version of an extension will be installed across your organiz
 List all extensions:
 
 ```
-$ foxglove extensions list
-    [
-        {
-            "id": "ext_BsGXKGsZ9c4WQF1",
-            "name": "my_new_panel",
-            "publisher": "panel-publisher",
-            "displayName": "My New Panel",
-            "description": "Creates a panel",
-            "activeVersion": "1.0.0",
-            "sha256Sum": "395c3af8745ab104cd902d937366719a402bda4677ed3671cb38522c1ba13cbe"
-        }
-    ]
+$ foxglove extensions list --format json
+    {"data":[{"id":"ext_BsGXKGsZ9c4WQF1","name":"my_new_panel","publisher":"panel-publisher","displayName":"My New Panel","description":"Creates a panel","activeVersion":"1.0.0","sha256Sum":"395c3af8745ab104cd902d937366719a402bda4677ed3671cb38522c1ba13cbe"}]}
 ```
 
 Unpublish an extension by its ID to **delete** its files and uninstall it for
@@ -330,7 +320,12 @@ $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 Certain shells (bash, zsh, fish, and PowerShell) support generated
 autocompletion for commands, flags, and file paths.
 
-To enable this, consult your shell instructions under `$ foxglove completion <shell> -h`.
+`foxglove completion <shell>` prints the completion script for that shell. Load
+it as your shell's documentation describes; for example, in bash:
+
+```
+$ source <(foxglove completion bash)
+```
 
 ## Development
 

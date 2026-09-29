@@ -209,7 +209,10 @@ pub(crate) struct LoginArgs {
 
 #[derive(Debug, Subcommand)]
 enum CompletionCommand {
-    #[command(about = "Generate completions for Bash")]
+    #[command(
+        about = "Generate completions for Bash",
+        mut_arg("no_descriptions", |arg| arg.help("No effect: Bash completions have no descriptions"))
+    )]
     Bash(CompletionArgs),
     #[command(about = "Generate completions for Fish")]
     Fish(CompletionArgs),
@@ -1086,7 +1089,7 @@ enum RecordingsCommand {
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
     #[command(
-        about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
+        about = "Request transfer of a recording from the edge to its configured Primary Site"
     )]
     Transfer(RecordingTransferArgs),
 }
@@ -1243,7 +1246,11 @@ enum TopicsCommand {
 pub(crate) struct TopicListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Device ID (requires --start and --end)",
+        allow_hyphen_values = true
+    )]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -2009,5 +2016,24 @@ mod tests {
         assert_ne!(described.stdout, plain.stdout);
         assert!(!String::from_utf8_lossy(&plain.stdout)
             .contains("List devices registered to your organization"));
+    }
+
+    #[test]
+    fn bash_completion_help_says_no_descriptions_has_no_effect() {
+        for (shell, help) in [
+            ("bash", "No effect: Bash completions have no descriptions"),
+            ("fish", "Disable completion descriptions"),
+        ] {
+            let outcome = invoke(&["completion", shell, "--help"]);
+            assert_eq!(outcome.exit_code, 0, "{shell}");
+            assert!(
+                String::from_utf8_lossy(&outcome.stdout).contains(help),
+                "{shell}"
+            );
+        }
+        assert_eq!(
+            invoke(&["completion", "bash"]).stdout,
+            invoke(&["completion", "bash", "--no-descriptions"]).stdout
+        );
     }
 }

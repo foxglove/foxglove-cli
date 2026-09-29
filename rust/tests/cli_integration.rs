@@ -629,7 +629,16 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         (
             "/v1/data/topics",
             "[]",
-            &["topics", "list", "--device-id", "dev_one"],
+            &[
+                "topics",
+                "list",
+                "--device-id",
+                "dev_one",
+                "--start",
+                "2024-01-02",
+                "--end",
+                "2024-01-03",
+            ],
         ),
     ];
 
@@ -1281,6 +1290,30 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
             String::from_utf8_lossy(&output.stderr),
             "both --start and --end must be specified, or neither\n",
             "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn topics_for_a_device_require_a_time_range_before_sending_a_request() {
+    let workspace = Workspace::new();
+    for range in [
+        vec![],
+        vec!["--start", "2024-01-02"],
+        vec!["--end", "2024-01-03"],
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["topics", "list", "--device-id", "dev_one"])
+                .args(&range),
+        )
+        .finish();
+        assert!(!output.status.success(), "{range:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "--start and --end are required when using --device-id\n",
+            "{range:?}"
         );
     }
 }
