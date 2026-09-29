@@ -1020,9 +1020,26 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "Filter by error message", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Filter by error message (deprecated; cannot be combined with --device-id, --filename, --key, --site-id, --updated-since, --show-completed, or --show-quarantined)",
+        allow_hyphen_values = true,
+        conflicts_with_all = [
+            "device_id",
+            "filename",
+            "key",
+            "site_id",
+            "updated_since",
+            "show_completed",
+            "show_quarantined",
+        ]
+    )]
     pub(crate) error: Option<String>,
-    #[arg(long, help = "Filename", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Exact filename to match, as listed by this command (partial names do not match)",
+        allow_hyphen_values = true
+    )]
     pub(crate) filename: Option<String>,
     #[arg(long, help = "Key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
@@ -1968,6 +1985,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn pending_import_error_filter_rejects_filters_it_cannot_apply() {
+        let base = ["foxglove", "pending-imports", "list", "--error", "insert"];
+        for flag in [
+            ["--device-id", "dev_1"].as_slice(),
+            &["--filename", "fixture.mcap"],
+            &["--key", "fixture"],
+            &["--site-id", "site_1"],
+            &["--updated-since", "2024-01-01T00:00:00Z"],
+            &["--show-completed"],
+            &["--show-quarantined=false"],
+        ] {
+            let error = super::Cli::try_parse_from(base.iter().chain(flag)).unwrap_err();
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{flag:?}"
+            );
+        }
+        super::Cli::try_parse_from(base.iter().chain(&[
+            "--device-name",
+            "robot",
+            "--project-id",
+            "prj_1",
+            "--request-id",
+            "req_1",
+            "--limit",
+            "5",
+            "--offset",
+            "1",
+        ]))
+        .unwrap();
     }
 
     #[test]
