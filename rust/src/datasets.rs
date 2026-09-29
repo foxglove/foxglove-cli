@@ -324,7 +324,7 @@ fn removals(response: &EpisodesPatchResponse, requested: &[String]) -> String {
         .len()
         .saturating_sub(response.removed);
     if absent > 0 {
-        let _ = write!(summary, " ({absent} not in the dataset)");
+        let _ = write!(summary, " ({absent} not in the draft)");
     }
     summary.push('\n');
     summary

@@ -634,7 +634,7 @@ pub(crate) struct DatasetListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
-        help = "Field to sort datasets by: name, createdAt, or updatedAt (default: createdAt)",
+        help = "Field to sort datasets by: name, createdAt, updatedAt, or episodeCount (default: createdAt)",
         allow_hyphen_values = true
     )]
     pub(crate) sort_by: Option<String>,

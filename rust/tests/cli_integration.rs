@@ -1601,14 +1601,14 @@ fn episode_changes_report_what_the_api_applied() {
             vec!["remove", "ds_one", "ep_one", "ep_gone", "ep_one"],
             r#"{"added":0,"removed":1,"alreadyPresent":0}"#,
             serde_json::json!({"remove": ["ep_one", "ep_gone", "ep_one"]}),
-            "Removed 1 episode (1 not in the dataset)\n\
+            "Removed 1 episode (1 not in the draft)\n\
              Run foxglove datasets commit ds_one to commit the draft as a new version.\n",
         ),
         (
             vec!["remove", "ds_one", "ep_gone"],
             r#"{"added":0,"removed":0,"alreadyPresent":0}"#,
             serde_json::json!({"remove": ["ep_gone"]}),
-            "Removed 0 episodes (1 not in the dataset)\n",
+            "Removed 0 episodes (1 not in the draft)\n",
         ),
     ] {
         let server = Server::new(vec![Reply::json(
