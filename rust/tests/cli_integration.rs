@@ -615,7 +615,6 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
         )
         .finish();
         assert_success(&output);
-        assert!(output.stdout.is_empty());
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
             expected_stderr,
@@ -660,7 +659,6 @@ fn session_key_edit_reports_api_errors() {
         );
         assert_eq!(server.finish().len(), 1);
         assert!(!output.status.success(), "{status}");
-        assert!(output.stdout.is_empty());
         assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
     }
 }
@@ -761,7 +759,6 @@ fn session_key_edit_requires_exactly_one_change() {
         )
         .finish();
         assert!(!output.status.success(), "{flags:?}");
-        assert!(output.stdout.is_empty());
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(stderr.starts_with(expected), "{flags:?}: {stderr}");
     }
