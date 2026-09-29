@@ -30,8 +30,6 @@ struct SessionRecording {
 struct Session {
     id: String,
     #[serde(skip_serializing_if = "String::is_empty", default)]
-    name: String,
-    #[serde(skip_serializing_if = "String::is_empty", default)]
     key: String,
     #[serde(
         rename = "projectId",
@@ -68,7 +66,6 @@ impl Record for Session {
     fn headers() -> &'static [&'static str] {
         &[
             "ID",
-            "Name",
             "Key",
             "Project ID",
             "Device",
@@ -90,7 +87,6 @@ impl Record for Session {
         );
         vec![
             self.id.clone(),
-            self.name.clone(),
             self.key.clone(),
             self.project_id.clone(),
             device,
@@ -184,9 +180,8 @@ fn session_outcome(session: &Session) -> Outcome {
             .join(", ")
     };
     Outcome::success(format!(
-        "ID:         {}\nName:       {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
+        "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
         session.id,
-        session.name,
         session.key,
         session.project_id,
         device,
@@ -226,7 +221,7 @@ pub(crate) async fn list_session_recordings(
 #[serde(rename_all = "camelCase")]
 struct CreateSessionRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
-    name: String,
+    key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     device_id: String,
@@ -259,7 +254,7 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
         return Outcome::failure("--device-id is required when creating a session\n");
     }
     let request = CreateSessionRequest {
-        name: args.name.clone().unwrap_or_default(),
+        key: args.key.clone().unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id,
     };

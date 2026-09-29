@@ -548,6 +548,40 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn session_add_sends_key() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/sessions",
+        r#"{"id":"ses_one","key":"drive-41"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "add",
+            "--device-id",
+            "dev_one",
+            "--key",
+            "drive-41",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session created: ses_one\nSession key: drive-41\n"
+    );
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn session_key_edit_sends_string_or_null_without_other_changes() {
     let workspace = Workspace::new();
     for (flags, expected_body, expected_stderr) in [

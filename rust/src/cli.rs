@@ -1176,8 +1176,13 @@ enum SessionsCommand {
 pub(crate) struct SessionAddArgs {
     #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
-    #[arg(long, help = "Session name", allow_hyphen_values = true)]
-    pub(crate) name: Option<String>,
+    #[arg(
+        long,
+        help = "Session key, unique within the project",
+        value_parser = clap::builder::NonEmptyStringValueParser::new(),
+        allow_hyphen_values = true
+    )]
+    pub(crate) key: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
