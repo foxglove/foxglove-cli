@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::builder::Resettable;
 use clap::error::ErrorKind;
-use clap::{Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{ArgGroup, Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::{generate, Shell};
 use serde_yaml_ng::Value;
 
@@ -38,6 +38,16 @@ fn parse_list_limit(value: &str) -> Result<i64, String> {
         .ok()
         .filter(|limit| (1..=MAX_LIST_LIMIT).contains(limit))
         .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
+}
+
+/// Trim surrounding whitespace from a session key, such as a CR from a CRLF
+/// file, and reject a key that is blank.
+fn parse_session_key(value: &str) -> Result<String, String> {
+    let key = value.trim();
+    if key.is_empty() {
+        return Err("cannot be empty".to_owned());
+    }
+    Ok(key.to_owned())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1166,6 +1176,8 @@ enum SessionsCommand {
     Add(SessionAddArgs),
     #[command(about = "Delete a session")]
     Delete(SessionLookupArgs),
+    #[command(about = "Change or remove a session key")]
+    Edit(SessionEditArgs),
     #[command(about = "Get a session by ID or key")]
     Get(SessionLookupArgs),
     #[command(about = "List sessions in your organization")]
@@ -1178,8 +1190,13 @@ enum SessionsCommand {
 pub(crate) struct SessionAddArgs {
     #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
-    #[arg(long, help = "Session name", allow_hyphen_values = true)]
-    pub(crate) name: Option<String>,
+    #[arg(
+        long,
+        help = "Session key, unique within the project",
+        value_parser = parse_session_key,
+        allow_hyphen_values = true
+    )]
+    pub(crate) key: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
@@ -1190,6 +1207,24 @@ pub(crate) struct SessionLookupArgs {
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION_ID_OR_KEY")]
     pub(crate) session: String,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("key_change").args(["key", "remove_key"]).required(true)))]
+pub(crate) struct SessionEditArgs {
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "SESSION_ID_OR_KEY")]
+    pub(crate) session: String,
+    #[arg(
+        long,
+        help = "New session key, unique within the project",
+        value_parser = parse_session_key,
+        allow_hyphen_values = true
+    )]
+    pub(crate) key: Option<String>,
+    #[arg(long, help = "Remove the existing session key")]
+    pub(crate) remove_key: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1442,6 +1477,7 @@ fn command_project_scope(
         }
         CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Edit(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(
             SessionsCommand::Get(args)
@@ -1635,6 +1671,7 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
+        SessionsCommand::Edit(args) => sessions::edit_session_key(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
         SessionsCommand::List(args) => {
             let format = args.format.format;

@@ -438,6 +438,12 @@ fn identifier_paths_are_escaped_for_every_command() {
         ),
         (&["sessions", "delete", KEY], "DELETE", SESSION_PATH, "{}"),
         (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            SESSION_PATH,
+            SESSION,
+        ),
+        (
             &["sessions", "recordings", "add", KEY, "rec"],
             "PATCH",
             SESSION_PATH,
@@ -572,6 +578,243 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
         (&["episodes", "delete", KEY], "DELETE", EPISODE_PATH, "{}"),
     ];
     assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_add_sends_key() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/sessions",
+        r#"{"id":"ses_one","key":"drive-41"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "add",
+            "--device-id",
+            "dev_one",
+            "--key",
+            " drive-41\r",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session created: ses_one\nSession key: drive-41\n"
+    );
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_edit_sends_string_or_null_without_other_changes() {
+    let workspace = Workspace::new();
+    for (flags, expected_body, expected_stderr) in [
+        (
+            vec!["--key", "new-key"],
+            serde_json::json!({"key": "new-key"}),
+            "Session updated: ses_one\nSession key: new-key\n",
+        ),
+        (
+            vec!["--key", " new-key\r"],
+            serde_json::json!({"key": "new-key"}),
+            "Session updated: ses_one\nSession key: new-key\n",
+        ),
+        (
+            vec!["--remove-key"],
+            serde_json::json!({"key": null}),
+            "Session updated: ses_one\nSession key removed\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/sessions/old-key",
+            r#"{"id":"ses_one","createdAt":"","updatedAt":""}"#,
+        )]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "default-project")
+                .args(["sessions", "edit", "old-key"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected_stderr,
+            "{flags:?}"
+        );
+        let requests = server.finish();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(query_pairs(&requests[0])["projectId"], "default-project");
+        assert_eq!(json_body(&requests[0]), expected_body, "{flags:?}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_edit_reports_api_errors() {
+    let workspace = Workspace::new();
+    for (status, body, expected) in [
+        (
+            400,
+            r#"{"error":"A session with this key already exists in this project"}"#,
+            "Failed to edit session: A session with this key already exists in this project\n",
+        ),
+        (
+            403,
+            r#"{"error":"This operation requires the `sessions.update` capability.","code":"MissingApiKeyCapability"}"#,
+            "Failed to edit session: forbidden: have you signed in with `foxglove auth login`?\nThis operation requires the `sessions.update` capability.\n",
+        ),
+        (
+            404,
+            r#"{"error":"Not Found"}"#,
+            "Session not found: session-id\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status,
+            ..Reply::json("PATCH", "/v1/sessions/session-id", body)
+        }]);
+        let output = run(
+            &workspace,
+            &server,
+            &["sessions", "edit", "session-id", "--key", "taken"],
+        );
+        assert_eq!(server.finish().len(), 1);
+        assert!(!output.status.success(), "{status}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_commands_report_the_api_reason_when_forbidden() {
+    let workspace = Workspace::new();
+    for (args, method, path, capability, failure) in [
+        (
+            vec!["sessions", "get", "ses_one"],
+            "GET",
+            "/v1/sessions/ses_one",
+            "sessions.list",
+            "Failed to get session",
+        ),
+        (
+            vec!["sessions", "recordings", "list", "ses_one"],
+            "GET",
+            "/v1/sessions/ses_one",
+            "sessions.list",
+            "Failed to list session recordings",
+        ),
+        (
+            vec!["sessions", "add", "--device-id", "dev_one"],
+            "POST",
+            "/v1/sessions",
+            "sessions.create",
+            "Failed to create session",
+        ),
+        (
+            vec!["sessions", "delete", "ses_one"],
+            "DELETE",
+            "/v1/sessions/ses_one",
+            "sessions.delete",
+            "Failed to delete session",
+        ),
+        (
+            vec!["sessions", "recordings", "add", "ses_one", "rec_one"],
+            "PATCH",
+            "/v1/sessions/ses_one",
+            "sessions.update",
+            "Failed to add recording to session",
+        ),
+        (
+            vec!["sessions", "recordings", "remove", "ses_one", "rec_one"],
+            "PATCH",
+            "/v1/sessions/ses_one",
+            "sessions.update",
+            "Failed to remove recording from session",
+        ),
+    ] {
+        let reason = format!("This operation requires the `{capability}` capability.");
+        let body = serde_json::json!({"error": reason, "code": "MissingApiKeyCapability"});
+        let server = Server::new(vec![Reply {
+            status: 403,
+            ..Reply::json(method, path, &body.to_string())
+        }]);
+        let output = run(&workspace, &server, &args);
+        assert_eq!(server.finish().len(), 1, "{args:?}");
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "{failure}: forbidden: have you signed in with `foxglove auth login`?\n{reason}\n"
+            ),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn session_key_edit_requires_exactly_one_change() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec![],
+            "error: the following required arguments were not provided:\n  <--key <KEY>|--remove-key>\n",
+        ),
+        (
+            vec!["--key", ""],
+            "error: invalid value '' for '--key <KEY>': cannot be empty\n",
+        ),
+        (
+            vec!["--key", " "],
+            "error: invalid value ' ' for '--key <KEY>': cannot be empty\n",
+        ),
+        (
+            vec!["--key", "new-key", "--remove-key"],
+            "error: the argument '--key <KEY>' cannot be used with '--remove-key'\n",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["sessions", "edit", "session-id"])
+                .args(&flags),
+        )
+        .finish();
+        assert!(!output.status.success(), "{flags:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.starts_with(expected), "{flags:?}: {stderr}");
+    }
+}
+
+#[test]
+fn session_key_edit_reports_debug_project_scope() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["--debug", "sessions", "edit", "..", "--key", "new-key"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("API path segments must not be"), "{stderr}");
 }
 
 #[test]
