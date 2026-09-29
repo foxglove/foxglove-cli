@@ -60,7 +60,11 @@ impl Record for Event {
             self.created_at.clone(),
             self.updated_at.clone(),
             compact_json(&self.metadata),
-            compact_json(&self.properties),
+            if self.properties.is_null() {
+                String::new()
+            } else {
+                compact_json(&self.properties)
+            },
         ]
     }
 }
@@ -102,10 +106,7 @@ pub(crate) async fn list_events(
         ),
         ("query", args.query.clone().unwrap_or_default()),
         ("sortBy", args.sort_by.clone().unwrap_or_default()),
-        (
-            "sortOrder",
-            args.sort_order.clone().unwrap_or_else(|| "asc".to_owned()),
-        ),
+        ("sortOrder", args.sort_order.clone().unwrap_or_default()),
         ("start", args.start.clone().unwrap_or_default()),
     ]
     .into_iter()
@@ -159,7 +160,7 @@ pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome
     }
     let request = CreateEventRequest {
         project_id: args.project_id.clone().or_project(&runtime.project_id),
-        device_id: args.device_id.clone().unwrap_or_default(),
+        device_id: args.device_id.clone(),
         end: args.end.clone().unwrap_or_default(),
         event_type_id: args.event_type_id.clone().unwrap_or_default(),
         metadata,
