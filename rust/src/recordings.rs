@@ -30,9 +30,6 @@ struct Recording {
     id: String,
     path: String,
     size: i64,
-    #[serde(rename = "messageCount")]
-    #[serde(default, deserialize_with = "null_to_default")]
-    message_count: i64,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "importedAt")]
@@ -53,6 +50,9 @@ struct Recording {
     metadata: Option<Vec<MetadataRecord>>,
     #[serde(default, deserialize_with = "null_to_default")]
     key: String,
+    #[serde(rename = "sessionId")]
+    #[serde(default, deserialize_with = "null_to_default")]
+    session_id: String,
     #[serde(rename = "projectId")]
     project_id: String,
 }
@@ -63,7 +63,6 @@ impl Record for Recording {
             "Recording ID",
             "Path",
             "Size",
-            "Message Count",
             "Created At",
             "Imported At",
             "Start",
@@ -77,6 +76,7 @@ impl Record for Recording {
             "Device Name",
             "Metadata",
             "Key",
+            "Session ID",
             "Project ID",
         ]
     }
@@ -86,7 +86,6 @@ impl Record for Recording {
             self.id.clone(),
             self.path.clone(),
             format!("{} B", self.size),
-            self.message_count.to_string(),
             self.created_at.clone(),
             self.imported_at.clone(),
             self.start.clone(),
@@ -100,6 +99,7 @@ impl Record for Recording {
             self.device.name.clone(),
             compact_json(&serde_json::to_value(&self.metadata).unwrap_or(Value::Null)),
             self.key.clone(),
+            self.session_id.clone(),
             self.project_id.clone(),
         ]
     }
@@ -281,12 +281,12 @@ mod tests {
     fn missing_and_null_fields_render_explicit_defaults() {
         let original = serde_json::json!({"id":"rec_fixture","path":"fixture.mcap","size":128,"createdAt":"2024-01-02T03:04:05Z","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","importStatus":"none","projectId":"prj_default"});
         for (field, expected) in [
-            ("messageCount", serde_json::json!(0)),
             ("importedAt", serde_json::json!("")),
             ("site", serde_json::json!({"id": "", "name": ""})),
             ("edgeSite", serde_json::json!({"id": "", "name": ""})),
             ("device", serde_json::json!({"id": "", "name": ""})),
             ("key", serde_json::json!("")),
+            ("sessionId", serde_json::json!("")),
         ] {
             let mut with_null = original.clone();
             with_null[field] = serde_json::Value::Null;
