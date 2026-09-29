@@ -1,7 +1,7 @@
 //! Structured command parsing and offline command execution.
 
 use std::ffi::OsString;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
 use clap::builder::Resettable;
@@ -134,9 +134,7 @@ enum CliCommand {
 
 #[derive(Debug, Subcommand)]
 enum AttachmentsCommand {
-    #[command(
-        about = "Download an MCAP attachment by ID to stdout (redirect it to a file or pipe)"
-    )]
+    #[command(about = "Download an MCAP attachment by ID to stdout")]
     Download(AttachmentDownloadArgs),
     #[command(about = "List MCAP attachments")]
     List(AttachmentListArgs),
@@ -1482,7 +1480,8 @@ async fn dispatch_api_command(
     }
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
-            attachments::download_attachment(&runtime, &args, writer).await
+            let stdout_is_terminal = std::io::stdout().is_terminal();
+            attachments::download_attachment(&runtime, &args, writer, stdout_is_terminal).await
         }
         CliCommand::Attachments(AttachmentsCommand::List(args)) => {
             let format = args.format.format;

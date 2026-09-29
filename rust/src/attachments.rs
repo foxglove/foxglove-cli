@@ -1,6 +1,6 @@
 //! Attachment commands.
 
-use std::io::{IsTerminal, Write};
+use std::io::Write;
 
 use serde::{Deserialize, Serialize};
 
@@ -103,9 +103,10 @@ pub(crate) async fn download_attachment(
     runtime: &Runtime,
     args: &AttachmentDownloadArgs,
     stdout_writer: &mut dyn Write,
+    stdout_is_terminal: bool,
 ) -> Outcome {
-    if let Some(outcome) = terminal_outcome(std::io::stdout().is_terminal()) {
-        return outcome;
+    if stdout_is_terminal {
+        return Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n"));
     }
     let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
@@ -131,17 +132,29 @@ pub(crate) async fn download_attachment(
     }
 }
 
-fn terminal_outcome(stdout_is_terminal: bool) -> Option<Outcome> {
-    stdout_is_terminal.then(|| Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n")))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{terminal_outcome, BINARY_OUTPUT_TERMINAL_ERROR};
+    use std::fs;
 
-    #[test]
-    fn downloads_refuse_a_terminal() {
-        let outcome = terminal_outcome(true).expect("terminal is refused");
+    use super::{download_attachment, BINARY_OUTPUT_TERMINAL_ERROR};
+    use crate::cli::AttachmentDownloadArgs;
+
+    #[tokio::test]
+    async fn downloads_refuse_a_terminal_before_requesting() {
+        let directory = std::env::temp_dir().join(format!(
+            "foxglove-rust-attachments-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let config = directory.join(".foxgloverc");
+        fs::write(&config, "base_url: http://127.0.0.1:1\n").unwrap();
+        let runtime = crate::runtime::load(Some(&config), None).unwrap();
+        fs::remove_dir_all(&directory).unwrap();
+        let args = AttachmentDownloadArgs {
+            attachment_id: "att_1".to_owned(),
+        };
+
+        let outcome = download_attachment(&runtime, &args, &mut Vec::new(), true).await;
         assert_eq!(outcome.exit_code, 1);
         assert_eq!(
             outcome.stderr,
