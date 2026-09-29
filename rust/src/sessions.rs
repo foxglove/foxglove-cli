@@ -310,33 +310,29 @@ pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) 
     let query = ProjectQuery {
         project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
-    let request = PatchSessionKeyRequest {
-        key: if args.remove_key {
-            None
-        } else {
-            args.key.as_deref()
-        },
+    let key = if args.remove_key {
+        None
+    } else {
+        args.key.as_deref()
     };
     match runtime
         .client
-        .patch::<_, _, serde_json::Value>(
+        .patch::<_, _, Session>(
             &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
             &query,
-            &request,
+            &PatchSessionKeyRequest { key },
         )
         .await
     {
-        Ok(_) => Outcome {
-            stderr: if let Some(key) = &args.key {
-                format!("Session key updated: {key}\n")
-            } else {
-                format!("Session key removed: {}\n", args.session)
-            }
-            .into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(session) => Outcome::notice(match key {
+            Some(key) => format!("Session updated: {}\nSession key: {key}\n", session.id),
+            None => format!("Session updated: {}\nSession key removed\n", session.id),
+        }),
         Err(error) if error.is_forbidden() => {
             Outcome::failure("Not authenticated. Run foxglove auth login.\n")
+        }
+        Err(error) if error.is_not_found() => {
+            Outcome::failure(format!("Session not found: {}\n", args.session))
         }
         Err(error) => Outcome::failure(format!("Failed to update session key: {error}\n")),
     }
