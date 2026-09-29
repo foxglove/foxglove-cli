@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::builder::Resettable;
 use clap::error::ErrorKind;
-use clap::{Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{ArgGroup, Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::{generate, Shell};
 use serde_yaml_ng::Value;
 
@@ -1191,6 +1191,7 @@ pub(crate) struct SessionLookupArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("key_change").args(["key", "remove_key"]).required(true)))]
 pub(crate) struct SessionEditArgs {
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
@@ -1198,9 +1199,7 @@ pub(crate) struct SessionEditArgs {
     pub(crate) session: String,
     #[arg(
         long,
-        help = "New session key",
-        required_unless_present = "remove_key",
-        conflicts_with = "remove_key",
+        help = "New session key, unique within the project",
         value_parser = clap::builder::NonEmptyStringValueParser::new(),
         allow_hyphen_values = true
     )]
