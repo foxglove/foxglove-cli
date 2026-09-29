@@ -344,11 +344,7 @@ pub struct UploadRequest {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceCodeResponse {
-    #[serde(default)]
     pub id: String,
-    /// Deprecated by the API in favor of `id`.
-    #[serde(default)]
-    pub device_code: String,
     #[serde(default)]
     pub user_code: String,
     #[serde(default)]
@@ -359,19 +355,6 @@ pub struct DeviceCodeResponse {
     pub verification_uri: String,
     #[serde(default)]
     pub verification_uri_complete: String,
-}
-
-impl DeviceCodeResponse {
-    /// The device code ID to poll with, falling back to the deprecated
-    /// `deviceCode` when `id` is absent.
-    #[must_use]
-    pub fn device_code_id(&self) -> &str {
-        if self.id.is_empty() {
-            &self.device_code
-        } else {
-            &self.id
-        }
-    }
 }
 
 /// The authenticated API client.

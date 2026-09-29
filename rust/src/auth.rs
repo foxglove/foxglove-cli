@@ -153,9 +153,6 @@ async fn start_login(
         .device_code_with_cancellation(cancellation)
         .await
         .map_err(|error| format!("failed to fetch device code: {error}"))?;
-    if device_code.device_code_id().is_empty() {
-        return Err("failed to fetch device code: response did not include an ID".to_owned());
-    }
     let browser = open_browser(&device_code.verification_uri_complete);
     let mut stdout = Vec::new();
     if browser.is_some() {
@@ -194,7 +191,7 @@ async fn complete_login(
                 return Err("context canceled".to_owned());
             }
             match client
-                .token_with_cancellation(device_code.device_code_id(), cancellation)
+                .token_with_cancellation(&device_code.id, cancellation)
                 .await
             {
                 Ok(token) => break Ok(token),
