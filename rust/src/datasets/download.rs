@@ -12,13 +12,15 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 
+use super::versions::{DatasetVersion, DatasetVersionListResponse};
 use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
-use crate::api::{encode_path_segment, ApiError, StreamRequest};
+use crate::api::{encode_path_segment, ApiError, PagedResponse, StreamRequest};
 use crate::cli::DatasetDownloadArgs;
-use crate::data::{resumable_download, CompletionCheck, ExportProgress};
-use crate::records::DEFAULT_LIST_LIMIT;
+use crate::export::{resumable_download, CompletionCheck, ExportProgress};
 use crate::runtime::Runtime;
 use crate::Outcome;
+
+const DOWNLOAD_PAGE_SIZE: i64 = 2000;
 
 const MANIFEST_FORMAT_VERSION: u32 = 1;
 const MANIFEST_FILE_NAME: &str = "manifest.json";
@@ -29,20 +31,6 @@ const NO_DATA_LEFT_REASON: &str = "No Primary Site holds data for any recording 
 
 const EPISODE_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF: Duration = Duration::from_secs(1);
-
-#[derive(Clone, Debug, Default, Deserialize)]
-struct DatasetVersion {
-    #[serde(rename = "versionNumber")]
-    version_number: i64,
-    #[serde(rename = "committedAt", default)]
-    committed_at: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct DatasetVersionListResponse {
-    #[serde(default)]
-    versions: Vec<DatasetVersion>,
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -213,16 +201,19 @@ async fn fetch_all_episodes(
     version_number: i64,
 ) -> Result<Vec<DatasetEpisode>, ApiError> {
     let mut episodes = Vec::new();
+    let mut cursor: Option<String> = None;
     loop {
-        let query = [
-            ("limit".to_owned(), DEFAULT_LIST_LIMIT.to_string()),
-            ("offset".to_owned(), episodes.len().to_string()),
+        let mut query = vec![
+            ("limit".to_owned(), DOWNLOAD_PAGE_SIZE.to_string()),
             ("sortBy".to_owned(), "startTime".to_owned()),
             ("sortOrder".to_owned(), "asc".to_owned()),
         ];
-        let page: DatasetEpisodeListResponse = runtime
+        if let Some(next) = cursor.as_deref() {
+            query.push(("cursor".to_owned(), next.to_owned()));
+        }
+        let page: PagedResponse<DatasetEpisodeListResponse> = runtime
             .client
-            .get(
+            .get_page(
                 &format!(
                     "/v1/datasets/{}/versions/{version_number}/episodes",
                     encode_path_segment(id)
@@ -230,11 +221,11 @@ async fn fetch_all_episodes(
                 &query,
             )
             .await?;
-        let received = page.episodes.len();
-        episodes.extend(page.episodes);
-        if i64::try_from(received).is_ok_and(|received| received < DEFAULT_LIST_LIMIT) {
+        episodes.extend(page.data.episodes);
+        let Some(next) = page.next_cursor else {
             return Ok(episodes);
-        }
+        };
+        cursor = Some(next);
     }
 }
 

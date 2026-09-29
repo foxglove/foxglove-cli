@@ -1,9 +1,8 @@
-.PHONY: lint test compat go-test rust-fmt rust-lint rust-test rust-test-ignored rust-doc rust-audit rust-build build install release-package
+.PHONY: lint test rust-fmt rust-lint rust-test rust-test-ignored rust-doc rust-audit rust-build build install release-package
 
 RUST_MANIFEST := rust/Cargo.toml
 
 lint:
-	$(MAKE) -C foxglove lint
 	$(MAKE) rust-lint
 
 rust-fmt:
@@ -28,15 +27,8 @@ rust-doc:
 rust-audit:
 	cargo audit --file rust/Cargo.lock --ignore RUSTSEC-2024-0436
 
-go-test:
-	cd foxglove && go test ./... -count=1
-
 test:
 	$(MAKE) rust-test
-	$(MAKE) go-test
-
-compat:
-	$(MAKE) -C foxglove compat
 
 build:
 	$(MAKE) rust-build

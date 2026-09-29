@@ -3,12 +3,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::api::encode_path_segment;
-use crate::cli::{RecordingDeleteArgs, RecordingListArgs};
+use crate::api::{encode_path_segment, ApiError};
+use crate::cli::{RecordingDeleteArgs, RecordingListArgs, RecordingTransferArgs};
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, is_zero, null_to_default, parse_timestamp, DeviceSummary,
-    ProjectFallback, Record,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -118,7 +118,6 @@ struct RecordingListQuery {
     end: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     import_status: String,
-    #[serde(skip_serializing_if = "is_zero")]
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -158,7 +157,7 @@ pub(crate) async fn list_recordings(
         Ok(value) => value,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
-    let limit = args.limit.unwrap_or(2000);
+    let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query = RecordingListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
@@ -183,6 +182,7 @@ pub(crate) async fn list_recordings(
         "Failed to list recordings",
         "/v1/recordings",
         &query,
+        Some(limit),
     )
     .await
 }
@@ -194,17 +194,88 @@ pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteAr
         .await
     {
         Ok(()) => Outcome::default(),
-        Err(error) if error.is_not_found() => Outcome {
-            stderr: b"Not found. The resource may have already been deleted.\n".to_vec(),
-            ..Outcome::default()
-        },
+        Err(error) if error.is_not_found() => {
+            Outcome::notice("Not found. The resource may have already been deleted.\n")
+        }
         Err(error) => Outcome::failure(format!("Failed to delete recording: {error}\n")),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TransferResponse {
+    id: String,
+    import_status: String,
+}
+
+pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransferArgs) -> Outcome {
+    let result = runtime
+        .client
+        .post::<_, TransferResponse>(
+            &format!("/v1/recordings/{}/import", encode_path_segment(&args.id)),
+            &serde_json::json!({}),
+        )
+        .await;
+    transfer_outcome(result)
+}
+
+fn transfer_outcome(result: Result<TransferResponse, ApiError>) -> Outcome {
+    match result {
+        Ok(response) => {
+            // This command initiates an asynchronous request: HTTP success determines
+            // its exit status, while importStatus reports processing state, not the
+            // outcome of waiting for completion. Preserve even unfamiliar statuses.
+            let message = match response.import_status.as_str() {
+                "complete" => "Recording already available at its Primary Site",
+                "pending" | "importing" => "Transfer request accepted",
+                _ => "Recording transfer status",
+            };
+            Outcome {
+                stderr: format!(
+                    "{message}: {} (importStatus: {})\n",
+                    response.id, response.import_status
+                )
+                .into_bytes(),
+                ..Outcome::default()
+            }
+        }
+        Err(error) => Outcome::failure(format!("Failed to transfer edge recording: {error}\n")),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Recording;
+    use super::{transfer_outcome, ApiError, Recording, TransferResponse};
+
+    #[test]
+    fn transfer_reports_processing_status_and_request_errors() {
+        for (status, message) in [
+            (
+                "complete",
+                "Recording already available at its Primary Site",
+            ),
+            ("pending", "Transfer request accepted"),
+            ("failed", "Recording transfer status"),
+        ] {
+            let outcome = transfer_outcome(Ok(TransferResponse {
+                id: "rec_example".into(),
+                import_status: status.into(),
+            }));
+            assert_eq!(outcome.exit_code, 0);
+            assert!(outcome.stdout.is_empty());
+            assert_eq!(
+                outcome.stderr,
+                format!("{message}: rec_example (importStatus: {status})\n").as_bytes()
+            );
+        }
+        let outcome = transfer_outcome(Err(ApiError::NotFound { code: None }));
+        assert_eq!(outcome.exit_code, 1);
+        assert!(outcome.stdout.is_empty());
+        assert_eq!(
+            outcome.stderr,
+            b"Failed to transfer edge recording: not found\n"
+        );
+    }
 
     #[test]
     fn missing_and_null_fields_render_explicit_defaults() {

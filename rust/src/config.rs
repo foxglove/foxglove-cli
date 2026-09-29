@@ -116,6 +116,12 @@ impl Config {
         environment_value(key).is_some() || self.values.contains_key(Value::String(key.to_owned()))
     }
 
+    /// Whether a nonempty environment override supplies this value.
+    #[must_use]
+    pub fn is_env_set(&self, key: &str) -> bool {
+        environment_value(key).is_some()
+    }
+
     /// Set a persisted value.
     pub fn set(&mut self, key: &str, value: Value) {
         self.values.insert(Value::String(key.to_owned()), value);

@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 use crate::api::encode_path_segment;
 use crate::cli::{DeviceEditArgs, DeviceListArgs, DeviceWriteArgs};
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, ProjectFallback, Record};
+use crate::records::{
+    compact_json, fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -52,6 +54,16 @@ impl Record for Device {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DeviceListQuery {
+    limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
 }
@@ -62,6 +74,8 @@ pub(crate) async fn list_devices(
     format: Format,
 ) -> Outcome {
     let query = DeviceListQuery {
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     fetch_list::<Device, _>(
@@ -70,6 +84,7 @@ pub(crate) async fn list_devices(
         "Failed to list devices",
         "/v1/devices",
         &query,
+        Some(query.limit),
     )
     .await
 }
@@ -105,8 +120,7 @@ async fn device_properties(
     if pairs.is_empty() {
         return Ok(None);
     }
-    // The Go form encoder uses the exported Go field name here because this
-    // request type has no form tag; preserve that wire spelling.
+    // The custom-properties endpoint requires this exact query parameter name.
     let query = vec![("ResourceType".to_owned(), "device".to_owned())];
     let definitions = runtime
         .client
@@ -168,10 +182,7 @@ pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceWriteArgs) -> Out
         .post::<_, DeviceResponse>("/v1/devices", &request)
         .await
     {
-        Ok(response) => Outcome {
-            stderr: format!("Device created: {}\n", response.id).into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(response) => Outcome::notice(format!("Device created: {}\n", response.id)),
         Err(error) => Outcome::failure(format!("Failed to create device: {error}\n")),
     }
 }
@@ -185,7 +196,7 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
     if name.is_empty() && properties.is_none() {
         return Outcome::failure("Nothing to update\n");
     }
-    let query = DeviceListQuery {
+    let query = ProjectQuery {
         project_id: args
             .update
             .project_id
@@ -206,10 +217,7 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
         )
         .await
     {
-        Ok(response) => Outcome {
-            stderr: format!("Device updated: {}\n", response.name).into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(response) => Outcome::notice(format!("Device updated: {}\n", response.name)),
         Err(error) => Outcome::failure(format!("Failed to edit device: {error}\n")),
     }
 }

@@ -220,12 +220,12 @@ pub struct StreamRequest {
 
 impl StreamRequest {
     /// Validate source selection and output-specific options before a request
-    /// is sent, matching the Go client's command-level contract.
+    /// is sent.
     ///
     /// # Errors
     ///
-    /// Returns a compatibility error when the source or output options are
-    /// incomplete or contradictory.
+    /// Returns an error when the source or output options are incomplete or
+    /// contradictory.
     pub fn validate(&self) -> Result<(), String> {
         let recording = !self.recording_id.is_empty() || !self.key.is_empty();
         let session = !self.session_id.is_empty() || !self.session_key.is_empty();
@@ -291,6 +291,13 @@ pub struct StreamResponse {
 #[derive(Clone, Debug, Deserialize)]
 pub struct UploadResponse {
     pub link: String,
+}
+
+/// A decoded collection response together with its opaque pagination cursors.
+#[derive(Debug)]
+pub struct PagedResponse<T> {
+    pub data: T,
+    pub next_cursor: Option<String>,
 }
 
 /// Metadata needed by the upload redirect request.
@@ -575,6 +582,30 @@ impl FoxgloveClient {
             .await
     }
 
+    /// Execute an authenticated GET and retain its pagination cursors.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn get_page<Q, T>(
+        &self,
+        endpoint: &str,
+        query: &Q,
+    ) -> Result<PagedResponse<T>, ApiError>
+    where
+        Q: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let request = self
+            .request_with_auth(Method::GET, endpoint, true)?
+            .query(query);
+        let response =
+            ensure_success_response(request.send().await.map_err(ApiError::Transport)?).await?;
+        let next_cursor = pagination_cursor(&response, "fg-pagination-next-cursor");
+        let data = response.json::<T>().await.map_err(ApiError::Decode)?;
+        Ok(PagedResponse { data, next_cursor })
+    }
+
     /// Execute an authenticated GET with cancellation support.
     ///
     /// # Errors
@@ -632,6 +663,27 @@ impl FoxgloveClient {
         T: DeserializeOwned,
     {
         self.send_json(Method::POST, endpoint, body, true, Some(cancellation))
+            .await
+    }
+
+    /// Execute an authenticated JSON POST with query parameters and decode its
+    /// JSON response.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn post_with_query<Q, B, T>(
+        &self,
+        endpoint: &str,
+        query: &Q,
+        body: &B,
+    ) -> Result<T, ApiError>
+    where
+        Q: Serialize + ?Sized,
+        B: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        self.send_json_with_query(Method::POST, endpoint, query, Some(body), None)
             .await
     }
 
@@ -1149,6 +1201,15 @@ async fn ensure_success_response(response: Response) -> Result<Response, ApiErro
     } else {
         Err(error_from_response(response).await)
     }
+}
+
+fn pagination_cursor(response: &Response, name: &str) -> Option<String> {
+    response
+        .headers()
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 async fn ensure_ok_response(response: Response) -> Result<Response, ApiError> {

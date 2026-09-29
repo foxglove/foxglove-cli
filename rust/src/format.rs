@@ -2198,10 +2198,7 @@ mod tests {
 
     #[test]
     fn validates_committed_mcap_and_rosbag_assets() {
-        for path in [
-            "../foxglove/testdata/gps.mcap",
-            "../foxglove/testdata/gps.bag",
-        ] {
+        for path in ["testdata/gps.mcap", "testdata/gps.bag"] {
             let mut file = std::fs::File::open(path).expect("committed fixture");
             validate_import(&mut file).unwrap_or_else(|error| panic!("{path}: {error}"));
             file.rewind().unwrap();

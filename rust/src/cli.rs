@@ -12,14 +12,17 @@ use serde_yaml_ng::Value;
 
 use crate::config::Config;
 use crate::output::Format;
+use crate::records::MAX_LIST_LIMIT;
 use crate::{
-    attachments, auth, data, datasets, devices, episodes, event_types, events, extensions,
-    pending_imports, projects, recordings, runtime, sessions, topics,
+    attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
+    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
+const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
+const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 
-/// Match Go's strconv.ParseBool, as used by pflag. Explicit values require `=`
+/// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
 fn parse_bool(value: &str) -> Result<bool, String> {
     match value {
@@ -27,6 +30,30 @@ fn parse_bool(value: &str) -> Result<bool, String> {
         "0" | "f" | "F" | "FALSE" | "false" | "False" => Ok(false),
         _ => Err(format!("invalid boolean value: {value:?}")),
     }
+}
+
+fn parse_list_limit(value: &str) -> Result<i64, String> {
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|limit| (1..=MAX_LIST_LIMIT).contains(limit))
+        .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DatasetVersionSelector {
+    Number(i64),
+    Draft,
+}
+
+fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> {
+    if value == "draft" {
+        return Ok(DatasetVersionSelector::Draft);
+    }
+    value
+        .parse()
+        .map(DatasetVersionSelector::Number)
+        .map_err(|_| format!("expected a version number or draft, got {value:?}"))
 }
 
 /// The complete command hierarchy. Parsing, help, dispatch metadata, and shell
@@ -73,18 +100,20 @@ enum CliCommand {
     Completion(CompletionCommand),
     #[command(about = "Manage CLI configuration values", subcommand)]
     Config(ConfigCommand),
-    #[command(about = "Data access and management", subcommand)]
-    Data(DataCommand),
-    #[command(about = "List datasets and their episodes", subcommand)]
+    #[command(about = "Inspect data coverage", subcommand)]
+    Coverage(CoverageCommand),
+    #[command(about = "List and manage datasets", subcommand)]
     Datasets(DatasetsCommand),
     #[command(about = "List and manage devices", subcommand)]
     Devices(DevicesCommand),
-    #[command(about = "List episodes", subcommand)]
+    #[command(about = "List and manage episodes", subcommand)]
     Episodes(EpisodesCommand),
     #[command(name = "event-types", about = "List event types", subcommand)]
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
+    #[command(about = "Export data by recording, import, session, or device and time range")]
+    Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
@@ -97,6 +126,8 @@ enum CliCommand {
     Sessions(SessionsCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
+    #[command(about = "Upload a local data file to Foxglove")]
+    Upload(UploadArgs),
     #[command(about = "Print Foxglove CLI version")]
     Version,
 }
@@ -119,16 +150,25 @@ pub(crate) struct AttachmentDownloadArgs {
 pub(crate) struct AttachmentListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
-    pub(crate) session_id: Option<String>,
-    #[arg(long, help = "Session key", allow_hyphen_values = true)]
-    pub(crate) session_key: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -223,16 +263,6 @@ struct ConfigSetArgs {
 }
 
 #[derive(Debug, Subcommand)]
-enum DataCommand {
-    #[command(about = "List coverage ranges", subcommand)]
-    Coverage(CoverageCommand),
-    #[command(about = "Export data by recording, import, session, or device and time range")]
-    Export(DataExportArgs),
-    #[command(about = "Import a data file to Foxglove Data Platform")]
-    Import(DataImportArgs),
-}
-
-#[derive(Debug, Subcommand)]
 enum CoverageCommand {
     #[command(about = "List coverage ranges")]
     List(CoverageListArgs),
@@ -262,7 +292,7 @@ pub(crate) struct CoverageListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_edge_recordings: bool,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -285,7 +315,7 @@ pub(crate) struct CoverageListArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct DataExportArgs {
+pub(crate) struct ExportArgs {
     #[arg(
         long,
         help = "MCAP chunk compression: empty, zstd, or lz4 (default: lz4)",
@@ -320,7 +350,7 @@ pub(crate) struct DataExportArgs {
         allow_hyphen_values = true
     )]
     pub(crate) output_format: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -343,16 +373,14 @@ pub(crate) struct DataExportArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct DataImportArgs {
+pub(crate) struct UploadArgs {
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "Edge recording ID", allow_hyphen_values = true)]
-    pub(crate) edge_recording_id: Option<String>,
     #[arg(long, help = "Recording key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Session ID", allow_hyphen_values = true)]
     pub(crate) session_id: Option<String>,
@@ -364,12 +392,78 @@ pub(crate) struct DataImportArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetsCommand {
+    #[command(about = "Create a dataset")]
+    Add(DatasetAddArgs),
+    #[command(about = "Commit a dataset's pending changes as a new version")]
+    Commit(DatasetIdArgs),
+    #[command(about = "Delete a dataset")]
+    Delete(DatasetIdArgs),
+    #[command(about = "Discard a dataset's pending changes")]
+    Discard(DatasetIdArgs),
     #[command(about = "Download a committed dataset version")]
     Download(DatasetDownloadArgs),
-    #[command(about = "List the episodes in a dataset", subcommand)]
+    #[command(about = "Edit a dataset's name or description")]
+    Edit(DatasetEditArgs),
+    #[command(about = "List, add, or remove the episodes in a dataset", subcommand)]
     Episodes(DatasetEpisodesCommand),
+    #[command(about = "Get a dataset")]
+    Get(DatasetGetArgs),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
+    #[command(about = "List, compare, and restore dataset versions", subcommand)]
+    Versions(DatasetVersionsCommand),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetAddArgs {
+    #[arg(
+        long,
+        help = "Optional display description",
+        allow_hyphen_values = true
+    )]
+    pub(crate) description: Option<String>,
+    #[arg(long, help = "Episode to add to the dataset; repeat to add more", allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) episode_id: Vec<String>,
+    #[arg(
+        long,
+        help = "Display name, unique within the project",
+        allow_hyphen_values = true
+    )]
+    pub(crate) name: String,
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetIdArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEditArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "New display description; pass an empty value to clear it",
+        allow_hyphen_values = true
+    )]
+    pub(crate) description: Option<String>,
+    #[arg(
+        long,
+        help = "New display name, unique within the project",
+        allow_hyphen_values = true
+    )]
+    pub(crate) name: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -409,8 +503,118 @@ pub(crate) struct DatasetDownloadArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetEpisodesCommand {
+    #[command(about = "Add episodes to a dataset as pending changes")]
+    Add(DatasetEpisodeMutationArgs),
     #[command(about = "List the episodes in a dataset")]
     List(DatasetEpisodeListArgs),
+    #[command(about = "Remove episodes from a dataset as pending changes")]
+    Remove(DatasetEpisodeMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodeMutationArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "EPISODE_ID", required = true)]
+    pub(crate) episode_ids: Vec<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum DatasetVersionsCommand {
+    #[command(about = "List the episodes added and removed between two versions")]
+    Compare(DatasetVersionCompareArgs),
+    #[command(about = "Get a dataset version")]
+    Get(DatasetVersionGetArgs),
+    #[command(about = "List a dataset's versions")]
+    List(DatasetVersionListArgs),
+    #[command(about = "Restore a committed version's episodes as pending changes")]
+    Restore(DatasetVersionRestoreArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order by version number: asc or desc (default: desc)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) sort_order: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionCompareArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "BASE_VERSION", help = "Version to compare from")]
+    pub(crate) base_version: i64,
+    #[arg(value_name = "TARGET_VERSION", help = "Version to compare to")]
+    pub(crate) target_version: i64,
+    #[arg(
+        long,
+        help = "Cursor from a previous compare, to fetch the next page",
+        allow_hyphen_values = true
+    )]
+    pub(crate) cursor: Option<String>,
+    #[arg(
+        long, help = "Include the member recordings of each episode",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_recordings: bool,
+    #[arg(
+        long,
+        help = "Maximum number of changes to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionRestoreArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+    #[arg(
+        long, help = "Discard the dataset's pending changes before restoring",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -419,17 +623,14 @@ pub(crate) struct DatasetListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Filter datasets by project", allow_hyphen_values = true)]
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
@@ -458,6 +659,15 @@ pub(crate) struct DatasetEpisodeListArgs {
     )]
     pub(crate) end: Option<String>,
     #[arg(
+        long, help = "Filter to episodes with, or without, recordings that are no longer available",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -469,16 +679,13 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(
         long,
         help = "Filter to episodes containing this recording display ID",
@@ -503,6 +710,13 @@ pub(crate) struct DatasetEpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long,
+        help = "Version number to list, or draft to list the draft with its pending changes (default: the newest committed version, or the draft before the first commit)",
+        allow_hyphen_values = true,
+        value_parser = parse_dataset_version
+    )]
+    pub(crate) version: Option<DatasetVersionSelector>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -519,7 +733,7 @@ enum DevicesCommand {
 pub(crate) struct DeviceWriteArgs {
     #[arg(long, help = "Name of the device", allow_hyphen_values = true)]
     pub(crate) name: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, short = 'p', help = "Custom property colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
@@ -537,14 +751,81 @@ pub(crate) struct DeviceEditArgs {
 pub(crate) struct DeviceListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
 enum EpisodesCommand {
+    #[command(
+        about = "Create an episode, or get the existing one with the same window and recordings"
+    )]
+    Add(EpisodeAddArgs),
+    #[command(about = "Delete an episode")]
+    Delete(EpisodeIdArgs),
+    #[command(about = "Get an episode")]
+    Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeAddArgs {
+    #[arg(
+        long,
+        help = "End of the episode window (ISO 8601); give with --start (default: the end of its recordings)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Metadata as a JSON object", allow_hyphen_values = true)]
+    pub(crate) metadata: Option<String>,
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Recording in the episode; repeat to add more", required = true, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) recording_id: Vec<String>,
+    #[arg(
+        long,
+        help = "Start of the episode window (ISO 8601); give with --end (default: the start of its recordings)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeIdArgs {
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(
+        long, help = "Include the member recordings of the episode",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_recordings: bool,
 }
 
 #[derive(Debug, Args)]
@@ -558,6 +839,15 @@ pub(crate) struct EpisodeListArgs {
     )]
     pub(crate) end: Option<String>,
     #[arg(
+        long, help = "Filter to episodes with, or without, recordings that are no longer available",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -569,17 +859,14 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Filter episodes by project", allow_hyphen_values = true)]
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
@@ -623,6 +910,8 @@ enum EventsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct EventAddArgs {
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(
@@ -655,10 +944,17 @@ pub(crate) struct EventListArgs {
     pub(crate) end: Option<String>,
     #[arg(long, help = "Event type ID", allow_hyphen_values = true)]
     pub(crate) event_type_id: Option<String>,
-    #[arg(long, help = "Result limit (default: 100)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Result offset", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
     #[arg(long, help = "Property or metadata query", allow_hyphen_values = true)]
     pub(crate) query: Option<String>,
     #[arg(long, help = "Fields to query by", allow_hyphen_values = true, action = clap::ArgAction::Append)]
@@ -707,6 +1003,19 @@ enum PendingImportsCommand {
 pub(crate) struct PendingImportListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
@@ -717,14 +1026,10 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) filename: Option<String>,
     #[arg(long, help = "Key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Request ID", allow_hyphen_values = true)]
     pub(crate) request_id: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
-    pub(crate) session_id: Option<String>,
-    #[arg(long, help = "Session key", allow_hyphen_values = true)]
-    pub(crate) session_key: Option<String>,
     #[arg(
         long, help = "Show completed requests",
         action = clap::ArgAction::Set,
@@ -773,10 +1078,23 @@ enum ProjectsCommand {
 
 #[derive(Debug, Subcommand)]
 enum RecordingsCommand {
-    #[command(about = "Delete a recording from your organization")]
+    #[command(
+        about = "Delete a recording from your organization",
+        long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain. Use `recordings transfer RECORDING_ID` to restore its data."
+    )]
     Delete(RecordingDeleteArgs),
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
+    #[command(
+        about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
+    )]
+    Transfer(RecordingTransferArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RecordingTransferArgs {
+    #[arg(value_name = "RECORDING_ID")]
+    pub(crate) id: String,
 }
 
 #[derive(Debug, Args)]
@@ -805,8 +1123,9 @@ pub(crate) struct RecordingListArgs {
     pub(crate) import_status: Option<String>,
     #[arg(
         long,
-        help = "Maximum result count (default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -817,7 +1136,7 @@ pub(crate) struct RecordingListArgs {
     pub(crate) offset: Option<i64>,
     #[arg(long, help = "Recording file path", allow_hyphen_values = true)]
     pub(crate) path: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Session ID", allow_hyphen_values = true)]
     pub(crate) session_id: Option<String>,
@@ -859,13 +1178,13 @@ pub(crate) struct SessionAddArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Session name", allow_hyphen_values = true)]
     pub(crate) name: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct SessionLookupArgs {
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION_ID_OR_KEY")]
     pub(crate) session: String,
@@ -894,11 +1213,24 @@ pub(crate) struct SessionEditArgs {
 pub(crate) struct SessionListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Filter by device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Filter by device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
 
@@ -914,7 +1246,7 @@ enum SessionRecordingsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SessionRecordingMutationArgs {
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION")]
     pub(crate) session: String,
@@ -952,11 +1284,16 @@ pub(crate) struct TopicListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_schemas: bool,
-    #[arg(long, help = "Maximum number of topics", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of topics to skip", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Project ID", allow_hyphen_values = true)]
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
@@ -1009,6 +1346,13 @@ impl Outcome {
         Self {
             stderr: stderr.into(),
             exit_code: 1,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn notice(stderr: impl Into<Vec<u8>>) -> Self {
+        Self {
+            stderr: stderr.into(),
             ..Self::default()
         }
     }
@@ -1085,6 +1429,51 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
     }
 }
 
+/// Keep this selector map in sync with handlers that call `or_project`.
+fn command_project_scope(
+    command: &CliCommand,
+    runtime: &runtime::Runtime,
+) -> Option<runtime::ProjectScope> {
+    let flag = match command {
+        CliCommand::Attachments(AttachmentsCommand::List(args)) => &args.project_id,
+        CliCommand::Coverage(CoverageCommand::List(args)) => &args.project_id,
+        CliCommand::Export(args) => &args.project_id,
+        CliCommand::Upload(args) => &args.project_id,
+        CliCommand::Datasets(DatasetsCommand::Add(args)) => &args.project_id,
+        CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
+        CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
+        CliCommand::Episodes(EpisodesCommand::Add(args)) => &args.project_id,
+        CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
+        CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
+        CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
+        CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
+            if args.without_project {
+                return Some(runtime::ProjectScope {
+                    id: String::new(),
+                    source: "--without-project",
+                });
+            }
+            &args.project_id
+        }
+        CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
+        CliCommand::Sessions(
+            SessionsCommand::Get(args)
+            | SessionsCommand::Delete(args)
+            | SessionsCommand::Recordings(SessionRecordingsCommand::List(args)),
+        ) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Recordings(
+            SessionRecordingsCommand::Add(args) | SessionRecordingsCommand::Remove(args),
+        )) => &args.project_id,
+        CliCommand::Topics(TopicsCommand::List(args)) => &args.project_id,
+        _ => return None,
+    };
+    Some(runtime.project_scope(flag.as_deref()))
+}
+
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
@@ -1096,6 +1485,20 @@ async fn dispatch_api_command(
         Ok(runtime) => runtime,
         Err(error) => return Outcome::failure(error),
     };
+    if debug {
+        if let Some(scope) = command_project_scope(&command, &runtime) {
+            let id = if scope.id.is_empty() {
+                "unscoped"
+            } else {
+                &scope.id
+            };
+            let _ = writeln!(
+                std::io::stderr(),
+                "[DEBUG] Project scope: {id} (source: {})",
+                scope.source
+            );
+        }
+    }
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
             attachments::download_attachment(&runtime, &args, writer).await
@@ -1105,26 +1508,23 @@ async fn dispatch_api_command(
             attachments::list_attachments(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
-        CliCommand::Data(DataCommand::Coverage(CoverageCommand::List(args))) => {
+        CliCommand::Coverage(CoverageCommand::List(args)) => {
             let format = args.format.format;
-            data::list_coverage(&runtime, &args, format).await
+            coverage::list(&runtime, &args, format).await
         }
-        CliCommand::Data(DataCommand::Export(args)) => {
-            let diagnostic = debug.then(|| data::export_debug_request(&args)).flatten();
+        CliCommand::Export(args) => {
+            let diagnostic = debug
+                .then(|| export::export_debug_request(&runtime, &args))
+                .flatten();
             if let Some(diagnostic) = diagnostic {
                 let _ = std::io::stderr().write_all(diagnostic.as_bytes());
             }
-            data::export_data(&runtime, &args, writer).await
+            export::export_data(&runtime, &args, writer).await
         }
-        CliCommand::Data(DataCommand::Import(args))
-            if args
-                .edge_recording_id
-                .as_deref()
-                .is_some_and(|id| !id.is_empty()) =>
-        {
-            data::import_from_edge(&runtime, &args).await
+        CliCommand::Upload(args) => upload::upload_file(&runtime, &args).await,
+        CliCommand::Recordings(RecordingsCommand::Transfer(args)) => {
+            recordings::transfer_recording(&runtime, &args).await
         }
-        CliCommand::Data(DataCommand::Import(args)) => data::import_file(&runtime, &args).await,
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
         CliCommand::Devices(DevicesCommand::Add(args)) => {
             devices::add_device(&runtime, &args).await
@@ -1136,10 +1536,7 @@ async fn dispatch_api_command(
             let format = args.format.format;
             devices::list_devices(&runtime, &args, format).await
         }
-        CliCommand::Episodes(EpisodesCommand::List(args)) => {
-            let format = args.format.format;
-            episodes::list_episodes(&runtime, &args, format).await
-        }
+        CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
             event_types::list_event_types(&runtime, args.format).await
         }
@@ -1185,14 +1582,68 @@ async fn dispatch_api_command(
 
 async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsCommand) -> Outcome {
     match command {
+        DatasetsCommand::Add(args) => datasets::add_dataset(runtime, &args).await,
+        DatasetsCommand::Commit(args) => datasets::commit_dataset(runtime, &args).await,
+        DatasetsCommand::Delete(args) => datasets::delete_dataset(runtime, &args).await,
+        DatasetsCommand::Discard(args) => datasets::discard_dataset(runtime, &args).await,
         DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
+        DatasetsCommand::Edit(args) => datasets::edit_dataset(runtime, &args).await,
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Add(args)) => {
+            datasets::patch_dataset_episodes(runtime, &args, true).await
+        }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await
         }
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Remove(args)) => {
+            datasets::patch_dataset_episodes(runtime, &args, false).await
+        }
+        DatasetsCommand::Get(args) => {
+            let format = args.format.format;
+            datasets::get_dataset(runtime, &args, format).await
+        }
         DatasetsCommand::List(args) => {
             let format = args.format.format;
             datasets::list_datasets(runtime, &args, format).await
+        }
+        DatasetsCommand::Versions(command) => {
+            dispatch_dataset_version_command(runtime, command).await
+        }
+    }
+}
+
+async fn dispatch_dataset_version_command(
+    runtime: &runtime::Runtime,
+    command: DatasetVersionsCommand,
+) -> Outcome {
+    match command {
+        DatasetVersionsCommand::Compare(args) => {
+            let format = args.format.format;
+            datasets::compare_versions(runtime, &args, format).await
+        }
+        DatasetVersionsCommand::Get(args) => {
+            let format = args.format.format;
+            datasets::get_version(runtime, &args, format).await
+        }
+        DatasetVersionsCommand::List(args) => {
+            let format = args.format.format;
+            datasets::list_versions(runtime, &args, format).await
+        }
+        DatasetVersionsCommand::Restore(args) => datasets::restore_version(runtime, &args).await,
+    }
+}
+
+async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
+    match command {
+        EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
+        EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
+        EpisodesCommand::Get(args) => {
+            let format = args.format.format;
+            episodes::get_episode(runtime, &args, format).await
+        }
+        EpisodesCommand::List(args) => {
+            let format = args.format.format;
+            episodes::list_episodes(runtime, &args, format).await
         }
     }
 }
@@ -1262,10 +1713,7 @@ fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outco
     };
     config.set(config_name(key), Value::String(value.clone()));
     match config.save() {
-        Ok(()) => Outcome {
-            stderr: format!("Configuration updated: {key} = {value}\n").into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Configuration updated: {key} = {value}\n")),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1280,10 +1728,7 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
         return Outcome::failure(format!("No value set for key '{key}'\n"));
     }
     match config.save() {
-        Ok(()) => Outcome {
-            stderr: format!("Configuration removed: {key}\n").into_bytes(),
-            ..Outcome::default()
-        },
+        Ok(()) => Outcome::notice(format!("Configuration removed: {key}\n")),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1407,12 +1852,29 @@ mod tests {
     }
 
     #[test]
-    fn boolean_flags_accept_go_values_and_preserve_defaults() {
+    fn a_dataset_version_is_a_number_or_draft() {
+        use super::{parse_dataset_version, DatasetVersionSelector};
+        assert_eq!(
+            parse_dataset_version("3"),
+            Ok(DatasetVersionSelector::Number(3))
+        );
+        assert_eq!(
+            parse_dataset_version("draft"),
+            Ok(DatasetVersionSelector::Draft)
+        );
+        assert_eq!(
+            parse_dataset_version("latest"),
+            Err("expected a version number or draft, got \"latest\"".to_owned())
+        );
+    }
+
+    #[test]
+    fn boolean_flags_accept_standard_values_and_preserve_defaults() {
         let cases = [
             (vec![], "debug"),
             (vec!["completion", "bash"], "no-descriptions"),
-            (vec!["data", "coverage", "list"], "include-edge-recordings"),
-            (vec!["data", "export"], "include-attachments"),
+            (vec!["coverage", "list"], "include-edge-recordings"),
+            (vec!["export"], "include-attachments"),
             (vec!["pending-imports", "list"], "show-completed"),
             (vec!["pending-imports", "list"], "show-quarantined"),
             (vec!["pending-imports", "list"], "without-project"),
@@ -1510,6 +1972,24 @@ mod tests {
         let error = super::Cli::try_parse_from(["foxglove", "devices", "list", "--format", "xml"])
             .unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn attachments_and_pending_imports_reject_session_filters() {
+        for command in [["attachments", "list"], ["pending-imports", "list"]] {
+            for flag in ["--session-id", "--session-key"] {
+                let argv = ["foxglove"]
+                    .into_iter()
+                    .chain(command)
+                    .chain([flag, "fixture"]);
+                let error = super::Cli::try_parse_from(argv).unwrap_err();
+                assert_eq!(
+                    error.kind(),
+                    clap::error::ErrorKind::UnknownArgument,
+                    "{command:?} {flag}"
+                );
+            }
+        }
     }
 
     #[test]

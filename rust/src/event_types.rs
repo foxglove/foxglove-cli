@@ -65,6 +65,7 @@ pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outco
         "Failed to list event types",
         "/v1/event-types",
         &(),
+        None,
     )
     .await
 }

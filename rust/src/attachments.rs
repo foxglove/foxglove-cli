@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{AttachmentDownloadArgs, AttachmentListArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, Record};
+use crate::records::{fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -66,14 +66,13 @@ impl Record for Attachment {
 struct AttachmentListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     import_id: String,
+    limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    session_id: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    session_key: String,
 }
 
 pub(crate) async fn list_attachments(
@@ -83,20 +82,18 @@ pub(crate) async fn list_attachments(
 ) -> Outcome {
     let query = AttachmentListQuery {
         import_id: args.import_id.clone().unwrap_or_default(),
-        project_id: args.project_id.clone().unwrap_or_default(),
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
-        session_id: args.session_id.clone().unwrap_or_default(),
-        session_key: args.session_key.clone().unwrap_or_default(),
     };
-    if !query.session_key.is_empty() && query.project_id.is_empty() {
-        return Outcome::failure("--project-id is required when using --session-key\n");
-    }
     fetch_list::<Attachment, _>(
         runtime,
         format,
         "Failed to list attachments",
         "/v1/recording-attachments",
         &query,
+        Some(query.limit),
     )
     .await
 }

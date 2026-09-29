@@ -13,7 +13,7 @@ path = "src/main.rs"
 [features]
 # Test harnesses enable this to prevent a subprocess
 # from invoking a real platform browser during the device-code flow.
-compat-test = []
+test-support = []
 
 [dependencies]
 base64 = { version = "=0.22.1", default-features = false, features = ["alloc"] }

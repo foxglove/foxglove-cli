@@ -54,6 +54,23 @@ $ foxglove auth configure-api-key
 This will overwrite any previously set credential. Use the [API key settings page](https://app.foxglove.dev/~/settings/apikeys)
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
+### Lists and pagination
+
+List commands that accept `--limit` return 50 results by default; pass `--limit`
+(1-2000) to change the page size. With `--format json`, list output is an object
+whose `data` array holds the results:
+
+```
+$ foxglove devices list --format json
+    {"data":[{"id":"dev_mHH1Cp4gPybCPR8y","name":"Adrian's Robot",...}]}
+```
+
+When more results may exist, a hint on stderr says how to get the next page.
+Datasets, dataset episodes, dataset versions, episodes, and
+`datasets versions compare` page with cursors: their JSON output includes
+`nextCursor`, which you pass to `--cursor`. The other commands that accept
+`--limit` page with `--offset`.
+
 ### Devices
 
 Before importing data, you must first create a device:
@@ -90,29 +107,24 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       |
 ```
 
-### Imports
+### Uploads and recordings
 
-Import ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
-
-```
-$ foxglove data import ~/data/bags/gps.bag --device-name RobotA
-```
-
-List all imports:
+Upload ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:
 
 ```
-$ foxglove data imports list
-    |              IMPORT ID               |      DEVICE ID       |              FILENAME              |     IMPORT TIME      |        START         |         END          | INPUT TYPE | OUTPUT TYPE | INPUT SIZE | TOTAL OUTPUT SIZE |
-    |--------------------------------------|----------------------|------------------------------------|----------------------|----------------------|----------------------|------------|-------------|------------|-------------------|
-    | 55c8480b-0fef-243a-ea74-f07063f51c6e | dev_flm75pLkfzUBX2DH | demo.bag                           | 2022-01-28T22:37:44Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:27Z | bag1       | mcap0       | 70311473   | 68833788          |
-    | 31285b3d-3f97-ea58-3751-a1597ae3f16f | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-21-58-17_1.bag | 2022-02-21T22:03:32Z | 2022-02-21T21:58:17Z | 2022-02-21T21:58:21Z | bag1       | mcap0       | 12823      | 8847              |
-    | 837cfa3e-541e-9540-1c7a-a1f1b3ef3694 | dev_jCuXYeFwCkZowpHs | gps4.bag                           | 2022-03-17T12:34:34Z | 2021-03-22T15:03:38Z | 2021-03-22T15:09:18Z | bag1       | mcap0       | 5321782    | 1619916           |
-    | 820e51d8-9f1d-8ec5-f586-41bbaa87d45d | dev_JOgi4YiCRgaoszKw | input.bag                          | 2021-11-02T16:34:49Z | 2016-11-18T23:46:10Z | 2016-11-18T23:51:25Z | bag1       | mcap0       | 1770886024 | 1571403963        |
-    | 8f563534-264d-ad79-b404-684c8639d4a0 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-19-44-47_1.bag | 2022-02-21T20:12:54Z | 2022-02-21T19:44:47Z | 2022-02-21T19:44:47Z | bag1       | mcap0       | 10964      | 8196              |
-    | b8c45da6-2110-8c77-370f-a6ec482cdcf6 | dev_Wm1gvryKJmREqnVT | transbot_2022-02-21-22-49-04_0.bag | 2022-02-21T22:50:48Z | 2022-02-21T22:49:05Z | 2022-02-21T22:49:23Z | bag1       | mcap0       | 16734      | 10688             |
-    | 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_JtSXCGiM0RC2YHDO | nuscenes.bag                       | 2022-02-24T15:13:32Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
-    | 0a400ef1-3892-1c6c-3a38-c0a80ed85749 | dev_mHH1Cp4gPybCPR8y | nuscenes-0061-v1.bag               | 2022-01-11T22:05:09Z | 2018-07-24T03:28:47Z | 2018-07-24T03:29:06Z | bag1       | mcap0       | 87397054   | 85923915          |
-    | 5ad56d95-7dcc-f12a-9b09-0f4d4ec9e2e5 | dev_mHH1Cp4gPybCPR8y | input.bag                          | 2021-11-03T23:21:37Z | 2017-03-22T02:26:20Z | 2017-03-22T02:26:26Z | bag1       | mcap0       | 32761      | 38542             |
+$ foxglove upload ~/data/bags/gps.bag --device-name RobotA
+```
+
+List recordings:
+
+```
+$ foxglove recordings list
+```
+
+Request transfer of an existing edge recording to its configured Primary Site:
+
+```sh
+foxglove recordings transfer rec_123
 ```
 
 ### Exports
@@ -121,7 +133,7 @@ Retrieve data for a device, time range, and optional list of topics, and export 
 
 ```
 # Output JSON (directly to console)
-$ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --topics /tf --output-format json | head -n 5
     {"topic":"/tf","sequence":0,"log_time":1490149580.103843113,"publish_time":1490149580.103843113,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.117017840,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
     {"topic":"/tf","sequence":0,"log_time":1490149580.113944947,"publish_time":1490149580.113944947,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.127078895,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
     {"topic":"/tf","sequence":0,"log_time":1490149580.124028613,"publish_time":1490149580.124028613,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.137141823,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
@@ -129,10 +141,10 @@ $ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2
     {"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
 
 # Output MCAP file (output.mcap)
-$ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
 
 # Output ROS 1 bag file (output.bag)
-$ foxglove data export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
 ```
 
 If you've output a file, inspect its contents:
@@ -140,7 +152,6 @@ If you've output a file, inspect its contents:
 ```
 # MCAP file
 $ mcap info output.mcap
-    library: mcap go #(devel); fg-data-platform-db07abe7
     profile: ros1
     messages: 6728
     duration: 5m39.304931438s
@@ -207,11 +218,22 @@ ID | Name | Project ID | Description | Episode Count | Created At | Updated At
 ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
 ```
 
-List episodes, optionally narrowing to a time range or a member recording:
+List episodes, optionally narrowing to a time range, a member recording, or
+episodes whose recordings are no longer all available:
 
 ```
 $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recordings
-$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg
+$ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
+```
+
+Create an episode from one or more recordings. The window defaults to the span
+of its recordings, and an existing episode with the same window and recordings
+is reused:
+
+```
+$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
+    --start 2026-04-19T13:22:44Z --end 2026-04-19T13:23:14Z
+Episode created: ep_BCUw2zxpBnToJbOS
 ```
 
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
@@ -222,6 +244,33 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 ```
 
 Member recordings are omitted unless you pass `--include-recordings`.
+
+Create a dataset and change its episodes. Changes stay pending in the dataset's
+draft until you commit them as a new version, or discard them with
+`foxglove datasets discard`. `datasets episodes list --version draft` lists the
+draft, pending changes included:
+
+```
+$ foxglove datasets add --name "Night merges" --episode-id ep_BCUw2zxpBnToJbOS
+Dataset created: ds_Qp4sT7vKx2NbLm9W
+Added 1 episode
+Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
+$ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7sWd1ZrNc4YbEe
+$ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
+$ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
+$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
+Committed version 1 with 2 episodes (2 added, 0 removed)
+```
+
+List a dataset's versions, see which episodes changed between two of them, or
+restore an earlier one into the draft. `datasets episodes list --version` lists
+any version by number:
+
+```
+$ foxglove datasets versions list ds_mHH1Cp4gPybCPR8y
+$ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
+$ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
+```
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode plus a `manifest.json`:
@@ -285,8 +334,7 @@ To enable this, consult your shell instructions under `$ foxglove completion <sh
 
 ## Development
 
-See the [Rust development guide](rust/README.md) for building, testing, and
-working with the Go compatibility oracle.
+See the [Rust development guide](rust/README.md) for building and testing.
 
 ## Stay in touch
 
