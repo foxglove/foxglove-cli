@@ -12,6 +12,7 @@ use serde_yaml_ng::Value;
 
 use crate::config::Config;
 use crate::output::Format;
+use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
     extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
@@ -27,6 +28,14 @@ fn parse_bool(value: &str) -> Result<bool, String> {
         "0" | "f" | "F" | "FALSE" | "false" | "False" => Ok(false),
         _ => Err(format!("invalid boolean value: {value:?}")),
     }
+}
+
+fn parse_list_limit(value: &str) -> Result<i64, String> {
+    value
+        .parse::<i64>()
+        .ok()
+        .filter(|limit| (1..=MAX_LIST_LIMIT).contains(limit))
+        .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,6 +148,19 @@ pub(crate) struct AttachmentDownloadArgs {
 pub(crate) struct AttachmentListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
@@ -519,16 +541,13 @@ pub(crate) struct DatasetVersionListArgs {
     pub(crate) dataset_id: String,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(
         long,
         help = "Sort order by version number: asc or desc (default: desc)",
@@ -575,8 +594,9 @@ pub(crate) struct DatasetVersionCompareArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of changes to return (default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of changes to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
 }
@@ -605,16 +625,13 @@ pub(crate) struct DatasetListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(long, help = "Filter datasets by project", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
@@ -664,16 +681,13 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(
         long,
         help = "Filter to episodes containing this recording display ID",
@@ -739,6 +753,19 @@ pub(crate) struct DeviceEditArgs {
 pub(crate) struct DeviceListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Project ID", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
@@ -834,16 +861,13 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) include_recordings: bool,
     #[arg(
         long,
-        help = "Maximum number of items to return (0-2000, default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(
-        long,
-        help = "Number of items to skip before returning the results",
-        allow_hyphen_values = true
-    )]
-    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true)]
+    pub(crate) cursor: Option<String>,
     #[arg(long, help = "Filter episodes by project", allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(
@@ -920,7 +944,12 @@ pub(crate) struct EventListArgs {
     pub(crate) end: Option<String>,
     #[arg(long, help = "Event type ID", allow_hyphen_values = true)]
     pub(crate) event_type_id: Option<String>,
-    #[arg(long, help = "Result limit (default: 100)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Result offset", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,
@@ -972,6 +1001,19 @@ enum PendingImportsCommand {
 pub(crate) struct PendingImportListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
@@ -1083,8 +1125,9 @@ pub(crate) struct RecordingListArgs {
     pub(crate) import_status: Option<String>,
     #[arg(
         long,
-        help = "Maximum result count (default: 2000)",
-        allow_hyphen_values = true
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
@@ -1151,6 +1194,19 @@ pub(crate) struct SessionLookupArgs {
 pub(crate) struct SessionListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
     #[arg(long, help = "Filter by device ID", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Filter by device name", allow_hyphen_values = true)]
@@ -1209,7 +1265,12 @@ pub(crate) struct TopicListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_schemas: bool,
-    #[arg(long, help = "Maximum number of topics", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Number of topics to skip", allow_hyphen_values = true)]
     pub(crate) offset: Option<i64>,

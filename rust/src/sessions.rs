@@ -8,7 +8,9 @@ use crate::cli::{
     SessionAddArgs, SessionListArgs, SessionLookupArgs, SessionRecordingMutationArgs,
 };
 use crate::output::Format;
-use crate::records::{fetch_list, format_output, DeviceSummary, ProjectFallback, Record};
+use crate::records::{
+    fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -104,6 +106,9 @@ struct SessionListQuery {
     device_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
+    limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
 }
@@ -123,6 +128,8 @@ pub(crate) async fn list_sessions(
     let query = SessionListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
     };
     fetch_list::<Session, _>(
@@ -131,6 +138,7 @@ pub(crate) async fn list_sessions(
         "Failed to list sessions",
         "/v1/sessions",
         &query,
+        Some(query.limit),
     )
     .await
 }

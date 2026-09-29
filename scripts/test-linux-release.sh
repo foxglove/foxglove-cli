@@ -92,6 +92,6 @@ for distro in ubuntu:18.04 ubuntu:20.04 ubuntu:22.04 debian:12 rockylinux:8 open
       foxglove --help >/dev/null
       foxglove version
       result=$(foxglove --config /fixture/config.yaml recordings list --format json)
-      test "$result" = "[]"
+      test "$result" = "{\"data\":[]}"
     '
 done

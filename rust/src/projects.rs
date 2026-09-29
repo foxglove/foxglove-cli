@@ -44,6 +44,7 @@ pub(crate) async fn list_projects(runtime: &Runtime, format: Format) -> Outcome 
         "Failed to list projects",
         "/v1/projects",
         &(),
+        None,
     )
     .await
 }

@@ -58,6 +58,7 @@ pub(crate) async fn list_extensions(runtime: &Runtime, format: Format) -> Outcom
         "Failed to list extensions",
         "/v1/extensions",
         &(),
+        None,
     )
     .await
 }

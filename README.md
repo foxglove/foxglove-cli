@@ -54,6 +54,23 @@ $ foxglove auth configure-api-key
 This will overwrite any previously set credential. Use the [API key settings page](https://app.foxglove.dev/~/settings/apikeys)
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
+### Lists and pagination
+
+List commands that accept `--limit` return 50 results by default; pass `--limit`
+(1-2000) to change the page size. With `--format json`, list output is an object
+whose `data` array holds the results:
+
+```
+$ foxglove devices list --format json
+    {"data":[{"id":"dev_mHH1Cp4gPybCPR8y","name":"Adrian's Robot",...}]}
+```
+
+When more results may exist, a hint on stderr says how to get the next page.
+Datasets, dataset episodes, dataset versions, episodes, and
+`datasets versions compare` page with cursors: their JSON output includes
+`nextCursor`, which you pass to `--cursor`. The other commands that accept
+`--limit` page with `--offset`.
+
 ### Devices
 
 Before importing data, you must first create a device:
