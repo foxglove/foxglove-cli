@@ -308,8 +308,10 @@ async fn resumable_export_inner(
             request.end = Some(OffsetDateTime::now_utc());
         }
         // Once a response reaches the requested start, earlier responses hold
-        // every message a replay would repeat. Before that, replayed messages
-        // may still be missing, so the replay is requested again.
+        // every message a replay would repeat. A response that stops before
+        // then may lack some replayed messages, so the replay is requested
+        // again; the merged file can then repeat replayed messages or include
+        // other messages from before the requested start.
         if requested_start.is_none_or(|requested| start >= requested) {
             request.replay_policy.clear();
             request.replay_lookback_seconds = 0.0;
