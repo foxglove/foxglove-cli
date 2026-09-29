@@ -129,7 +129,7 @@ foxglove recordings transfer rec_123
 
 ### Exports
 
-Retrieve data for a device, time range, and optional list of topics, and export it directly to the console (`--output-format json`) or to a new file (`--output-format mcap0` or `--output-format bag1`):
+Retrieve data for a device, time range, and optional list of topics, and export it directly to the console (`--output-format json`) or to a new file (`--output-format mcap` or `--output-format bag1`):
 
 ```
 # Output JSON (directly to console)
@@ -141,7 +141,7 @@ $ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-0
     {"topic":"/tf","sequence":0,"log_time":1490149580.144292780,"publish_time":1490149580.144292780,"data":{"transforms":[{"header":{"seq":0,"stamp":1490149580.157286100,"frame_id":"base_link"},"child_frame_id":"radar","transform":{"translation":{"x":3.835,"y":0,"z":0},"rotation":{"x":0,"y":0,"z":0,"w":1}}}]}}
 
 # Output MCAP file (output.mcap)
-$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap0 --topics /gps/fix,/gps/fix_velocity > output.mcap
+$ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format mcap --topics /gps/fix,/gps/fix_velocity > output.mcap
 
 # Output ROS 1 bag file (output.bag)
 $ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
