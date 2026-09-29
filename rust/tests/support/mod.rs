@@ -136,7 +136,7 @@ impl Server {
                 assert_eq!(words.next().unwrap(), reply.method);
                 let target = words.next().unwrap();
                 assert_eq!(target.split('?').next().unwrap(), reply.path);
-                let body = if reply.path == "/v1/data/stream" {
+                let body = if matches!(reply.path, "/v1/data/stream" | "/v1/data/upload") {
                     String::from_utf8(reply.body)
                         .unwrap()
                         .replace("{BASE_URL}", &server_url)
@@ -202,6 +202,7 @@ fn read_request(stream: &mut impl Read) -> String {
     let mut reader = BufReader::new(stream);
     let mut request = String::new();
     let mut content_length = 0;
+    let mut chunked = false;
     loop {
         let mut line = String::new();
         assert_ne!(
@@ -209,8 +210,12 @@ fn read_request(stream: &mut impl Read) -> String {
             0,
             "missing HTTP headers"
         );
-        if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+        let header = line.to_ascii_lowercase();
+        if let Some(value) = header.strip_prefix("content-length:") {
             content_length = value.trim().parse().unwrap();
+        }
+        if header.starts_with("transfer-encoding:") && header.contains("chunked") {
+            chunked = true;
         }
         request.push_str(&line);
         if line == "\r\n" {
@@ -219,7 +224,16 @@ fn read_request(stream: &mut impl Read) -> String {
     }
     let mut body = vec![0; content_length];
     reader.read_exact(&mut body).unwrap();
-    request.push_str(std::str::from_utf8(&body).unwrap());
+    while chunked {
+        let mut size = String::new();
+        reader.read_line(&mut size).unwrap();
+        let size = usize::from_str_radix(size.trim(), 16).unwrap();
+        let mut chunk = vec![0; size + 2];
+        reader.read_exact(&mut chunk).unwrap();
+        body.extend_from_slice(&chunk[..size]);
+        chunked = size != 0;
+    }
+    request.push_str(&String::from_utf8_lossy(&body));
     request
 }
 
