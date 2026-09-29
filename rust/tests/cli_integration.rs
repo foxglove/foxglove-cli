@@ -2464,6 +2464,19 @@ fn project_scope_debug_reports_each_resolution_source() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr)
         .starts_with("[DEBUG] Project scope: unscoped (source: --without-project)\n"));
+    let unconfigured = Workspace::new();
+    let output = Process::spawn(unconfigured.command("http://127.0.0.1:1").args([
+        "--debug",
+        "export",
+        "--recording-id",
+        "rec_one",
+        "--start",
+        "bad",
+    ]))
+    .finish();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .starts_with("[DEBUG] Project scope: unscoped (source: none)\n"));
 }
 
 #[test]
