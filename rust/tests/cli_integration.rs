@@ -5,7 +5,10 @@ use std::fs;
 use std::io::Cursor;
 use std::process::Output;
 
-use foxglove_rust::format::{Channel, McapWriter, Message, RecordSink, Schema};
+use foxglove_rust::format::{
+    Channel, McapWriter, Message, RecordSink, RosbagConnection, RosbagMessage, RosbagSink, Schema,
+    ROSBAG_MAGIC,
+};
 use support::{assert_success, Process, Reply, Server, Workspace};
 
 #[test]
@@ -308,6 +311,164 @@ fn recovery_preserves_messages_and_schemaless_channels() {
         }
     }
     assert_eq!(server.finish().len(), 4);
+}
+
+fn bag_fields(fields: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for (key, value) in fields {
+        let field = [key.as_bytes(), b"=", value].concat();
+        bytes.extend_from_slice(&u32::try_from(field.len()).unwrap().to_le_bytes());
+        bytes.extend_from_slice(&field);
+    }
+    bytes
+}
+
+fn bag_record(header: &[(&str, &[u8])], data: &[u8]) -> Vec<u8> {
+    let header = bag_fields(header);
+    let mut bytes = u32::try_from(header.len()).unwrap().to_le_bytes().to_vec();
+    bytes.extend_from_slice(&header);
+    bytes.extend_from_slice(&u32::try_from(data.len()).unwrap().to_le_bytes());
+    bytes.extend_from_slice(data);
+    bytes
+}
+
+/// A complete bag whose connection data repeats `topic`, as bag1 exports can.
+fn bag_with_repeated_connection_topic(payload: &[u8]) -> Vec<u8> {
+    let conn = 0_u32.to_le_bytes();
+    let one = 1_u32.to_le_bytes();
+    let time = [1_u32.to_le_bytes(), 2_u32.to_le_bytes()].concat();
+    let connection = bag_record(
+        &[("op", &[7]), ("conn", &conn), ("topic", b"/gps")],
+        &bag_fields(&[
+            ("message_definition", b"uint8 value\n"),
+            ("md5sum", b"abc"),
+            ("topic", b"/gps"),
+            ("type", b"example/Message"),
+            ("callerid", b"/driver"),
+            ("latching", b"0"),
+            ("topic", b"/gps"),
+        ]),
+    );
+    let message = bag_record(&[("op", &[2]), ("conn", &conn), ("time", &time)], payload);
+    let chunk = [connection.as_slice(), &message].concat();
+    let chunk = bag_record(
+        &[
+            ("op", &[5]),
+            ("compression", b"none"),
+            ("size", &u32::try_from(chunk.len()).unwrap().to_le_bytes()),
+        ],
+        &chunk,
+    );
+    let index = bag_record(
+        &[
+            ("op", &[4]),
+            ("ver", &one),
+            ("conn", &conn),
+            ("count", &one),
+        ],
+        &[
+            time.as_slice(),
+            &u32::try_from(connection.len()).unwrap().to_le_bytes(),
+        ]
+        .concat(),
+    );
+    let header = |index_pos: u64| {
+        bag_record(
+            &[
+                ("op", &[3]),
+                ("index_pos", &index_pos.to_le_bytes()),
+                ("conn_count", &one),
+                ("chunk_count", &one),
+            ],
+            &[],
+        )
+    };
+    let chunk_pos = (ROSBAG_MAGIC.len() + header(0).len()) as u64;
+    let index_pos = chunk_pos + (chunk.len() + index.len()) as u64;
+    let chunk_info = bag_record(
+        &[
+            ("op", &[6]),
+            ("ver", &one),
+            ("chunk_pos", &chunk_pos.to_le_bytes()),
+            ("start_time", &time),
+            ("end_time", &time),
+            ("count", &one),
+        ],
+        &[conn, one].concat(),
+    );
+    [
+        ROSBAG_MAGIC,
+        &header(index_pos),
+        &chunk,
+        &index,
+        &connection,
+        &chunk_info,
+    ]
+    .concat()
+}
+
+#[derive(Default)]
+struct BagRecords {
+    connections: Vec<RosbagConnection>,
+    messages: Vec<RosbagMessage>,
+}
+
+impl RosbagSink for BagRecords {
+    fn connection(
+        &mut self,
+        connection: RosbagConnection,
+    ) -> Result<(), foxglove_rust::format::Error> {
+        self.connections.push(connection);
+        Ok(())
+    }
+    fn message(&mut self, message: RosbagMessage) -> Result<(), foxglove_rust::format::Error> {
+        self.messages.push(message);
+        Ok(())
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn bag_export_accepts_a_repeated_connection_header_field() {
+    let workspace = Workspace::new();
+    let server = Server::new(export_replies(bag_with_repeated_connection_topic(&[7])));
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "export",
+        "--recording-id",
+        "rec",
+        "--output-format",
+        "bag1",
+        "--output-file",
+        "output.bag",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 2);
+    let mut records = BagRecords::default();
+    let complete = foxglove_rust::format::read_rosbag_recover(
+        &mut fs::File::open(workspace.0.join("output.bag")).unwrap(),
+        &mut records,
+    )
+    .unwrap();
+    assert!(complete);
+    let connection = &records.connections[0];
+    assert_eq!(
+        (
+            connection.topic.as_str(),
+            connection.type_name.as_str(),
+            connection.caller_id.as_deref(),
+            connection.latching,
+        ),
+        ("/gps", "example/Message", Some("/driver"), Some(false))
+    );
+    assert_eq!(records.messages.len(), 1);
+    assert_eq!(
+        (
+            records.messages[0].time,
+            records.messages[0].data.as_slice()
+        ),
+        (1_000_000_002, [7].as_slice())
+    );
 }
 
 #[cfg(all(unix, feature = "test-support"))]

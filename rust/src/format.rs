@@ -1341,6 +1341,8 @@ fn parse_rosbag_message(
     })
 }
 
+/// Parse length-prefixed `key=value` fields. A repeated key keeps its last
+/// value, as the ROS 1 C++ and Python bag readers do.
 fn parse_bag_fields(data: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, Error> {
     let mut cursor = Cursor::new(data);
     let mut fields = BTreeMap::new();
@@ -1353,12 +1355,7 @@ fn parse_bag_fields(data: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, Error> {
         let key = std::str::from_utf8(&field[..separator])
             .map_err(|_| Error::Invalid("invalid rosbag header key".into()))?
             .to_owned();
-        if fields
-            .insert(key, field[separator + 1..].to_vec())
-            .is_some()
-        {
-            return Err(Error::Invalid("duplicate rosbag header field".into()));
-        }
+        fields.insert(key, field[separator + 1..].to_vec());
     }
     Ok(fields)
 }
@@ -1424,23 +1421,7 @@ fn read_bag_record<R: Read>(
     let header_bytes = read_exact_bytes(reader, header_len)?;
     let data_len = checked_len(read_u32(reader)?)?;
     let data = read_exact_bytes(reader, data_len)?;
-    let mut header = BTreeMap::new();
-    let mut cursor = Cursor::new(header_bytes);
-    while (cursor.position() as usize) < cursor.get_ref().len() {
-        let len = checked_len(read_u32(&mut cursor)?)?;
-        let field = read_exact_bytes(&mut cursor, len)?;
-        let Some(separator) = field.iter().position(|byte| *byte == b'=') else {
-            return Err(Error::Invalid("invalid rosbag header field".into()));
-        };
-        let (key, value) = (&field[..separator], &field[separator + 1..]);
-        let key = std::str::from_utf8(key)
-            .map_err(|_| Error::Invalid("invalid rosbag header key".into()))?
-            .to_owned();
-        if header.insert(key, value.to_vec()).is_some() {
-            return Err(Error::Invalid("duplicate rosbag header field".into()));
-        }
-    }
-    Ok(Some((header, data)))
+    Ok(Some((parse_bag_fields(&header_bytes)?, data)))
 }
 
 fn header_u32(header: &BTreeMap<String, Vec<u8>>, name: &str) -> Result<u32, Error> {
@@ -1732,6 +1713,43 @@ mod tests {
                 .expect("recover")
         );
         assert_eq!(sink.messages.len(), 1);
+    }
+
+    #[test]
+    fn repeated_rosbag_header_fields_keep_the_last_value() {
+        let header = bag_header(&[
+            ("op", vec![7]),
+            ("conn", 1_u32.to_le_bytes().to_vec()),
+            ("topic", b"/first".to_vec()),
+            ("topic", b"/example".to_vec()),
+        ]);
+        let data = bag_header(&[
+            ("message_definition", b"uint8 value\n".to_vec()),
+            ("md5sum", b"abc".to_vec()),
+            ("topic", b"/example".to_vec()),
+            ("type", b"first/Message".to_vec()),
+            ("callerid", b"/node".to_vec()),
+            ("latching", b"0".to_vec()),
+            ("topic", b"/example".to_vec()),
+            ("type", b"example/Message".to_vec()),
+        ]);
+        let mut record = Vec::new();
+        write_bag_record(&mut record, &header, &data).expect("record");
+        let (header, data) = read_bag_record(&mut Cursor::new(record))
+            .expect("read record")
+            .expect("record before EOF");
+        assert_eq!(
+            parse_rosbag_connection(&header, &data).expect("connection"),
+            RosbagConnection {
+                id: 1,
+                topic: "/example".into(),
+                type_name: "example/Message".into(),
+                md5sum: "abc".into(),
+                message_definition: b"uint8 value\n".to_vec(),
+                caller_id: Some("/node".into()),
+                latching: Some(false),
+            }
+        );
     }
 
     fn rosbag_connection() -> RosbagConnection {
