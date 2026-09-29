@@ -73,10 +73,6 @@ struct AttachmentListQuery {
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    session_id: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    session_key: String,
 }
 
 pub(crate) async fn list_attachments(
@@ -90,12 +86,7 @@ pub(crate) async fn list_attachments(
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
-        session_id: args.session_id.clone().unwrap_or_default(),
-        session_key: args.session_key.clone().unwrap_or_default(),
     };
-    if !query.session_key.is_empty() && query.project_id.is_empty() {
-        return Outcome::failure("--project-id is required when using --session-key\n");
-    }
     fetch_list::<Attachment, _>(
         runtime,
         format,

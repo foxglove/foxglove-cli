@@ -169,10 +169,6 @@ pub(crate) struct AttachmentListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
-    pub(crate) session_id: Option<String>,
-    #[arg(long, help = "Session key", allow_hyphen_values = true)]
-    pub(crate) session_key: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1034,10 +1030,6 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Request ID", allow_hyphen_values = true)]
     pub(crate) request_id: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
-    pub(crate) session_id: Option<String>,
-    #[arg(long, help = "Session key", allow_hyphen_values = true)]
-    pub(crate) session_key: Option<String>,
     #[arg(
         long, help = "Show completed requests",
         action = clap::ArgAction::Set,
@@ -1958,6 +1950,24 @@ mod tests {
         let error = super::Cli::try_parse_from(["foxglove", "devices", "list", "--format", "xml"])
             .unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+
+    #[test]
+    fn attachments_and_pending_imports_reject_session_filters() {
+        for command in [["attachments", "list"], ["pending-imports", "list"]] {
+            for flag in ["--session-id", "--session-key"] {
+                let argv = ["foxglove"]
+                    .into_iter()
+                    .chain(command)
+                    .chain([flag, "fixture"]);
+                let error = super::Cli::try_parse_from(argv).unwrap_err();
+                assert_eq!(
+                    error.kind(),
+                    clap::error::ErrorKind::UnknownArgument,
+                    "{command:?} {flag}"
+                );
+            }
+        }
     }
 
     #[test]

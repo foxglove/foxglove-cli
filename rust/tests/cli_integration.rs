@@ -2396,27 +2396,19 @@ fn unassigned_pending_imports_omit_project_defaults() {
 #[test]
 fn unassigned_pending_imports_reject_conflicting_scope_before_a_request() {
     let workspace = Workspace::new();
-    for (flags, expected) in [
-        (
-            vec!["--project-id", "prj_explicit"],
-            "--without-project cannot be combined with a nonempty --project-id or --session-key\n",
-        ),
-        (
-            vec!["--session-key", "session_key"],
-            "--without-project cannot be combined with a nonempty --project-id or --session-key\n",
-        ),
-    ] {
-        let output = Process::spawn(
-            workspace
-                .command("http://127.0.0.1:1")
-                .env("DEFAULT_PROJECT_ID", "prj_default")
-                .args(["pending-imports", "list", "--without-project"])
-                .args(&flags),
-        )
-        .finish();
-        assert!(!output.status.success());
-        assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
-    }
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["pending-imports", "list", "--without-project"])
+            .args(["--project-id", "prj_explicit"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "--without-project cannot be combined with a nonempty --project-id\n"
+    );
 }
 
 #[test]
