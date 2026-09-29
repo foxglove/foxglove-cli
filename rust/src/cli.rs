@@ -12,6 +12,7 @@ use serde_yaml_ng::Value;
 
 use crate::config::Config;
 use crate::output::Format;
+use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
     extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
@@ -30,14 +31,11 @@ fn parse_bool(value: &str) -> Result<bool, String> {
 }
 
 fn parse_list_limit(value: &str) -> Result<i64, String> {
-    let limit = value
+    value
         .parse::<i64>()
-        .map_err(|_| "must be an integer between 1 and 2000".to_owned())?;
-    if (1..=2000).contains(&limit) {
-        Ok(limit)
-    } else {
-        Err("must be an integer between 1 and 2000".to_owned())
-    }
+        .ok()
+        .filter(|limit| (1..=MAX_LIST_LIMIT).contains(limit))
+        .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

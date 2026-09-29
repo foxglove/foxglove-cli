@@ -316,11 +316,11 @@ pub(crate) async fn compare_versions(
             return Outcome::failure(format!("Failed to compare dataset versions: {error}\n"))
         }
     };
-    let mut outcome = format_list_output(
-        &page.changes,
-        format,
-        NextCursor::Page(page.next_cursor.as_deref()),
-    );
+    let next_cursor = page
+        .next_cursor
+        .as_deref()
+        .filter(|next| !next.is_empty() && !page.changes.is_empty());
+    let mut outcome = format_list_output(&page.changes, format, NextCursor::Page(next_cursor));
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(
@@ -330,10 +330,7 @@ pub(crate) async fn compare_versions(
             )
             .as_bytes(),
         );
-        if let Some(next) = page
-            .next_cursor
-            .filter(|next| !next.is_empty() && !page.changes.is_empty())
-        {
+        if let Some(next) = next_cursor {
             outcome.stderr.extend_from_slice(
                 format!("More changes exist; rerun with --cursor {next} to fetch the next page.\n")
                     .as_bytes(),

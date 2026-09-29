@@ -654,6 +654,37 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn offset_list_requests_send_the_offset_only_when_given() {
+    let workspace = Workspace::new();
+    let cases: &[(&str, &[&str])] = &[
+        ("/v1/recording-attachments", &["attachments", "list"]),
+        ("/v1/devices", &["devices", "list"]),
+        ("/v1/data/pending-imports", &["pending-imports", "list"]),
+        ("/v1/sessions", &["sessions", "list"]),
+    ];
+
+    for (offset, expected) in [(None, None), (Some("5"), Some("5"))] {
+        for &(path, command) in cases {
+            let server = Server::new(vec![Reply::json("GET", path, "[]")]);
+            let mut args = command.to_vec();
+            if let Some(offset) = offset {
+                args.extend(["--offset", offset]);
+            }
+            let output = Process::spawn(workspace.command(&server.url).args(args)).finish();
+            assert_success(&output);
+            assert_eq!(
+                query_pairs(&server.finish()[0])
+                    .get("offset")
+                    .map(String::as_str),
+                expected,
+                "{command:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn list_limits_must_be_between_one_and_two_thousand() {
     for limit in ["0", "2001", "-1", "not-a-number"] {
         let output = Process::spawn(Workspace::new().command("http://127.0.0.1:1").args([

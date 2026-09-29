@@ -222,10 +222,10 @@ async fn fetch_all_episodes(
             )
             .await?;
         episodes.extend(page.data.episodes);
-        match page.next_cursor {
-            Some(next) if !next.is_empty() => cursor = Some(next),
-            _ => return Ok(episodes),
-        }
+        let Some(next) = page.next_cursor else {
+            return Ok(episodes);
+        };
+        cursor = Some(next);
     }
 }
 
