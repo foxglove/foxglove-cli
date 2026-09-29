@@ -2518,7 +2518,7 @@ fn project_required_creation_reports_debug_scope() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn upload_reports_the_import_request_id_without_requiring_a_project_for_a_session_key() {
+fn upload_reports_the_request_id() {
     let workspace = Workspace::new();
     let file = workspace.0.join("fixture.mcap");
     let data = recording(&[message(1, 1, vec![1])]);
@@ -2538,13 +2538,10 @@ fn upload_reports_the_import_request_id_without_requiring_a_project_for_a_sessio
             "upload",
             "--device-id",
             "dev_fixture",
-            "--session-key",
-            "drive-1",
             file.to_str().unwrap(),
         ],
     );
     assert_success(&output);
-    assert!(output.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.ends_with(&format!(
@@ -2559,26 +2556,7 @@ fn upload_reports_the_import_request_id_without_requiring_a_project_for_a_sessio
         serde_json::json!({
             "filename": "fixture.mcap",
             "device.id": "dev_fixture",
-            "sessionKey": "drive-1",
         })
     );
     assert!(requests[1].ends_with(&*String::from_utf8_lossy(&data)));
-}
-
-#[test]
-fn upload_rejects_a_session_id_with_a_session_key_before_a_request() {
-    let workspace = Workspace::new();
-    let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
-        "upload",
-        "--session-id",
-        "ses_fixture",
-        "--session-key",
-        "drive-1",
-        "fixture.mcap",
-    ]))
-    .finish();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains(
-        "the argument '--session-id <SESSION_ID>' cannot be used with '--session-key <SESSION_KEY>'"
-    ));
 }
