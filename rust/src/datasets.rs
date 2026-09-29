@@ -238,12 +238,11 @@ pub(crate) async fn list_dataset_episodes(
             ),
             page.next_cursor.as_deref(),
         ),
-        Err(error) if error.is_not_found_for("dataset") || error.is_not_found_for("version") => {
-            match version {
-                Some(version) => version_not_found(&args.dataset_id, version),
-                None => dataset_not_found(&args.dataset_id),
-            }
-        }
+        Err(error) if error.is_not_found_for("version") => match version {
+            Some(version) => version_not_found(&args.dataset_id, version),
+            None => dataset_not_found(&args.dataset_id),
+        },
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to list dataset episodes: {error}\n")),
     }
 }

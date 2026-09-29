@@ -2144,6 +2144,14 @@ fn api_error_messages_reach_the_user() {
             PROJECT,
             "Failed to list devices: Project not found\n",
         ),
+        (
+            vec!["datasets", "episodes", "list", "ds_1", "--version", "9"],
+            "GET",
+            "/v1/datasets/ds_1/versions/9/episodes",
+            404,
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_1\n",
+        ),
     ] {
         let server = Server::new(vec![Reply {
             status,
