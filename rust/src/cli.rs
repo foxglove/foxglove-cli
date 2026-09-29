@@ -235,7 +235,10 @@ struct CompletionArgs {
 
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
-    #[command(about = "Get a configuration value")]
+    #[command(
+        about = "Get a configuration value",
+        long_about = "Get a configuration value. DEFAULT_PROJECT_ID, when set, takes precedence over the saved project-id."
+    )]
     Get(ConfigKeyArgs),
     #[command(about = "Set a configuration value")]
     Set(ConfigSetArgs),
@@ -258,7 +261,10 @@ struct ConfigKeyArgs {
 struct ConfigSetArgs {
     #[arg(value_name = "KEY")]
     key: ConfigKey,
-    #[arg(value_name = "VALUE")]
+    #[arg(
+        value_name = "VALUE",
+        help = "Value to save; cannot be empty (use `config unset` to remove a value)"
+    )]
     value: String,
 }
 
@@ -1676,7 +1682,17 @@ fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Ou
         Ok(config) => config,
         Err(outcome) => return outcome,
     };
-    match config.get_string(config_name(key)) {
+    let name = config_name(key);
+    match config.get_string(name) {
+        Some(value) if config.is_env_set(name) => Outcome {
+            stdout: format!("{value}\n").into_bytes(),
+            stderr: format!(
+                "{key} is set by the {} environment variable\n",
+                name.to_ascii_uppercase()
+            )
+            .into_bytes(),
+            ..Outcome::default()
+        },
         Some(value) => Outcome::success(format!("{value}\n")),
         None => Outcome::failure(format!("No value set for key '{key}'\n")),
     }
@@ -1685,6 +1701,11 @@ fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Ou
 fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outcome {
     let key = config_key_name(args.key);
     let value = args.value.clone();
+    if value.trim().is_empty() {
+        return Outcome::failure(format!(
+            "{key} cannot be empty; use `foxglove config unset {key}` to remove it\n"
+        ));
+    }
     let mut config = match load_config(path) {
         Ok(config) => config,
         Err(outcome) => return outcome,

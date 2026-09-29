@@ -62,6 +62,60 @@ fn clearing_project_default_requires_project_for_session_key() {
     );
 }
 
+#[test]
+fn config_set_rejects_blank_project_id() {
+    let workspace = Workspace::new();
+    let config = workspace.0.join("config.yaml");
+    fs::write(&config, "default_project_id: prj_saved\n").unwrap();
+    for value in ["", "   "] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["config", "set", "project-id", value, "--config"])
+                .arg(&config),
+        )
+        .finish();
+        assert_eq!(output.status.code(), Some(1), "{value:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "project-id cannot be empty; use `foxglove config unset project-id` to remove it\n",
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(&config).unwrap(),
+        "default_project_id: prj_saved\n"
+    );
+}
+
+#[test]
+fn config_get_reports_environment_project_id_source() {
+    let workspace = Workspace::new();
+    let config = workspace.0.join("config.yaml");
+    fs::write(&config, "default_project_id: prj_saved\n").unwrap();
+    for (environment, stdout, stderr) in [
+        (None, "prj_saved\n", ""),
+        (
+            Some("prj_env"),
+            "prj_env\n",
+            "project-id is set by the DEFAULT_PROJECT_ID environment variable\n",
+        ),
+    ] {
+        let mut command = workspace.command("http://127.0.0.1:1");
+        if let Some(environment) = environment {
+            command.env("DEFAULT_PROJECT_ID", environment);
+        }
+        let output = Process::spawn(
+            command
+                .args(["config", "get", "project-id", "--config"])
+                .arg(&config),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(String::from_utf8_lossy(&output.stdout), stdout);
+        assert_eq!(String::from_utf8_lossy(&output.stderr), stderr);
+    }
+}
+
 fn message(channel_id: u16, time: u64, data: Vec<u8>) -> Message {
     Message {
         channel_id,
