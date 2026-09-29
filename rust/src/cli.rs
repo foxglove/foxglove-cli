@@ -1022,7 +1022,7 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) device_name: Option<String>,
     #[arg(
         long,
-        help = "Exact filename to match, as listed by this command (partial names do not match)",
+        help = "Exact filename to match",
         allow_hyphen_values = true
     )]
     pub(crate) filename: Option<String>,
