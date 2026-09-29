@@ -350,7 +350,7 @@ pub(crate) struct ExportArgs {
     pub(crate) output_file: Option<String>,
     #[arg(
         long,
-        help = "Output format: mcap, bag1, or json (default: mcap). mcap0 is a deprecated alias for mcap; json supports only ros1msg and protobuf schemas",
+        help = "Output format: mcap, bag1, or json (default: mcap); json supports only ros1msg and protobuf schemas",
         allow_hyphen_values = true
     )]
     pub(crate) output_format: Option<String>,

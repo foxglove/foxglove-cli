@@ -1285,7 +1285,7 @@ const fn is_zero(value: &f64) -> bool {
 }
 
 fn is_mcap_format(format: &str) -> bool {
-    matches!(format, "mcap" | "mcap0")
+    format == "mcap"
 }
 
 #[cfg(test)]
@@ -1464,7 +1464,7 @@ mod tests {
     #[test]
     fn stream_request_validation_matches_api_contract() {
         let request = StreamRequest {
-            output_format: "mcap0".into(),
+            output_format: "mcap".into(),
             topics: vec![],
             ..StreamRequest::default()
         };

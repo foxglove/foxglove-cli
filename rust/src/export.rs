@@ -36,10 +36,7 @@ pub(crate) async fn export_data(
         Ok(request) => request,
         Err(error) => return Outcome::failure(format!("Failed to build request: {error}\n")),
     };
-    if !matches!(
-        request.output_format.as_str(),
-        "mcap" | "mcap0" | "bag1" | "json"
-    ) {
+    if !matches!(request.output_format.as_str(), "mcap" | "bag1" | "json") {
         return Outcome::failure("Export failed: invalid format: supply mcap, bag1, or json\n");
     }
     let destination = args
@@ -430,7 +427,7 @@ fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
 
 fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
     match format {
-        "mcap" | "mcap0" => reindex_mcap(path),
+        "mcap" => reindex_mcap(path),
         "bag1" => reindex_bag(path),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"
@@ -530,7 +527,7 @@ fn merge_partials(
     format: &str,
 ) -> Result<(), FormatError> {
     match format {
-        "mcap" | "mcap0" => merge_mcap_partials(partials, output),
+        "mcap" => merge_mcap_partials(partials, output),
         "bag1" => merge_bag_partials(partials, output),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"

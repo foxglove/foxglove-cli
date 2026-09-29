@@ -271,7 +271,6 @@ fn export_output_and_compression_formats_reach_the_api() {
     for (flags, format, compression) in [
         (vec![], "mcap", None),
         (vec!["--output-format", "mcap"], "mcap", None),
-        (vec!["--output-format", "mcap0"], "mcap0", None),
         (vec!["--output-format", "json"], "mcap", None),
         (vec!["--compression", ""], "mcap", Some("")),
         (vec!["--compression", "zstd"], "mcap", Some("zstd")),
