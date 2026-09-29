@@ -1391,7 +1391,10 @@ fn event_types_are_listed_with_their_custom_properties() {
         event_types["data"][0]["customProperties"],
         serde_json::json!([{"id": "cp_one", "required": true}, {"id": "cp_two", "required": false}])
     );
-    server.finish();
+    assert_eq!(
+        query_pairs(&server.finish()[1]),
+        expected_pairs(&[("resourceType", "event")])
+    );
 }
 
 fn json_body(request: &str) -> serde_json::Value {
