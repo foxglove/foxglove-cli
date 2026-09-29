@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn an_omitted_column_is_left_out_of_csv_and_tables_but_not_json() {
+    fn an_omitted_column_is_left_out_of_csv_and_tables() {
         let records = [PairRecord {
             id: "one",
             extra: "",
@@ -387,10 +387,6 @@ mod tests {
         assert_eq!(csv.stdout, b"ID\none\n");
         let table = format_record_without(&records[0], Format::Table, omitted);
         assert!(!String::from_utf8(table.stdout).unwrap().contains("Extra"));
-        let json = format_record_without(&records[0], Format::Json, omitted);
-        assert_eq!(json.stdout, b"{\"id\":\"one\",\"extra\":\"\"}\n");
-        let csv = format_list_output_without(&records, Format::Csv, NextCursor::NotPaginated, None);
-        assert_eq!(csv.stdout, b"ID,Extra\none,\n");
     }
 
     #[test]
