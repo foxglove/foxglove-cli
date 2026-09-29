@@ -746,6 +746,40 @@ fn dataset_list_filters_reach_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn recordings_are_listed_with_their_session() {
+    const RECORDINGS: &str = r#"[{"id":"rec_one","projectId":"prj_default","path":"one.mcap","size":128,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"complete","sessionId":"ses_one"},{"id":"rec_two","projectId":"prj_default","path":"two.mcap","size":64,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"none"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", RECORDINGS),
+        Reply::json("GET", "/v1/recordings", RECORDINGS),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "list", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Recording ID,Path,Size,Created At,Imported At,Start,End,Import Status,Site ID,Site Name,Edge Site ID,Edge Site Name,Device ID,Device Name,Metadata,Key,Session ID,Project ID\n\
+         rec_one,one.mcap,128 B,2024-01-02T03:04:07Z,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,complete,,,,,,,null,,ses_one,prj_default\n\
+         rec_two,two.mcap,64 B,2024-01-02T03:04:07Z,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,none,,,,,,,null,,,prj_default\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "list", "--format", "json"],
+    );
+    assert_success(&output);
+    let recordings: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let recordings = recordings["data"].as_array().unwrap();
+    assert_eq!(recordings[0]["sessionId"], "ses_one");
+    assert_eq!(recordings[1]["sessionId"], "");
+    server.finish();
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
     const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
     let workspace = Workspace::new();
