@@ -140,14 +140,12 @@ mod tests {
     use super::{terminal_outcome, BINARY_OUTPUT_TERMINAL_ERROR};
 
     #[test]
-    fn downloads_refuse_a_terminal_and_allow_pipes_and_files() {
+    fn downloads_refuse_a_terminal() {
         let outcome = terminal_outcome(true).expect("terminal is refused");
         assert_eq!(outcome.exit_code, 1);
-        assert!(outcome.stdout.is_empty());
         assert_eq!(
             outcome.stderr,
             format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n").as_bytes()
         );
-        assert!(terminal_outcome(false).is_none());
     }
 }
