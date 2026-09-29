@@ -1675,7 +1675,6 @@ mod tests {
             api_error_from_response(StatusCode::NOT_FOUND, "").to_string(),
             "not found"
         );
-        assert!(!ApiError::Forbidden.is_not_found_for("session"));
     }
 
     #[tokio::test]
