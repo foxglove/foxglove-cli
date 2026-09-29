@@ -161,10 +161,10 @@ pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome
     let request = CreateEventRequest {
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id: args.device_id.clone(),
-        end: args.end.clone().unwrap_or_default(),
+        end: args.end.clone(),
         event_type_id: args.event_type_id.clone().unwrap_or_default(),
         metadata,
-        start: args.start.clone().unwrap_or_default(),
+        start: args.start.clone(),
     };
     match runtime
         .client

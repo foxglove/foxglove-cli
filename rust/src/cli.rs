@@ -955,13 +955,13 @@ pub(crate) struct EventAddArgs {
         help = "End of event (inclusive), RFC 3339",
         allow_hyphen_values = true
     )]
-    pub(crate) end: Option<String>,
+    pub(crate) end: String,
     #[arg(long, help = "Associated event type ID", allow_hyphen_values = true)]
     pub(crate) event_type_id: Option<String>,
     #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) metadata: Vec<String>,
     #[arg(long, help = "Start of event, RFC 3339", allow_hyphen_values = true)]
-    pub(crate) start: Option<String>,
+    pub(crate) start: String,
 }
 
 #[derive(Debug, Args)]
