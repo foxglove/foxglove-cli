@@ -559,6 +559,121 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
     }
 }
 
+#[cfg(feature = "test-support")]
+fn pending_token_reply() -> Reply {
+    Reply {
+        status: 403,
+        ..Reply::json("POST", "/v1/auth/token", "{}")
+    }
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_polls_at_device_code_interval_using_its_id() {
+    use std::time::{Duration, Instant};
+    for (device_code, expected) in [
+        (
+            r#"{"id":"dc_id","deviceCode":"dc_legacy","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
+            "dc_id",
+        ),
+        (
+            r#"{"deviceCode":"dc_legacy","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
+            "dc_legacy",
+        ),
+    ] {
+        let workspace = Workspace::new();
+        let server = Server::new(vec![
+            Reply::json("POST", "/v1/auth/device-code", device_code),
+            pending_token_reply(),
+            Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#),
+            Reply::json("POST", "/v1/signin", r#"{"bearerToken":"session-token"}"#),
+        ]);
+        let started = Instant::now();
+        let output = Process::spawn(workspace.command(&server.url).args([
+            "auth",
+            "login",
+            "--base-url",
+            &server.url,
+        ]))
+        .finish();
+        assert_success(&output);
+        assert!(started.elapsed() >= Duration::from_secs(1));
+        let requests = server.finish();
+        for request in &requests[1..3] {
+            assert!(
+                request.contains(&format!(r#""deviceCode":"{expected}""#)),
+                "{request}"
+            );
+        }
+        let config = fs::read_to_string(workspace.0.join(".foxgloverc")).unwrap();
+        assert!(config.contains("bearer_token: session-token"), "{config}");
+    }
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_stops_polling_when_device_code_expires() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/auth/device-code",
+            r#"{"id":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":1}"#,
+        ),
+        pending_token_reply(),
+        pending_token_reply(),
+    ]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]))
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Login failed: the login request expired before it was authorized; run `foxglove auth login` again\n"
+    );
+    assert_eq!(server.finish().len(), 3);
+    assert!(!workspace.0.join(".foxgloverc").exists());
+}
+
+#[cfg(all(unix, feature = "test-support"))]
+#[test]
+#[ignore = "requires loopback sockets and Unix signal delivery"]
+fn ctrl_c_interrupts_login_polling_interval() {
+    use std::time::Duration;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/auth/device-code",
+            r#"{"id":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":60}"#,
+        ),
+        pending_token_reply(),
+    ]);
+    let child = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]));
+    for _ in 0..2 {
+        server
+            .requests
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap();
+    }
+    child.interrupt();
+    let output = child.finish();
+    assert_eq!(output.status.code(), Some(130));
+    assert!(!workspace.0.join(".foxgloverc").exists());
+    server.finish();
+}
+
 type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);
 
 fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {

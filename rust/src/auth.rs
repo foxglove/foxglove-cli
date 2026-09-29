@@ -6,7 +6,7 @@ use std::io::Write;
 use std::process::Child;
 #[cfg(not(feature = "test-support"))]
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::api::{self, FoxgloveClient};
 use crate::cli::LoginArgs;
@@ -14,6 +14,11 @@ use crate::config::Config;
 use crate::output;
 use crate::runtime::{self, Runtime};
 use crate::Outcome;
+
+/// The RFC 8628 polling interval used when the device-code response omits one.
+const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(5);
+const LOGIN_EXPIRED: &str =
+    "the login request expired before it was authorized; run `foxglove auth login` again";
 
 #[derive(Deserialize)]
 struct MeResponse {
@@ -148,6 +153,9 @@ async fn start_login(
         .device_code_with_cancellation(cancellation)
         .await
         .map_err(|error| format!("failed to fetch device code: {error}"))?;
+    if device_code.device_code_id().is_empty() {
+        return Err("failed to fetch device code: response did not include an ID".to_owned());
+    }
     let browser = open_browser(&device_code.verification_uri_complete);
     let mut stdout = Vec::new();
     if browser.is_some() {
@@ -172,13 +180,21 @@ async fn complete_login(
     browser: Option<Child>,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
+    let interval = match device_code.interval {
+        0 => DEFAULT_POLL_INTERVAL,
+        seconds => Duration::from_secs(seconds),
+    };
+    let expires_at = match device_code.expires_in {
+        0 => None,
+        seconds => Instant::now().checked_add(Duration::from_secs(seconds)),
+    };
     let result = async {
         loop {
             if cancellation.is_cancelled() {
                 return Err("context canceled".to_owned());
             }
             match client
-                .token_with_cancellation(&device_code.device_code, cancellation)
+                .token_with_cancellation(device_code.device_code_id(), cancellation)
                 .await
             {
                 Ok(token) => break Ok(token),
@@ -186,9 +202,12 @@ async fn complete_login(
                 // still pending. A 401 is an authentication error and must
                 // surface instead of retrying forever.
                 Err(api::ApiError::Forbidden) => {
+                    if expires_at.is_some_and(|expires_at| Instant::now() >= expires_at) {
+                        return Err(LOGIN_EXPIRED.to_owned());
+                    }
                     tokio::select! {
                         () = cancellation.cancelled() => return Err("context canceled".to_owned()),
-                        () = tokio::time::sleep(Duration::from_millis(500)) => {}
+                        () = tokio::time::sleep(interval) => {}
                     }
                 }
                 Err(error) => return Err(format!("failed to request token: {error}")),
