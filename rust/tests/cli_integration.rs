@@ -3507,3 +3507,41 @@ fn upload_reports_the_request_id() {
     );
     assert!(requests[1].ends_with(&*String::from_utf8_lossy(&data)));
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
+    let workspace = Workspace::new();
+    let body = format!(
+        r#"[{{"id":"ext_0eXGTrKQ5BVPyZmG","name":"n","publisher":"p","displayName":"d","description":"{}"}}]"#,
+        "word ".repeat(30).trim_end()
+    );
+    for columns in [None, Some("60")] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/extensions", &body)]);
+        let mut command = workspace.command(&server.url);
+        command.env_remove("COLUMNS").args(["extensions", "list"]);
+        if let Some(columns) = columns {
+            command.env("COLUMNS", columns);
+        }
+        let output = Process::spawn(&mut command).finish();
+        assert_success(&output);
+        server.finish();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let lines: Vec<_> = stdout.lines().collect();
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with(" ext_0eXGTrKQ5BVPyZmG ")),
+            "{stdout}"
+        );
+        if columns.is_some() {
+            assert!(lines.len() > 3, "{stdout}");
+            assert!(
+                lines.iter().all(|line| line.chars().count() <= 60),
+                "{stdout}"
+            );
+        } else {
+            assert_eq!(lines.len(), 3, "{stdout}");
+        }
+    }
+}

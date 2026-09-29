@@ -1,8 +1,8 @@
 //! Shared output-format parsing and deterministic renderers.
 
-use comfy_table::{ContentArrangement, LineStyle, Table, TableStyle};
+use comfy_table::{ColumnConstraint, ContentArrangement, LineStyle, Table, TableStyle};
 use serde::Serialize;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
 /// Supported list-command output formats.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, clap::ValueEnum)]
@@ -43,7 +43,8 @@ pub fn render_csv(
     csv.flush().map_err(io::Error::other)
 }
 
-/// Render a table, wrapping cells so the whole table fits the terminal.
+/// Render a table. When stdout is a terminal or `COLUMNS` is set, cells other
+/// than IDs wrap so the table fits that width; otherwise rows are not wrapped.
 ///
 /// # Errors
 ///
@@ -60,7 +61,7 @@ fn render_table_at(
     writer: &mut dyn Write,
     headers: &[&str],
     rows: &[Vec<String>],
-    width: u16,
+    width: Option<u16>,
 ) -> io::Result<()> {
     if rows.is_empty() {
         return writer.write_all(b"No records found\n");
@@ -70,27 +71,42 @@ fn render_table_at(
     let mut table = Table::new();
     table
         .load_style(style)
-        .set_width(width)
-        .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(headers.iter().copied())
         .add_rows(
             rows.iter()
                 .map(|row| row.iter().map(|cell| escape_cell(cell))),
         );
+    if let Some(width) = width {
+        table
+            .set_width(width)
+            .set_content_arrangement(ContentArrangement::Dynamic);
+        for (column, header) in table.column_iter_mut().zip(headers) {
+            if is_id_header(header) {
+                column.set_constraint(ColumnConstraint::ContentWidth);
+            }
+        }
+    }
     writeln!(writer, "{table}")
+}
+
+fn is_id_header(header: &str) -> bool {
+    header == "ID" || header.ends_with(" ID")
 }
 
 fn escape_cell(cell: &str) -> String {
     cell.replace(['\r', '\n'], "\\n")
 }
 
-fn terminal_width() -> u16 {
+fn terminal_width() -> Option<u16> {
     if let Some(columns) = std::env::var("COLUMNS")
         .ok()
         .and_then(|value| value.trim().parse::<u16>().ok())
         .filter(|columns| *columns > 0)
     {
-        return columns;
+        return Some(columns);
+    }
+    if !io::stdout().is_terminal() {
+        return None;
     }
     std::process::Command::new("stty")
         .arg("size")
@@ -107,7 +123,7 @@ fn terminal_width() -> u16 {
                 .ok()
         })
         .filter(|columns| *columns > 0)
-        .unwrap_or(80)
+        .or(Some(80))
 }
 
 fn validate_rows(headers: &[&str], rows: &[Vec<String>]) -> io::Result<()> {
@@ -155,7 +171,7 @@ mod tests {
                 vec!["dev_1".into(), "Robot".into()],
                 vec!["dev_longer".into(), "A".into()],
             ],
-            80,
+            Some(80),
         )
         .unwrap();
         assert_eq!(
@@ -174,7 +190,7 @@ mod tests {
             &mut output,
             &["ID", "Notes"],
             &[vec!["dev_1".into(), "a".repeat(60)]],
-            40,
+            Some(40),
         )
         .unwrap();
         let rendered = String::from_utf8(output).unwrap();
@@ -186,13 +202,53 @@ mod tests {
     }
 
     #[test]
+    fn id_columns_never_wrap_in_a_narrow_table() {
+        let mut output = Vec::new();
+        super::render_table_at(
+            &mut output,
+            &["ID", "Name", "Device ID"],
+            &[vec![
+                "rec_0edpo2ngbqJWmewz".into(),
+                "a long recording name ".repeat(4),
+                "dev_0eXGTrKQ5BVPyZmG".into(),
+            ]],
+            Some(60),
+        )
+        .unwrap();
+        let rendered = String::from_utf8(output).unwrap();
+        let lines: Vec<_> = rendered.lines().collect();
+        assert!(lines[2].starts_with(" rec_0edpo2ngbqJWmewz "), "{rendered}");
+        assert!(lines[2].ends_with(" dev_0eXGTrKQ5BVPyZmG "), "{rendered}");
+        assert!(lines.len() > 3, "{rendered}");
+        for line in lines {
+            assert!(line.chars().count() <= 60, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn a_table_without_a_width_is_not_wrapped() {
+        let mut output = Vec::new();
+        let notes = "word ".repeat(40);
+        super::render_table_at(
+            &mut output,
+            &["ID", "Notes"],
+            &[vec!["dev_1".into(), notes.clone()]],
+            None,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(output).unwrap();
+        assert_eq!(rendered.lines().count(), 3, "{rendered}");
+        assert!(rendered.contains(notes.trim_end()), "{rendered}");
+    }
+
+    #[test]
     fn table_escapes_cell_newlines_and_keeps_pipes_verbatim() {
         let mut output = Vec::new();
         super::render_table_at(
             &mut output,
             &["Value"],
             &[vec!["left|right\nnext".into()]],
-            80,
+            Some(80),
         )
         .unwrap();
         assert!(String::from_utf8(output)
