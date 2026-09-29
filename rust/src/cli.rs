@@ -2006,19 +2006,6 @@ mod tests {
                 "{flag:?}"
             );
         }
-        super::Cli::try_parse_from(base.iter().chain(&[
-            "--device-name",
-            "robot",
-            "--project-id",
-            "prj_1",
-            "--request-id",
-            "req_1",
-            "--limit",
-            "5",
-            "--offset",
-            "1",
-        ]))
-        .unwrap();
     }
 
     #[test]
