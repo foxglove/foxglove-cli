@@ -332,6 +332,41 @@ all Foxglove organization members:
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
 
+## Command discovery
+
+Scripts and agents can find commands and their arguments without parsing
+`--help` text. Both commands work offline and print JSON.
+
+Search for up to five commands that match a description of what you want to do:
+
+```
+$ foxglove cli search "add to a dataset"
+[{"command":"foxglove datasets episodes add","summary":"Add episodes to a dataset as pending changes"},{"command":"foxglove datasets add","summary":"Create a dataset"},...]
+```
+
+Describe a command's usage, positional arguments, options, and subcommands.
+Options with `"global": true` are accepted by every command:
+
+```
+$ foxglove cli describe datasets episodes add
+{
+  "command": "foxglove datasets episodes add",
+  "summary": "Add episodes to a dataset as pending changes",
+  "usage": "foxglove datasets episodes add [OPTIONS] <DATASET_ID> <EPISODE_ID>...",
+  "arguments": [
+    {"name": "DATASET_ID", "type": "string", "required": true, "multiple": false},
+    {"name": "EPISODE_ID", "type": "string", "required": true, "multiple": true}
+  ],
+  "options": [
+    {"name": "--config", "usage": "--config <CONFIG>", "type": "string", "required": false, "multiple": false, "description": "Config file", "global": true},
+    ...
+  ],
+  "subcommands": []
+}
+```
+
+The output is shown formatted here; the CLI prints it on one line.
+
 ## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support generated

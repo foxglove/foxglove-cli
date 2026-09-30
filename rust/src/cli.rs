@@ -73,7 +73,7 @@ fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> 
 #[command(
     name = ROOT_COMMAND,
     about = "Command line client for the Foxglove data platform",
-    after_help = "Find a command with `foxglove cli search <QUERY>` and list its arguments with `foxglove cli describe <COMMAND>`.",
+    after_help = "Find a command with `foxglove cli search <QUERY>` and list its arguments with `foxglove cli describe <COMMAND>`. Both print JSON.",
     disable_version_flag = true,
     subcommand_precedence_over_arg = true,
     args_override_self = true
