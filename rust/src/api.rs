@@ -344,7 +344,7 @@ pub struct UploadRequest {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceCodeResponse {
-    pub id: String,
+    pub device_code: String,
     #[serde(default)]
     pub user_code: String,
     #[serde(default)]

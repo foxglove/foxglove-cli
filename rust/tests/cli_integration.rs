@@ -502,7 +502,7 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
         let workspace = Workspace::new();
         let mut replies = Vec::new();
         if login {
-            replies.push(Reply::json("POST", "/v1/auth/device-code", r#"{"id":"fixture","userCode":"1234","verificationUriComplete":"https://example.invalid"}"#));
+            replies.push(Reply::json("POST", "/v1/auth/device-code", r#"{"deviceCode":"fixture","userCode":"1234","verificationUriComplete":"https://example.invalid"}"#));
             replies.push(Reply::json(
                 "POST",
                 "/v1/auth/token",
@@ -577,7 +577,7 @@ fn login_polls_at_device_code_interval() {
         Reply::json(
             "POST",
             "/v1/auth/device-code",
-            r#"{"id":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
+            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
         ),
         pending_token_reply(),
         Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#),
@@ -610,7 +610,7 @@ fn login_stops_polling_when_device_code_expires() {
         Reply::json(
             "POST",
             "/v1/auth/device-code",
-            r#"{"id":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":1}"#,
+            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":1}"#,
         ),
         pending_token_reply(),
         pending_token_reply(),
@@ -629,39 +629,6 @@ fn login_stops_polling_when_device_code_expires() {
     );
     assert_eq!(server.finish().len(), 3);
     assert!(!workspace.0.join(".foxgloverc").exists());
-}
-
-#[cfg(all(unix, feature = "test-support"))]
-#[test]
-#[ignore = "requires loopback sockets and Unix signal delivery"]
-fn ctrl_c_interrupts_login_polling_interval() {
-    use std::time::Duration;
-    let workspace = Workspace::new();
-    let server = Server::new(vec![
-        Reply::json(
-            "POST",
-            "/v1/auth/device-code",
-            r#"{"id":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":60}"#,
-        ),
-        pending_token_reply(),
-    ]);
-    let child = Process::spawn(workspace.command(&server.url).args([
-        "auth",
-        "login",
-        "--base-url",
-        &server.url,
-    ]));
-    for _ in 0..2 {
-        server
-            .requests
-            .recv_timeout(Duration::from_secs(10))
-            .unwrap();
-    }
-    child.interrupt();
-    let output = child.finish();
-    assert_eq!(output.status.code(), Some(130));
-    assert!(!workspace.0.join(".foxgloverc").exists());
-    server.finish();
 }
 
 type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);

@@ -15,8 +15,6 @@ use crate::output;
 use crate::runtime::{self, Runtime};
 use crate::Outcome;
 
-/// The RFC 8628 polling interval used when the device-code response omits one.
-const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const LOGIN_EXPIRED: &str =
     "the login request expired before it was authorized; run `foxglove auth login` again";
 
@@ -177,21 +175,15 @@ async fn complete_login(
     browser: Option<Child>,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
-    let interval = match device_code.interval {
-        0 => DEFAULT_POLL_INTERVAL,
-        seconds => Duration::from_secs(seconds),
-    };
-    let expires_at = match device_code.expires_in {
-        0 => None,
-        seconds => Instant::now().checked_add(Duration::from_secs(seconds)),
-    };
+    let interval = Duration::from_secs(device_code.interval);
+    let expires_at = Instant::now() + Duration::from_secs(device_code.expires_in);
     let result = async {
         loop {
             if cancellation.is_cancelled() {
                 return Err("context canceled".to_owned());
             }
             match client
-                .token_with_cancellation(&device_code.id, cancellation)
+                .token_with_cancellation(&device_code.device_code, cancellation)
                 .await
             {
                 Ok(token) => break Ok(token),
@@ -199,7 +191,7 @@ async fn complete_login(
                 // still pending. A 401 is an authentication error and must
                 // surface instead of retrying forever.
                 Err(api::ApiError::Forbidden) => {
-                    if expires_at.is_some_and(|expires_at| Instant::now() >= expires_at) {
+                    if Instant::now() >= expires_at {
                         return Err(LOGIN_EXPIRED.to_owned());
                     }
                     tokio::select! {
