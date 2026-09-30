@@ -101,15 +101,16 @@ struct Document {
 
 /// Rank every executable command against `query` and return the best matches.
 pub(crate) fn search(mut root: Command, query: &str) -> Outcome {
-    if words(query).next().is_none() {
+    let terms = query_terms(query);
+    if terms.is_empty() {
         return Outcome::failure(
-            "search query must contain at least one word\nUse `foxglove cli search <QUERY>` to find a command\n",
+            "search query must contain at least one word\nExample: foxglove cli search \"add to a dataset\"\n",
         );
     }
     root.build();
     let mut documents = Vec::new();
     collect_documents(&root, &mut Vec::new(), &mut Vec::new(), &mut documents);
-    let results = rank(&documents, query)
+    let results = rank(&documents, &terms)
         .into_iter()
         .map(|document| CommandSummary {
             command: document.command.clone(),
@@ -439,11 +440,7 @@ fn query_terms(query: &str) -> Vec<String> {
 /// Score each document by the query terms it contains, weighting matches by
 /// field and by how rare the matched word is, and favoring documents that
 /// match more of the query.
-fn rank<'a>(documents: &'a [Document], query: &str) -> Vec<&'a Document> {
-    let terms = query_terms(query);
-    if terms.is_empty() {
-        return Vec::new();
-    }
+fn rank<'a>(documents: &'a [Document], terms: &[String]) -> Vec<&'a Document> {
     let mut frequency = HashMap::<&str, usize>::new();
     for document in documents {
         let unique = document
@@ -466,7 +463,7 @@ fn rank<'a>(documents: &'a [Document], query: &str) -> Vec<&'a Document> {
         .filter_map(|document| {
             let mut score = 0.0;
             let mut matched = 0;
-            for term in &terms {
+            for term in terms {
                 let term_score = document
                     .fields
                     .iter()
@@ -606,7 +603,7 @@ mod tests {
             assert_eq!(
                 String::from_utf8(outcome.stderr).unwrap(),
                 "search query must contain at least one word\n\
-                 Use `foxglove cli search <QUERY>` to find a command\n",
+                 Example: foxglove cli search \"add to a dataset\"\n",
                 "{query:?}"
             );
         }
