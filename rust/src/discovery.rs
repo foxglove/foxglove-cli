@@ -21,6 +21,9 @@ const STOP_WORDS: &[&str] = &[
 /// the context of parent summaries and argument help, in that order.
 const FIELD_WEIGHTS: [f64; 4] = [8.0, 5.0, 2.0, 0.5];
 const PREFIX_WEIGHT: f64 = 0.5;
+/// Score multiplier when the query names every word of the command's own name,
+/// so that `version` ranks `foxglove version` above `datasets versions *`.
+const LEAF_WEIGHT: f64 = 1.5;
 
 #[derive(Serialize)]
 struct CommandSummary {
@@ -92,11 +95,17 @@ enum ValueType {
 struct Document {
     command: String,
     summary: String,
+    leaf: Vec<String>,
     fields: [Vec<String>; 4],
 }
 
 /// Rank every executable command against `query` and return the best matches.
 pub(crate) fn search(mut root: Command, query: &str) -> Outcome {
+    if words(query).next().is_none() {
+        return Outcome::failure(
+            "search query must contain at least one word\nUse `foxglove cli search <QUERY>` to find a command\n",
+        );
+    }
     root.build();
     let mut documents = Vec::new();
     collect_documents(&root, &mut Vec::new(), &mut Vec::new(), &mut documents);
@@ -376,6 +385,7 @@ fn document(command: &Command, path: &[&str], parents: &[String]) -> Document {
     }
     Document {
         command: command_name(path),
+        leaf: tokens(command.get_name()),
         fields: [
             tokens(&path.join(" ")),
             tokens(&summary),
@@ -476,6 +486,9 @@ fn rank<'a>(documents: &'a [Document], query: &str) -> Vec<&'a Document> {
                     score += term_score;
                 }
             }
+            if document.leaf.iter().all(|token| terms.contains(token)) {
+                score *= LEAF_WEIGHT;
+            }
             (matched > 0).then(|| (score * count(matched) / count(terms.len()), document))
         })
         .collect::<Vec<_>>();
@@ -564,6 +577,7 @@ mod tests {
             ("commit pending dataset changes", "foxglove datasets commit"),
             ("export mcap for a time range", "foxglove export"),
             ("log in", "foxglove auth login"),
+            ("version", "foxglove version"),
         ] {
             let results = search(query);
             assert_eq!(
@@ -581,6 +595,21 @@ mod tests {
             json(&["cli", "search", "add to a dataset"])
         );
         assert_eq!(json(&["cli", "search", "zzzz"]), Value::Array(Vec::new()));
+    }
+
+    #[test]
+    fn search_rejects_a_query_without_words() {
+        for query in ["", "   ", "--"] {
+            let outcome = invoke(&["cli", "search", "--", query]);
+            assert_eq!(outcome.exit_code, 1, "{query:?}");
+            assert!(outcome.stdout.is_empty(), "{query:?}");
+            assert_eq!(
+                String::from_utf8(outcome.stderr).unwrap(),
+                "search query must contain at least one word\n\
+                 Use `foxglove cli search <QUERY>` to find a command\n",
+                "{query:?}"
+            );
+        }
     }
 
     #[test]
