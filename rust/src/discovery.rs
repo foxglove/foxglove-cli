@@ -70,6 +70,7 @@ struct OptionDescription {
     possible_values: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    global: bool,
 }
 
 #[derive(Serialize)]
@@ -174,21 +175,20 @@ fn about(command: &Command) -> String {
         .unwrap_or_default()
 }
 
-/// Arguments a caller can pass to `command` itself. Global options appear
-/// only on the root command, where they are declared.
-fn arguments(command: &Command, is_root: bool) -> impl Iterator<Item = &Arg> {
-    command.get_arguments().filter(move |arg| {
-        arg.get_id() != "help" && !arg.is_hide_set() && (is_root || !arg.is_global_set())
-    })
+/// Arguments a caller can pass to `command`, including global options that
+/// the root command propagates to every subcommand.
+fn arguments(command: &Command) -> impl Iterator<Item = &Arg> {
+    command
+        .get_arguments()
+        .filter(|arg| arg.get_id() != "help" && !arg.is_hide_set())
 }
 
 fn description(command: &Command, path: &[&str]) -> CommandDescription {
-    let is_root = path.is_empty();
     let mut usage_command = command.clone();
     let usage = usage_command.render_usage().to_string();
     let usage = usage.strip_prefix("Usage: ").unwrap_or(&usage).trim();
     let (positionals, flags): (Vec<&Arg>, Vec<&Arg>) =
-        arguments(command, is_root).partition(|arg| arg.is_positional());
+        arguments(command).partition(|arg| arg.is_positional());
     CommandDescription {
         command: command_name(path),
         summary: about(command),
@@ -276,6 +276,7 @@ fn describe_option(arg: &Arg) -> OptionDescription {
         },
         possible_values,
         description: arg.get_help().map(ToString::to_string),
+        global: arg.is_global_set(),
         name,
     }
 }
@@ -364,7 +365,8 @@ fn document(command: &Command, path: &[&str], parents: &[String]) -> Document {
         .map(ToString::to_string)
         .unwrap_or_default();
     let mut context = parents.join(" ");
-    for arg in arguments(command, false) {
+    // Global options are on every command, so they would only add noise.
+    for arg in arguments(command).filter(|arg| !arg.is_global_set()) {
         context.push(' ');
         context.push_str(&argument_name(arg));
         if let Some(help) = arg.get_help() {
@@ -597,10 +599,14 @@ mod tests {
         assert_eq!(recording["required"], true);
         assert_eq!(recording["multiple"], true);
         assert_eq!(recording["type"], "string");
-        assert!(
-            options.iter().all(|option| option["name"] != "--config"),
-            "global options belong to the root description"
-        );
+        assert_eq!(recording["global"], false);
+        for name in ["--client-id", "--config", "--debug"] {
+            let global = options
+                .iter()
+                .find(|option| option["name"] == name)
+                .unwrap_or_else(|| panic!("{name} missing from {options:?}"));
+            assert_eq!(global["global"], true, "{name}");
+        }
 
         let download = json(&["cli", "describe", "datasets download"]);
         assert_eq!(download["arguments"][0]["name"], "DATASET_ID");
@@ -661,7 +667,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .any(|option| option["name"] == "--config"));
+            .any(|option| option["name"] == "--config" && option["global"] == true));
     }
 
     #[test]
