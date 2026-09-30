@@ -2520,9 +2520,8 @@ fn project_required_creation_reports_debug_scope() {
 #[ignore = "requires loopback sockets"]
 fn upload_reports_the_request_id() {
     let workspace = Workspace::new();
-    let file = workspace.0.join("fixture.mcap");
     let data = recording(&[message(1, 1, vec![1])]);
-    fs::write(&file, &data).unwrap();
+    fs::write(workspace.0.join("fixture.mcap"), &data).unwrap();
     let server = Server::new(vec![
         Reply::json(
             "POST",
@@ -2534,20 +2533,12 @@ fn upload_reports_the_request_id() {
     let output = run(
         &workspace,
         &server,
-        &[
-            "upload",
-            "--device-id",
-            "dev_fixture",
-            file.to_str().unwrap(),
-        ],
+        &["upload", "--device-id", "dev_fixture", "fixture.mcap"],
     );
     assert_success(&output);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.ends_with(&format!(
-            "\nUploaded {} (upload request ID: req_fixture)\n",
-            file.display()
-        )),
+        stderr.ends_with("\nUploaded fixture.mcap (upload request ID: req_fixture)\n"),
         "{stderr}"
     );
     let requests = server.finish();
