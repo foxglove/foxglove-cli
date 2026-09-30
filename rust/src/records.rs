@@ -203,23 +203,13 @@ pub(crate) fn format_list_output<T: Record>(
     format: Format,
     next_cursor: NextCursor<'_>,
 ) -> Outcome {
-    format_list_output_without(records, format, next_cursor, None)
-}
-
-/// Like [`format_list_output`], but leaves the `omitted` column out of table
-/// and CSV output.
-pub(crate) fn format_list_output_without<T: Record>(
-    records: &[T],
-    format: Format,
-    next_cursor: NextCursor<'_>,
-    omitted: Option<&str>,
-) -> Outcome {
     let mut stdout = Vec::new();
     let result = match format {
-        Format::Table => {
-            let (headers, rows) = columns(records, omitted);
-            output::render_table(&mut stdout, &headers, &rows)
-        }
+        Format::Table => output::render_table(
+            &mut stdout,
+            T::headers(),
+            &records.iter().map(Record::fields).collect::<Vec<_>>(),
+        ),
         Format::Json => output::render_json(
             &mut stdout,
             &ListOutput {
@@ -227,10 +217,11 @@ pub(crate) fn format_list_output_without<T: Record>(
                 next_cursor,
             },
         ),
-        Format::Csv => {
-            let (headers, rows) = columns(records, omitted);
-            output::render_csv(&mut stdout, &headers, &rows)
-        }
+        Format::Csv => output::render_csv(
+            &mut stdout,
+            T::headers(),
+            &records.iter().map(Record::fields).collect::<Vec<_>>(),
+        ),
     };
     match result {
         Ok(()) => Outcome::success(stdout),
@@ -238,39 +229,9 @@ pub(crate) fn format_list_output_without<T: Record>(
     }
 }
 
-fn columns<T: Record>(
-    records: &[T],
-    omitted: Option<&str>,
-) -> (Vec<&'static str>, Vec<Vec<String>>) {
-    let mut headers = T::headers().to_vec();
-    let mut rows: Vec<_> = records.iter().map(Record::fields).collect();
-    if let Some(index) = headers.iter().position(|header| Some(*header) == omitted) {
-        headers.remove(index);
-        for row in &mut rows {
-            row.remove(index);
-        }
-    }
-    (headers, rows)
-}
-
 pub(crate) fn format_record<T: Record>(record: &T, format: Format) -> Outcome {
-    format_record_without(record, format, None)
-}
-
-/// Like [`format_record`], but leaves the `omitted` column out of table and
-/// CSV output.
-pub(crate) fn format_record_without<T: Record>(
-    record: &T,
-    format: Format,
-    omitted: Option<&str>,
-) -> Outcome {
     if format != Format::Json {
-        return format_list_output_without(
-            std::slice::from_ref(record),
-            format,
-            NextCursor::NotPaginated,
-            omitted,
-        );
+        return format_output(std::slice::from_ref(record), format);
     }
     let mut stdout = Vec::new();
     match output::render_json(&mut stdout, record) {
@@ -355,36 +316,6 @@ mod tests {
             outcome.stdout,
             b"{\"data\":[{\"id\":\"one\"}],\"nextCursor\":\"next_page\"}\n"
         );
-    }
-
-    #[derive(Serialize)]
-    struct PairRecord {
-        id: &'static str,
-        extra: &'static str,
-    }
-
-    impl Record for PairRecord {
-        fn headers() -> &'static [&'static str] {
-            &["ID", "Extra"]
-        }
-
-        fn fields(&self) -> Vec<String> {
-            vec![self.id.to_owned(), self.extra.to_owned()]
-        }
-    }
-
-    #[test]
-    fn an_omitted_column_is_left_out_of_csv_and_tables() {
-        let records = [PairRecord {
-            id: "one",
-            extra: "",
-        }];
-        let omitted = Some("Extra");
-        let csv =
-            format_list_output_without(&records, Format::Csv, NextCursor::NotPaginated, omitted);
-        assert_eq!(csv.stdout, b"ID\none\n");
-        let table = format_record_without(&records[0], Format::Table, omitted);
-        assert!(!String::from_utf8(table.stdout).unwrap().contains("Extra"));
     }
 
     #[test]

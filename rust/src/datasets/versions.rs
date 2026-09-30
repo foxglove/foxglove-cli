@@ -10,11 +10,11 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::{include_recordings, omitted_recordings_column, RECORDINGS_HEADER};
+use crate::episodes::include_recordings;
 use crate::output::Format;
 use crate::records::{
-    format_list_output, format_list_output_without, format_record, is_false, plural,
-    warn_if_has_next_cursor, EmptyRequest, NextCursor, Record, DEFAULT_LIST_LIMIT,
+    format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
+    NextCursor, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -120,7 +120,7 @@ impl Record for DatasetEpisodeChange {
             "Project ID",
             "Start Time",
             "End Time",
-            RECORDINGS_HEADER,
+            "Recordings",
             "Metadata",
             "Added At",
             "Added In Version",
@@ -320,12 +320,7 @@ pub(crate) async fn compare_versions(
         .next_cursor
         .as_deref()
         .filter(|next| !next.is_empty() && !page.changes.is_empty());
-    let mut outcome = format_list_output_without(
-        &page.changes,
-        format,
-        NextCursor::Page(next_cursor),
-        omitted_recordings_column(args.include_recordings),
-    );
+    let mut outcome = format_list_output(&page.changes, format, NextCursor::Page(next_cursor));
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(
