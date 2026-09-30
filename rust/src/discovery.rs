@@ -683,4 +683,54 @@ mod tests {
             assert_eq!(description["command"], document.command.as_str());
         }
     }
+
+    #[test]
+    fn command_tree_uses_only_features_that_describe_supports() {
+        use std::any::TypeId;
+
+        fn check(command: &clap::Command) {
+            assert!(!command.is_hide_set(), "{}", command.get_name());
+            for arg in command.get_arguments() {
+                let id = arg.get_id();
+                assert!(!arg.is_hide_set(), "{id} is hidden");
+                assert!(
+                    arg.is_positional() || arg.get_long().is_some(),
+                    "{id} has no long name"
+                );
+                assert!(
+                    arg.get_default_values().len() <= 1,
+                    "{id} has several defaults"
+                );
+                assert!(
+                    arg.get_possible_values()
+                        .iter()
+                        .all(|value| !value.is_hide_set()),
+                    "{id} has a hidden possible value"
+                );
+                let parser = arg.get_value_parser().type_id();
+                assert!(
+                    ![
+                        TypeId::of::<u8>(),
+                        TypeId::of::<u16>(),
+                        TypeId::of::<u32>(),
+                        TypeId::of::<u64>(),
+                        TypeId::of::<usize>(),
+                        TypeId::of::<i8>(),
+                        TypeId::of::<i16>(),
+                        TypeId::of::<i32>(),
+                        TypeId::of::<isize>(),
+                        TypeId::of::<f32>(),
+                    ]
+                    .into_iter()
+                    .any(|number| parser == number),
+                    "{id} parses a number type that `value_type` reports as a string"
+                );
+            }
+            command.get_subcommands().for_each(check);
+        }
+
+        let mut root = crate::cli::command();
+        root.build();
+        check(&root);
+    }
 }
