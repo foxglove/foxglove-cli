@@ -248,6 +248,7 @@ async fn resumable_export_inner(
     let mut complete_found = false;
     let mut empty_downloads = 0_u8;
     let mut repeated_starts = 0_u8;
+    let requested_start = request.start;
     loop {
         let path = staging.join(format!("export-{}", partials.len()));
         let ended_cleanly =
@@ -305,6 +306,19 @@ async fn resumable_export_inner(
         request.start = Some(start);
         if request.end.is_none() {
             request.end = Some(OffsetDateTime::now_utc());
+        }
+        // The resumed request starts at the last message received. With a
+        // replay policy, the server would first resend the latest message on
+        // each channel from before that point, and the earlier responses
+        // already hold those messages, so the merged file would contain them
+        // twice. Once the resume point reaches the requested start, drop the
+        // replay. Before that, the earlier responses may not hold the whole
+        // replay yet, so keep requesting it. The merged file can then repeat
+        // replayed messages or include older messages from before the
+        // requested start.
+        if requested_start.is_none_or(|requested| start >= requested) {
+            request.replay_policy.clear();
+            request.replay_lookback_seconds = 0.0;
         }
     }
     if check == CompletionCheck::EndMagic && !complete_found {
