@@ -41,7 +41,7 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
         .config
         .get_string("auth_type")
         .and_then(|value| value.parse::<i32>().ok());
-    if auth_type == Some(2) || (auth_type != Some(1) && token.starts_with("fox_sk_")) {
+    if auth_type == Some(2) || (auth_type != Some(1) && is_api_key_token(&token)) {
         return Outcome::success("Authenticated with API key\n");
     }
     match runtime
@@ -66,6 +66,12 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
         }
         Err(error) => Outcome::failure(format!("Info command failed: {error}\n")),
     }
+}
+
+/// Whether `token` is an API key rather than a session token: an org API key (`fox_sk_`) or a
+/// personal API key (`fox_pat_`).
+fn is_api_key_token(token: &str) -> bool {
+    token.starts_with("fox_sk_") || token.starts_with("fox_pat_")
 }
 
 /// Run the browser-based device-code login flow and persist its session token.
@@ -229,5 +235,17 @@ fn open_browser(url: &str) -> Option<Child> {
 fn stop_browser(browser: Option<Child>) {
     if let Some(mut browser) = browser {
         let _ = browser.kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_api_key_token;
+
+    #[test]
+    fn recognizes_org_and_personal_api_keys() {
+        assert!(is_api_key_token("fox_sk_abc"));
+        assert!(is_api_key_token("fox_pat_abc"));
+        assert!(!is_api_key_token("session-token"));
     }
 }
