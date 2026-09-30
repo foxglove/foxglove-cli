@@ -1,6 +1,4 @@
-//! Offline command discovery. `cli search` ranks commands against a query and
-//! `cli describe` reports one command's arguments, both as JSON derived from
-//! the command tree.
+//! `cli search` and `cli describe` commands.
 
 use std::any::TypeId;
 use std::collections::{BTreeSet, HashMap};
@@ -21,8 +19,6 @@ const STOP_WORDS: &[&str] = &[
 /// the context of parent summaries and argument help, in that order.
 const FIELD_WEIGHTS: [f64; 4] = [8.0, 5.0, 2.0, 0.5];
 const PREFIX_WEIGHT: f64 = 0.5;
-/// Score multiplier when the query names every word of the command's own name,
-/// so that `version` ranks `foxglove version` above `datasets versions *`.
 const LEAF_WEIGHT: f64 = 1.5;
 
 #[derive(Serialize)]
@@ -99,7 +95,6 @@ struct Document {
     fields: [Vec<String>; 4],
 }
 
-/// Rank every executable command against `query` and return the best matches.
 pub(crate) fn search(mut root: Command, query: &str) -> Outcome {
     let terms = query_terms(query);
     if terms.is_empty() {
@@ -120,8 +115,6 @@ pub(crate) fn search(mut root: Command, query: &str) -> Outcome {
     json_outcome(&results)
 }
 
-/// Describe the command at `path`, which may be given as separate words or as
-/// one string, with or without the leading root command name.
 pub(crate) fn describe(mut root: Command, path: &[String]) -> Outcome {
     root.build();
     let mut words = path
@@ -164,11 +157,10 @@ fn unknown_command(parent: &Command, parent_path: &[&str], word: &str) -> Outcom
     ))
 }
 
-/// Subcommands a caller can run, excluding clap's generated `help`.
 fn subcommands(command: &Command) -> impl Iterator<Item = &Command> {
     command
         .get_subcommands()
-        .filter(|child| child.get_name() != "help" && !child.is_hide_set())
+        .filter(|child| child.get_name() != "help")
 }
 
 fn command_name(path: &[&str]) -> String {
@@ -185,12 +177,8 @@ fn about(command: &Command) -> String {
         .unwrap_or_default()
 }
 
-/// Arguments a caller can pass to `command`, including global options that
-/// the root command propagates to every subcommand.
 fn arguments(command: &Command) -> impl Iterator<Item = &Arg> {
-    command
-        .get_arguments()
-        .filter(|arg| arg.get_id() != "help" && !arg.is_hide_set())
+    command.get_arguments().filter(|arg| arg.get_id() != "help")
 }
 
 fn description(command: &Command, path: &[&str]) -> CommandDescription {
@@ -254,7 +242,6 @@ fn describe_option(arg: &Arg) -> OptionDescription {
     let possible_values = arg
         .get_possible_values()
         .iter()
-        .filter(|value| !value.is_hide_set())
         .map(|value| value.get_name().to_owned())
         .collect::<Vec<_>>();
     let usage = if kind == ValueType::Boolean {
@@ -268,22 +255,16 @@ fn describe_option(arg: &Arg) -> OptionDescription {
     } else {
         format!("{name} <{}>", possible_values.join("|"))
     };
-    let defaults = arg
-        .get_default_values()
-        .iter()
-        .map(|value| typed_value(&value.to_string_lossy(), kind))
-        .collect::<Vec<_>>();
     OptionDescription {
         short: arg.get_short().map(|short| format!("-{short}")),
         usage,
         kind,
         required: arg.is_required_set(),
         multiple: is_multiple(arg),
-        default: match defaults.len() {
-            0 => None,
-            1 => defaults.into_iter().next(),
-            _ => Some(Value::Array(defaults)),
-        },
+        default: arg
+            .get_default_values()
+            .first()
+            .map(|value| typed_value(&value.to_string_lossy(), kind)),
         possible_values,
         description: arg.get_help().map(ToString::to_string),
         global: arg.is_global_set(),
@@ -292,14 +273,8 @@ fn describe_option(arg: &Arg) -> OptionDescription {
 }
 
 fn argument_name(arg: &Arg) -> String {
-    if arg.is_positional() {
-        value_name(arg)
-    } else if let Some(long) = arg.get_long() {
-        format!("--{long}")
-    } else {
-        arg.get_short()
-            .map_or_else(|| arg.get_id().to_string(), |short| format!("-{short}"))
-    }
+    arg.get_long()
+        .map_or_else(|| value_name(arg), |long| format!("--{long}"))
 }
 
 fn value_name(arg: &Arg) -> String {
@@ -312,14 +287,7 @@ fn value_type(arg: &Arg) -> ValueType {
     let id = arg.get_value_parser().type_id();
     if id == TypeId::of::<bool>() {
         ValueType::Boolean
-    } else if [
-        TypeId::of::<i64>(),
-        TypeId::of::<u64>(),
-        TypeId::of::<usize>(),
-    ]
-    .into_iter()
-    .any(|integer| id == integer)
-    {
+    } else if id == TypeId::of::<i64>() {
         ValueType::Integer
     } else if id == TypeId::of::<f64>() {
         ValueType::Number
@@ -375,7 +343,6 @@ fn document(command: &Command, path: &[&str], parents: &[String]) -> Document {
         .map(ToString::to_string)
         .unwrap_or_default();
     let mut context = parents.join(" ");
-    // Global options are on every command, so they would only add noise.
     for arg in arguments(command).filter(|arg| !arg.is_global_set()) {
         context.push(' ');
         context.push_str(&argument_name(arg));
@@ -397,8 +364,6 @@ fn document(command: &Command, path: &[&str], parents: &[String]) -> Document {
     }
 }
 
-/// Split text into lowercase words, dropping a plural `s` so that `dataset`
-/// and `datasets` match.
 fn tokens(text: &str) -> Vec<String> {
     words(text).map(|word| stem(&word)).collect()
 }
@@ -437,9 +402,6 @@ fn query_terms(query: &str) -> Vec<String> {
     terms
 }
 
-/// Score each document by the query terms it contains, weighting matches by
-/// field and by how rare the matched word is, and favoring documents that
-/// match more of the query.
 fn rank<'a>(documents: &'a [Document], terms: &[String]) -> Vec<&'a Document> {
     let mut frequency = HashMap::<&str, usize>::new();
     for document in documents {
