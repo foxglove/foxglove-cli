@@ -359,7 +359,10 @@ $ foxglove cli describe datasets episodes add
 }
 ```
 
-The output is shown formatted here; the CLI prints it on one line.
+The output is shown formatted here; the CLI prints it on one line. Keys with no
+value are left out: `description` and `groups` on a command, `description` on
+an argument, and `short`, `default`, `possibleValues`, and `description` on an
+option.
 
 A command that accepts only one of some options, or requires one of them, also
 lists them under `groups`:
