@@ -687,9 +687,10 @@ mod tests {
     #[test]
     fn command_tree_uses_only_features_that_describe_supports() {
         use std::any::TypeId;
+        use std::num::NonZero;
 
         fn check(command: &clap::Command) {
-            assert!(!command.is_hide_set(), "{}", command.get_name());
+            assert!(!command.is_hide_set(), "{} is hidden", command.get_name());
             for arg in command.get_arguments() {
                 let id = arg.get_id();
                 assert!(!arg.is_hide_set(), "{id} is hidden");
@@ -714,12 +715,26 @@ mod tests {
                         TypeId::of::<u16>(),
                         TypeId::of::<u32>(),
                         TypeId::of::<u64>(),
+                        TypeId::of::<u128>(),
                         TypeId::of::<usize>(),
                         TypeId::of::<i8>(),
                         TypeId::of::<i16>(),
                         TypeId::of::<i32>(),
+                        TypeId::of::<i128>(),
                         TypeId::of::<isize>(),
                         TypeId::of::<f32>(),
+                        TypeId::of::<NonZero<u8>>(),
+                        TypeId::of::<NonZero<u16>>(),
+                        TypeId::of::<NonZero<u32>>(),
+                        TypeId::of::<NonZero<u64>>(),
+                        TypeId::of::<NonZero<u128>>(),
+                        TypeId::of::<NonZero<usize>>(),
+                        TypeId::of::<NonZero<i8>>(),
+                        TypeId::of::<NonZero<i16>>(),
+                        TypeId::of::<NonZero<i32>>(),
+                        TypeId::of::<NonZero<i64>>(),
+                        TypeId::of::<NonZero<i128>>(),
+                        TypeId::of::<NonZero<isize>>(),
                     ]
                     .into_iter()
                     .any(|number| parser == number),
