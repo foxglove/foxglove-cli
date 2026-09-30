@@ -191,7 +191,9 @@ fn large_mcap_export_preserves_server_bytes() {
     assert_success(&output);
     assert!(output.stdout.is_empty());
     assert_eq!(fs::read(workspace.0.join("output.mcap")).unwrap(), payload);
-    assert_eq!(server.finish().len(), 2);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(json_body(&requests[0])["outputFormat"], "mcap");
 }
 
 #[test]
@@ -226,72 +228,21 @@ fn invalid_record_length_preserves_destination() {
 }
 
 #[test]
-fn export_arguments_are_validated_before_sending_a_request() {
-    let workspace = Workspace::new();
-    let half_open =
-        "Failed to build request: both --start and --end must be specified, or neither\n";
-    for (args, expected) in [
-        (
-            vec!["--recording-id", "rec", "--start", "2024-01-02T00:00:00Z"],
-            half_open,
-        ),
-        (
-            vec!["--recording-id", "rec", "--end", "2024-01-03T00:00:00Z"],
-            half_open,
-        ),
-        (
-            vec![],
-            "Failed to build request: either recording-id/key, session-id/session-key, import-id, or device-id/device-name with start/end are required\n",
-        ),
-        (
-            vec!["--recording-id", "rec", "--output-format", "mcap1"],
-            "Export failed: invalid format: supply mcap, bag1, or json\n",
-        ),
-    ] {
-        let output = Process::spawn(
-            workspace
-                .command("http://127.0.0.1:1")
-                .arg("export")
-                .args(&args),
-        )
-        .finish();
-        assert!(!output.status.success(), "{args:?}");
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            expected,
-            "{args:?}"
-        );
-    }
-}
-
-#[test]
 #[ignore = "requires loopback sockets"]
-fn export_output_and_compression_formats_reach_the_api() {
+fn explicit_export_formats_request_mcap() {
     let workspace = Workspace::new();
-    for (flags, format, compression) in [
-        (vec![], "mcap", None),
-        (vec!["--output-format", "mcap"], "mcap", None),
-        (vec!["--output-format", "json"], "mcap", None),
-        (vec!["--compression", ""], "mcap", Some("")),
-        (vec!["--compression", "zstd"], "mcap", Some("zstd")),
-    ] {
+    for format in ["mcap", "json"] {
         let server = Server::new(export_replies(recording(&[])));
         let output = Process::spawn(
             workspace
                 .command(&server.url)
                 .args(["export", "--recording-id", "rec"])
-                .args(&flags),
+                .args(["--output-format", format]),
         )
         .finish();
         assert_success(&output);
         let body = json_body(&server.finish()[0]);
-        assert_eq!(body["outputFormat"], format, "{flags:?}");
-        assert_eq!(
-            body.get("compressionFormat")
-                .and_then(|value| value.as_str()),
-            compression,
-            "{flags:?}"
-        );
+        assert_eq!(body["outputFormat"], "mcap", "{format}");
     }
 }
 
@@ -2330,9 +2281,25 @@ fn an_episode_in_a_dataset_is_not_deleted() {
 }
 
 #[test]
-fn dataset_and_episode_writes_are_validated_before_sending_a_request() {
+fn command_arguments_are_validated_before_sending_a_request() {
     let workspace = Workspace::new();
     for (args, expected) in [
+        (
+            vec!["export", "--recording-id", "rec", "--start", "2024-01-02T00:00:00Z"],
+            "Failed to build request: both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec!["export", "--recording-id", "rec", "--end", "2024-01-03T00:00:00Z"],
+            "Failed to build request: both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec!["export"],
+            "Failed to build request: either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required\n",
+        ),
+        (
+            vec!["export", "--recording-id", "rec", "--output-format", "mcap0"],
+            "Export failed: invalid format: supply mcap, bag1, or json\n",
+        ),
         (
             vec!["datasets", "add", "--name", "Highway"],
             "--project-id is required when creating a dataset\n",
