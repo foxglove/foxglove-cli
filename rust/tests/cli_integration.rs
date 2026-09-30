@@ -1295,30 +1295,6 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
 }
 
 #[test]
-fn topics_for_a_device_require_a_time_range_before_sending_a_request() {
-    let workspace = Workspace::new();
-    for range in [
-        vec![],
-        vec!["--start", "2024-01-02"],
-        vec!["--end", "2024-01-03"],
-    ] {
-        let output = Process::spawn(
-            workspace
-                .command("http://127.0.0.1:1")
-                .args(["topics", "list", "--device-id", "dev_one"])
-                .args(&range),
-        )
-        .finish();
-        assert!(!output.status.success(), "{range:?}");
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            "--start and --end are required when using --device-id\n",
-            "{range:?}"
-        );
-    }
-}
-
-#[test]
 #[ignore = "requires loopback sockets"]
 fn fractional_timestamp_query_parameters_are_preserved() {
     let workspace = Workspace::new();

@@ -1246,7 +1246,8 @@ pub(crate) struct TopicListArgs {
     #[arg(
         long,
         help = "Device ID (requires --start and --end)",
-        allow_hyphen_values = true
+        allow_hyphen_values = true,
+        requires_all = ["start", "end"]
     )]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
