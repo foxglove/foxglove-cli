@@ -176,7 +176,7 @@ async fn complete_login(
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
     let interval = Duration::from_secs(device_code.interval);
-    let expires_at = Instant::now() + Duration::from_secs(device_code.expires_in);
+    let expires_at = Instant::now().checked_add(Duration::from_secs(device_code.expires_in));
     let result = async {
         loop {
             if cancellation.is_cancelled() {
@@ -191,7 +191,7 @@ async fn complete_login(
                 // still pending. A 401 is an authentication error and must
                 // surface instead of retrying forever.
                 Err(api::ApiError::Forbidden) => {
-                    if Instant::now() >= expires_at {
+                    if expires_at.is_some_and(|expires_at| Instant::now() >= expires_at) {
                         return Err(LOGIN_EXPIRED.to_owned());
                     }
                     tokio::select! {

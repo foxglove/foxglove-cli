@@ -347,9 +347,7 @@ pub struct DeviceCodeResponse {
     pub device_code: String,
     #[serde(default)]
     pub user_code: String,
-    #[serde(default)]
     pub expires_in: u64,
-    #[serde(default)]
     pub interval: u64,
     #[serde(default)]
     pub verification_uri: String,

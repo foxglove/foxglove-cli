@@ -502,7 +502,7 @@ fn ctrl_c_preserves_credentials_and_exports_during_response_bodies() {
         let workspace = Workspace::new();
         let mut replies = Vec::new();
         if login {
-            replies.push(Reply::json("POST", "/v1/auth/device-code", r#"{"deviceCode":"fixture","userCode":"1234","verificationUriComplete":"https://example.invalid"}"#));
+            replies.push(Reply::json("POST", "/v1/auth/device-code", r#"{"deviceCode":"fixture","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#));
             replies.push(Reply::json(
                 "POST",
                 "/v1/auth/token",
