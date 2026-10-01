@@ -136,7 +136,10 @@ enum CliCommand {
     Sessions(SessionsCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
-    #[command(about = "Upload a local data file to Foxglove")]
+    #[command(
+        about = "Upload a local data file to Foxglove",
+        long_about = "Upload a local data file to Foxglove. On success, prints the upload request ID to stderr. The file is then imported in the background; see `pending-imports list`."
+    )]
     Upload(UploadArgs),
     #[command(about = "Print Foxglove CLI version")]
     Version,
@@ -400,7 +403,12 @@ pub(crate) struct UploadArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Session ID", allow_hyphen_values = true)]
     pub(crate) session_id: Option<String>,
-    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Session key (cannot be combined with --session-id)",
+        allow_hyphen_values = true,
+        conflicts_with = "session_id"
+    )]
     pub(crate) session_key: Option<String>,
     #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub(crate) file: String,

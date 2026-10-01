@@ -2885,3 +2885,39 @@ fn project_required_creation_reports_debug_scope() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn upload_reports_the_request_id() {
+    let workspace = Workspace::new();
+    let data = recording(&[message(1, 1, vec![1])]);
+    fs::write(workspace.0.join("fixture.mcap"), &data).unwrap();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/data/upload",
+            r#"{"link":"{BASE_URL}/storage/fixture","requestId":"req_fixture"}"#,
+        ),
+        Reply::json("PUT", "/storage/fixture", ""),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["upload", "--device-id", "dev_fixture", "fixture.mcap"],
+    );
+    assert_success(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.ends_with("\nUploaded fixture.mcap (upload request ID: req_fixture)\n"),
+        "{stderr}"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({
+            "filename": "fixture.mcap",
+            "device.id": "dev_fixture",
+        })
+    );
+    assert!(requests[1].ends_with(&*String::from_utf8_lossy(&data)));
+}

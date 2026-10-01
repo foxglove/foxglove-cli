@@ -24,10 +24,6 @@ fn validate(path: &Path) -> Result<(), String> {
 pub(crate) async fn upload_file(runtime: &Runtime, args: &UploadArgs) -> Outcome {
     let path = Path::new(&args.file);
     let project_id = args.project_id.clone().or_project(&runtime.project_id);
-    let session_key = args.session_key.clone().unwrap_or_default();
-    if !session_key.is_empty() && project_id.is_empty() {
-        return Outcome::failure("--project-id is required when using --session-key\n");
-    }
     if let Err(error) = validate(path) {
         return Outcome::failure(format!("Failed to import {}: {error}\n", args.file));
     }
@@ -43,7 +39,7 @@ pub(crate) async fn upload_file(runtime: &Runtime, args: &UploadArgs) -> Outcome
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
         session_id: args.session_id.clone().unwrap_or_default(),
-        session_key,
+        session_key: args.session_key.clone().unwrap_or_default(),
     };
     let input = match File::open(path) {
         Ok(file) => file,
@@ -67,7 +63,10 @@ pub(crate) async fn upload_file(runtime: &Runtime, args: &UploadArgs) -> Outcome
     }
     .await;
     match result {
-        Ok(()) => Outcome::default(),
+        Ok(request_id) => Outcome::notice(format!(
+            "Uploaded {} (upload request ID: {request_id})\n",
+            args.file
+        )),
         Err(error) if error.is_cancelled() => Outcome {
             exit_code: 130,
             ..Outcome::default()
