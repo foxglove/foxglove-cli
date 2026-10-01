@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::builder::Resettable;
 use clap::error::ErrorKind;
-use clap::{Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{ArgGroup, Args, Command, CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
 use clap_complete::{generate, Shell};
 use serde_yaml_ng::Value;
 
@@ -38,6 +38,16 @@ fn parse_list_limit(value: &str) -> Result<i64, String> {
         .ok()
         .filter(|limit| (1..=MAX_LIST_LIMIT).contains(limit))
         .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
+}
+
+/// Trim surrounding whitespace from a session key, such as a CR from a CRLF
+/// file, and reject a key that is blank.
+fn parse_session_key(value: &str) -> Result<String, String> {
+    let key = value.trim();
+    if key.is_empty() {
+        return Err("cannot be empty".to_owned());
+    }
+    Ok(key.to_owned())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -112,7 +122,9 @@ enum CliCommand {
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
-    #[command(about = "Export data by recording, import, session, or device and time range")]
+    #[command(
+        about = "Export data by recording, import, session, episode, or device and time range"
+    )]
     Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
@@ -126,7 +138,10 @@ enum CliCommand {
     Sessions(SessionsCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
-    #[command(about = "Upload a local data file to Foxglove")]
+    #[command(
+        about = "Upload a local data file to Foxglove",
+        long_about = "Upload a local data file to Foxglove. On success, prints the upload request ID to stderr. The file is then imported in the background; see `pending-imports list`."
+    )]
     Upload(UploadArgs),
     #[command(about = "Print Foxglove CLI version")]
     Version,
@@ -235,7 +250,10 @@ struct CompletionArgs {
 
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
-    #[command(about = "Get a configuration value")]
+    #[command(
+        about = "Get a configuration value",
+        long_about = "Get a configuration value. DEFAULT_PROJECT_ID, when set, takes precedence over project-id in the config file."
+    )]
     Get(ConfigKeyArgs),
     #[command(about = "Set a configuration value")]
     Set(ConfigSetArgs),
@@ -258,7 +276,10 @@ struct ConfigKeyArgs {
 struct ConfigSetArgs {
     #[arg(value_name = "KEY")]
     key: ConfigKey,
-    #[arg(value_name = "VALUE")]
+    #[arg(
+        value_name = "VALUE",
+        help = "Value to save. Whitespace is trimmed and the value cannot be empty"
+    )]
     value: String,
 }
 
@@ -318,7 +339,7 @@ pub(crate) struct CoverageListArgs {
 pub(crate) struct ExportArgs {
     #[arg(
         long,
-        help = "MCAP chunk compression: empty, zstd, or lz4 (default: lz4)",
+        help = "MCAP chunk compression: zstd, lz4, or \"\" for none (default: lz4)",
         allow_hyphen_values = true
     )]
     pub(crate) compression: Option<String>,
@@ -326,8 +347,14 @@ pub(crate) struct ExportArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "End time (ISO 8601)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "End time (ISO 8601); give with --start",
+        allow_hyphen_values = true
+    )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Episode ID", allow_hyphen_values = true)]
+    pub(crate) episode_id: Option<String>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
     #[arg(
@@ -346,7 +373,7 @@ pub(crate) struct ExportArgs {
     pub(crate) output_file: Option<String>,
     #[arg(
         long,
-        help = "Output format: mcap0, bag1, or json (default: mcap0)",
+        help = "Output format: mcap, bag1, or json (default: mcap); json supports only ros1msg and protobuf schemas",
         allow_hyphen_values = true
     )]
     pub(crate) output_format: Option<String>,
@@ -366,7 +393,11 @@ pub(crate) struct ExportArgs {
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true)]
     pub(crate) session_key: Option<String>,
-    #[arg(long, help = "Start time (ISO 8601)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Start time (ISO 8601); give with --end",
+        allow_hyphen_values = true
+    )]
     pub(crate) start: Option<String>,
     #[arg(long, help = "Comma-separated topic list", allow_hyphen_values = true)]
     pub(crate) topics: Option<String>,
@@ -384,7 +415,12 @@ pub(crate) struct UploadArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Session ID", allow_hyphen_values = true)]
     pub(crate) session_id: Option<String>,
-    #[arg(long, help = "Session key", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Session key (cannot be combined with --session-id)",
+        allow_hyphen_values = true,
+        conflicts_with = "session_id"
+    )]
     pub(crate) session_key: Option<String>,
     #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub(crate) file: String,
@@ -634,7 +670,7 @@ pub(crate) struct DatasetListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(
         long,
-        help = "Field to sort datasets by: name, createdAt, or updatedAt (default: createdAt)",
+        help = "Field to sort datasets by: name, createdAt, updatedAt, or episodeCount (default: createdAt)",
         allow_hyphen_values = true
     )]
     pub(crate) sort_by: Option<String>,
@@ -1020,9 +1056,7 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
-    #[arg(long, help = "Filter by error message", allow_hyphen_values = true)]
-    pub(crate) error: Option<String>,
-    #[arg(long, help = "Filename", allow_hyphen_values = true)]
+    #[arg(long, help = "Exact filename to match", allow_hyphen_values = true)]
     pub(crate) filename: Option<String>,
     #[arg(long, help = "Key", allow_hyphen_values = true)]
     pub(crate) key: Option<String>,
@@ -1162,6 +1196,8 @@ enum SessionsCommand {
     Add(SessionAddArgs),
     #[command(about = "Delete a session")]
     Delete(SessionLookupArgs),
+    #[command(about = "Change or remove a session key")]
+    Edit(SessionEditArgs),
     #[command(about = "Get a session by ID or key")]
     Get(SessionLookupArgs),
     #[command(about = "List sessions in your organization")]
@@ -1174,8 +1210,13 @@ enum SessionsCommand {
 pub(crate) struct SessionAddArgs {
     #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
     pub(crate) device_id: Option<String>,
-    #[arg(long, help = "Session name", allow_hyphen_values = true)]
-    pub(crate) name: Option<String>,
+    #[arg(
+        long,
+        help = "Session key, unique within the project",
+        value_parser = parse_session_key,
+        allow_hyphen_values = true
+    )]
+    pub(crate) key: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
 }
@@ -1186,6 +1227,24 @@ pub(crate) struct SessionLookupArgs {
     pub(crate) project_id: Option<String>,
     #[arg(value_name = "SESSION_ID_OR_KEY")]
     pub(crate) session: String,
+}
+
+#[derive(Debug, Args)]
+#[command(group(ArgGroup::new("key_change").args(["key", "remove_key"]).required(true)))]
+pub(crate) struct SessionEditArgs {
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "SESSION_ID_OR_KEY")]
+    pub(crate) session: String,
+    #[arg(
+        long,
+        help = "New session key, unique within the project",
+        value_parser = parse_session_key,
+        allow_hyphen_values = true
+    )]
+    pub(crate) key: Option<String>,
+    #[arg(long, help = "Remove the existing session key")]
+    pub(crate) remove_key: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1445,6 +1504,7 @@ fn command_project_scope(
         }
         CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
+        CliCommand::Sessions(SessionsCommand::Edit(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(
             SessionsCommand::Get(args)
@@ -1638,6 +1698,7 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
+        SessionsCommand::Edit(args) => sessions::edit_session_key(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
         SessionsCommand::List(args) => {
             let format = args.format.format;
@@ -1684,21 +1745,33 @@ fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Ou
         Err(outcome) => return outcome,
     };
     match config.get_string(config_name(key)) {
-        Some(value) => Outcome::success(format!("{value}\n")),
+        Some(value) => Outcome {
+            stdout: format!("{value}\n").into_bytes(),
+            stderr: environment_note(&config, key).into_bytes(),
+            ..Outcome::default()
+        },
         None => Outcome::failure(format!("No value set for key '{key}'\n")),
     }
 }
 
 fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outcome {
     let key = config_key_name(args.key);
-    let value = args.value.clone();
+    let value = args.value.trim().to_owned();
+    if value.is_empty() {
+        return Outcome::failure(format!(
+            "{key} cannot be empty; use `foxglove config unset {key}` to remove it\n"
+        ));
+    }
     let mut config = match load_config(path) {
         Ok(config) => config,
         Err(outcome) => return outcome,
     };
     config.set(config_name(key), Value::String(value.clone()));
     match config.save() {
-        Ok(()) => Outcome::notice(format!("Configuration updated: {key} = {value}\n")),
+        Ok(()) => Outcome::notice(format!(
+            "Configuration updated: {key} = {value}\n{}",
+            environment_note(&config, key)
+        )),
         Err(error) => Outcome::failure(error),
     }
 }
@@ -1710,11 +1783,29 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
         Err(outcome) => return outcome,
     };
     if !config.remove(config_name(key)) {
-        return Outcome::failure(format!("No value set for key '{key}'\n"));
+        return Outcome::failure(format!(
+            "No value set for key '{key}'\n{}",
+            environment_note(&config, key)
+        ));
     }
     match config.save() {
-        Ok(()) => Outcome::notice(format!("Configuration removed: {key}\n")),
+        Ok(()) => Outcome::notice(format!(
+            "Configuration removed: {key}\n{}",
+            environment_note(&config, key)
+        )),
         Err(error) => Outcome::failure(error),
+    }
+}
+
+fn environment_note(config: &Config, key: &str) -> String {
+    let name = config_name(key);
+    if config.is_env_set(name) {
+        format!(
+            "{} is set in the environment and takes precedence over {key} in the config file\n",
+            crate::config::environment_name(name)
+        )
+    } else {
+        String::new()
     }
 }
 

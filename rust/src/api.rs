@@ -288,10 +288,12 @@ pub struct StreamResponse {
     pub link: String,
 }
 
-/// The signed upload link returned by the import API.
+/// The signed upload link and upload request ID returned by the import API.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadResponse {
     pub link: String,
+    pub request_id: String,
 }
 
 /// A decoded collection response together with its opaque pagination cursors.
@@ -835,12 +837,13 @@ impl FoxgloveClient {
             })
     }
 
-    /// Upload a reader through the API's signed upload URL.
+    /// Upload a reader through the API's signed upload URL, returning the
+    /// upload request ID.
     ///
     /// # Errors
     ///
     /// Returns the mapped API, transport, URL, or upload-response error.
-    pub async fn upload<R>(&self, reader: R, request: &UploadRequest) -> Result<(), ApiError>
+    pub async fn upload<R>(&self, reader: R, request: &UploadRequest) -> Result<String, ApiError>
     where
         R: AsyncRead + Send + 'static,
     {
@@ -884,7 +887,8 @@ impl FoxgloveClient {
         with_optional_cancellation(Some(cancellation), ensure_ok(response)).await
     }
 
-    /// Upload a reader and cancel the active HTTP future when requested.
+    /// Upload a reader and cancel the active HTTP future when requested,
+    /// returning the upload request ID.
     ///
     /// # Errors
     ///
@@ -895,7 +899,7 @@ impl FoxgloveClient {
         reader: R,
         request: &UploadRequest,
         cancellation: &CancellationToken,
-    ) -> Result<(), ApiError>
+    ) -> Result<String, ApiError>
     where
         R: AsyncRead + Send + 'static,
     {
@@ -923,7 +927,8 @@ impl FoxgloveClient {
                 cancellation,
             )
             .await?;
-        with_optional_cancellation(Some(cancellation), ensure_upload_success(response)).await
+        with_optional_cancellation(Some(cancellation), ensure_upload_success(response)).await?;
+        Ok(link.request_id)
     }
 
     /// Download an attachment through the authenticated API.
@@ -1345,7 +1350,7 @@ const fn is_zero(value: &f64) -> bool {
 }
 
 fn is_mcap_format(format: &str) -> bool {
-    matches!(format, "mcap" | "mcap0")
+    format == "mcap"
 }
 
 #[cfg(test)]
@@ -1547,7 +1552,7 @@ mod tests {
     #[test]
     fn stream_request_validation_matches_api_contract() {
         let request = StreamRequest {
-            output_format: "mcap0".into(),
+            output_format: "mcap".into(),
             topics: vec![],
             ..StreamRequest::default()
         };

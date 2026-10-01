@@ -90,8 +90,6 @@ struct PendingImportListQuery {
     #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
     device_name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
-    error: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
     filename: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     has_project_id: Option<bool>,
@@ -143,7 +141,6 @@ pub(crate) async fn list_pending_imports(
     let query = PendingImportListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
-        error: args.error.clone().unwrap_or_default(),
         filename: args.filename.clone().unwrap_or_default(),
         has_project_id: args.without_project.then_some(false),
         key: args.key.clone().unwrap_or_default(),

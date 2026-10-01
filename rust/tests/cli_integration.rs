@@ -62,6 +62,40 @@ fn clearing_project_default_requires_project_for_session_key() {
     );
 }
 
+#[test]
+fn config_set_trims_and_rejects_blank_project_id() {
+    let workspace = Workspace::new();
+    let config = workspace.0.join("config.yaml");
+    fs::write(&config, "default_project_id: prj_saved\n").unwrap();
+    let set = |value: &str| {
+        Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["config", "set", "project-id", value, "--config"])
+                .arg(&config),
+        )
+        .finish()
+    };
+    for value in ["", "   "] {
+        let output = set(value);
+        assert_eq!(output.status.code(), Some(1), "{value:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "project-id cannot be empty; use `foxglove config unset project-id` to remove it\n",
+        );
+    }
+    let output = set(" prj_1 ");
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Configuration updated: project-id = prj_1\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&config).unwrap(),
+        "default_project_id: prj_1\n"
+    );
+}
+
 fn message(channel_id: u16, time: u64, data: Vec<u8>) -> Message {
     Message {
         channel_id,
@@ -173,6 +207,34 @@ fn repeated_event_query_fields_reach_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn export_episode_id_reaches_the_api_and_downloads_mcap() {
+    let workspace = Workspace::new();
+    let payload = recording(&[message(1, 1, vec![9])]);
+    let server = Server::new(export_replies(payload.clone()));
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "export",
+            "--episode-id",
+            "ep_one",
+            "--output-file",
+            "episode.mcap",
+        ],
+    );
+    assert_success(&output);
+    assert!(output.stdout.is_empty());
+    assert_eq!(fs::read(workspace.0.join("episode.mcap")).unwrap(), payload);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"episodeId": "ep_one", "outputFormat": "mcap", "topics": []})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn large_mcap_export_preserves_server_bytes() {
     let workspace = Workspace::new();
     let mut data = vec![b' '; 64 * 1024 * 1024];
@@ -191,7 +253,9 @@ fn large_mcap_export_preserves_server_bytes() {
     assert_success(&output);
     assert!(output.stdout.is_empty());
     assert_eq!(fs::read(workspace.0.join("output.mcap")).unwrap(), payload);
-    assert_eq!(server.finish().len(), 2);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(json_body(&requests[0])["outputFormat"], "mcap");
 }
 
 #[test]
@@ -223,6 +287,25 @@ fn invalid_record_length_preserves_destination() {
         "staging was not cleaned"
     );
     assert_eq!(server.finish().len(), 2);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn explicit_export_formats_request_mcap() {
+    let workspace = Workspace::new();
+    for format in ["mcap", "json"] {
+        let server = Server::new(export_replies(recording(&[])));
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["export", "--recording-id", "rec"])
+                .args(["--output-format", format]),
+        )
+        .finish();
+        assert_success(&output);
+        let body = json_body(&server.finish()[0]);
+        assert_eq!(body["outputFormat"], "mcap", "{format}");
+    }
 }
 
 #[derive(Default)]
@@ -308,6 +391,65 @@ fn recovery_preserves_messages_and_schemaless_channels() {
         }
     }
     assert_eq!(server.finish().len(), 4);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn resumed_exports_do_not_request_the_replay_again() {
+    const SECOND: u64 = 1_000_000_000;
+    const JAN_1_2024: u64 = 1_704_067_200 * SECOND;
+    let messages = [
+        message(1, JAN_1_2024 + SECOND / 2, vec![0]),
+        message(1, JAN_1_2024 + SECOND, vec![1]),
+        message(1, JAN_1_2024 + 2 * SECOND, vec![2]),
+        message(1, JAN_1_2024 + 3 * SECOND, vec![3]),
+    ];
+    let workspace = Workspace::new();
+    let mut partial = recording(&messages[..3]);
+    partial.truncate(partial.len() - 4);
+    let mut replies = export_replies(partial);
+    replies.extend(export_replies(recording(&messages[2..])));
+    let server = Server::new(replies);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "export",
+        "--recording-id",
+        "rec",
+        "--start",
+        "2024-01-01T00:00:01Z",
+        "--end",
+        "2024-01-01T00:00:03Z",
+        "--replay-policy",
+        "lastPerChannel",
+        "--replay-lookback-seconds",
+        "5",
+        "--output-file",
+        "output.mcap",
+    ]))
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 4);
+    let resumed = json_body(&requests[2]);
+    assert_eq!(resumed["start"], "2024-01-01T00:00:02Z");
+    assert!(resumed.get("replayPolicy").is_none(), "{resumed}");
+    assert!(resumed.get("replayLookbackSeconds").is_none(), "{resumed}");
+    let mut records = Records::default();
+    foxglove_rust::format::read_mcap(
+        &mut fs::File::open(workspace.0.join("output.mcap")).unwrap(),
+        &mut records,
+    )
+    .unwrap();
+    assert_eq!(
+        records
+            .messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>(),
+        messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[cfg(all(unix, feature = "test-support"))]
@@ -403,6 +545,12 @@ fn identifier_paths_are_escaped_for_every_command() {
             SESSION,
         ),
         (&["sessions", "delete", KEY], "DELETE", SESSION_PATH, "{}"),
+        (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            SESSION_PATH,
+            SESSION,
+        ),
         (
             &["sessions", "recordings", "add", KEY, "rec"],
             "PATCH",
@@ -538,6 +686,243 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
         (&["episodes", "delete", KEY], "DELETE", EPISODE_PATH, "{}"),
     ];
     assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_add_sends_key() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/sessions",
+        r#"{"id":"ses_one","key":"drive-41"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "add",
+            "--device-id",
+            "dev_one",
+            "--key",
+            " drive-41\r",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session created: ses_one\nSession key: drive-41\n"
+    );
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_edit_sends_string_or_null_without_other_changes() {
+    let workspace = Workspace::new();
+    for (flags, expected_body, expected_stderr) in [
+        (
+            vec!["--key", "new-key"],
+            serde_json::json!({"key": "new-key"}),
+            "Session updated: ses_one\nSession key: new-key\n",
+        ),
+        (
+            vec!["--key", " new-key\r"],
+            serde_json::json!({"key": "new-key"}),
+            "Session updated: ses_one\nSession key: new-key\n",
+        ),
+        (
+            vec!["--remove-key"],
+            serde_json::json!({"key": null}),
+            "Session updated: ses_one\nSession key removed\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/sessions/old-key",
+            r#"{"id":"ses_one","createdAt":"","updatedAt":""}"#,
+        )]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "default-project")
+                .args(["sessions", "edit", "old-key"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected_stderr,
+            "{flags:?}"
+        );
+        let requests = server.finish();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(query_pairs(&requests[0])["projectId"], "default-project");
+        assert_eq!(json_body(&requests[0]), expected_body, "{flags:?}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_edit_reports_api_errors() {
+    let workspace = Workspace::new();
+    for (status, body, expected) in [
+        (
+            400,
+            r#"{"error":"A session with this key already exists in this project"}"#,
+            "Failed to edit session: A session with this key already exists in this project\n",
+        ),
+        (
+            403,
+            r#"{"error":"This operation requires the `sessions.update` capability.","code":"MissingApiKeyCapability"}"#,
+            "Failed to edit session: forbidden: have you signed in with `foxglove auth login`?\nThis operation requires the `sessions.update` capability.\n",
+        ),
+        (
+            404,
+            r#"{"error":"Not Found"}"#,
+            "Session not found: session-id\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status,
+            ..Reply::json("PATCH", "/v1/sessions/session-id", body)
+        }]);
+        let output = run(
+            &workspace,
+            &server,
+            &["sessions", "edit", "session-id", "--key", "taken"],
+        );
+        assert_eq!(server.finish().len(), 1);
+        assert!(!output.status.success(), "{status}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_commands_report_the_api_reason_when_forbidden() {
+    let workspace = Workspace::new();
+    for (args, method, path, capability, failure) in [
+        (
+            vec!["sessions", "get", "ses_one"],
+            "GET",
+            "/v1/sessions/ses_one",
+            "sessions.list",
+            "Failed to get session",
+        ),
+        (
+            vec!["sessions", "recordings", "list", "ses_one"],
+            "GET",
+            "/v1/sessions/ses_one",
+            "sessions.list",
+            "Failed to list session recordings",
+        ),
+        (
+            vec!["sessions", "add", "--device-id", "dev_one"],
+            "POST",
+            "/v1/sessions",
+            "sessions.create",
+            "Failed to create session",
+        ),
+        (
+            vec!["sessions", "delete", "ses_one"],
+            "DELETE",
+            "/v1/sessions/ses_one",
+            "sessions.delete",
+            "Failed to delete session",
+        ),
+        (
+            vec!["sessions", "recordings", "add", "ses_one", "rec_one"],
+            "PATCH",
+            "/v1/sessions/ses_one",
+            "sessions.update",
+            "Failed to add recording to session",
+        ),
+        (
+            vec!["sessions", "recordings", "remove", "ses_one", "rec_one"],
+            "PATCH",
+            "/v1/sessions/ses_one",
+            "sessions.update",
+            "Failed to remove recording from session",
+        ),
+    ] {
+        let reason = format!("This operation requires the `{capability}` capability.");
+        let body = serde_json::json!({"error": reason, "code": "MissingApiKeyCapability"});
+        let server = Server::new(vec![Reply {
+            status: 403,
+            ..Reply::json(method, path, &body.to_string())
+        }]);
+        let output = run(&workspace, &server, &args);
+        assert_eq!(server.finish().len(), 1, "{args:?}");
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "{failure}: forbidden: have you signed in with `foxglove auth login`?\n{reason}\n"
+            ),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn session_key_edit_requires_exactly_one_change() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec![],
+            "error: the following required arguments were not provided:\n  <--key <KEY>|--remove-key>\n",
+        ),
+        (
+            vec!["--key", ""],
+            "error: invalid value '' for '--key <KEY>': cannot be empty\n",
+        ),
+        (
+            vec!["--key", " "],
+            "error: invalid value ' ' for '--key <KEY>': cannot be empty\n",
+        ),
+        (
+            vec!["--key", "new-key", "--remove-key"],
+            "error: the argument '--key <KEY>' cannot be used with '--remove-key'\n",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["sessions", "edit", "session-id"])
+                .args(&flags),
+        )
+        .finish();
+        assert!(!output.status.success(), "{flags:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.starts_with(expected), "{flags:?}: {stderr}");
+    }
+}
+
+#[test]
+fn session_key_edit_reports_debug_project_scope() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args(["--debug", "sessions", "edit", "..", "--key", "new-key"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("API path segments must not be"), "{stderr}");
 }
 
 #[test]
@@ -742,6 +1127,40 @@ fn dataset_list_filters_reach_the_api() {
             ("sortOrder", "desc"),
         ])
     );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn recordings_are_listed_with_their_session() {
+    const RECORDINGS: &str = r#"[{"id":"rec_one","projectId":"prj_default","path":"one.mcap","size":128,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"complete","sessionId":"ses_one"},{"id":"rec_two","projectId":"prj_default","path":"two.mcap","size":64,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"none"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", RECORDINGS),
+        Reply::json("GET", "/v1/recordings", RECORDINGS),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "list", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Recording ID,Path,Size,Created At,Imported At,Start,End,Import Status,Site ID,Site Name,Edge Site ID,Edge Site Name,Device ID,Device Name,Metadata,Key,Session ID,Project ID\n\
+         rec_one,one.mcap,128 B,2024-01-02T03:04:07Z,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,complete,,,,,,,null,,ses_one,prj_default\n\
+         rec_two,two.mcap,64 B,2024-01-02T03:04:07Z,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,none,,,,,,,null,,,prj_default\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "list", "--format", "json"],
+    );
+    assert_success(&output);
+    let recordings: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let recordings = recordings["data"].as_array().unwrap();
+    assert_eq!(recordings[0]["sessionId"], "ses_one");
+    assert_eq!(recordings[1]["sessionId"], "");
+    server.finish();
 }
 
 #[test]
@@ -1601,14 +2020,14 @@ fn episode_changes_report_what_the_api_applied() {
             vec!["remove", "ds_one", "ep_one", "ep_gone", "ep_one"],
             r#"{"added":0,"removed":1,"alreadyPresent":0}"#,
             serde_json::json!({"remove": ["ep_one", "ep_gone", "ep_one"]}),
-            "Removed 1 episode (1 not in the dataset)\n\
+            "Removed 1 episode (1 not in the draft)\n\
              Run foxglove datasets commit ds_one to commit the draft as a new version.\n",
         ),
         (
             vec!["remove", "ds_one", "ep_gone"],
             r#"{"added":0,"removed":0,"alreadyPresent":0}"#,
             serde_json::json!({"remove": ["ep_gone"]}),
-            "Removed 0 episodes (1 not in the dataset)\n",
+            "Removed 0 episodes (1 not in the draft)\n",
         ),
     ] {
         let server = Server::new(vec![Reply::json(
@@ -2260,9 +2679,25 @@ fn an_episode_in_a_dataset_is_not_deleted() {
 }
 
 #[test]
-fn dataset_and_episode_writes_are_validated_before_sending_a_request() {
+fn command_arguments_are_validated_before_sending_a_request() {
     let workspace = Workspace::new();
     for (args, expected) in [
+        (
+            vec!["export", "--recording-id", "rec", "--start", "2024-01-02T00:00:00Z"],
+            "Failed to build request: both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec!["export", "--recording-id", "rec", "--end", "2024-01-03T00:00:00Z"],
+            "Failed to build request: both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec!["export"],
+            "Failed to build request: either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required\n",
+        ),
+        (
+            vec!["export", "--recording-id", "rec", "--output-format", "mcap0"],
+            "Export failed: invalid format: supply mcap, bag1, or json\n",
+        ),
         (
             vec!["datasets", "add", "--name", "Highway"],
             "--project-id is required when creating a dataset\n",
@@ -2579,4 +3014,40 @@ fn debug_logs_requests_and_redacts_signed_urls() {
         "{stderr}"
     );
     assert!(!stderr.contains("fixture-signature"), "{stderr}");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn upload_reports_the_request_id() {
+    let workspace = Workspace::new();
+    let data = recording(&[message(1, 1, vec![1])]);
+    fs::write(workspace.0.join("fixture.mcap"), &data).unwrap();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/data/upload",
+            r#"{"link":"{BASE_URL}/storage/fixture","requestId":"req_fixture"}"#,
+        ),
+        Reply::json("PUT", "/storage/fixture", ""),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["upload", "--device-id", "dev_fixture", "fixture.mcap"],
+    );
+    assert_success(&output);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.ends_with("\nUploaded fixture.mcap (upload request ID: req_fixture)\n"),
+        "{stderr}"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({
+            "filename": "fixture.mcap",
+            "device.id": "dev_fixture",
+        })
+    );
+    assert!(requests[1].ends_with(&*String::from_utf8_lossy(&data)));
 }

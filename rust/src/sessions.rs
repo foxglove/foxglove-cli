@@ -5,7 +5,8 @@ use std::fmt::Write as _;
 
 use crate::api::encode_path_segment;
 use crate::cli::{
-    SessionAddArgs, SessionListArgs, SessionLookupArgs, SessionRecordingMutationArgs,
+    SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
+    SessionRecordingMutationArgs,
 };
 use crate::output::Format;
 use crate::records::{
@@ -28,8 +29,6 @@ struct SessionRecording {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct Session {
     id: String,
-    #[serde(skip_serializing_if = "String::is_empty", default)]
-    name: String,
     #[serde(skip_serializing_if = "String::is_empty", default)]
     key: String,
     #[serde(
@@ -67,7 +66,6 @@ impl Record for Session {
     fn headers() -> &'static [&'static str] {
         &[
             "ID",
-            "Name",
             "Key",
             "Project ID",
             "Device",
@@ -89,7 +87,6 @@ impl Record for Session {
         );
         vec![
             self.id.clone(),
-            self.name.clone(),
             self.key.clone(),
             self.project_id.clone(),
             device,
@@ -156,9 +153,6 @@ pub(crate) async fn get_session(runtime: &Runtime, args: &SessionLookupArgs) -> 
         .await;
     match result {
         Ok(session) => session_outcome(&session),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) if error.is_not_found() => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
@@ -183,9 +177,8 @@ fn session_outcome(session: &Session) -> Outcome {
             .join(", ")
     };
     Outcome::success(format!(
-        "ID:         {}\nName:       {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
+        "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
         session.id,
-        session.name,
         session.key,
         session.project_id,
         device,
@@ -214,9 +207,6 @@ pub(crate) async fn list_session_recordings(
             Outcome::success("No recordings in this session.\n")
         }
         Ok(session) => format_output(&session.recordings, Format::Table),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!("Failed to list session recordings: {error}\n")),
     }
 }
@@ -225,7 +215,7 @@ pub(crate) async fn list_session_recordings(
 #[serde(rename_all = "camelCase")]
 struct CreateSessionRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
-    name: String,
+    key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     device_id: String,
@@ -247,13 +237,18 @@ struct PatchSessionRecordingsRequest {
     remove_recording_ids: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct PatchSessionKeyRequest<'a> {
+    key: Option<&'a str>,
+}
+
 pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Outcome {
     let device_id = args.device_id.clone().unwrap_or_default();
     if device_id.is_empty() {
         return Outcome::failure("--device-id is required when creating a session\n");
     }
     let request = CreateSessionRequest {
-        name: args.name.clone().unwrap_or_default(),
+        key: args.key.clone().unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id,
     };
@@ -268,9 +263,6 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
                 let _ = writeln!(stderr, "Session key: {}", response.key);
             }
             Outcome::notice(stderr)
-        }
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
         }
         Err(error) => Outcome::failure(format!("Failed to create session: {error}\n")),
     }
@@ -293,10 +285,36 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
             "Not found. The resource may have already been deleted.\nSession deleted: {}\n",
             args.session
         )),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!("Failed to delete session: {error}\n")),
+    }
+}
+
+pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    let key = if args.remove_key {
+        None
+    } else {
+        args.key.as_deref()
+    };
+    match runtime
+        .client
+        .patch::<_, _, Session>(
+            &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
+            &query,
+            &PatchSessionKeyRequest { key },
+        )
+        .await
+    {
+        Ok(session) => Outcome::notice(match key {
+            Some(key) => format!("Session updated: {}\nSession key: {key}\n", session.id),
+            None => format!("Session updated: {}\nSession key removed\n", session.id),
+        }),
+        Err(error) if error.is_not_found() => {
+            Outcome::failure(format!("Session not found: {}\n", args.session))
+        }
+        Err(error) => Outcome::failure(format!("Failed to edit session: {error}\n")),
     }
 }
 
@@ -334,9 +352,6 @@ pub(crate) async fn patch_session_recordings(
             args.recording,
             if add { "added to" } else { "removed from" }
         )),
-        Err(error) if error.is_forbidden() => {
-            Outcome::failure("Not authenticated. Run foxglove auth login.\n")
-        }
         Err(error) => Outcome::failure(format!(
             "Failed to {} recording {} session: {error}\n",
             if add { "add" } else { "remove" },
