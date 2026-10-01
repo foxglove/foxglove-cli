@@ -207,6 +207,34 @@ fn repeated_event_query_fields_reach_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn export_episode_id_reaches_the_api_and_downloads_mcap() {
+    let workspace = Workspace::new();
+    let payload = recording(&[message(1, 1, vec![9])]);
+    let server = Server::new(export_replies(payload.clone()));
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "export",
+            "--episode-id",
+            "ep_one",
+            "--output-file",
+            "episode.mcap",
+        ],
+    );
+    assert_success(&output);
+    assert!(output.stdout.is_empty());
+    assert_eq!(fs::read(workspace.0.join("episode.mcap")).unwrap(), payload);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"episodeId": "ep_one", "outputFormat": "mcap", "topics": []})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn large_mcap_export_preserves_server_bytes() {
     let workspace = Workspace::new();
     let mut data = vec![b' '; 64 * 1024 * 1024];
@@ -225,7 +253,9 @@ fn large_mcap_export_preserves_server_bytes() {
     assert_success(&output);
     assert!(output.stdout.is_empty());
     assert_eq!(fs::read(workspace.0.join("output.mcap")).unwrap(), payload);
-    assert_eq!(server.finish().len(), 2);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(json_body(&requests[0])["outputFormat"], "mcap");
 }
 
 #[test]
@@ -257,6 +287,25 @@ fn invalid_record_length_preserves_destination() {
         "staging was not cleaned"
     );
     assert_eq!(server.finish().len(), 2);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn explicit_export_formats_request_mcap() {
+    let workspace = Workspace::new();
+    for format in ["mcap", "json"] {
+        let server = Server::new(export_replies(recording(&[])));
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["export", "--recording-id", "rec"])
+                .args(["--output-format", format]),
+        )
+        .finish();
+        assert_success(&output);
+        let body = json_body(&server.finish()[0]);
+        assert_eq!(body["outputFormat"], "mcap", "{format}");
+    }
 }
 
 #[derive(Default)]
@@ -2630,9 +2679,25 @@ fn an_episode_in_a_dataset_is_not_deleted() {
 }
 
 #[test]
-fn dataset_and_episode_writes_are_validated_before_sending_a_request() {
+fn command_arguments_are_validated_before_sending_a_request() {
     let workspace = Workspace::new();
     for (args, expected) in [
+        (
+            vec!["export", "--recording-id", "rec", "--start", "2024-01-02T00:00:00Z"],
+            "Failed to build request: both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec!["export", "--recording-id", "rec", "--end", "2024-01-03T00:00:00Z"],
+            "Failed to build request: both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec!["export"],
+            "Failed to build request: either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required\n",
+        ),
+        (
+            vec!["export", "--recording-id", "rec", "--output-format", "mcap0"],
+            "Export failed: invalid format: supply mcap, bag1, or json\n",
+        ),
         (
             vec!["datasets", "add", "--name", "Highway"],
             "--project-id is required when creating a dataset\n",

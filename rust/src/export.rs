@@ -36,8 +36,8 @@ pub(crate) async fn export_data(
         Ok(request) => request,
         Err(error) => return Outcome::failure(format!("Failed to build request: {error}\n")),
     };
-    if !matches!(request.output_format.as_str(), "mcap0" | "bag1" | "json") {
-        return Outcome::failure("Export failed: invalid format: supply mcap0, bag1, or json\n");
+    if !matches!(request.output_format.as_str(), "mcap" | "bag1" | "json") {
+        return Outcome::failure("Export failed: invalid format: supply mcap, bag1, or json\n");
     }
     let destination = args
         .output_file
@@ -84,7 +84,7 @@ async fn stream_to_stdout(
 ) -> Result<(), api::ApiError> {
     let mut stream_request = request.clone();
     if stream_request.output_format == "json" {
-        stream_request.output_format = "mcap0".into();
+        stream_request.output_format = "mcap".into();
     }
     let mut stream = runtime
         .client
@@ -120,7 +120,7 @@ async fn staged_json_export(
     let result = async {
         let mut output = create_export_file(&staged).map_err(api::ApiError::Write)?;
         let mut stream_request = request.clone();
-        stream_request.output_format = "mcap0".into();
+        stream_request.output_format = "mcap".into();
         let mut stream = runtime
             .client
             .stream_with_cancellation(&stream_request, cancellation)
@@ -146,12 +146,12 @@ pub(crate) fn export_debug_request(runtime: &Runtime, args: &ExportArgs) -> Opti
 fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequest, String> {
     let output_format_value = args.output_format.clone().unwrap_or_default();
     let output_format = if output_format_value.is_empty() {
-        "mcap0".to_owned()
+        "mcap".to_owned()
     } else {
         output_format_value
     };
     let request = StreamRequest {
-        episode_id: String::new(),
+        episode_id: args.episode_id.clone().unwrap_or_default(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         key: args.key.clone().unwrap_or_default(),
         import_id: args.import_id.clone().unwrap_or_default(),
@@ -177,6 +177,9 @@ fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequ
         session_key: args.session_key.clone().unwrap_or_default(),
     };
     request.validate()?;
+    if request.start.is_some() != request.end.is_some() {
+        return Err("both --start and --end must be specified, or neither".to_owned());
+    }
     Ok(request)
 }
 
@@ -438,7 +441,7 @@ fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
 
 fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
     match format {
-        "mcap" | "mcap0" => reindex_mcap(path),
+        "mcap" => reindex_mcap(path),
         "bag1" => reindex_bag(path),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"
@@ -538,7 +541,7 @@ fn merge_partials(
     format: &str,
 ) -> Result<(), FormatError> {
     match format {
-        "mcap" | "mcap0" => merge_mcap_partials(partials, output),
+        "mcap" => merge_mcap_partials(partials, output),
         "bag1" => merge_bag_partials(partials, output),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"
