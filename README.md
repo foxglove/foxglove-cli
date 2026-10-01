@@ -145,6 +145,9 @@ $ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-0
 
 # Output ROS 1 bag file (output.bag)
 $ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-01-01T00:00:00Z --output-format bag1 --topics /gps/fix,/gps/fix_velocity > output.bag
+
+# Export an episode to an MCAP file
+$ foxglove export --episode-id <episode-id> --output-file episode.mcap
 ```
 
 If you've output a file, inspect its contents:

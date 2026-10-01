@@ -112,7 +112,9 @@ enum CliCommand {
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
-    #[command(about = "Export data by recording, import, session, or device and time range")]
+    #[command(
+        about = "Export data by recording, import, session, episode, or device and time range"
+    )]
     Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
@@ -332,6 +334,8 @@ pub(crate) struct ExportArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Episode ID", allow_hyphen_values = true)]
+    pub(crate) episode_id: Option<String>,
     #[arg(long, help = "Import ID", allow_hyphen_values = true)]
     pub(crate) import_id: Option<String>,
     #[arg(

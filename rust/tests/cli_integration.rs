@@ -173,6 +173,34 @@ fn repeated_event_query_fields_reach_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn export_episode_id_reaches_the_api_and_downloads_mcap() {
+    let workspace = Workspace::new();
+    let payload = recording(&[message(1, 1, vec![9])]);
+    let server = Server::new(export_replies(payload.clone()));
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "export",
+            "--episode-id",
+            "ep_one",
+            "--output-file",
+            "episode.mcap",
+        ],
+    );
+    assert_success(&output);
+    assert!(output.stdout.is_empty());
+    assert_eq!(fs::read(workspace.0.join("episode.mcap")).unwrap(), payload);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"episodeId": "ep_one", "outputFormat": "mcap", "topics": []})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn large_mcap_export_preserves_server_bytes() {
     let workspace = Workspace::new();
     let mut data = vec![b' '; 64 * 1024 * 1024];
