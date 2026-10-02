@@ -1014,7 +1014,16 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         (
             "/v1/data/topics",
             "[]",
-            &["topics", "list", "--device-id", "dev_one"],
+            &[
+                "topics",
+                "list",
+                "--device-id",
+                "dev_one",
+                "--start",
+                "2024-01-02",
+                "--end",
+                "2024-01-03",
+            ],
         ),
     ];
 

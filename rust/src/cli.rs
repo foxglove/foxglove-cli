@@ -225,7 +225,7 @@ pub(crate) struct LoginArgs {
 #[derive(Debug, Subcommand)]
 enum CompletionCommand {
     #[command(about = "Generate completions for Bash")]
-    Bash(CompletionArgs),
+    Bash,
     #[command(about = "Generate completions for Fish")]
     Fish(CompletionArgs),
     #[command(about = "Generate completions for PowerShell")]
@@ -1120,7 +1120,7 @@ enum RecordingsCommand {
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
     #[command(
-        about = "Request transfer of a recording from its Edge Site to its configured Primary Site"
+        about = "Request transfer of a recording from the edge to its configured Primary Site"
     )]
     Transfer(RecordingTransferArgs),
 }
@@ -1302,7 +1302,12 @@ enum TopicsCommand {
 pub(crate) struct TopicListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Device ID (requires --start and --end)",
+        allow_hyphen_values = true,
+        requires_all = ["start", "end"]
+    )]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -1447,7 +1452,7 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
         }
         CliCommand::Completion(shell) => {
             let (shell, no_descriptions) = match shell {
-                CompletionCommand::Bash(args) => ("bash", args.no_descriptions),
+                CompletionCommand::Bash => ("bash", false),
                 CompletionCommand::Fish(args) => ("fish", args.no_descriptions),
                 CompletionCommand::Powershell(args) => ("powershell", args.no_descriptions),
                 CompletionCommand::Zsh(args) => ("zsh", args.no_descriptions),
@@ -1941,7 +1946,7 @@ mod tests {
     fn boolean_flags_accept_standard_values_and_preserve_defaults() {
         let cases = [
             (vec![], "debug"),
-            (vec!["completion", "bash"], "no-descriptions"),
+            (vec!["completion", "fish"], "no-descriptions"),
             (vec!["coverage", "list"], "include-edge-recordings"),
             (vec!["export"], "include-attachments"),
             (vec!["pending-imports", "list"], "show-completed"),
