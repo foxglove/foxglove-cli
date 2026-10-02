@@ -605,16 +605,17 @@ fn login_polls_at_device_code_interval() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn login_stops_polling_when_device_code_expires() {
+    use std::time::{Duration, Instant};
     let workspace = Workspace::new();
     let server = Server::new(vec![
         Reply::json(
             "POST",
             "/v1/auth/device-code",
-            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":1}"#,
+            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":5}"#,
         ),
         pending_token_reply(),
-        pending_token_reply(),
     ]);
+    let started = Instant::now();
     let output = Process::spawn(workspace.command(&server.url).args([
         "auth",
         "login",
@@ -622,13 +623,115 @@ fn login_stops_polling_when_device_code_expires() {
         &server.url,
     ]))
     .finish();
+    assert_login_expired(&output, &workspace);
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(server.finish().len(), 2);
+}
+
+#[cfg(feature = "test-support")]
+fn assert_login_expired(output: &Output, workspace: &Workspace) {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
         "Login failed: the login request expired before it was authorized; run `foxglove auth login` again\n"
     );
-    assert_eq!(server.finish().len(), 3);
     assert!(!workspace.0.join(".foxgloverc").exists());
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_expiry_aborts_stalled_token_response() {
+    use std::time::{Duration, Instant};
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/auth/device-code",
+            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":5}"#,
+        ),
+        Reply {
+            stall: true,
+            ..Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#)
+        },
+    ]);
+    let started = Instant::now();
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]))
+    .finish();
+    assert_login_expired(&output, &workspace);
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(server.finish().len(), 2);
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_does_not_poll_an_already_expired_device_code() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/auth/device-code",
+        r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":0,"interval":5}"#,
+    )]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]))
+    .finish();
+    assert_login_expired(&output, &workspace);
+    assert_eq!(server.finish().len(), 1);
+}
+
+#[cfg(all(unix, feature = "test-support"))]
+#[test]
+#[ignore = "requires loopback sockets and Unix signal delivery"]
+fn ctrl_c_interrupts_login_polling_and_preserves_credentials() {
+    use std::time::Duration;
+    for stall in [false, true] {
+        let workspace = Workspace::new();
+        let server = Server::new(vec![
+            Reply::json(
+                "POST",
+                "/v1/auth/device-code",
+                r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":900}"#,
+            ),
+            if stall {
+                Reply {
+                    stall: true,
+                    ..Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#)
+                }
+            } else {
+                pending_token_reply()
+            },
+        ]);
+        let config = b"bearer_token: original-fixture-token\n";
+        fs::write(workspace.0.join(".foxgloverc"), config).unwrap();
+        let child = Process::spawn(workspace.command(&server.url).args([
+            "auth",
+            "login",
+            "--base-url",
+            &server.url,
+        ]));
+        for _ in 0..2 {
+            server
+                .requests
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap();
+        }
+        child.interrupt();
+        let output = child.finish();
+        assert_eq!(output.status.code(), Some(130));
+        assert!(output.stderr.is_empty());
+        assert_eq!(fs::read(workspace.0.join(".foxgloverc")).unwrap(), config);
+        server.finish();
+    }
 }
 
 type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);
