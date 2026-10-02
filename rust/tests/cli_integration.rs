@@ -2196,48 +2196,75 @@ fn publishing_an_extension_reports_its_id() {
 #[ignore = "requires loopback sockets"]
 fn missing_datasets_episodes_and_versions_are_named_in_the_error() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str, &str)] = &[
+    let cases: &[(&[&str], &str, &str, &str, &str)] = &[
         (
             &["datasets", "get", "ds_one"],
             "GET",
             "/v1/datasets/ds_one",
+            r#"{"error":"Not Found"}"#,
             "Dataset not found: ds_one\n",
         ),
         (
             &["datasets", "commit", "ds_one"],
             "POST",
             "/v1/datasets/ds_one/commit",
+            r#"{"error":"Not Found"}"#,
             "Dataset not found: ds_one\n",
         ),
         (
             &["episodes", "get", "ep_one"],
             "GET",
             "/v1/episodes/ep_one",
+            r#"{"error":"Not Found"}"#,
             "Episode not found: ep_one\n",
         ),
         (
             &["datasets", "versions", "get", "ds_one", "9"],
             "GET",
             "/v1/datasets/ds_one/versions/9",
+            r#"{"error":"Not Found"}"#,
             "Version 9 of dataset ds_one not found\n",
         ),
         (
             &["datasets", "versions", "compare", "ds_one", "2", "9"],
             "GET",
             "/v1/datasets/ds_one/versions/9/compare",
+            r#"{"error":"Not Found"}"#,
             "Version 2 or 9 of dataset ds_one not found\n",
         ),
         (
             &["datasets", "versions", "restore", "ds_one", "9"],
             "POST",
             "/v1/datasets/ds_one/versions/9/restore",
+            r#"{"error":"Not Found"}"#,
             "Committed version 9 of dataset ds_one not found\n",
         ),
+        (
+            &["datasets", "versions", "get", "ds_one", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9",
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_one\n",
+        ),
+        (
+            &["datasets", "versions", "compare", "ds_one", "2", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9/compare",
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_one\n",
+        ),
+        (
+            &["datasets", "versions", "restore", "ds_one", "9"],
+            "POST",
+            "/v1/datasets/ds_one/versions/9/restore",
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_one\n",
+        ),
     ];
-    for &(args, method, path, expected) in cases {
+    for &(args, method, path, response, expected) in cases {
         let server = Server::new(vec![Reply {
             status: 404,
-            ..Reply::json(method, path, r#"{"error":"Not Found"}"#)
+            ..Reply::json(method, path, response)
         }]);
         let output = run(&workspace, &server, args);
         server.finish();

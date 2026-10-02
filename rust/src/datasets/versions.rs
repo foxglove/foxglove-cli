@@ -282,6 +282,7 @@ pub(crate) async fn get_version(
         Err(error) if error.is_not_found_for("version") => {
             version_not_found(&args.dataset_id, args.version)
         }
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to get dataset version: {error}\n")),
     }
 }
@@ -313,6 +314,9 @@ pub(crate) async fn compare_versions(
                 "Version {} or {} of dataset {} not found\n",
                 args.base_version, args.target_version, args.dataset_id
             ))
+        }
+        Err(error) if error.is_not_found_for("dataset") => {
+            return dataset_not_found(&args.dataset_id)
         }
         Err(error) => {
             return Outcome::failure(format!("Failed to compare dataset versions: {error}\n"))
@@ -364,6 +368,7 @@ pub(crate) async fn restore_version(
             "Committed version {} of dataset {} not found\n",
             args.version, args.dataset_id
         )),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(ApiError::Response { status: 409, .. }) if !args.force => Outcome::failure(format!(
             "Dataset {} has pending changes. Commit them first, or pass --force to discard them.\n",
             args.dataset_id

@@ -101,12 +101,6 @@ impl ApiError {
         )
     }
 
-    /// Whether the requested resource was not found.
-    #[must_use]
-    pub const fn is_not_found(&self) -> bool {
-        matches!(self, Self::NotFound { .. })
-    }
-
     /// Whether the API reported `resource` itself missing, rather than
     /// something it depends on, such as its project.
     #[must_use]
@@ -1622,16 +1616,11 @@ mod tests {
     fn status_helpers_are_available_without_string_matching() {
         assert!(ApiError::Forbidden.is_forbidden());
         assert!(ApiError::Unauthorized.is_forbidden());
-        assert!(ApiError::NotFound {
-            code: None,
-            message: String::new()
-        }
-        .is_not_found());
         let unavailable = api_error_from_response(
             StatusCode::NOT_FOUND,
             r#"{"error":"Episode has no recordings available for streaming","code":"NoStreamableRecordings"}"#,
         );
-        assert!(unavailable.is_not_found());
+        assert!(matches!(unavailable, ApiError::NotFound { .. }));
         assert_eq!(unavailable.code(), Some("NoStreamableRecordings"));
         assert_eq!(
             api_error_from_response(StatusCode::NOT_FOUND, "not json").code(),
