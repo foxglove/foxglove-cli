@@ -65,8 +65,6 @@ impl Record for Attachment {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AttachmentListQuery {
-    #[serde(skip_serializing_if = "String::is_empty")]
-    import_id: String,
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -82,7 +80,6 @@ pub(crate) async fn list_attachments(
     format: Format,
 ) -> Outcome {
     let query = AttachmentListQuery {
-        import_id: args.import_id.clone().unwrap_or_default(),
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),

@@ -84,8 +84,8 @@ pub(crate) async fn list_events(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query: Vec<(String, String)> = [
-        ("device.id", args.device_id.clone().unwrap_or_default()),
-        ("device.name", args.device_name.clone().unwrap_or_default()),
+        ("deviceId", args.device_id.clone().unwrap_or_default()),
+        ("deviceName", args.device_name.clone().unwrap_or_default()),
         ("end", args.end.clone().unwrap_or_default()),
         (
             "eventTypeId",
@@ -105,6 +105,7 @@ pub(crate) async fn list_events(
             args.project_id.clone().or_project(&runtime.project_id),
         ),
         ("query", args.query.clone().unwrap_or_default()),
+        ("queryFields", args.query_field.join(",")),
         ("sortBy", args.sort_by.clone().unwrap_or_default()),
         ("sortOrder", args.sort_order.clone().unwrap_or_default()),
         ("start", args.start.clone().unwrap_or_default()),
@@ -112,11 +113,6 @@ pub(crate) async fn list_events(
     .into_iter()
     .filter(|(_, value)| !value.is_empty())
     .map(|(key, value)| (key.to_owned(), value))
-    .chain(
-        args.query_field
-            .iter()
-            .map(|field| ("queryFields".to_owned(), field.clone())),
-    )
     .collect();
     fetch_list::<Event, _>(
         runtime,

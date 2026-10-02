@@ -85,9 +85,9 @@ impl Record for PendingImport {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PendingImportListQuery {
-    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     device_id: String,
-    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     filename: String,

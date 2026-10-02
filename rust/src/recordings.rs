@@ -108,9 +108,9 @@ impl Record for Recording {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RecordingListQuery {
-    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     device_id: String,
-    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
     #[serde(rename = "edgeSite.id", skip_serializing_if = "String::is_empty")]
     edge_site_id: String,
