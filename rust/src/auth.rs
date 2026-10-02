@@ -15,6 +15,9 @@ use crate::output;
 use crate::runtime::{self, Runtime};
 use crate::Outcome;
 
+const LOGIN_EXPIRED: &str =
+    "the login request expired before it was authorized; run `foxglove auth login` again";
+
 #[derive(Deserialize)]
 struct MeResponse {
     email: String,
@@ -172,30 +175,35 @@ async fn complete_login(
     browser: Option<Child>,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
-    let result = async {
-        loop {
-            if cancellation.is_cancelled() {
-                return Err("context canceled".to_owned());
+    let interval = Duration::from_secs(device_code.interval.max(1));
+    let expires_in = Duration::from_secs(device_code.expires_in);
+    let result = tokio::select! {
+        biased;
+        () = cancellation.cancelled() => Err("context canceled".to_owned()),
+        // This timer covers both the polling delay and an in-flight request.
+        // Poll it first so an expired code cannot start another request.
+        () = tokio::time::sleep(expires_in) => Err(LOGIN_EXPIRED.to_owned()),
+        result = async {
+            // A zero-length sleep may wait for the next timer tick. Check here
+            // so an already-expired code cannot send a token request.
+            if expires_in.is_zero() {
+                return Err(LOGIN_EXPIRED.to_owned());
             }
-            match client
-                .token_with_cancellation(&device_code.device_code, cancellation)
-                .await
-            {
-                Ok(token) => break Ok(token),
-                // Device-code polling uses HTTP 403 to mean authorization is
-                // still pending. A 401 is an authentication error and must
-                // surface instead of retrying forever.
-                Err(api::ApiError::Forbidden) => {
-                    tokio::select! {
-                        () = cancellation.cancelled() => return Err("context canceled".to_owned()),
-                        () = tokio::time::sleep(Duration::from_millis(500)) => {}
-                    }
+            loop {
+                match client
+                    .token_with_cancellation(&device_code.device_code, cancellation)
+                    .await
+                {
+                    Ok(token) => break Ok(token),
+                    // Device-code polling uses HTTP 403 to mean authorization is
+                    // still pending. A 401 is an authentication error and must
+                    // surface instead of retrying forever.
+                    Err(api::ApiError::Forbidden) => tokio::time::sleep(interval).await,
+                    Err(error) => return Err(format!("failed to request token: {error}")),
                 }
-                Err(error) => return Err(format!("failed to request token: {error}")),
             }
-        }
-    }
-    .await;
+        } => result,
+    };
     stop_browser(browser);
     let token = result?;
     let bearer_token = client
