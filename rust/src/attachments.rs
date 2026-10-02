@@ -148,7 +148,7 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         let config = directory.join(".foxgloverc");
         fs::write(&config, "base_url: http://127.0.0.1:1\n").unwrap();
-        let runtime = crate::runtime::load(Some(&config), None).unwrap();
+        let runtime = crate::runtime::load(Some(&config), None, false).unwrap();
         fs::remove_dir_all(&directory).unwrap();
         let args = AttachmentDownloadArgs {
             attachment_id: "att_1".to_owned(),

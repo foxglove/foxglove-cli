@@ -238,10 +238,11 @@ pub(crate) async fn list_dataset_episodes(
             ),
             page.next_cursor.as_deref(),
         ),
-        Err(error) if error.is_not_found() => match version {
+        Err(error) if error.is_not_found_for("version") => match version {
             Some(version) => version_not_found(&args.dataset_id, version),
             None => dataset_not_found(&args.dataset_id),
         },
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to list dataset episodes: {error}\n")),
     }
 }
@@ -273,7 +274,7 @@ pub(crate) async fn get_dataset(
         .await
     {
         Ok(dataset) => format_record(&dataset, format),
-        Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to get dataset: {error}\n")),
     }
 }
@@ -362,7 +363,7 @@ pub(crate) async fn add_dataset(runtime: &Runtime, args: &DatasetAddArgs) -> Out
             }
             Outcome::notice(stderr)
         }
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("project") => {
             Outcome::failure(format!("Project not found: {}\n", request.project_id))
         }
         Err(error) => Outcome::failure(format!("Failed to create dataset: {error}\n")),
@@ -404,7 +405,7 @@ pub(crate) async fn edit_dataset(runtime: &Runtime, args: &DatasetEditArgs) -> O
         .await
     {
         Ok(_) => Outcome::notice(format!("Dataset updated: {}\n", args.dataset_id)),
-        Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to edit dataset: {error}\n")),
     }
 }
@@ -416,10 +417,7 @@ pub(crate) async fn delete_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
         .await
     {
         Ok(()) => Outcome::notice(format!("Dataset deleted: {}\n", args.dataset_id)),
-        Err(error) if error.is_not_found() => Outcome::notice(format!(
-            "Not found. The resource may have already been deleted.\nDataset deleted: {}\n",
-            args.dataset_id
-        )),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to delete dataset: {error}\n")),
     }
 }
@@ -469,7 +467,7 @@ pub(crate) async fn patch_dataset_episodes(
             }
             Outcome::notice(stderr)
         }
-        Err(error) if error.is_not_found() => dataset_not_found(&args.dataset_id),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!(
             "Failed to {} episodes: {error}\n",
             if add { "add" } else { "remove" }

@@ -170,7 +170,7 @@ async fn resolve_version(
             .await
         {
             Ok(version) => version,
-            Err(error) if error.is_not_found() => {
+            Err(error) if error.is_not_found_for("version") => {
                 return Err(format!("Version {number} is not a version of this dataset"))
             }
             Err(error) => return Err(format!("Failed to get dataset version: {error}")),
@@ -556,7 +556,7 @@ fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
 pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
     let dataset = match fetch_dataset(runtime, &args.dataset_id).await {
         Ok(dataset) => dataset,
-        Err(error) if error.is_not_found() => {
+        Err(error) if error.is_not_found_for("dataset") => {
             return Outcome::failure(format!("Dataset not found: {}\n", args.dataset_id))
         }
         Err(error) => return Outcome::failure(format!("Failed to get dataset: {error}\n")),

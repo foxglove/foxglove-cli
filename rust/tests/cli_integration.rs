@@ -823,7 +823,7 @@ fn session_key_edit_reports_api_errors() {
         (
             403,
             r#"{"error":"This operation requires the `sessions.update` capability.","code":"MissingApiKeyCapability"}"#,
-            "Failed to edit session: forbidden: have you signed in with `foxglove auth login`?\nThis operation requires the `sessions.update` capability.\n",
+            "Failed to edit session: This operation requires the `sessions.update` capability.\n",
         ),
         (
             404,
@@ -905,9 +905,7 @@ fn session_commands_report_the_api_reason_when_forbidden() {
         assert!(!output.status.success(), "{args:?}");
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
-            format!(
-                "{failure}: forbidden: have you signed in with `foxglove auth login`?\n{reason}\n"
-            ),
+            format!("{failure}: {reason}\n"),
             "{args:?}"
         );
     }
@@ -2021,74 +2019,252 @@ fn getting_a_dataset_renders_one_record() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn deleting_what_is_already_gone_is_not_an_error() {
+fn deleting_what_is_not_found_fails() {
     let workspace = Workspace::new();
-    for (command, path, noun) in [
-        ("datasets", "/v1/datasets/one", "Dataset"),
-        ("episodes", "/v1/episodes/one", "Episode"),
-    ] {
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (
+            &["datasets", "delete", "one"],
+            "/v1/datasets/one",
+            r#"{"error":"Not Found"}"#,
+            "Dataset not found: one\n",
+        ),
+        (
+            &["episodes", "delete", "one"],
+            "/v1/episodes/one",
+            r#"{"error":"Not Found"}"#,
+            "Episode not found: one\n",
+        ),
+        (
+            &["sessions", "delete", "one"],
+            "/v1/sessions/one",
+            r#"{"error":"Not Found"}"#,
+            "Session not found: one\n",
+        ),
+        (
+            &["recordings", "delete", "one"],
+            "/v1/recordings/one",
+            r#"{"error":"Not Found"}"#,
+            "Recording not found: one\n",
+        ),
+        (
+            &["extensions", "unpublish", "one"],
+            "/v1/extensions/one",
+            r#"{"error":"Not Found"}"#,
+            "Extension not found: one\n",
+        ),
+        (
+            &["sessions", "delete", "one", "--project-id", "prj_gone"],
+            "/v1/sessions/one",
+            r#"{"error":"Project not found"}"#,
+            "Failed to delete session: Project not found\n",
+        ),
+    ];
+    for &(args, path, body, expected) in cases {
         let server = Server::new(vec![Reply {
             status: 404,
-            ..Reply::json("DELETE", path, r#"{"error":"Not Found"}"#)
+            ..Reply::json("DELETE", path, body)
         }]);
-        let output = run(&workspace, &server, &[command, "delete", "one"]);
-        assert_success(&output);
+        let output = run(&workspace, &server, args);
         server.finish();
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
         assert_eq!(
             String::from_utf8_lossy(&output.stderr),
-            format!(
-                "Not found. The resource may have already been deleted.\n{noun} deleted: one\n"
-            )
+            expected,
+            "{args:?}"
         );
     }
 }
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn deleting_a_recording_confirms_it() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("DELETE", "/v1/recordings/rec_1", "{}")]);
+    let output = run(&workspace, &server, &["recordings", "delete", "rec_1"]);
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Recording deleted: rec_1\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn api_error_messages_reach_the_user() {
+    const ADMINS: &str = r#"{"error":"Only admins can perform this task"}"#;
+    const PROJECT: &str = r#"{"error":"Project not found"}"#;
+    let workspace = Workspace::new();
+    for (args, method, path, status, body, expected) in [
+        (
+            vec!["sessions", "get", "ses_1"],
+            "GET",
+            "/v1/sessions/ses_1",
+            403,
+            ADMINS,
+            "Failed to get session: Only admins can perform this task\n",
+        ),
+        (
+            vec!["devices", "list"],
+            "GET",
+            "/v1/devices",
+            403,
+            r#"{"error":"This operation requires the `devices.list` capability.","code":"MissingApiKeyCapability"}"#,
+            "Failed to list devices: This operation requires the `devices.list` capability.\n",
+        ),
+        (
+            vec!["sessions", "get", "ses_1"],
+            "GET",
+            "/v1/sessions/ses_1",
+            401,
+            r#"{"error":"Unauthorized"}"#,
+            "Failed to get session: forbidden: have you signed in with `foxglove auth login`?\n",
+        ),
+        (
+            vec!["sessions", "get", "ses_1"],
+            "GET",
+            "/v1/sessions/ses_1",
+            404,
+            r#"{"error":"Not Found"}"#,
+            "Session not found: ses_1\n",
+        ),
+        (
+            vec!["sessions", "get", "ses_1", "--project-id", "prj_gone"],
+            "GET",
+            "/v1/sessions/ses_1",
+            404,
+            PROJECT,
+            "Failed to get session: Project not found\n",
+        ),
+        (
+            vec!["devices", "list", "--project-id", "prj_gone"],
+            "GET",
+            "/v1/devices",
+            404,
+            PROJECT,
+            "Failed to list devices: Project not found\n",
+        ),
+        (
+            vec!["datasets", "episodes", "list", "ds_1", "--version", "9"],
+            "GET",
+            "/v1/datasets/ds_1/versions/9/episodes",
+            404,
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_1\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status,
+            ..Reply::json(method, path, body)
+        }]);
+        let output = run(&workspace, &server, &args);
+        server.finish();
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn publishing_an_extension_reports_its_id() {
+    let workspace = Workspace::new();
+    fs::write(workspace.0.join("panel.foxe"), "package").unwrap();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/extension-upload",
+        r#"{"id":"ext_1"}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["extensions", "publish", "panel.foxe"],
+    );
+    assert_success(&output);
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.ends_with("\nExtension published: ext_1\n"),
+        "{stderr}"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn missing_datasets_episodes_and_versions_are_named_in_the_error() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str, &str)] = &[
+    let cases: &[(&[&str], &str, &str, &str, &str)] = &[
         (
             &["datasets", "get", "ds_one"],
             "GET",
             "/v1/datasets/ds_one",
+            r#"{"error":"Not Found"}"#,
             "Dataset not found: ds_one\n",
         ),
         (
             &["datasets", "commit", "ds_one"],
             "POST",
             "/v1/datasets/ds_one/commit",
+            r#"{"error":"Not Found"}"#,
             "Dataset not found: ds_one\n",
         ),
         (
             &["episodes", "get", "ep_one"],
             "GET",
             "/v1/episodes/ep_one",
+            r#"{"error":"Not Found"}"#,
             "Episode not found: ep_one\n",
         ),
         (
             &["datasets", "versions", "get", "ds_one", "9"],
             "GET",
             "/v1/datasets/ds_one/versions/9",
+            r#"{"error":"Not Found"}"#,
             "Version 9 of dataset ds_one not found\n",
         ),
         (
             &["datasets", "versions", "compare", "ds_one", "2", "9"],
             "GET",
             "/v1/datasets/ds_one/versions/9/compare",
+            r#"{"error":"Not Found"}"#,
             "Version 2 or 9 of dataset ds_one not found\n",
         ),
         (
             &["datasets", "versions", "restore", "ds_one", "9"],
             "POST",
             "/v1/datasets/ds_one/versions/9/restore",
+            r#"{"error":"Not Found"}"#,
             "Committed version 9 of dataset ds_one not found\n",
         ),
+        (
+            &["datasets", "versions", "get", "ds_one", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9",
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_one\n",
+        ),
+        (
+            &["datasets", "versions", "compare", "ds_one", "2", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9/compare",
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_one\n",
+        ),
+        (
+            &["datasets", "versions", "restore", "ds_one", "9"],
+            "POST",
+            "/v1/datasets/ds_one/versions/9/restore",
+            r#"{"error":"Dataset not found"}"#,
+            "Dataset not found: ds_one\n",
+        ),
     ];
-    for &(args, method, path, expected) in cases {
+    for &(args, method, path, response, expected) in cases {
         let server = Server::new(vec![Reply {
             status: 404,
-            ..Reply::json(method, path, r#"{"error":"Not Found"}"#)
+            ..Reply::json(method, path, response)
         }]);
         let output = run(&workspace, &server, args);
         server.finish();

@@ -36,7 +36,7 @@ pub(crate) fn encode_path_segment(value: &str) -> PercentEncode<'_> {
     utf8_percent_encode(value, PATH_SEGMENT)
 }
 
-const FORBIDDEN_MESSAGE: &str = "forbidden: have you signed in with `foxglove auth login`?";
+const SIGN_IN_MESSAGE: &str = "forbidden: have you signed in with `foxglove auth login`?";
 
 /// Errors returned by the API client.
 #[derive(Debug)]
@@ -48,13 +48,16 @@ pub enum ApiError {
     },
     /// The API rejected the credentials with HTTP 401.
     Unauthorized,
-    /// The API rejected the credentials with HTTP 403.
+    /// The API refused the request with HTTP 403.
     Forbidden,
-    /// The API rejected the credentials and supplied additional detail.
+    /// The API refused the request with HTTP 403 and said why.
     ForbiddenWithMessage(String),
-    /// The requested resource does not exist, with the error code the API
-    /// gave, if any.
-    NotFound { code: Option<String> },
+    /// The requested resource does not exist, with the error code and
+    /// message the API gave, if any.
+    NotFound {
+        code: Option<String>,
+        message: String,
+    },
     /// The server returned a non-success response with its decoded message.
     Response { status: u16, message: String },
     /// The request could not be sent or its response could not be read.
@@ -89,7 +92,7 @@ impl ApiError {
             _ => self,
         }
     }
-    /// Whether the server rejected the current authentication.
+    /// Whether the server refused the request with HTTP 401 or 403.
     #[must_use]
     pub const fn is_forbidden(&self) -> bool {
         matches!(
@@ -98,10 +101,17 @@ impl ApiError {
         )
     }
 
-    /// Whether the requested resource was not found.
+    /// Whether the API reported `resource` itself missing, rather than
+    /// something it depends on, such as its project.
     #[must_use]
-    pub const fn is_not_found(&self) -> bool {
-        matches!(self, Self::NotFound { .. })
+    pub fn is_not_found_for(&self, resource: &str) -> bool {
+        let Self::NotFound { message, .. } = self else {
+            return false;
+        };
+        let message = message.to_ascii_lowercase();
+        message.is_empty()
+            || message == "not found"
+            || message.starts_with(&format!("{} not found", resource.to_ascii_lowercase()))
     }
 
     /// The machine-readable error code the API returned, if any.
@@ -109,7 +119,7 @@ impl ApiError {
     pub fn code(&self) -> Option<&str> {
         match self {
             Self::Context { source, .. } => source.code(),
-            Self::NotFound { code } => code.as_deref(),
+            Self::NotFound { code, .. } => code.as_deref(),
             _ => None,
         }
     }
@@ -137,12 +147,14 @@ impl fmt::Display for ApiError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Context { context, source } => write!(formatter, "{context}: {source}"),
-            Self::Unauthorized | Self::Forbidden => formatter.write_str(FORBIDDEN_MESSAGE),
-            Self::ForbiddenWithMessage(message) => {
-                write!(formatter, "{FORBIDDEN_MESSAGE}\n{message}")
+            Self::Unauthorized => formatter.write_str(SIGN_IN_MESSAGE),
+            Self::Forbidden => formatter.write_str("forbidden"),
+            Self::NotFound { message, .. } if message.is_empty() => {
+                formatter.write_str("not found")
             }
-            Self::NotFound { .. } => formatter.write_str("not found"),
-            Self::Response { message, .. } => formatter.write_str(message),
+            Self::ForbiddenWithMessage(message)
+            | Self::NotFound { message, .. }
+            | Self::Response { message, .. } => formatter.write_str(message),
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
             Self::Serialization(error) => error.fmt(formatter),
             Self::Cancelled => formatter.write_str("operation cancelled"),
@@ -294,6 +306,12 @@ pub struct StreamResponse {
 pub struct UploadResponse {
     pub link: String,
     pub request_id: String,
+}
+
+/// The response to a published extension package.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ExtensionUploadResponse {
+    pub id: String,
 }
 
 /// A decoded collection response together with its opaque pagination cursors.
@@ -855,8 +873,8 @@ impl FoxgloveClient {
     ///
     /// # Errors
     ///
-    /// Returns the mapped API or transport error.
-    pub async fn upload_extension<R>(&self, reader: R) -> Result<(), ApiError>
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn upload_extension<R>(&self, reader: R) -> Result<ExtensionUploadResponse, ApiError>
     where
         R: AsyncRead + Send + 'static,
     {
@@ -870,12 +888,12 @@ impl FoxgloveClient {
     /// # Errors
     ///
     /// Returns [`ApiError::Cancelled`] when cancellation wins, or the mapped
-    /// API or transport error.
+    /// API, transport, or response-decoding error.
     pub async fn upload_extension_with_cancellation<R>(
         &self,
         reader: R,
         cancellation: &CancellationToken,
-    ) -> Result<(), ApiError>
+    ) -> Result<ExtensionUploadResponse, ApiError>
     where
         R: AsyncRead + Send + 'static,
     {
@@ -884,7 +902,11 @@ impl FoxgloveClient {
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
             .body(reqwest::Body::wrap_stream(ReaderStream::new(reader)));
         let response = self.send(request, Some(cancellation)).await?;
-        with_optional_cancellation(Some(cancellation), ensure_ok(response)).await
+        with_optional_cancellation(Some(cancellation), async {
+            let response = ensure_ok_response(response).await?;
+            response.json().await.map_err(ApiError::Decode)
+        })
+        .await
     }
 
     /// Upload a reader and cancel the active HTTP future when requested,
@@ -1304,6 +1326,7 @@ fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
         }
         StatusCode::NOT_FOUND => ApiError::NotFound {
             code: response_code(body),
+            message: response_message(body),
         },
         _ => ApiError::Response {
             status: status.as_u16(),
@@ -1362,7 +1385,7 @@ mod tests {
 
     use super::{
         api_error_from_response, debug_target, encode_path_segment, response_message, ApiError,
-        FoxgloveClient, StreamRequest, FORBIDDEN_MESSAGE,
+        FoxgloveClient, StreamRequest, SIGN_IN_MESSAGE,
     };
 
     #[test]
@@ -1580,7 +1603,7 @@ mod tests {
             r#"{"error":"mutation requires authentication"}"#,
         );
         assert!(matches!(mutation, ApiError::Unauthorized));
-        assert_eq!(mutation.to_string(), FORBIDDEN_MESSAGE);
+        assert_eq!(mutation.to_string(), SIGN_IN_MESSAGE);
 
         let authentication = api_error_from_response(
             StatusCode::UNAUTHORIZED,
@@ -1593,24 +1616,54 @@ mod tests {
     fn status_helpers_are_available_without_string_matching() {
         assert!(ApiError::Forbidden.is_forbidden());
         assert!(ApiError::Unauthorized.is_forbidden());
-        let forbidden = ApiError::ForbiddenWithMessage("requires capability".to_owned());
-        assert!(forbidden.is_forbidden());
-        assert_eq!(
-            forbidden.to_string(),
-            "forbidden: have you signed in with `foxglove auth login`?\nrequires capability"
-        );
-        assert!(ApiError::NotFound { code: None }.is_not_found());
         let unavailable = api_error_from_response(
             StatusCode::NOT_FOUND,
             r#"{"error":"Episode has no recordings available for streaming","code":"NoStreamableRecordings"}"#,
         );
-        assert!(unavailable.is_not_found());
+        assert!(matches!(unavailable, ApiError::NotFound { .. }));
         assert_eq!(unavailable.code(), Some("NoStreamableRecordings"));
         assert_eq!(
             api_error_from_response(StatusCode::NOT_FOUND, "not json").code(),
             None
         );
         assert!(ApiError::Cancelled.is_cancelled());
+    }
+
+    #[test]
+    fn forbidden_errors_show_the_reason_the_api_gave() {
+        let forbidden = api_error_from_response(
+            StatusCode::FORBIDDEN,
+            r#"{"error":"This operation requires the `devices.list` capability.","code":"MissingApiKeyCapability"}"#,
+        );
+        assert!(forbidden.is_forbidden());
+        assert_eq!(
+            forbidden.to_string(),
+            "This operation requires the `devices.list` capability."
+        );
+        let bare = api_error_from_response(StatusCode::FORBIDDEN, "");
+        assert!(matches!(bare, ApiError::Forbidden));
+        assert_eq!(bare.to_string(), "forbidden");
+    }
+
+    #[test]
+    fn not_found_errors_keep_the_api_message() {
+        let project =
+            api_error_from_response(StatusCode::NOT_FOUND, r#"{"error":"Project not found"}"#);
+        assert_eq!(project.to_string(), "Project not found");
+        assert!(project.is_not_found_for("project"));
+        assert!(!project.is_not_found_for("session"));
+        for body in [
+            r#"{"error":"Not Found"}"#,
+            "",
+            r#"{"error":"Version not found"}"#,
+        ] {
+            let error = api_error_from_response(StatusCode::NOT_FOUND, body);
+            assert!(error.is_not_found_for("Version"), "{body}");
+        }
+        assert_eq!(
+            api_error_from_response(StatusCode::NOT_FOUND, "").to_string(),
+            "not found"
+        );
     }
 
     #[tokio::test]
@@ -1663,8 +1716,8 @@ mod tests {
             "token",
         ] {
             for status in [200, 500] {
-                // Successful DELETE/upload responses are deliberately dropped.
-                if status == 200 && matches!(operation, "delete" | "extension") {
+                // Successful DELETE responses are deliberately dropped.
+                if status == 200 && operation == "delete" {
                     continue;
                 }
                 let (listener, address) = test_listener().await;
@@ -1717,14 +1770,10 @@ mod tests {
                             Ok(stream) => stream.bytes().await.map(|_| ()),
                             Err(error) => Err(error),
                         },
-                        "extension" => {
-                            client
-                                .upload_extension_with_cancellation(
-                                    tokio::io::empty(),
-                                    &cancellation,
-                                )
-                                .await
-                        }
+                        "extension" => client
+                            .upload_extension_with_cancellation(tokio::io::empty(), &cancellation)
+                            .await
+                            .map(|_| ()),
                         "signin" => client
                             .sign_in_with_cancellation("fixture", &cancellation)
                             .await
