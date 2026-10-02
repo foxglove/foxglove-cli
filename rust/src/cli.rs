@@ -963,20 +963,24 @@ enum EventsCommand {
 pub(crate) struct EventAddArgs {
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
-    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
+    pub(crate) device_id: String,
     #[arg(
         long,
-        help = "End of event (inclusive), RFC 3339",
+        help = "End of event (inclusive), RFC 3339 (required)",
         allow_hyphen_values = true
     )]
-    pub(crate) end: Option<String>,
+    pub(crate) end: String,
     #[arg(long, help = "Associated event type ID", allow_hyphen_values = true)]
     pub(crate) event_type_id: Option<String>,
     #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) metadata: Vec<String>,
-    #[arg(long, help = "Start of event, RFC 3339", allow_hyphen_values = true)]
-    pub(crate) start: Option<String>,
+    #[arg(
+        long,
+        help = "Start of event, RFC 3339 (required)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: String,
 }
 
 #[derive(Debug, Args)]
@@ -1012,7 +1016,12 @@ pub(crate) struct EventListArgs {
     pub(crate) query_field: Vec<String>,
     #[arg(long, help = "Sort column", allow_hyphen_values = true)]
     pub(crate) sort_by: Option<String>,
-    #[arg(long, help = "Sort order (default: asc)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by"
+    )]
     pub(crate) sort_order: Option<String>,
     #[arg(
         long,

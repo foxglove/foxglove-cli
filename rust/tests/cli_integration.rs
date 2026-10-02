@@ -186,7 +186,6 @@ fn repeated_event_query_fields_reach_the_api() {
             ("device.name", "Robot A"),
             ("limit", "3"),
             ("offset", "1"),
-            ("sortOrder", "asc"),
         ];
         expected.extend(fields.iter().map(|value| ("queryFields", *value)));
         expected.sort_unstable();
@@ -230,6 +229,48 @@ fn export_episode_id_reaches_the_api_and_downloads_mcap() {
     assert_eq!(
         json_body(&requests[0]),
         serde_json::json!({"episodeId": "ep_one", "outputFormat": "mcap", "topics": []})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_sort_order_is_sent_with_its_sort_field() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/events", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "events",
+        "list",
+        "--sort-by",
+        "start",
+        "--sort-order",
+        "desc",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "50"), ("sortBy", "start"), ("sortOrder", "desc")])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn events_without_properties_render_an_empty_cell() {
+    const EVENTS: &str = r#"[{"id":"evt_one","device":{"id":"dev_one","name":"robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z","updatedAt":"2024-01-02T03:04:08Z"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/events", EVENTS)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["events", "list", "--format", "csv"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Device ID,Device Name,Start,End,Event Type ID,Created At,Updated At,Metadata,Properties\n\
+         evt_one,dev_one,robot,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,2024-01-02T03:04:07Z,2024-01-02T03:04:08Z,{},\n"
     );
 }
 
