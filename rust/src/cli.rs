@@ -21,6 +21,7 @@ use crate::{
 const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
+const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -758,7 +759,7 @@ pub(crate) struct DatasetEpisodeListArgs {
 #[derive(Debug, Subcommand)]
 enum DevicesCommand {
     #[command(about = "Add a device for your organization")]
-    Add(DeviceWriteArgs),
+    Add(DeviceAddArgs),
     #[command(about = "Edit a device")]
     Edit(DeviceEditArgs),
     #[command(about = "List devices registered to your organization")]
@@ -766,19 +767,33 @@ enum DevicesCommand {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct DeviceWriteArgs {
+pub(crate) struct DeviceAddArgs {
+    #[arg(
+        long,
+        help = "Name of the device (required)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) name: String,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, short = 'p', help = DEVICE_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceUpdateArgs {
     #[arg(long, help = "Name of the device", allow_hyphen_values = true)]
     pub(crate) name: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, short = 'p', help = "Custom property colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    #[arg(long, short = 'p', help = DEVICE_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct DeviceEditArgs {
     #[command(flatten)]
-    pub(crate) update: DeviceWriteArgs,
+    pub(crate) update: DeviceUpdateArgs,
     #[arg(value_name = "DEVICE_ID")]
     pub(crate) id: String,
 }

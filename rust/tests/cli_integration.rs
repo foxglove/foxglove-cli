@@ -2804,6 +2804,166 @@ fn command_arguments_are_validated_before_sending_a_request() {
     }
 }
 
+const DEVICE_PROPERTIES: &str = r#"[{"id":"cp_note","key":"note","label":"Note","resourceType":"device","valueType":"multiline-string","hasAssociatedData":false},{"id":"cp_tags","key":"tags","label":"Tags","resourceType":"device","valueType":"multi-enum","enumValues":["red","blue"],"hasAssociatedData":false},{"id":"cp_mode","key":"mode","label":"Mode","resourceType":"device","valueType":"enum","enumValues":["auto"],"hasAssociatedData":false}]"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn device_properties_are_looked_up_for_devices_and_sent_by_type() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", DEVICE_PROPERTIES),
+        Reply::json("POST", "/v1/devices", r#"{"id":"dev_new","name":"robot"}"#),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "add",
+            "--name",
+            "robot",
+            "-p",
+            "note:line one\nline two",
+            "-p",
+            "tags:red",
+            "-p",
+            "tags:blue",
+            "-p",
+            "tags:red",
+            "-p",
+            "mode:auto",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "device")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({
+            "name": "robot",
+            "properties": {"note": "line one\nline two", "tags": ["red", "blue"], "mode": "auto"},
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device created: dev_new\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn editing_a_device_sends_only_the_fields_given() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec!["-p", "mode:auto"],
+            serde_json::json!({"properties": {"mode": "auto"}}),
+        ),
+        (
+            vec!["--name", "renamed"],
+            serde_json::json!({"name": "renamed"}),
+        ),
+    ] {
+        let mut replies = Vec::new();
+        if flags[0] == "-p" {
+            replies.push(Reply::json(
+                "GET",
+                "/v1/custom-properties",
+                DEVICE_PROPERTIES,
+            ));
+        }
+        replies.push(Reply::json(
+            "PATCH",
+            "/v1/devices/dev_one",
+            r#"{"id":"dev_one","name":"robot"}"#,
+        ));
+        let server = Server::new(replies);
+        let mut args = vec!["devices", "edit", "dev_one"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(
+            json_body(server.finish().last().unwrap()),
+            expected,
+            "{flags:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn device_multi_enum_values_must_be_allowed() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/custom-properties",
+        DEVICE_PROPERTIES,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "edit",
+            "dev_one",
+            "-p",
+            "tags:red",
+            "-p",
+            "tags:green",
+        ],
+    );
+    assert_eq!(server.finish().len(), 1);
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to edit device: invalid enum value: green\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn devices_without_properties_render_an_empty_cell() {
+    const DEVICES: &str = r#"[{"id":"dev_one","name":"robot","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/devices", DEVICES)]);
+    let output = run(&workspace, &server, &["devices", "list", "--format", "csv"]);
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Name,Custom Properties,Created At,Updated At,Project ID\n\
+         dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one\n"
+    );
+}
+
+#[test]
+fn device_names_cannot_be_empty() {
+    let workspace = Workspace::new();
+    for args in [
+        vec!["devices", "add", "--name", "", "-p", "mode:auto"],
+        vec![
+            "devices",
+            "edit",
+            "dev_one",
+            "--name",
+            " ",
+            "-p",
+            "mode:auto",
+        ],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "--name cannot be empty\n",
+            "{args:?}"
+        );
+    }
+}
+
 #[test]
 #[ignore = "requires loopback sockets"]
 fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
