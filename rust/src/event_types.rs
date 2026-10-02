@@ -1,22 +1,25 @@
 //! Event type commands.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use std::collections::HashMap;
 
 use crate::output::Format;
-use crate::records::{compact_json, fetch_list, null_to_default, Record};
+use crate::records::{format_output, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct EventTypeProperty {
-    key: String,
-    label: String,
+struct EventTypeCustomProperty {
+    id: String,
     required: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    values: Vec<String>,
-    #[serde(rename = "valueType")]
-    value_type: String,
+    #[serde(skip)]
+    key: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CustomPropertyDefinition {
+    id: String,
+    key: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -28,8 +31,9 @@ struct EventType {
     created_at: String,
     id: String,
     name: String,
-    #[serde(default)]
-    properties: Option<Vec<EventTypeProperty>>,
+    #[serde(rename = "customProperties")]
+    #[serde(default, deserialize_with = "null_to_default")]
+    custom_properties: Vec<EventTypeCustomProperty>,
     #[serde(rename = "updatedAt")]
     updated_at: String,
 }
@@ -40,7 +44,7 @@ impl Record for EventType {
             "ID",
             "Name",
             "Color",
-            "Properties",
+            "Custom Properties",
             "Created At",
             "Updated At",
         ]
@@ -51,7 +55,18 @@ impl Record for EventType {
             self.id.clone(),
             self.name.clone(),
             self.color_name.clone(),
-            compact_json(&serde_json::to_value(&self.properties).unwrap_or(Value::Null)),
+            self.custom_properties
+                .iter()
+                .map(|property| {
+                    let name = property.key.as_deref().unwrap_or(&property.id);
+                    if property.required {
+                        format!("{name} (required)")
+                    } else {
+                        name.to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
             self.created_at.clone(),
             self.updated_at.clone(),
         ]
@@ -59,15 +74,50 @@ impl Record for EventType {
 }
 
 pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
-    fetch_list::<EventType, _>(
-        runtime,
-        format,
-        "Failed to list event types",
-        "/v1/event-types",
-        &(),
-        None,
-    )
-    .await
+    let mut event_types = match runtime
+        .client
+        .get::<_, Vec<EventType>>("/v1/event-types", &())
+        .await
+    {
+        Ok(event_types) => event_types,
+        Err(error) => return Outcome::failure(format!("Failed to list event types: {error}\n")),
+    };
+    let mut lookup_error = None;
+    if format != Format::Json
+        && event_types
+            .iter()
+            .any(|event_type| !event_type.custom_properties.is_empty())
+    {
+        match runtime
+            .client
+            .get::<_, Vec<CustomPropertyDefinition>>(
+                "/v1/custom-properties",
+                &[("resourceType", "event")],
+            )
+            .await
+        {
+            Ok(definitions) => {
+                let keys = definitions
+                    .into_iter()
+                    .map(|definition| (definition.id, definition.key))
+                    .collect::<HashMap<_, _>>();
+                for property in event_types
+                    .iter_mut()
+                    .flat_map(|event_type| &mut event_type.custom_properties)
+                {
+                    property.key = keys.get(&property.id).cloned();
+                }
+            }
+            Err(error) => lookup_error = Some(error),
+        }
+    }
+    let mut outcome = format_output(&event_types, format);
+    if let Some(error) = lookup_error {
+        outcome.stderr.extend_from_slice(
+            format!("Showing custom property IDs; failed to load their keys: {error}\n").as_bytes(),
+        );
+    }
+    outcome
 }
 
 #[cfg(test)]
@@ -77,7 +127,10 @@ mod tests {
     #[test]
     fn missing_and_null_fields_render_explicit_defaults() {
         let original = serde_json::json!({"id":"evtt_fixture","name":"Fixture","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"});
-        for (field, expected) in [("colorName", serde_json::json!(""))] {
+        for (field, expected) in [
+            ("colorName", serde_json::json!("")),
+            ("customProperties", serde_json::json!([])),
+        ] {
             let mut with_null = original.clone();
             with_null[field] = serde_json::Value::Null;
             for response in [original.clone(), with_null] {

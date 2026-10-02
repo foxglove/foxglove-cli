@@ -1760,6 +1760,62 @@ fn fractional_timestamp_query_parameters_are_preserved() {
     }
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_types_are_listed_with_their_custom_properties() {
+    const EVENT_TYPES: &str = r#"[{"id":"evtt_one","name":"Stop","colorName":"red","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","customProperties":[{"id":"cp_one","required":true},{"id":"cp_two","required":false}]}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+        Reply::json(
+            "GET",
+            "/v1/custom-properties",
+            r#"[{"id":"cp_one","key":"stop_reason"},{"id":"cp_two","key":"operator"}]"#,
+        ),
+        Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+        Reply {
+            status: 403,
+            ..Reply::json("GET", "/v1/custom-properties", r#"{"error":"Forbidden"}"#)
+        },
+        Reply::json("GET", "/v1/event-types", EVENT_TYPES),
+    ]);
+    let list_csv = |properties: &str| {
+        let output = run(
+            &workspace,
+            &server,
+            &["event-types", "list", "--format", "csv"],
+        );
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            format!(
+                "ID,Name,Color,Custom Properties,Created At,Updated At\n\
+                 evtt_one,Stop,red,\"{properties}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
+            )
+        );
+        output
+    };
+    list_csv("stop_reason (required), operator");
+    let output = list_csv("cp_one (required), cp_two");
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .starts_with("Showing custom property IDs; failed to load their keys: "));
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "list", "--format", "json"],
+    );
+    assert_success(&output);
+    let event_types: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        event_types["data"][0]["customProperties"],
+        serde_json::json!([{"id": "cp_one", "required": true}, {"id": "cp_two", "required": false}])
+    );
+    assert_eq!(
+        query_pairs(&server.finish()[1]),
+        expected_pairs(&[("resourceType", "event")])
+    );
+}
+
 fn json_body(request: &str) -> serde_json::Value {
     serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }
