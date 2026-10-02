@@ -5,6 +5,7 @@ use std::io::Write;
 use serde::{Deserialize, Serialize};
 
 use crate::cli::{AttachmentDownloadArgs, AttachmentListArgs};
+use crate::export::BINARY_OUTPUT_TERMINAL_ERROR;
 use crate::output::Format;
 use crate::records::{fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT};
 use crate::runtime::Runtime;
@@ -102,7 +103,11 @@ pub(crate) async fn download_attachment(
     runtime: &Runtime,
     args: &AttachmentDownloadArgs,
     stdout_writer: &mut dyn Write,
+    stdout_is_terminal: bool,
 ) -> Outcome {
+    if stdout_is_terminal {
+        return Outcome::failure(format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n"));
+    }
     let result = async {
         let cancellation = crate::api::ctrl_c_cancellation_token();
         let mut response = runtime
@@ -124,5 +129,36 @@ pub(crate) async fn download_attachment(
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Failed to fetch attachment: {error}\n")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::{download_attachment, BINARY_OUTPUT_TERMINAL_ERROR};
+    use crate::cli::AttachmentDownloadArgs;
+
+    #[tokio::test]
+    async fn downloads_refuse_a_terminal_before_requesting() {
+        let directory = std::env::temp_dir().join(format!(
+            "foxglove-rust-attachments-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let config = directory.join(".foxgloverc");
+        fs::write(&config, "base_url: http://127.0.0.1:1\n").unwrap();
+        let runtime = crate::runtime::load(Some(&config), None).unwrap();
+        fs::remove_dir_all(&directory).unwrap();
+        let args = AttachmentDownloadArgs {
+            attachment_id: "att_1".to_owned(),
+        };
+
+        let outcome = download_attachment(&runtime, &args, &mut Vec::new(), true).await;
+        assert_eq!(outcome.exit_code, 1);
+        assert_eq!(
+            outcome.stderr,
+            format!("{BINARY_OUTPUT_TERMINAL_ERROR}\n").as_bytes()
+        );
     }
 }

@@ -19,7 +19,7 @@ use crate::runtime::Runtime;
 use crate::Outcome;
 use tokio::io::{AsyncWriteExt, DuplexStream};
 
-const BINARY_OUTPUT_TERMINAL_ERROR: &str =
+pub(crate) const BINARY_OUTPUT_TERMINAL_ERROR: &str =
     "Binary output may screw up your terminal. Please redirect to a pipe or file.";
 pub(crate) const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
