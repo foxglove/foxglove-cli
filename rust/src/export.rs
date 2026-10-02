@@ -475,6 +475,8 @@ fn reindex_mcap(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
     Ok((complete, info))
 }
 
+/// The stream server drops the connection on failure, so a response that ended
+/// cleanly holds the whole stream.
 fn reindex_bag(path: &Path, ended_cleanly: bool) -> Result<(bool, ExportInfo), FormatError> {
     let recovered = path.with_extension("reindexed");
     let mut input = File::open(path)?;
@@ -691,6 +693,7 @@ fn merge_bag_partials(partials: &[PartialExport], output: &Path) -> Result<(), F
         sink.scan_through = scan_through(index, partials);
         sink.connections.clear();
         let mut input = File::open(&partial.path)?;
+        // Each partial was rewritten as an indexed bag, so `ended_cleanly` has no effect.
         let _ = crate::format::read_rosbag_recover(&mut input, &mut sink, false)?;
     }
     sink.writer.finish()

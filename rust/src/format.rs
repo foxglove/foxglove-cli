@@ -1116,12 +1116,12 @@ pub fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
 /// by complete chunks, post-chunk connections, and chunk-info records. This
 /// prevents a record-boundary truncation from being mistaken for a finished
 /// indexed download. A streamed bag is unindexed and has no end marker, so it is
-/// complete only when `stream_ended` reports that the input holds the whole
-/// stream and its records end at a boundary.
+/// complete only when `ended_cleanly` reports that the input holds the whole
+/// stream and no chunk is missing its index data records.
 pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
     reader: &mut R,
     sink: &mut S,
-    stream_ended: bool,
+    ended_cleanly: bool,
 ) -> Result<bool, Error> {
     let mut magic = [0_u8; ROSBAG_MAGIC.len()];
     reader.read_exact(&mut magic)?;
@@ -1140,14 +1140,19 @@ pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
     read_rosbag_records_recover(
         reader,
         sink,
-        RosbagRecoveryState::new(indexed, stream_ended, declared_connections, declared_chunks),
+        RosbagRecoveryState::new(
+            indexed,
+            ended_cleanly,
+            declared_connections,
+            declared_chunks,
+        ),
     )
 }
 
 #[derive(Debug)]
 struct RosbagRecoveryState {
     indexed: bool,
-    stream_ended: bool,
+    ended_cleanly: bool,
     declared_connections: u32,
     declared_chunks: u32,
     chunks: u32,
@@ -1160,13 +1165,13 @@ struct RosbagRecoveryState {
 impl RosbagRecoveryState {
     const fn new(
         indexed: bool,
-        stream_ended: bool,
+        ended_cleanly: bool,
         declared_connections: u32,
         declared_chunks: u32,
     ) -> Self {
         Self {
             indexed,
-            stream_ended,
+            ended_cleanly,
             declared_connections,
             declared_chunks,
             chunks: 0,
@@ -1179,7 +1184,7 @@ impl RosbagRecoveryState {
 
     fn complete(&self) -> bool {
         if !self.indexed {
-            return self.stream_ended && self.pending_indexes.is_empty();
+            return self.ended_cleanly && self.pending_indexes.is_empty();
         }
         self.chunks == self.declared_chunks
             && self.post_chunk_connections == self.declared_connections
@@ -1745,7 +1750,7 @@ mod tests {
     }
 
     #[test]
-    fn recovers_streamed_unindexed_rosbags_and_completes_only_when_the_stream_ended() {
+    fn recovers_streamed_unindexed_rosbags_and_completes_only_when_the_stream_ended_cleanly() {
         let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
         writer.connection(rosbag_connection()).expect("connection");
         for time in 0..3 {
@@ -1770,10 +1775,10 @@ mod tests {
         write_bag_header(&mut cursor, 0, 0, 0).expect("rewrite unindexed header");
         let streamed = cursor.into_inner();
 
-        for (stream_ended, complete) in [(true, true), (false, false)] {
+        for (ended_cleanly, complete) in [(true, true), (false, false)] {
             let mut sink = CollectBagSink::default();
             assert_eq!(
-                read_rosbag_recover(&mut Cursor::new(&streamed), &mut sink, stream_ended)
+                read_rosbag_recover(&mut Cursor::new(&streamed), &mut sink, ended_cleanly)
                     .expect("recover"),
                 complete
             );
@@ -1788,6 +1793,20 @@ mod tests {
         )
         .expect("recover"));
         assert_eq!(sink.messages.len(), 1);
+
+        let second_chunk_end = records
+            .iter()
+            .filter_map(|(op, end)| (*op == 0x05).then_some(*end))
+            .nth(1)
+            .expect("second chunk");
+        let mut sink = CollectBagSink::default();
+        assert!(!read_rosbag_recover(
+            &mut Cursor::new(&streamed[..second_chunk_end]),
+            &mut sink,
+            true
+        )
+        .expect("recover"));
+        assert_eq!(sink.messages.len(), 2);
     }
 
     fn rosbag_connection() -> RosbagConnection {
