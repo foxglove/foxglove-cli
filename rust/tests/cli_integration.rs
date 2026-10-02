@@ -3009,6 +3009,71 @@ fn project_required_creation_reports_debug_scope() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn debug_logs_requests_and_redacts_signed_urls() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/extensions", "[]")]);
+    let list = format!("[DEBUG] GET {}/v1/extensions -> 200 OK (", server.url);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "extensions",
+        "list",
+        "--format",
+        "json",
+        "--debug",
+    ]))
+    .finish();
+    assert_success(&output);
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.starts_with(&list), "{stderr}");
+
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/data/stream",
+            r#"{"link":"{BASE_URL}/download?X-Amz-Signature=fixture-signature"}"#,
+        ),
+        Reply {
+            body: recording(&[]),
+            ..Reply::json("GET", "/download", "")
+        },
+    ]);
+    let download = format!("[DEBUG] GET {}/download?<redacted> -> 200 OK (", server.url);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["--debug", "export", "--recording-id", "rec"])
+            .args(["--output-file", "output.mcap"]),
+    )
+    .finish();
+    assert_success(&output);
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(&download), "{stderr}");
+
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/data/stream",
+        r#"{"link":"http://127.0.0.1:1/download?X-Amz-Signature=fixture-signature"}"#,
+    )]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .args(["--debug", "export", "--recording-id", "rec"])
+            .args(["--output-file", "output.mcap"]),
+    )
+    .finish();
+    assert!(!output.status.success());
+    server.finish();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[DEBUG] GET http://127.0.0.1:1/download?<redacted> -> failed ("),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("fixture-signature"), "{stderr}");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn upload_reports_the_request_id() {
     let workspace = Workspace::new();
     let data = recording(&[message(1, 1, vec![1])]);

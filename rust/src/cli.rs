@@ -87,7 +87,7 @@ struct Cli {
     #[arg(long, global = true, help = "Config file", value_hint = ValueHint::FilePath)]
     config: Option<PathBuf>,
     #[arg(
-        long, global = true, help = "Enable debug logging",
+        long, global = true, help = "Print debug diagnostics, including HTTP requests, to stderr",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -1443,7 +1443,14 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
             configure_api_key(&args, config.as_deref(), stdin, writer)
         }
         CliCommand::Auth(AuthCommand::Login(args)) => {
-            auth::login(&args, config.as_deref(), client_id.as_deref(), writer).await
+            auth::login(
+                &args,
+                config.as_deref(),
+                client_id.as_deref(),
+                debug,
+                writer,
+            )
+            .await
         }
         CliCommand::Completion(shell) => {
             let (shell, no_descriptions) = match shell {
@@ -1520,7 +1527,7 @@ async fn dispatch_api_command(
     debug: bool,
     writer: &mut dyn Write,
 ) -> Outcome {
-    let runtime = match runtime::load(config_path, client_id) {
+    let runtime = match runtime::load(config_path, client_id, debug) {
         Ok(runtime) => runtime,
         Err(error) => return Outcome::failure(error),
     };

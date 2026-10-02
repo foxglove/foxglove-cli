@@ -73,6 +73,7 @@ pub(crate) async fn login(
     args: &LoginArgs,
     config_path: Option<&std::path::Path>,
     client_id: Option<&str>,
+    debug: bool,
     prompt_writer: &mut dyn Write,
 ) -> Outcome {
     let base_url = args
@@ -86,7 +87,7 @@ pub(crate) async fn login(
         "",
         runtime::user_agent(),
     ) {
-        Ok(client) => client,
+        Ok(client) => client.with_debug(debug),
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
 
