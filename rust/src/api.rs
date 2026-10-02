@@ -152,6 +152,9 @@ impl fmt::Display for ApiError {
             Self::NotFound { message, .. } if message.is_empty() => {
                 formatter.write_str("not found")
             }
+            Self::Response { status, message } if message.is_empty() => {
+                write!(formatter, "unexpected status {status}")
+            }
             Self::ForbiddenWithMessage(message)
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
@@ -1648,6 +1651,13 @@ mod tests {
         let bare = api_error_from_response(StatusCode::FORBIDDEN, "");
         assert!(matches!(bare, ApiError::Forbidden));
         assert_eq!(bare.to_string(), "forbidden");
+    }
+
+    #[test]
+    fn errors_without_an_api_message_show_the_status() {
+        let error =
+            api_error_from_response(StatusCode::BAD_GATEWAY, r#"{"message":"Bad Gateway"}"#);
+        assert_eq!(error.to_string(), "unexpected status 502");
     }
 
     #[test]
