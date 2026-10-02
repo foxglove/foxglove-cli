@@ -270,15 +270,16 @@ async fn resumable_export_inner(
         }
         let reindex_path = path.clone();
         let reindex_format = request.output_format.clone();
-        let (complete, info) =
-            tokio::task::spawn_blocking(move || reindex_partial(&reindex_path, &reindex_format))
-                .await
-                .map_err(|error| {
-                    api::ApiError::Conversion(format!("failed to join reindex task: {error}"))
-                })?
-                .map_err(|error| {
-                    api::ApiError::Conversion(format!("failed to reindex partial export: {error}"))
-                })?;
+        let (complete, info) = tokio::task::spawn_blocking(move || {
+            reindex_partial(&reindex_path, &reindex_format, ended_cleanly)
+        })
+        .await
+        .map_err(|error| {
+            api::ApiError::Conversion(format!("failed to join reindex task: {error}"))
+        })?
+        .map_err(|error| {
+            api::ApiError::Conversion(format!("failed to reindex partial export: {error}"))
+        })?;
         if cancellation.is_cancelled() {
             return Err(api::ApiError::Cancelled);
         }
@@ -439,10 +440,14 @@ fn ends_with_mcap_magic(path: &Path) -> io::Result<bool> {
     Ok(tail == MCAP_MAGIC)
 }
 
-fn reindex_partial(path: &Path, format: &str) -> Result<(bool, ExportInfo), FormatError> {
+fn reindex_partial(
+    path: &Path,
+    format: &str,
+    ended_cleanly: bool,
+) -> Result<(bool, ExportInfo), FormatError> {
     match format {
         "mcap" => reindex_mcap(path),
-        "bag1" => reindex_bag(path),
+        "bag1" => reindex_bag(path, ended_cleanly),
         other => Err(FormatError::Invalid(format!(
             "unrecognized export format: {other}"
         ))),
@@ -470,7 +475,7 @@ fn reindex_mcap(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
     Ok((complete, info))
 }
 
-fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
+fn reindex_bag(path: &Path, ended_cleanly: bool) -> Result<(bool, ExportInfo), FormatError> {
     let recovered = path.with_extension("reindexed");
     let mut input = File::open(path)?;
     let output = create_export_file(&recovered)?;
@@ -479,7 +484,7 @@ fn reindex_bag(path: &Path) -> Result<(bool, ExportInfo), FormatError> {
         info: ExportInfo::default(),
         connections: HashSet::new(),
     };
-    let complete = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
+    let complete = crate::format::read_rosbag_recover(&mut input, &mut sink, ended_cleanly)?;
     sink.writer.finish()?;
     let info = sink.info;
     drop(sink);
@@ -686,7 +691,7 @@ fn merge_bag_partials(partials: &[PartialExport], output: &Path) -> Result<(), F
         sink.scan_through = scan_through(index, partials);
         sink.connections.clear();
         let mut input = File::open(&partial.path)?;
-        let _ = crate::format::read_rosbag_recover(&mut input, &mut sink)?;
+        let _ = crate::format::read_rosbag_recover(&mut input, &mut sink, false)?;
     }
     sink.writer.finish()
 }
@@ -1185,7 +1190,7 @@ mod tests {
         fs::set_permissions(&partial, fs::Permissions::from_mode(0o644))
             .expect("make regression observable");
 
-        reindex_bag(&partial).expect("reindex bag");
+        reindex_bag(&partial, true).expect("reindex bag");
         assert_eq!(
             fs::metadata(&partial)
                 .expect("reindexed metadata")
