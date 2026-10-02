@@ -194,16 +194,14 @@ pub struct StreamRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub recording_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
-    pub key: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub import_id: String,
+    pub recording_key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub episode_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub project_id: String,
-    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub device_id: String,
-    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub device_name: String,
     #[serde(
         with = "time::serde::rfc3339::option",
@@ -240,19 +238,17 @@ impl StreamRequest {
     /// Returns an error when the source or output options are incomplete or
     /// contradictory.
     pub fn validate(&self) -> Result<(), String> {
-        let recording = !self.recording_id.is_empty() || !self.key.is_empty();
+        let recording = !self.recording_id.is_empty() || !self.recording_key.is_empty();
         let session = !self.session_id.is_empty() || !self.session_key.is_empty();
         let device = !self.device_id.is_empty() || !self.device_name.is_empty();
-        let import = !self.import_id.is_empty();
         let episode = !self.episode_id.is_empty();
-        if !(recording || session || device || import || episode) {
-            return Err("either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required".to_owned());
+        if !(recording || session || device || episode) {
+            return Err("either recording-id/key, session-id/session-key, episode-id, or device-id/device-name with start/end are required".to_owned());
         }
         if !self.session_key.is_empty() && self.project_id.is_empty() {
             return Err("project-id is required when using session-key".to_owned());
         }
         if device
-            && !import
             && !recording
             && !session
             && !episode
@@ -330,9 +326,9 @@ pub struct UploadRequest {
     pub project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub key: String,
-    #[serde(rename = "device.id", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub device_id: String,
-    #[serde(rename = "device.name", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub device_name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub session_id: String,
@@ -1350,14 +1346,9 @@ fn response_message(body: &str) -> String {
     #[derive(Deserialize)]
     struct ErrorResponse {
         error: Option<String>,
-        message: Option<String>,
     }
     match serde_json::from_str::<ErrorResponse>(body) {
-        Ok(response) => response
-            .error
-            .filter(|value| !value.is_empty())
-            .or(response.message.filter(|value| !value.is_empty()))
-            .unwrap_or_default(),
+        Ok(response) => response.error.unwrap_or_default(),
         Err(_) => body.to_owned(),
     }
 }
@@ -1560,6 +1551,24 @@ mod tests {
     }
 
     #[test]
+    fn stream_request_sends_recording_key_and_device_fields() {
+        let request = StreamRequest {
+            recording_key: "drive-1".into(),
+            device_id: "dev_1".into(),
+            device_name: "Robot".into(),
+            output_format: "mcap".into(),
+            topics: vec![],
+            ..StreamRequest::default()
+        };
+        let value = serde_json::to_value(request).unwrap();
+        assert_eq!(value["recordingKey"], "drive-1");
+        assert_eq!(value["deviceId"], "dev_1");
+        assert_eq!(value["deviceName"], "Robot");
+        assert!(value.get("key").is_none());
+        assert!(value.get("device.id").is_none());
+    }
+
+    #[test]
     fn stream_request_serializes_rfc3339_timestamps() {
         let request = StreamRequest {
             recording_id: "rec_1".into(),
@@ -1586,13 +1595,9 @@ mod tests {
     }
 
     #[test]
-    fn error_payload_prefers_error_then_message_then_raw_body() {
+    fn error_payload_uses_error_then_raw_body() {
         assert_eq!(response_message(r#"{"error":"bad"}"#), "bad");
-        assert_eq!(response_message(r#"{"message":"bad"}"#), "bad");
-        assert_eq!(
-            response_message(r#"{"error":"","message":"fallback"}"#),
-            "fallback"
-        );
+        assert_eq!(response_message(r#"{"message":"bad"}"#), "");
         assert_eq!(response_message("bad"), "bad");
     }
 

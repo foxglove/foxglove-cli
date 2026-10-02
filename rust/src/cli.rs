@@ -123,9 +123,7 @@ enum CliCommand {
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
-    #[command(
-        about = "Export data by recording, import, session, episode, or device and time range"
-    )]
+    #[command(about = "Export data by recording, session, episode, or device and time range")]
     Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
@@ -179,8 +177,6 @@ pub(crate) struct AttachmentListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Import ID", allow_hyphen_values = true)]
-    pub(crate) import_id: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
@@ -356,8 +352,6 @@ pub(crate) struct ExportArgs {
     pub(crate) end: Option<String>,
     #[arg(long, help = "Episode ID", allow_hyphen_values = true)]
     pub(crate) episode_id: Option<String>,
-    #[arg(long, help = "Import ID", allow_hyphen_values = true)]
-    pub(crate) import_id: Option<String>,
     #[arg(
         long, help = "Include MCAP attachments",
         action = clap::ArgAction::Set,

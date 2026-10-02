@@ -149,7 +149,7 @@ fn export_replies(body: Vec<u8>) -> Vec<Reply> {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn repeated_event_query_fields_reach_the_api() {
+fn event_query_fields_reach_the_api_as_one_value() {
     let workspace = Workspace::new();
     for fields in [
         vec!["metadata"],
@@ -179,27 +179,16 @@ fn repeated_event_query_fields_reach_the_api() {
         assert_success(&output);
         assert_eq!(output.stdout, b"{\"data\":[]}\n");
         let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        let mut expected = vec![
-            ("query", "robot & camera"),
-            ("device.name", "Robot A"),
-            ("limit", "3"),
-            ("offset", "1"),
-        ];
-        expected.extend(fields.iter().map(|value| ("queryFields", *value)));
-        expected.sort_unstable();
-        let mut actual: Vec<_> = url
-            .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect();
-        actual.sort_unstable();
+        let joined = fields.join(",");
         assert_eq!(
-            actual,
-            expected
-                .iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-                .collect::<Vec<_>>()
+            query_pairs(&requests[0]),
+            expected_pairs(&[
+                ("query", "robot & camera"),
+                ("deviceName", "Robot A"),
+                ("limit", "3"),
+                ("offset", "1"),
+                ("queryFields", &joined),
+            ])
         );
     }
 }
@@ -1105,6 +1094,29 @@ fn offset_list_requests_send_the_offset_only_when_given() {
                 "{command:?}"
             );
         }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn list_requests_send_device_filters_as_device_id_and_name() {
+    let workspace = Workspace::new();
+    let cases: &[(&str, &[&str])] = &[
+        ("/v1/data/coverage", &["coverage", "list"]),
+        ("/v1/data/pending-imports", &["pending-imports", "list"]),
+        ("/v1/recordings", &["recordings", "list"]),
+    ];
+    for &(path, command) in cases {
+        let server = Server::new(vec![Reply::json("GET", path, "[]")]);
+        let mut args = command.to_vec();
+        args.extend(["--device-id", "dev_one", "--device-name", "Robot A"]);
+        let output = Process::spawn(workspace.command(&server.url).args(args)).finish();
+        assert_success(&output);
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query.get("deviceId").map(String::as_str), Some("dev_one"));
+        assert_eq!(query.get("deviceName").map(String::as_str), Some("Robot A"));
+        assert!(!query.contains_key("device.id"), "{command:?}");
+        assert!(!query.contains_key("device.name"), "{command:?}");
     }
 }
 
@@ -2988,7 +3000,7 @@ fn command_arguments_are_validated_before_sending_a_request() {
         ),
         (
             vec!["export"],
-            "Failed to build request: either recording-id/key, session-id/session-key, import-id, episode-id, or device-id/device-name with start/end are required\n",
+            "Failed to build request: either recording-id/key, session-id/session-key, episode-id, or device-id/device-name with start/end are required\n",
         ),
         (
             vec!["export", "--recording-id", "rec", "--output-format", "mcap0"],
@@ -3502,7 +3514,7 @@ fn upload_reports_the_request_id() {
         json_body(&requests[0]),
         serde_json::json!({
             "filename": "fixture.mcap",
-            "device.id": "dev_fixture",
+            "deviceId": "dev_fixture",
         })
     );
     assert!(requests[1].ends_with(&*String::from_utf8_lossy(&data)));
