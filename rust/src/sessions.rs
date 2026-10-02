@@ -216,8 +216,6 @@ pub(crate) async fn list_session_recordings(
 struct CreateSessionRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
     key: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    project_id: String,
     device_id: String,
 }
 
@@ -249,7 +247,6 @@ pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Out
     }
     let request = CreateSessionRequest {
         key: args.key.clone().unwrap_or_default(),
-        project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id,
     };
     match runtime

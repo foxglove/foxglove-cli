@@ -731,25 +731,27 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn session_add_sends_key() {
+fn session_add_sends_key_without_a_project() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "POST",
         "/v1/sessions",
         r#"{"id":"ses_one","key":"drive-41"}"#,
     )]);
-    let output = run(
-        &workspace,
-        &server,
-        &[
-            "sessions",
-            "add",
-            "--device-id",
-            "dev_one",
-            "--key",
-            " drive-41\r",
-        ],
-    );
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .args([
+                "sessions",
+                "add",
+                "--device-id",
+                "dev_one",
+                "--key",
+                " drive-41\r",
+            ]),
+    )
+    .finish();
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),

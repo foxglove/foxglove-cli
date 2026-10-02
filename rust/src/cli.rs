@@ -1232,7 +1232,11 @@ enum SessionsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SessionAddArgs {
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
+    #[arg(
+        long,
+        help = "Device ID (required); the session is created in the device's project",
+        allow_hyphen_values = true
+    )]
     pub(crate) device_id: Option<String>,
     #[arg(
         long,
@@ -1241,8 +1245,6 @@ pub(crate) struct SessionAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) key: Option<String>,
-    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true)]
-    pub(crate) project_id: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1527,7 +1529,6 @@ fn command_project_scope(
             &args.project_id
         }
         CliCommand::Recordings(RecordingsCommand::List(args)) => &args.project_id,
-        CliCommand::Sessions(SessionsCommand::Add(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::Edit(args)) => &args.project_id,
         CliCommand::Sessions(SessionsCommand::List(args)) => &args.project_id,
         CliCommand::Sessions(
