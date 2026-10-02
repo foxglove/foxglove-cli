@@ -1115,10 +1115,13 @@ pub fn validate_rosbag<R: Read>(reader: &mut R) -> Result<(), Error> {
 /// bag is complete only after the counts declared in its bag header are matched
 /// by complete chunks, post-chunk connections, and chunk-info records. This
 /// prevents a record-boundary truncation from being mistaken for a finished
-/// indexed download.
+/// indexed download. A streamed bag is unindexed and has no end marker, so it is
+/// complete only when `stream_ended` reports that the input holds the whole
+/// stream and its records end at a boundary.
 pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
     reader: &mut R,
     sink: &mut S,
+    stream_ended: bool,
 ) -> Result<bool, Error> {
     let mut magic = [0_u8; ROSBAG_MAGIC.len()];
     reader.read_exact(&mut magic)?;
@@ -1137,13 +1140,14 @@ pub fn read_rosbag_recover<R: Read, S: RosbagSink>(
     read_rosbag_records_recover(
         reader,
         sink,
-        RosbagRecoveryState::new(indexed, declared_connections, declared_chunks),
+        RosbagRecoveryState::new(indexed, stream_ended, declared_connections, declared_chunks),
     )
 }
 
 #[derive(Debug)]
 struct RosbagRecoveryState {
     indexed: bool,
+    stream_ended: bool,
     declared_connections: u32,
     declared_chunks: u32,
     chunks: u32,
@@ -1154,9 +1158,15 @@ struct RosbagRecoveryState {
 }
 
 impl RosbagRecoveryState {
-    const fn new(indexed: bool, declared_connections: u32, declared_chunks: u32) -> Self {
+    const fn new(
+        indexed: bool,
+        stream_ended: bool,
+        declared_connections: u32,
+        declared_chunks: u32,
+    ) -> Self {
         Self {
             indexed,
+            stream_ended,
             declared_connections,
             declared_chunks,
             chunks: 0,
@@ -1168,8 +1178,10 @@ impl RosbagRecoveryState {
     }
 
     fn complete(&self) -> bool {
-        self.indexed
-            && self.chunks == self.declared_chunks
+        if !self.indexed {
+            return self.stream_ended && self.pending_indexes.is_empty();
+        }
+        self.chunks == self.declared_chunks
             && self.post_chunk_connections == self.declared_connections
             && self.chunk_infos == self.declared_chunks
             && self.pending_indexes.is_empty()
@@ -1232,12 +1244,10 @@ fn read_rosbag_records_recover<R: Read, S: RosbagSink>(
                     return Ok(false);
                 }
                 state.chunks = state.chunks.saturating_add(1);
-                if state.indexed {
-                    state.pending_indexes = indexed_connections;
-                }
+                state.pending_indexes = indexed_connections;
             }
             Some(0x04) => {
-                if !state.indexed || state.in_post_chunk_index {
+                if state.in_post_chunk_index {
                     return Ok(false);
                 }
                 let connection_id = header_u32(&header, "conn")?;
@@ -1677,7 +1687,7 @@ mod tests {
             .expect("message");
         let bytes = writer.finish_into().expect("finish").into_inner();
         let mut sink = CollectBagSink::default();
-        assert!(read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert!(read_rosbag_recover(&mut Cursor::new(bytes), &mut sink, false).expect("recover"));
         assert_eq!(sink.connections.len(), 2, "chunk and index connections");
         assert_eq!(sink.messages[0].time, 1_700_000_000_123_456_789);
     }
@@ -1706,7 +1716,7 @@ mod tests {
         let mut bytes = writer.finish_into().expect("finish").into_inner();
         bytes.pop();
         let mut sink = CollectBagSink::default();
-        assert!(!read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert!(!read_rosbag_recover(&mut Cursor::new(bytes), &mut sink, true).expect("recover"));
     }
 
     #[test]
@@ -1728,9 +1738,55 @@ mod tests {
         write_bag_header(&mut cursor, 0, 1, 1).expect("rewrite unindexed header");
         let mut sink = CollectBagSink::default();
         assert!(
-            !read_rosbag_recover(&mut Cursor::new(cursor.into_inner()), &mut sink)
+            !read_rosbag_recover(&mut Cursor::new(cursor.into_inner()), &mut sink, false)
                 .expect("recover")
         );
+        assert_eq!(sink.messages.len(), 1);
+    }
+
+    #[test]
+    fn recovers_streamed_unindexed_rosbags_and_completes_only_when_the_stream_ended() {
+        let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).expect("writer");
+        writer.connection(rosbag_connection()).expect("connection");
+        for time in 0..3 {
+            writer
+                .message(&RosbagMessage {
+                    connection_id: 1,
+                    time,
+                    data: vec![0; 400 * 1024],
+                })
+                .expect("message");
+        }
+        let bytes = writer.finish_into().expect("finish").into_inner();
+        let records = rosbag_record_boundaries(&bytes);
+        let index_ends: Vec<usize> = records
+            .iter()
+            .filter_map(|(op, end)| (*op == 0x04).then_some(*end))
+            .collect();
+        let mut cursor = Cursor::new(bytes[..*index_ends.last().expect("index")].to_vec());
+        cursor
+            .seek(SeekFrom::Start(ROSBAG_MAGIC.len() as u64))
+            .expect("seek to header");
+        write_bag_header(&mut cursor, 0, 0, 0).expect("rewrite unindexed header");
+        let streamed = cursor.into_inner();
+
+        for (stream_ended, complete) in [(true, true), (false, false)] {
+            let mut sink = CollectBagSink::default();
+            assert_eq!(
+                read_rosbag_recover(&mut Cursor::new(&streamed), &mut sink, stream_ended)
+                    .expect("recover"),
+                complete
+            );
+            assert_eq!(sink.messages.len(), 3);
+        }
+
+        let mut sink = CollectBagSink::default();
+        assert!(!read_rosbag_recover(
+            &mut Cursor::new(&streamed[..index_ends[0]]),
+            &mut sink,
+            false
+        )
+        .expect("recover"));
         assert_eq!(sink.messages.len(), 1);
     }
 
@@ -1804,7 +1860,7 @@ mod tests {
         assert_eq!(records.iter().filter(|(op, _)| *op == 0x06).count(), 3);
 
         let mut sink = CollectBagSink::default();
-        assert!(read_rosbag_recover(&mut Cursor::new(bytes), &mut sink).expect("recover"));
+        assert!(read_rosbag_recover(&mut Cursor::new(bytes), &mut sink, false).expect("recover"));
         assert_eq!(sink.messages.len(), 3);
     }
 
@@ -1830,7 +1886,7 @@ mod tests {
             .expect("chunk record");
         let mut sink = CollectBagSink::default();
         assert!(
-            !read_rosbag_recover(&mut Cursor::new(&bytes[..first_chunk_end]), &mut sink)
+            !read_rosbag_recover(&mut Cursor::new(&bytes[..first_chunk_end]), &mut sink, true)
                 .expect("recover")
         );
         assert_eq!(sink.messages.len(), 1);
@@ -1840,10 +1896,12 @@ mod tests {
             .find_map(|(op, end)| (*op == 0x06).then_some(*end))
             .expect("chunk info record");
         let mut sink = CollectBagSink::default();
-        assert!(
-            !read_rosbag_recover(&mut Cursor::new(&bytes[..first_chunk_info_end]), &mut sink)
-                .expect("recover")
-        );
+        assert!(!read_rosbag_recover(
+            &mut Cursor::new(&bytes[..first_chunk_info_end]),
+            &mut sink,
+            true
+        )
+        .expect("recover"));
         assert_eq!(sink.messages.len(), 3);
     }
 
@@ -1912,8 +1970,10 @@ mod tests {
                 }
                 validate_rosbag(&mut Cursor::new(&bytes)).expect("validate large chunk");
                 let mut sink = CollectBagSink::default();
-                assert!(!read_rosbag_recover(&mut Cursor::new(&bytes), &mut sink)
-                    .expect("recover unindexed large chunk"));
+                assert!(
+                    !read_rosbag_recover(&mut Cursor::new(&bytes), &mut sink, false)
+                        .expect("recover unindexed large chunk")
+                );
                 assert_eq!(sink.messages.len(), count as usize);
                 for message in sink.messages {
                     assert_eq!(message.data, payload);
@@ -1952,10 +2012,12 @@ mod tests {
             ]);
             write_bag_record(&mut bytes, &header, &compressed).expect("chunk");
             assert!(validate_rosbag(&mut Cursor::new(&bytes)).is_err());
-            assert!(
-                !read_rosbag_recover(&mut Cursor::new(bytes), &mut CollectBagSink::default())
-                    .expect("incomplete chunk")
-            );
+            assert!(!read_rosbag_recover(
+                &mut Cursor::new(bytes),
+                &mut CollectBagSink::default(),
+                true
+            )
+            .expect("incomplete chunk"));
         }
     }
 
