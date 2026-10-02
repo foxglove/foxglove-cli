@@ -572,33 +572,74 @@ fn pending_token_reply() -> Reply {
 #[ignore = "requires loopback sockets"]
 fn login_polls_at_device_code_interval() {
     use std::time::{Duration, Instant};
-    let workspace = Workspace::new();
-    let server = Server::new(vec![
-        Reply::json(
+    for interval in [0, 1] {
+        let workspace = Workspace::new();
+        let server = Server::new(vec![
+            Reply::json(
+                "POST",
+                "/v1/auth/device-code",
+                &format!(
+                    r#"{{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":{interval}}}"#
+                ),
+            ),
+            pending_token_reply(),
+            Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#),
+            Reply::json("POST", "/v1/signin", r#"{"bearerToken":"session-token"}"#),
+        ]);
+        let started = Instant::now();
+        let output = Process::spawn(workspace.command(&server.url).args([
+            "auth",
+            "login",
+            "--base-url",
+            &server.url,
+        ]))
+        .finish();
+        assert_success(&output);
+        assert!(started.elapsed() >= Duration::from_secs(1));
+        let requests = server.finish();
+        for request in &requests[1..3] {
+            assert!(request.contains(r#""deviceCode":"dc_id""#), "{request}");
+        }
+        let config = fs::read_to_string(workspace.0.join(".foxgloverc")).unwrap();
+        assert!(config.contains("bearer_token: session-token"), "{config}");
+    }
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
+fn login_requires_device_code_interval_and_expiry() {
+    for missing_field in ["interval", "expiresIn"] {
+        let workspace = Workspace::new();
+        let mut response = serde_json::json!({
+            "deviceCode": "dc_id",
+            "userCode": "1234",
+            "verificationUriComplete": "https://example.invalid",
+            "expiresIn": 900,
+            "interval": 1,
+        });
+        response.as_object_mut().unwrap().remove(missing_field);
+        let server = Server::new(vec![Reply::json(
             "POST",
             "/v1/auth/device-code",
-            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":900,"interval":1}"#,
-        ),
-        pending_token_reply(),
-        Reply::json("POST", "/v1/auth/token", r#"{"idToken":"id-token"}"#),
-        Reply::json("POST", "/v1/signin", r#"{"bearerToken":"session-token"}"#),
-    ]);
-    let started = Instant::now();
-    let output = Process::spawn(workspace.command(&server.url).args([
-        "auth",
-        "login",
-        "--base-url",
-        &server.url,
-    ]))
-    .finish();
-    assert_success(&output);
-    assert!(started.elapsed() >= Duration::from_secs(1));
-    let requests = server.finish();
-    for request in &requests[1..3] {
-        assert!(request.contains(r#""deviceCode":"dc_id""#), "{request}");
+            &response.to_string(),
+        )]);
+        let output = Process::spawn(workspace.command(&server.url).args([
+            "auth",
+            "login",
+            "--base-url",
+            &server.url,
+        ]))
+        .finish();
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.starts_with("Login failed: failed to fetch device code:"),
+            "{stderr}"
+        );
+        assert_eq!(server.finish().len(), 1);
+        assert!(!workspace.0.join(".foxgloverc").exists());
     }
-    let config = fs::read_to_string(workspace.0.join(".foxgloverc")).unwrap();
-    assert!(config.contains("bearer_token: session-token"), "{config}");
 }
 
 #[cfg(feature = "test-support")]

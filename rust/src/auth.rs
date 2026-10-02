@@ -175,7 +175,7 @@ async fn complete_login(
     browser: Option<Child>,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
-    let interval = Duration::from_secs(device_code.interval);
+    let interval = Duration::from_secs(device_code.interval.max(1));
     let expires_in = Duration::from_secs(device_code.expires_in);
     let result = tokio::select! {
         biased;
@@ -184,6 +184,8 @@ async fn complete_login(
         // Poll it first so an expired code cannot start another request.
         () = tokio::time::sleep(expires_in) => Err(LOGIN_EXPIRED.to_owned()),
         result = async {
+            // A zero-length sleep may wait for the next timer tick. Check here
+            // so an already-expired code cannot send a token request.
             if expires_in.is_zero() {
                 return Err(LOGIN_EXPIRED.to_owned());
             }
