@@ -14,11 +14,11 @@ use crate::config::Config;
 use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
-    attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
+    attachments, auth, coverage, datasets, devices, discovery, episodes, event_types, events,
+    export, extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
 };
 
-const ROOT_COMMAND: &str = "foxglove";
+pub(crate) const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
@@ -73,6 +73,7 @@ fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> 
 #[command(
     name = ROOT_COMMAND,
     about = "Command line client for the Foxglove data platform",
+    after_help = "Find a command with `foxglove cli search <QUERY>` and list its arguments with `foxglove cli describe <COMMAND>`. Both print JSON.",
     disable_version_flag = true,
     subcommand_precedence_over_arg = true,
     args_override_self = true
@@ -107,6 +108,8 @@ enum CliCommand {
     Attachments(AttachmentsCommand),
     #[command(about = "Manage authentication", subcommand)]
     Auth(AuthCommand),
+    #[command(about = "Search and describe CLI commands", subcommand)]
+    Cli(DiscoveryCommand),
     #[command(about = "Generate a shell completion script", subcommand)]
     Completion(CompletionCommand),
     #[command(about = "Manage CLI configuration values", subcommand)]
@@ -221,6 +224,33 @@ pub(crate) struct LoginArgs {
         allow_hyphen_values = true
     )]
     pub(crate) base_url: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum DiscoveryCommand {
+    #[command(about = "Describe a command's arguments and options as JSON")]
+    Describe(DescribeArgs),
+    #[command(about = "Search all commands by intent and print the best matches as JSON")]
+    Search(SearchArgs),
+}
+
+#[derive(Debug, Args)]
+struct DescribeArgs {
+    #[arg(
+        value_name = "COMMAND",
+        help = "Command path, such as `datasets episodes add` (default: the root command)"
+    )]
+    command: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+struct SearchArgs {
+    #[arg(
+        value_name = "QUERY",
+        required = true,
+        help = "Search terms or a description of what you want to do"
+    )]
+    query: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1458,6 +1488,12 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
     };
     match command {
         CliCommand::Version => Outcome::success(format!("{}\n", runtime::version())),
+        CliCommand::Cli(DiscoveryCommand::Describe(args)) => {
+            discovery::describe(Cli::command(), &args.command)
+        }
+        CliCommand::Cli(DiscoveryCommand::Search(args)) => {
+            discovery::search(Cli::command(), &args.query.join(" "))
+        }
         CliCommand::Config(ConfigCommand::Get(args)) => run_config_get(args.key, config.as_deref()),
         CliCommand::Config(ConfigCommand::Set(args)) => run_config_set(&args, config.as_deref()),
         CliCommand::Config(ConfigCommand::Unset(args)) => {
@@ -1644,6 +1680,7 @@ async fn dispatch_api_command(
             topics::list_topics(&runtime, &args, format).await
         }
         CliCommand::Auth(AuthCommand::ConfigureApiKey(_) | AuthCommand::Login(_))
+        | CliCommand::Cli(_)
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
@@ -1738,6 +1775,11 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
             sessions::patch_session_recordings(runtime, &args, false).await
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) fn command() -> Command {
+    Cli::command()
 }
 
 fn root_help_outcome() -> Outcome {
