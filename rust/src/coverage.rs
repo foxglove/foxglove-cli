@@ -30,7 +30,7 @@ impl Record for Coverage {
 
     fn fields(&self) -> Vec<String> {
         vec![
-            self.device.id.clone(),
+            self.device_id.clone(),
             self.device.name.clone(),
             self.start.clone(),
             self.end.clone(),

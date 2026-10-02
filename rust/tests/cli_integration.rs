@@ -2756,6 +2756,29 @@ fn getting_an_episode_can_include_its_recordings() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn coverage_without_a_device_summary_shows_its_device_id() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/data/coverage",
+        r#"[{"deviceId":"dev_one","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"}]"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["coverage", "list", "--format", "csv"],
+    );
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Device ID,Device Name,Start,End,Status\n\
+         dev_one,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn an_episode_in_a_dataset_is_not_deleted() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply {
