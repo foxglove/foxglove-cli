@@ -1748,6 +1748,7 @@ fn root_help_outcome() -> Outcome {
 }
 
 fn load_config(path: Option<&std::path::Path>) -> Result<Config, Outcome> {
+    crate::config::warn_legacy_environment();
     Config::load_from_path(path).map_err(Outcome::failure)
 }
 

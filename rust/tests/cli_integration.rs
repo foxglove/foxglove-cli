@@ -99,6 +99,26 @@ fn config_set_trims_and_rejects_blank_project_id() {
     );
 }
 
+#[test]
+fn config_get_warns_on_deprecated_project_environment() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_legacy")
+            .args(["config", "get", "project-id"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "prj_legacy\n");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "warning: DEFAULT_PROJECT_ID is deprecated; set FOXGLOVE_DEFAULT_PROJECT_ID instead\n\
+         DEFAULT_PROJECT_ID is set in the environment and takes precedence over project-id in the \
+         config file\n",
+    );
+}
+
 fn message(channel_id: u16, time: u64, data: Vec<u8>) -> Message {
     Message {
         channel_id,
