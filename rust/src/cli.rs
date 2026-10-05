@@ -297,7 +297,7 @@ enum CoverageCommand {
 pub(crate) struct CoverageListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -321,7 +321,7 @@ pub(crate) struct CoverageListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true)]
     pub(crate) recording_id: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_key: Option<String>,
@@ -347,7 +347,7 @@ pub(crate) struct ExportArgs {
         allow_hyphen_values = true
     )]
     pub(crate) compression: Option<String>,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -391,7 +391,7 @@ pub(crate) struct ExportArgs {
     pub(crate) replay_lookback_seconds: Option<f64>,
     #[arg(long, help = "Replay policy", allow_hyphen_values = true)]
     pub(crate) replay_policy: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_key: Option<String>,
@@ -407,7 +407,7 @@ pub(crate) struct ExportArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct UploadArgs {
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -415,7 +415,7 @@ pub(crate) struct UploadArgs {
     pub(crate) key: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_id: Option<String>,
     #[arg(
         long,
@@ -992,7 +992,7 @@ pub(crate) struct EventAddArgs {
 pub(crate) struct EventListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -1086,7 +1086,7 @@ pub(crate) struct PendingImportListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -1175,11 +1175,7 @@ pub(crate) struct RecordingDeleteArgs {
 pub(crate) struct RecordingListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(
-        long,
-        help = "Device ID; pass an empty value for recordings without a device",
-        allow_hyphen_values = true
-    )]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -1210,11 +1206,7 @@ pub(crate) struct RecordingListArgs {
     pub(crate) path: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(
-        long,
-        help = "Session ID; pass an empty value for recordings without a session",
-        allow_hyphen_values = true
-    )]
+    #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_key: Option<String>,
@@ -1230,6 +1222,28 @@ pub(crate) struct RecordingListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long, help = "Only recordings without a device",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool,
+        conflicts_with_all = ["device_id", "device_name"]
+    )]
+    pub(crate) without_device: bool,
+    #[arg(
+        long, help = "Only recordings without a session",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool,
+        conflicts_with_all = ["session_id", "session_key"]
+    )]
+    pub(crate) without_session: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1306,7 +1320,7 @@ pub(crate) struct SessionListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) offset: Option<i64>,
-    #[arg(long, help = "Filter by device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Filter by device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Filter by device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -1344,7 +1358,7 @@ enum TopicsCommand {
 pub(crate) struct TopicListArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "Device ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true)]
     pub(crate) device_name: Option<String>,
@@ -1379,7 +1393,7 @@ pub(crate) struct TopicListArgs {
     pub(crate) recording_id: Option<String>,
     #[arg(long, help = "Recording key", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) recording_key: Option<String>,
-    #[arg(long, help = "Session ID", allow_hyphen_values = true)]
+    #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) session_key: Option<String>,

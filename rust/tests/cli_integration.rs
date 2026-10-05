@@ -1825,32 +1825,42 @@ fn list_limits_must_be_between_one_and_two_thousand() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn empty_recording_device_and_session_filters_reach_the_api() {
+fn recordings_without_a_device_or_session_send_empty_filters() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
-    let output = Process::spawn(
-        workspace
-            .command(&server.url)
-            .env("DEFAULT_PROJECT_ID", "prj_default\r")
-            .args([
-                "recordings",
-                "list",
-                "--device-id=",
-                "--session-id=",
-                "--session-key",
-                " key\r",
-            ]),
-    )
-    .finish();
-    assert_success(&output);
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+    ]);
+    for args in [
+        &["--without-device", "--session-key", " key\r"][..],
+        &["--without-session"],
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("DEFAULT_PROJECT_ID", "prj_default\r")
+                .args(["recordings", "list"])
+                .args(args),
+        )
+        .finish();
+        assert_success(&output);
+    }
+    let requests = server.finish();
     assert_eq!(
-        query_pairs(&server.finish()[0]),
+        query_pairs(&requests[0]),
         expected_pairs(&[
             ("deviceId", ""),
             ("limit", "50"),
             ("projectId", "prj_default"),
-            ("sessionId", ""),
             ("sessionKey", "key"),
+        ])
+    );
+    assert_eq!(
+        query_pairs(&requests[1]),
+        expected_pairs(&[
+            ("limit", "50"),
+            ("projectId", "prj_default"),
+            ("sessionId", ""),
         ])
     );
 }
@@ -1881,6 +1891,8 @@ fn blank_filters_and_keys_are_rejected() {
     let workspace = Workspace::new();
     for args in [
         &["episodes", "list", "--recording-id="][..],
+        &["recordings", "list", "--device-id="],
+        &["sessions", "list", "--device-id", " "],
         &["events", "list", "--sort-by", "", "--sort-order", "desc"],
         &["upload", "--key", "", "data.mcap"],
         &["upload", "--session-key", " \r", "data.mcap"],

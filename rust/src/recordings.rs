@@ -108,7 +108,7 @@ impl Record for Recording {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RecordingListQuery {
-    // An empty device or session ID filters to recordings without one.
+    // The API reads an empty device or session ID as recordings without one.
     #[serde(skip_serializing_if = "Option::is_none")]
     device_id: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -161,7 +161,11 @@ pub(crate) async fn list_recordings(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query = RecordingListQuery {
-        device_id: args.device_id.clone(),
+        device_id: if args.without_device {
+            Some(String::new())
+        } else {
+            args.device_id.clone()
+        },
         device_name: args.device_name.clone().unwrap_or_default(),
         edge_site_id: args.edge_site_id.clone().unwrap_or_default(),
         end,
@@ -170,7 +174,11 @@ pub(crate) async fn list_recordings(
         offset,
         path: args.path.clone().unwrap_or_default(),
         project_id,
-        session_id: args.session_id.clone(),
+        session_id: if args.without_session {
+            Some(String::new())
+        } else {
+            args.session_id.clone()
+        },
         session_key,
         site_id: args.site_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
