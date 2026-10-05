@@ -7,10 +7,14 @@ description: Update user-requested Foxglove Rust CLI commands or features agains
 
 Sync only the commands, endpoints, or features the user requests. A spec revision, revision range, or API PR supplies source evidence; it does not authorize syncing every change it contains. If the requested scope cannot be inferred from the conversation, clarify it before implementation. Broader API coverage requires an explicit request.
 
+## Public repository content
+
+This repository is public. Keep PR descriptions, comments, commit messages, documentation, code, and test fixtures suitable for public readers. Explain public API and CLI behavior without disclosing internal implementation details, private repository paths, revisions, PRs, issues, or links. Use only publicly accessible references in repository content. Never mention open security issues in this repository, including their existence or details.
+
 ## Establish scope and source
 
 - Target `foxglove/foxglove-cli`; read its development instructions and Git status.
-- Source: `foxglove/app`, [`packages/api/src/specs/v1.yaml`](https://github.com/foxglove/app/blob/main/packages/api/src/specs/v1.yaml). Use a supplied revision, or resolve current remote `main` to a full SHA and state that assumption. Retrieve committed content through authenticated GitHub access or `git show`; local uncommitted content is not upstream. Report inaccessible source rather than substituting docs.
+- Source: the public v1 OpenAPI contract. When a source repository is supplied in the conversation, use a supplied revision, or resolve its current remote `main` to a full SHA and state that assumption in the private conversation. Retrieve committed content through authenticated GitHub access or `git show`; local uncommitted content is not upstream. Report inaccessible source rather than substituting docs.
 - Use a supplied base when available. Otherwise compare only the requested CLI behavior with the pinned spec; no baseline is needed for a scoped update. A prior partial sync is not a repository-wide baseline.
 - Honor the requested delivery mode: analysis, local changes, or PR. A request to analyze does not authorize implementation; a request to create a PR authorizes its commit, push, and creation.
 
@@ -37,10 +41,7 @@ Whenever drafting, creating, or updating a PR description, fetch and follow the 
 - **Description:** Explain the problem, resulting behavior, and relevant compatibility impact. Include validation performed and any blockers.
 - **Before/After table:** Always include concrete invocations demonstrating each changed command, with relevant flags and expected behavior. For new commands, state that they were previously unavailable. Distinguish illustrative expected output from observed test results.
 
-Include pinned spec permalinks and concise provenance in Description:
-`API-Sync-Base: <full SHA or unknown>`,
-`API-Sync-Head: <full SHA>`,
-`API-Sync-Scope: <requested operations/features actually covered>`.
+Include pinned spec permalinks in Description when useful to explain the change.
 Record deferred requested work and publication uncertainty when relevant. Keep the description proportional to the change. If the template cannot be fetched, disclose that limitation and use the structure above.
 
 ## Deliver
