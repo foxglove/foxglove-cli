@@ -126,7 +126,7 @@ pub fn validate_import<R: Read + Seek>(reader: &mut R) -> Result<(), Error> {
     let mut magic = [0_u8; 8];
     reader
         .read_exact(&mut magic)
-        .map_err(|error| Error::Invalid(format!("failed to read magic bytes: {error}")))?;
+        .map_err(|error| magic_read_error(&error))?;
     if magic == MCAP_MAGIC {
         reader.seek(SeekFrom::End(-8))?;
         reader.read_exact(&mut magic)?;
@@ -140,11 +140,19 @@ pub fn validate_import<R: Read + Seek>(reader: &mut R) -> Result<(), Error> {
     let mut bag_magic = [0_u8; ROSBAG_MAGIC.len()];
     reader
         .read_exact(&mut bag_magic)
-        .map_err(|error| Error::Invalid(format!("failed to read magic bytes: {error}")))?;
+        .map_err(|error| magic_read_error(&error))?;
     if bag_magic == ROSBAG_MAGIC {
         Ok(())
     } else {
         Err(Error::InvalidMagic)
+    }
+}
+
+fn magic_read_error(error: &io::Error) -> Error {
+    if error.kind() == io::ErrorKind::UnexpectedEof {
+        Error::Invalid("file is too short to be an MCAP or ROS 1 bag file".into())
+    } else {
+        Error::Invalid(format!("failed to read magic bytes: {error}"))
     }
 }
 

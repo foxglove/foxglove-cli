@@ -216,10 +216,10 @@ pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransf
             &serde_json::json!({}),
         )
         .await;
-    transfer_outcome(result)
+    transfer_outcome(&args.id, result)
 }
 
-fn transfer_outcome(result: Result<TransferResponse, ApiError>) -> Outcome {
+fn transfer_outcome(id: &str, result: Result<TransferResponse, ApiError>) -> Outcome {
     match result {
         Ok(response) => {
             // This command initiates an asynchronous request: HTTP success determines
@@ -239,6 +239,9 @@ fn transfer_outcome(result: Result<TransferResponse, ApiError>) -> Outcome {
                 ..Outcome::default()
             }
         }
+        Err(error) if error.is_not_found_for("recording") => {
+            Outcome::failure(format!("Recording not found: {id}\n"))
+        }
         Err(error) => Outcome::failure(format!("Failed to transfer edge recording: {error}\n")),
     }
 }
@@ -257,10 +260,13 @@ mod tests {
             ("pending", "Transfer request accepted"),
             ("failed", "Recording transfer status"),
         ] {
-            let outcome = transfer_outcome(Ok(TransferResponse {
-                id: "rec_example".into(),
-                import_status: status.into(),
-            }));
+            let outcome = transfer_outcome(
+                "rec_example",
+                Ok(TransferResponse {
+                    id: "rec_example".into(),
+                    import_status: status.into(),
+                }),
+            );
             assert_eq!(outcome.exit_code, 0);
             assert!(outcome.stdout.is_empty());
             assert_eq!(
@@ -268,16 +274,16 @@ mod tests {
                 format!("{message}: rec_example (importStatus: {status})\n").as_bytes()
             );
         }
-        let outcome = transfer_outcome(Err(ApiError::NotFound {
-            code: None,
-            message: String::new(),
-        }));
+        let outcome = transfer_outcome(
+            "rec_missing",
+            Err(ApiError::NotFound {
+                code: None,
+                message: String::new(),
+            }),
+        );
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.stdout.is_empty());
-        assert_eq!(
-            outcome.stderr,
-            b"Failed to transfer edge recording: not found\n"
-        );
+        assert_eq!(outcome.stderr, b"Recording not found: rec_missing\n");
     }
 
     #[test]

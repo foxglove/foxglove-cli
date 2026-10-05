@@ -4,7 +4,10 @@ use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
 
-use super::{commit_hint, dataset_endpoint, dataset_not_found, version_not_found, DatasetEpisode};
+use super::{
+    commit_hint, dataset_endpoint, dataset_not_found, dataset_or_version_not_found,
+    version_not_found, DatasetEpisode,
+};
 use crate::api::ApiError;
 use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
@@ -279,6 +282,9 @@ pub(crate) async fn get_version(
         .await
     {
         Ok(version) => format_record(&version, format),
+        Err(error) if error.is_bare_not_found() => {
+            dataset_or_version_not_found(&args.dataset_id, args.version)
+        }
         Err(error) if error.is_not_found_for("version") => {
             version_not_found(&args.dataset_id, args.version)
         }
@@ -309,6 +315,12 @@ pub(crate) async fn compare_versions(
         .await
     {
         Ok(page) => page,
+        Err(error) if error.is_bare_not_found() => {
+            return Outcome::failure(format!(
+                "Dataset {} not found, or it has no version {} or {}\n",
+                args.dataset_id, args.base_version, args.target_version
+            ))
+        }
         Err(error) if error.is_not_found_for("version") => {
             return Outcome::failure(format!(
                 "Version {} or {} of dataset {} not found\n",
@@ -364,6 +376,10 @@ pub(crate) async fn restore_version(
         .await
     {
         Ok(response) => Outcome::notice(restore_summary(&response, args)),
+        Err(error) if error.is_bare_not_found() => Outcome::failure(format!(
+            "Dataset {} not found, or it has no committed version {}\n",
+            args.dataset_id, args.version
+        )),
         Err(error) if error.is_not_found_for("version") => Outcome::failure(format!(
             "Committed version {} of dataset {} not found\n",
             args.version, args.dataset_id

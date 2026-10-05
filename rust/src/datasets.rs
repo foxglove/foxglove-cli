@@ -239,6 +239,9 @@ pub(crate) async fn list_dataset_episodes(
             page.next_cursor.as_deref(),
         ),
         Err(error) if error.is_not_found_for("version") => match version {
+            Some(version) if error.is_bare_not_found() => {
+                dataset_or_version_not_found(&args.dataset_id, version)
+            }
             Some(version) => version_not_found(&args.dataset_id, version),
             None => dataset_not_found(&args.dataset_id),
         },
@@ -257,6 +260,14 @@ fn dataset_not_found(id: &str) -> Outcome {
 
 fn version_not_found(id: &str, version: i64) -> Outcome {
     Outcome::failure(format!("Version {version} of dataset {id} not found\n"))
+}
+
+/// The API returns the same bare 404 for a missing dataset and a missing
+/// version.
+fn dataset_or_version_not_found(id: &str, version: i64) -> Outcome {
+    Outcome::failure(format!(
+        "Dataset {id} not found, or it has no version {version}\n"
+    ))
 }
 
 fn commit_hint(id: &str) -> String {

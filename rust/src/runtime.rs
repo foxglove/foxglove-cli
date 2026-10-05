@@ -48,7 +48,7 @@ pub(crate) fn load(
         token,
         user_agent(),
     )
-    .map_err(|error| error.to_string())?
+    .map_err(|error| format!("{error}\n"))?
     .with_debug(debug);
     Ok(Runtime {
         client,

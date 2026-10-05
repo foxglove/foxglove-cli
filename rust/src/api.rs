@@ -46,11 +46,6 @@ const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
 /// Errors returned by the API client.
 #[derive(Debug)]
 pub enum ApiError {
-    /// Context retained by an endpoint-specific operation around a typed error.
-    Context {
-        context: &'static str,
-        source: Box<ApiError>,
-    },
     /// The API rejected the credentials with HTTP 401.
     Unauthorized,
     /// The API refused the request with HTTP 403.
@@ -84,19 +79,6 @@ pub enum ApiError {
 }
 
 impl ApiError {
-    fn contextualize(self, transport: &'static str, decode: &'static str) -> Self {
-        match self {
-            Self::Transport(_) => Self::Context {
-                context: transport,
-                source: Box::new(self),
-            },
-            Self::Decode(_) => Self::Context {
-                context: decode,
-                source: Box::new(self),
-            },
-            _ => self,
-        }
-    }
     /// Whether the server refused the request with HTTP 401 or 403.
     #[must_use]
     pub const fn is_forbidden(&self) -> bool {
@@ -113,17 +95,23 @@ impl ApiError {
         let Self::NotFound { message, .. } = self else {
             return false;
         };
-        let message = message.to_ascii_lowercase();
-        message.is_empty()
-            || message == "not found"
-            || message.starts_with(&format!("{} not found", resource.to_ascii_lowercase()))
+        self.is_bare_not_found()
+            || message
+                .to_ascii_lowercase()
+                .starts_with(&format!("{} not found", resource.to_ascii_lowercase()))
+    }
+
+    /// Whether the API returned 404 without saying what is missing.
+    #[must_use]
+    pub fn is_bare_not_found(&self) -> bool {
+        matches!(self, Self::NotFound { message, .. }
+            if message.is_empty() || message.eq_ignore_ascii_case("not found"))
     }
 
     /// The machine-readable error code the API returned, if any.
     #[must_use]
     pub fn code(&self) -> Option<&str> {
         match self {
-            Self::Context { source, .. } => source.code(),
             Self::NotFound { code, .. } => code.as_deref(),
             _ => None,
         }
@@ -140,7 +128,6 @@ impl ApiError {
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Context { source, .. } => source.is_retryable(),
             Self::Transport(_) => true,
             Self::Response { status, .. } => *status == 429 || *status >= 500,
             _ => false,
@@ -151,7 +138,6 @@ impl ApiError {
 impl fmt::Display for ApiError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Context { context, source } => write!(formatter, "{context}: {source}"),
             Self::Unauthorized => formatter.write_str(SIGN_IN_MESSAGE),
             Self::Forbidden => formatter.write_str("forbidden"),
             Self::NotFound { message, .. } if message.is_empty() => {
@@ -163,10 +149,7 @@ impl fmt::Display for ApiError {
             Self::ForbiddenWithMessage(message)
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
-            Self::Transport(error) | Self::Decode(error) if error.is_timeout() => {
-                write!(formatter, "{error}: timed out")
-            }
-            Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
+            Self::Transport(error) | Self::Decode(error) => write_reqwest_error(formatter, error),
             Self::Serialization(error) => error.fmt(formatter),
             Self::Cancelled => formatter.write_str("operation cancelled"),
             Self::InvalidUrl(error) | Self::Conversion(error) => formatter.write_str(error),
@@ -181,7 +164,6 @@ impl fmt::Display for ApiError {
 impl std::error::Error for ApiError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Context { source, .. } => Some(source),
             Self::Transport(error) | Self::Decode(error) => Some(error),
             Self::Serialization(error) => Some(error),
             Self::Write(error) => Some(error),
@@ -489,10 +471,7 @@ impl FoxgloveClient {
                 false,
                 Some(cancellation),
             )
-            .await
-            .map_err(|error| {
-                error.contextualize("sign in failure", "failed to decode sign in response")
-            })?;
+            .await?;
         self.set_token(response.token.clone());
         Ok(response.token)
     }
@@ -531,9 +510,6 @@ impl FoxgloveClient {
             Some(cancellation),
         )
         .await
-        .map_err(|error| {
-            error.contextualize("failed to fetch device code", "failed to decode response")
-        })
     }
 
     /// Poll for the ID token associated with a device code.
@@ -575,23 +551,14 @@ impl FoxgloveClient {
                 client_id: &self.client_id,
                 device_code,
             })?);
-        let response = self
-            .send(request, Some(cancellation))
-            .await
-            .map_err(|error| {
-                error.contextualize("token request failure", "failed to parse response body")
-            })?;
+        let response = self.send(request, Some(cancellation)).await?;
         with_optional_cancellation(Some(cancellation), async {
             match response.status() {
                 StatusCode::OK => response
                     .json::<TokenResponse>()
                     .await
                     .map(|response| response.id_token)
-                    .map_err(ApiError::Decode)
-                    .map_err(|error| {
-                        error
-                            .contextualize("token request failure", "failed to parse response body")
-                    }),
+                    .map_err(ApiError::Decode),
                 StatusCode::UNAUTHORIZED => {
                     drop(response);
                     Err(ApiError::Unauthorized)
@@ -1148,7 +1115,7 @@ impl FoxgloveClient {
             .any(|segment| matches!(segment, "" | "." | ".."))
         {
             return Err(ApiError::InvalidUrl(
-                "API path segments must not be empty, '.' or '..'".into(),
+                "IDs, keys and names must not be empty, '.' or '..'".into(),
             ));
         }
         self.base_url
@@ -1407,15 +1374,54 @@ fn response_code(body: &str) -> Option<String> {
         .filter(|code| !code.is_empty())
 }
 
+/// The longest non-JSON error body shown to the user.
+const MAX_TEXT_MESSAGE_CHARS: usize = 200;
+
 fn response_message(body: &str) -> String {
     #[derive(Deserialize)]
     struct ErrorResponse {
         error: Option<String>,
     }
-    match serde_json::from_str::<ErrorResponse>(body) {
-        Ok(response) => response.error.unwrap_or_default(),
-        Err(_) => body.to_owned(),
+    if let Ok(response) = serde_json::from_str::<ErrorResponse>(body) {
+        return response.error.unwrap_or_default();
     }
+    // Proxies and load balancers answer with HTML pages or long text that
+    // would bury the status, so keep only a short plain-text body.
+    let body = body.trim();
+    if body.starts_with('<') || body.contains('\n') || body.chars().count() > MAX_TEXT_MESSAGE_CHARS
+    {
+        String::new()
+    } else {
+        body.to_owned()
+    }
+}
+
+/// Describe a reqwest error by its origin and underlying cause, such as
+/// "Connection refused", rather than reqwest's summary, which hides the cause
+/// and repeats the full request URL.
+fn write_reqwest_error(formatter: &mut fmt::Formatter<'_>, error: &reqwest::Error) -> fmt::Result {
+    let origin = error.url().map(|url| url.origin().ascii_serialization());
+    match (error.is_decode(), origin) {
+        (true, Some(origin)) => write!(formatter, "invalid response from {origin}")?,
+        (true, None) => formatter.write_str("invalid response")?,
+        (false, Some(origin)) => write!(formatter, "request to {origin} failed")?,
+        (false, None) => formatter.write_str("request failed")?,
+    }
+    let mut previous = String::new();
+    let mut source = std::error::Error::source(error);
+    while let Some(cause) = source {
+        let message = cause.to_string();
+        // hyper's "client error (Connect)" only names the cause's kind.
+        if !message.starts_with("client error (") && message != previous {
+            write!(formatter, ": {message}")?;
+        }
+        previous = message;
+        source = cause.source();
+    }
+    if previous.is_empty() && error.is_timeout() {
+        formatter.write_str(": timed out")?;
+    }
+    Ok(())
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -1720,6 +1726,34 @@ mod tests {
         let error =
             api_error_from_response(StatusCode::BAD_GATEWAY, r#"{"message":"Bad Gateway"}"#);
         assert_eq!(error.to_string(), "unexpected status 502");
+        let html = "<html><body><h1>502 Bad Gateway</h1></body></html>\n";
+        let error = api_error_from_response(StatusCode::BAD_GATEWAY, html);
+        assert_eq!(error.to_string(), "unexpected status 502");
+        let long = "x".repeat(201);
+        let error = api_error_from_response(StatusCode::BAD_GATEWAY, &long);
+        assert_eq!(error.to_string(), "unexpected status 502");
+        let error = api_error_from_response(StatusCode::BAD_GATEWAY, " upstream timeout\n");
+        assert_eq!(error.to_string(), "upstream timeout");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires loopback sockets"]
+    async fn transport_errors_name_the_origin_and_cause() {
+        let client = FoxgloveClient::new("http://127.0.0.1:1", "client", "", "test").unwrap();
+        let error = client
+            .get::<_, serde_json::Value>(&format!("/v1/devices/{}", "a".repeat(10_000)), &())
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.starts_with("request to http://127.0.0.1:1 failed: "),
+            "{message}"
+        );
+        assert!(!message.contains("/v1/devices"), "{message}");
+        assert!(
+            message.to_ascii_lowercase().contains("refused"),
+            "{message}"
+        );
     }
 
     #[test]
@@ -1737,6 +1771,8 @@ mod tests {
             let error = api_error_from_response(StatusCode::NOT_FOUND, body);
             assert!(error.is_not_found_for("Version"), "{body}");
         }
+        assert!(api_error_from_response(StatusCode::NOT_FOUND, "").is_bare_not_found());
+        assert!(!project.is_bare_not_found());
         assert_eq!(
             api_error_from_response(StatusCode::NOT_FOUND, "").to_string(),
             "not found"
