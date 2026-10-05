@@ -15,6 +15,9 @@ use crate::output;
 use crate::runtime::{self, Runtime};
 use crate::Outcome;
 
+/// How much a `slow_down` or 429 response lengthens the polling interval.
+const SLOW_DOWN_STEP: Duration = Duration::from_secs(5);
+
 const LOGIN_EXPIRED: &str =
     "the login request expired before it was authorized; run `foxglove auth login` again";
 
@@ -175,7 +178,7 @@ async fn complete_login(
     browser: Option<Child>,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<String, String> {
-    let interval = Duration::from_secs(device_code.interval.max(1));
+    let mut interval = Duration::from_secs(device_code.interval.max(1));
     let expires_in = Duration::from_secs(device_code.expires_in);
     let result = tokio::select! {
         biased;
@@ -198,9 +201,13 @@ async fn complete_login(
                     // Device-code polling uses HTTP 403 to mean authorization is
                     // still pending. A 401 is an authentication error and must
                     // surface instead of retrying forever.
-                    Err(api::ApiError::Forbidden) => tokio::time::sleep(interval).await,
+                    Err(api::ApiError::Forbidden) => {}
+                    Err(error) if is_slow_down(&error) => interval += SLOW_DOWN_STEP,
+                    // The expiry timer bounds retries of transient failures.
+                    Err(error) if error.is_retryable() => {}
                     Err(error) => return Err(format!("failed to request token: {error}")),
                 }
+                tokio::time::sleep(interval).await;
             }
         } => result,
     };
@@ -211,6 +218,10 @@ async fn complete_login(
         .await
         .map_err(|error| format!("failed to sign in: {error}"))?;
     Ok(bearer_token)
+}
+
+fn is_slow_down(error: &api::ApiError) -> bool {
+    matches!(error, api::ApiError::Response { status, message } if *status == 429 || message == "slow_down")
 }
 
 #[cfg(feature = "test-support")]
