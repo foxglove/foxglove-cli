@@ -102,7 +102,11 @@ pub(crate) fn escape_terminal_text(text: &str) -> String {
         match c {
             '\r' | '\n' => escaped.push_str("\\n"),
             c if c.is_control() => escaped.extend(c.escape_debug()),
-            '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' => {
+            '\u{061c}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}' => {
                 escaped.extend(c.escape_unicode());
             }
             c => escaped.push(c),
