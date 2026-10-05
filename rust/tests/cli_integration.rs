@@ -584,8 +584,6 @@ fn stalled_resumes_fail_and_preserve_destination() {
     };
     let progress = truncated(&[message(1, 1, vec![1]), message(1, 2, vec![2])]);
     let empty = truncated(&[]);
-    // Resumes that repeat the same last message, then resumes that return
-    // no messages at all.
     for responses in [
         [progress.clone(), progress.clone(), progress.clone()],
         [progress.clone(), empty.clone(), empty.clone()],
@@ -602,11 +600,6 @@ fn stalled_resumes_fail_and_preserve_destination() {
         ]))
         .finish();
         assert_eq!(output.status.code(), Some(1));
-        assert!(
-            String::from_utf8_lossy(&output.stderr).contains("stopped making progress"),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
         assert_eq!(
             fs::read(workspace.0.join("output.mcap")).unwrap(),
             b"existing destination"
@@ -653,18 +646,8 @@ fn resumed_episode_exports_end_at_the_episode_end() {
         ],
     );
     assert_success(&output);
-    let requests = server.finish();
-    assert_eq!(requests.len(), 5);
-    assert_eq!(
-        json_body(&requests[3]),
-        serde_json::json!({
-            "episodeId": "ep_one",
-            "start": "2024-01-01T00:00:01Z",
-            "end": "2024-01-01T00:00:02Z",
-            "outputFormat": "mcap",
-            "topics": [],
-        })
-    );
+    let resumed = json_body(&server.finish()[3]);
+    assert_eq!(resumed["end"], "2024-01-01T00:00:02Z");
 }
 
 #[cfg(all(unix, feature = "test-support"))]

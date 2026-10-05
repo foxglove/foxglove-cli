@@ -5,7 +5,6 @@ use std::fs::{self, File};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::api::{self, StreamRequest};
@@ -286,8 +285,6 @@ async fn resumable_export_inner(
         if complete {
             break;
         }
-        // The partials end before the requested data does, so stop without
-        // replacing the destination once resumes no longer make progress.
         if info.message_count == 0 {
             empty_downloads += 1;
             if empty_downloads > 1 {
@@ -349,13 +346,11 @@ async fn resumable_export_inner(
 
 fn incomplete_download() -> api::ApiError {
     api::ApiError::Conversion(
-        "the download stopped making progress after repeated resumes, so the destination was not changed; try again"
-            .into(),
+        "the download stopped making progress; the destination was not changed".into(),
     )
 }
 
-/// A resumed request needs an end time. An episode export keeps the episode's
-/// window rather than continuing to the present.
+/// Resumes of an episode export end at the episode's end, not the present.
 async fn resume_end(
     runtime: &Runtime,
     request: &StreamRequest,
@@ -367,20 +362,10 @@ async fn resume_end(
     let episode: Episode = runtime
         .client
         .get_with_cancellation(&episode_endpoint(&request.episode_id), &(), cancellation)
-        .await
-        .map_err(|error| match error {
-            api::ApiError::Cancelled => error,
-            error => api::ApiError::Context {
-                context: "failed to get the episode end time",
-                source: Box::new(error),
-            },
-        })?;
-    OffsetDateTime::parse(&episode.end_time, &Rfc3339).map_err(|error| {
-        api::ApiError::Conversion(format!(
-            "invalid episode end time {:?}: {error}",
-            episode.end_time
-        ))
-    })
+        .await?;
+    let end = parse_timestamp_value(&episode.end_time, "episode end")
+        .map_err(api::ApiError::Conversion)?;
+    Ok(end.unwrap_or_else(OffsetDateTime::now_utc))
 }
 
 async fn download_response(
