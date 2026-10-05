@@ -19,8 +19,8 @@ use crate::{
 };
 
 const ROOT_COMMAND: &str = "foxglove";
-const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
-const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
+const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
+const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
@@ -249,7 +249,7 @@ struct CompletionArgs {
 enum ConfigCommand {
     #[command(
         about = "Get a configuration value",
-        long_about = "Get a configuration value. DEFAULT_PROJECT_ID, when set, takes precedence over project-id in the config file."
+        long_about = "Get a configuration value. FOXGLOVE_DEFAULT_PROJECT_ID, when set, takes precedence over project-id in the config file."
     )]
     Get(ConfigKeyArgs),
     #[command(about = "Set a configuration value")]
@@ -1748,6 +1748,7 @@ fn root_help_outcome() -> Outcome {
 }
 
 fn load_config(path: Option<&std::path::Path>) -> Result<Config, Outcome> {
+    crate::config::warn_legacy_environment();
     Config::load_from_path(path).map_err(Outcome::failure)
 }
 
@@ -1766,7 +1767,7 @@ fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Ou
     match config.get_string(config_name(key)) {
         Some(value) => Outcome {
             stdout: format!("{value}\n").into_bytes(),
-            stderr: environment_note(&config, key).into_bytes(),
+            stderr: environment_note(key).into_bytes(),
             ..Outcome::default()
         },
         None => Outcome::failure(format!("No value set for key '{key}'\n")),
@@ -1789,7 +1790,7 @@ fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outco
     match config.save() {
         Ok(()) => Outcome::notice(format!(
             "Configuration updated: {key} = {value}\n{}",
-            environment_note(&config, key)
+            environment_note(key)
         )),
         Err(error) => Outcome::failure(error),
     }
@@ -1804,27 +1805,25 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
     if !config.remove(config_name(key)) {
         return Outcome::failure(format!(
             "No value set for key '{key}'\n{}",
-            environment_note(&config, key)
+            environment_note(key)
         ));
     }
     match config.save() {
         Ok(()) => Outcome::notice(format!(
             "Configuration removed: {key}\n{}",
-            environment_note(&config, key)
+            environment_note(key)
         )),
         Err(error) => Outcome::failure(error),
     }
 }
 
-fn environment_note(config: &Config, key: &str) -> String {
+fn environment_note(key: &str) -> String {
     let name = config_name(key);
-    if config.is_env_set(name) {
-        format!(
-            "{} is set in the environment and takes precedence over {key} in the config file\n",
-            crate::config::environment_name(name)
-        )
-    } else {
-        String::new()
+    match crate::config::environment_name(name) {
+        Some(variable) => format!(
+            "{variable} is set in the environment and takes precedence over {key} in the config file\n"
+        ),
+        _ => String::new(),
     }
 }
 
@@ -1846,13 +1845,25 @@ fn configure_api_key(
         Ok(config) => config,
         Err(error) => return Outcome::failure(error),
     };
+    let path = match config.path() {
+        Ok(path) => path.to_owned(),
+        Err(error) => return Outcome::failure(format!("Configuration failed: {error}")),
+    };
+    let base_url = args
+        .base_url
+        .clone()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
+    if let Err(error) = crate::api::parse_base_url(&base_url) {
+        return Outcome::failure(format!("Configuration failed: {error}\n"));
+    }
     let token = match args.api_key.clone() {
         Some(token) if !token.is_empty() => token,
         _ => {
             if let Err(error) = writeln!(
                 prompt_writer,
                 "Enter an API key (will be written to {}):",
-                config.path().display()
+                path.display()
             )
             .and_then(|()| prompt_writer.flush())
             {
@@ -1872,11 +1883,6 @@ fn configure_api_key(
             token.to_owned()
         }
     };
-    let base_url = args
-        .base_url
-        .clone()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
     config.set("auth_type", Value::Number(2.into()));
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(token));

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::api::FoxgloveClient;
+use crate::api::{ApiError, FoxgloveClient};
 use crate::config::Config;
 
 pub(crate) const DEFAULT_CLIENT_ID: &str = "d51173be08ed4cf7a734aed9ac30afd0";
@@ -29,13 +29,12 @@ pub(crate) fn load(
     debug: bool,
 ) -> Result<Runtime, String> {
     let config = Config::load_from_path(config_path)?;
+    crate::config::warn_legacy_environment();
     let project_id = config.get_string("default_project_id").unwrap_or_default();
     let project_source = if project_id.is_empty() {
         "none"
-    } else if config.is_env_set("default_project_id") {
-        "DEFAULT_PROJECT_ID"
     } else {
-        "default_project_id"
+        crate::config::environment_name("default_project_id").unwrap_or("default_project_id")
     };
     let base_url = config
         .get_string("base_url")
@@ -48,7 +47,15 @@ pub(crate) fn load(
         token,
         user_agent(),
     )
-    .map_err(|error| format!("{error}\n"))?
+    .map_err(|error| match error {
+        ApiError::InvalidUrl(message) => match crate::config::environment_name("base_url") {
+            Some(name) => format!("{message} (change or unset {name})\n"),
+            None => format!(
+                "{message} (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n"
+            ),
+        },
+        error => format!("{error}\n"),
+    })?
     .with_debug(debug);
     Ok(Runtime {
         client,

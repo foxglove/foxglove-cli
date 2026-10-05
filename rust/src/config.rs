@@ -7,9 +7,13 @@ use std::path::{Path, PathBuf};
 
 use serde_yaml_ng::{Mapping, Value};
 
+const MISSING_HOME: &str =
+    "cannot locate the config file because HOME (or USERPROFILE on Windows) is not set; pass --config\n";
+
 /// The persisted Foxglove CLI configuration.
 pub struct Config {
-    path: PathBuf,
+    /// `None` when no home directory exists.
+    path: Option<PathBuf>,
     values: Mapping,
     permissions: Option<Permissions>,
 }
@@ -37,10 +41,17 @@ impl Config {
         if let Some(path) = path {
             return Self::load(path.to_owned());
         }
-        let home = env::var_os("HOME")
-            .or_else(|| env::var_os("USERPROFILE"))
-            .unwrap_or_default();
-        Self::load(PathBuf::from(home).join(".foxgloverc"))
+        match ["HOME", "USERPROFILE"]
+            .into_iter()
+            .find_map(|name| env::var_os(name).filter(|value| !value.is_empty()))
+        {
+            Some(home) => Self::load(PathBuf::from(home).join(".foxgloverc")),
+            None => Ok(Self {
+                path: None,
+                values: Mapping::new(),
+                permissions: None,
+            }),
+        }
     }
 
     /// Load a configuration from an explicit path.
@@ -88,16 +99,20 @@ impl Config {
             }
         };
         Ok(Self {
-            path,
+            path: Some(path),
             values,
             permissions,
         })
     }
 
     /// Return the selected path, primarily for the interactive auth prompt.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no `--config` was given and no home directory
+    /// exists.
+    pub fn path(&self) -> Result<&Path, String> {
+        self.path.as_deref().ok_or_else(|| MISSING_HOME.to_owned())
     }
 
     /// Return a string value using Viper's environment-over-file precedence.
@@ -154,7 +169,7 @@ impl Config {
                 .map_err(|error| format!("failed to write config: {error}\n"))?;
         }
         drop(temporary);
-        replace_file(&temporary_path, &self.path)
+        replace_file(&temporary_path, self.path()?)
             .map_err(|error| format!("failed to write config: {error}\n"))?;
         cleanup.disarm();
         Ok(())
@@ -163,7 +178,7 @@ impl Config {
     fn create_temporary(&self) -> Result<(PathBuf, File), String> {
         for attempt in 0..100_u8 {
             let suffix = format!("tmp-{}-{attempt}", std::process::id());
-            let path = self.path.with_extension(suffix);
+            let path = self.path()?.with_extension(suffix);
             match OpenOptions::new().write(true).create_new(true).open(&path) {
                 Ok(file) => {
                     // A newly-created config can contain a bearer token. Do
@@ -217,15 +232,51 @@ impl Drop for TemporaryGuard<'_> {
     }
 }
 
-pub(crate) fn environment_name(key: &str) -> String {
-    key.to_ascii_uppercase()
+/// Generic names like `BASE_URL` must not redirect the bearer token. Earlier
+/// entries for a key take precedence; `DEFAULT_PROJECT_ID` is deprecated.
+const ENVIRONMENT_OVERRIDES: [(&str, &str); 4] = [
+    ("base_url", "FOXGLOVE_BASE_URL"),
+    ("bearer_token", "FOXGLOVE_BEARER_TOKEN"),
+    ("default_project_id", "FOXGLOVE_DEFAULT_PROJECT_ID"),
+    ("default_project_id", "DEFAULT_PROJECT_ID"),
+];
+
+const LEGACY_ENVIRONMENT: [(&str, &str, &str); 3] = [
+    ("BASE_URL", "ignored", "FOXGLOVE_BASE_URL"),
+    ("BEARER_TOKEN", "ignored", "FOXGLOVE_BEARER_TOKEN"),
+    (
+        "DEFAULT_PROJECT_ID",
+        "deprecated",
+        "FOXGLOVE_DEFAULT_PROJECT_ID",
+    ),
+];
+
+pub(crate) fn warn_legacy_environment() {
+    let is_set = |name| env::var_os(name).is_some_and(|value| !value.is_empty());
+    for (legacy, status, replacement) in LEGACY_ENVIRONMENT {
+        if is_set(legacy) && !is_set(replacement) {
+            let _ = writeln!(
+                io::stderr(),
+                "warning: {legacy} is {status}; set {replacement} instead"
+            );
+        }
+    }
+}
+
+/// The environment variable that overrides `key`, if one is set.
+pub(crate) fn environment_name(key: &str) -> Option<&'static str> {
+    ENVIRONMENT_OVERRIDES
+        .iter()
+        .filter(|(config_key, _)| *config_key == key)
+        .map(|(_, name)| *name)
+        .find(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
 }
 
 fn environment_value(key: &str) -> Option<String> {
     // Viper ignores empty environment values unless AllowEmptyEnv is enabled.
     // Keep explicitly empty persisted values intact: only environment overrides
     // use this fallback rule.
-    env::var(environment_name(key))
+    env::var(environment_name(key)?)
         .ok()
         .filter(|value| !value.is_empty())
 }
@@ -266,7 +317,7 @@ mod tests {
     #[test]
     fn missing_value_is_not_removed() {
         let mut config = Config {
-            path: "unused".into(),
+            path: Some("unused".into()),
             values: Mapping::new(),
             permissions: None,
         };
@@ -289,7 +340,7 @@ mod tests {
         let path = test_path();
         fs::write(&path, "default_project_id: explicit\n").unwrap();
         let config = Config::load_from_path(Some(&path)).unwrap();
-        assert_eq!(config.path(), path);
+        assert_eq!(config.path().unwrap(), path);
         assert_eq!(
             config.get_string("default_project_id").as_deref(),
             Some("explicit")

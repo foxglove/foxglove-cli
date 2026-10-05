@@ -42,9 +42,11 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
             "Not signed in. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.\n",
         );
     }
+    // The saved auth_type describes the saved token, not FOXGLOVE_BEARER_TOKEN.
     let auth_type = runtime
         .config
         .get_string("auth_type")
+        .filter(|_| !runtime.config.is_env_set("bearer_token"))
         .and_then(|value| value.parse::<i32>().ok());
     if auth_type == Some(2) || (auth_type != Some(1) && token.starts_with("fox_sk_")) {
         return Outcome::success("Authenticated with API key\n");
@@ -96,6 +98,13 @@ pub(crate) async fn login(
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
 
+    let mut config = match Config::load_from_path(config_path) {
+        Ok(config) => config,
+        Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
+    };
+    if let Err(error) = config.path() {
+        return Outcome::failure(format!("Login failed: {error}"));
+    }
     let cancellation = api::ctrl_c_cancellation_token();
     let (instructions, device_code, browser) = match start_login(&client, &cancellation).await {
         Ok(result) => result,
@@ -122,10 +131,6 @@ pub(crate) async fn login(
                 ..Outcome::default()
             }
         }
-        Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
-    };
-    let mut config = match Config::load_from_path(config_path) {
-        Ok(config) => config,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
     config.set("auth_type", Value::Number(1.into()));

@@ -25,7 +25,7 @@ fn explicit_empty_project_overrides_configured_default() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                 .args(["recordings", "list", "--format", "json"])
                 .args(&flags),
         )
@@ -48,7 +48,7 @@ fn clearing_project_default_requires_project_for_session_key() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args([
                 "recordings",
                 "list",
@@ -96,6 +96,26 @@ fn config_set_trims_and_rejects_blank_project_id() {
     assert_eq!(
         fs::read_to_string(&config).unwrap(),
         "default_project_id: prj_1\n"
+    );
+}
+
+#[test]
+fn config_get_warns_on_deprecated_project_environment() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env("DEFAULT_PROJECT_ID", "prj_legacy")
+            .args(["config", "get", "project-id"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "prj_legacy\n");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "warning: DEFAULT_PROJECT_ID is deprecated; set FOXGLOVE_DEFAULT_PROJECT_ID instead\n\
+         DEFAULT_PROJECT_ID is set in the environment and takes precedence over project-id in the \
+         config file\n",
     );
 }
 
@@ -1251,7 +1271,7 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "default-project")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "default-project")
                 .args(["sessions", "edit", "old-key"])
                 .args(&flags),
         )
@@ -1410,14 +1430,16 @@ fn session_key_edit_reports_debug_project_scope() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["--debug", "sessions", "edit", "..", "--key", "new-key"]),
     )
     .finish();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.starts_with("[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"),
+        stderr.starts_with(
+            "[DEBUG] Project scope: prj_default (source: FOXGLOVE_DEFAULT_PROJECT_ID)\n"
+        ),
         "{stderr}"
     );
     assert!(
@@ -1457,8 +1479,8 @@ fn empty_environment_overrides_use_saved_configuration() {
     let output = Process::spawn(
         workspace
             .command("")
-            .env("BEARER_TOKEN", "")
-            .env("DEFAULT_PROJECT_ID", "")
+            .env("FOXGLOVE_BEARER_TOKEN", "")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "")
             .args(["recordings", "list", "--format", "json"]),
     )
     .finish();
@@ -1467,6 +1489,139 @@ fn empty_environment_overrides_use_saved_configuration() {
     assert_eq!(requests.len(), 1);
     assert!(requests[0].contains("projectId=saved-project"));
     assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn unprefixed_environment_does_not_override_saved_auth() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        format!("base_url: {}\nbearer_token: saved-token\n", server.url),
+    )
+    .unwrap();
+    let output = Process::spawn(
+        workspace
+            .command("")
+            .env("FOXGLOVE_BEARER_TOKEN", "")
+            .env("BASE_URL", "http://127.0.0.1:1")
+            .env("BEARER_TOKEN", "environment-token")
+            .args(["recordings", "list", "--format", "json"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "warning: BASE_URL is ignored; set FOXGLOVE_BASE_URL instead\n\
+         warning: BEARER_TOKEN is ignored; set FOXGLOVE_BEARER_TOKEN instead\n",
+    );
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn missing_home_uses_environment_credentials() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env_remove("HOME")
+            .env_remove("USERPROFILE")
+            .args(["recordings", "list", "--format", "json"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains("authorization: Bearer fixture\r\n"));
+}
+
+#[test]
+fn plain_http_base_url_is_refused_for_remote_hosts() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://api.example.test")
+            .args(["recordings", "list"]),
+    )
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "unsupported API base URL http://api.example.test; use https, or http for localhost \
+         (change or unset FOXGLOVE_BASE_URL)\n",
+    );
+
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        "base_url: http://api.example.test\n",
+    )
+    .unwrap();
+    let output = Process::spawn(workspace.command("").args(["recordings", "list"])).finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "unsupported API base URL http://api.example.test; use https, or http for localhost \
+         (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n",
+    );
+}
+
+#[test]
+fn configure_api_key_rejects_plain_http_before_prompting() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("")
+            .args([
+                "auth",
+                "configure-api-key",
+                "--base-url",
+                "http://api.example.test",
+            ])
+            .stdin(std::process::Stdio::null()),
+    )
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Configuration failed: unsupported API base URL http://api.example.test; use https, or http for localhost\n",
+    );
+    assert!(!workspace.0.join(".foxgloverc").exists());
+}
+
+#[test]
+fn missing_home_requires_explicit_config_for_writes() {
+    let workspace = Workspace::new();
+    for (args, prefix) in [
+        (&["config", "set", "project-id", "prj_1"][..], ""),
+        (
+            &["auth", "login", "--base-url", "http://127.0.0.1:1"][..],
+            "Login failed: ",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("")
+                .env_remove("HOME")
+                .env_remove("USERPROFILE")
+                .args(args),
+        )
+        .finish();
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "{prefix}cannot locate the config file because HOME (or USERPROFILE on Windows) \
+                 is not set; pass --config\n"
+            ),
+        );
+    }
+    assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
 fn query_pairs(request: &str) -> BTreeMap<String, String> {
@@ -2457,7 +2612,7 @@ fn creating_an_empty_dataset_sends_only_its_name_and_project() {
     let output = Process::spawn(
         workspace
             .command(&server.url)
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["datasets", "add", "--name", "Highway", "--description", ""]),
     )
     .finish();
@@ -3447,7 +3602,7 @@ fn an_episode_window_left_out_is_inferred_by_the_api() {
     let output = Process::spawn(
         workspace
             .command(&server.url)
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["episodes", "add", "--recording-id", "rec_one"]),
     )
     .finish();
@@ -3814,7 +3969,7 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
             }]);
             let mut command = workspace.command(&server.url);
             command
-                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                 .args(&args)
                 .args(&flag);
             let output = Process::spawn(&mut command).finish();
@@ -3842,7 +3997,7 @@ fn unassigned_pending_imports_omit_project_defaults() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                 .args(["pending-imports", "list", "--without-project"])
                 .args(&flags),
         )
@@ -3860,7 +4015,7 @@ fn unassigned_pending_imports_reject_conflicting_scope_before_a_request() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["pending-imports", "list", "--without-project"])
             .args(["--project-id", "prj_explicit"]),
     )
@@ -3880,18 +4035,28 @@ fn project_scope_debug_reports_each_resolution_source() {
         "default_project_id: prj_saved\n",
     )
     .unwrap();
-    for (environment, flags, expected) in [
+    for (environment, legacy, flags, expected) in [
         (
+            "",
             "",
             vec!["--project-id", "prj_flag"],
             "[DEBUG] Project scope: prj_flag (source: --project-id)\n",
         ),
         (
             "prj_environment",
+            "prj_legacy",
             vec![],
-            "[DEBUG] Project scope: prj_environment (source: DEFAULT_PROJECT_ID)\n",
+            "[DEBUG] Project scope: prj_environment (source: FOXGLOVE_DEFAULT_PROJECT_ID)\n",
         ),
         (
+            "",
+            "prj_legacy",
+            vec![],
+            "warning: DEFAULT_PROJECT_ID is deprecated; set FOXGLOVE_DEFAULT_PROJECT_ID instead\n\
+             [DEBUG] Project scope: prj_legacy (source: DEFAULT_PROJECT_ID)\n",
+        ),
+        (
+            "",
             "",
             vec![],
             "[DEBUG] Project scope: prj_saved (source: default_project_id)\n",
@@ -3900,7 +4065,8 @@ fn project_scope_debug_reports_each_resolution_source() {
         let output = Process::spawn(
             workspace
                 .command("http://127.0.0.1:1")
-                .env("DEFAULT_PROJECT_ID", environment)
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", environment)
+                .env("DEFAULT_PROJECT_ID", legacy)
                 .args([
                     "--debug",
                     "export",
@@ -3918,7 +4084,7 @@ fn project_scope_debug_reports_each_resolution_source() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_environment")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_environment")
             .args(["--debug", "pending-imports", "list", "--without-project"]),
     )
     .finish();
@@ -3951,7 +4117,7 @@ fn project_required_creation_reports_debug_scope() {
             let output = Process::spawn(
                 workspace
                     .command("http://127.0.0.1:1")
-                    .env("DEFAULT_PROJECT_ID", "prj_default")
+                    .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                     .args(["--debug", command, "add"])
                     .args(&args)
                     .args(&flags),
@@ -3960,7 +4126,7 @@ fn project_required_creation_reports_debug_scope() {
             assert!(!output.status.success());
             let stderr = String::from_utf8_lossy(&output.stderr);
             let expected = if flags.is_empty() {
-                "[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"
+                "[DEBUG] Project scope: prj_default (source: FOXGLOVE_DEFAULT_PROJECT_ID)\n"
             } else {
                 "[DEBUG] Project scope: unscoped (source: --project-id)\n"
             };

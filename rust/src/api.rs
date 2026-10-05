@@ -378,6 +378,37 @@ pub fn ctrl_c_cancellation_token() -> CancellationToken {
     cancellation
 }
 
+/// Parse an API base URL, accepting only https, or http to loopback.
+pub(crate) fn parse_base_url(base_url: &str) -> Result<Url, ApiError> {
+    let mut url = Url::parse(base_url)
+        .map_err(|error| ApiError::InvalidUrl(format!("invalid API base URL: {error}")))?;
+    let allowed = match url.scheme() {
+        "https" => true,
+        "http" => is_loopback(&url),
+        _ => false,
+    };
+    if !allowed {
+        return Err(ApiError::InvalidUrl(format!(
+            "unsupported API base URL {base_url}; use https, or http for localhost"
+        )));
+    }
+    if !url.path().ends_with('/') {
+        url.set_path(&format!("{}/", url.path()));
+    }
+    Ok(url)
+}
+
+fn is_loopback(url: &Url) -> bool {
+    url.host_str().is_some_and(|host| {
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
+    })
+}
+
 impl FoxgloveClient {
     /// Build a client backed by the remote API.
     ///
@@ -391,11 +422,7 @@ impl FoxgloveClient {
         token: impl Into<String>,
         user_agent: impl Into<String>,
     ) -> Result<Self, ApiError> {
-        let mut base_url = Url::parse(base_url)
-            .map_err(|error| ApiError::InvalidUrl(format!("invalid API base URL: {error}")))?;
-        if !base_url.path().ends_with('/') {
-            base_url.set_path(&format!("{}/", base_url.path()));
-        }
+        let base_url = parse_base_url(base_url)?;
         let builder = || reqwest::Client::builder().connect_timeout(CONNECT_TIMEOUT);
         Ok(Self {
             http: builder()
@@ -1434,9 +1461,33 @@ mod tests {
     use tokio::io::AsyncWriteExt;
 
     use super::{
-        api_error_from_response, debug_target, encode_path_segment, response_message, ApiError,
-        FoxgloveClient, StreamRequest, SIGN_IN_MESSAGE,
+        api_error_from_response, debug_target, encode_path_segment, parse_base_url,
+        response_message, ApiError, FoxgloveClient, StreamRequest, SIGN_IN_MESSAGE,
     };
+
+    #[test]
+    fn base_url_must_be_https_or_loopback_http() {
+        for url in [
+            "https://api.example.test",
+            "http://localhost:8080",
+            "http://127.0.0.1:1",
+            "http://[::1]:1",
+        ] {
+            assert!(parse_base_url(url).is_ok(), "{url}");
+        }
+        for url in [
+            "http://api.example.test",
+            "http://10.0.0.1",
+            "http://127.0.0.1.example.test",
+            "ftp://api.example.test",
+            "file:///tmp/api",
+        ] {
+            assert!(
+                matches!(parse_base_url(url), Err(ApiError::InvalidUrl(_))),
+                "{url}"
+            );
+        }
+    }
 
     #[test]
     fn api_paths_preserve_raw_identifiers_and_base_path() {
