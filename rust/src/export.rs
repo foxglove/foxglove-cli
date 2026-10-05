@@ -5,10 +5,12 @@ use std::fs::{self, File};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::api::{self, StreamRequest};
 use crate::cli::ExportArgs;
+use crate::episodes::{episode_endpoint, Episode};
 use crate::format::{
     Attachment, Channel, Error as FormatError, McapWriter, Message, ProtobufDecoder, RecordSink,
     Ros1DecoderCache, RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
@@ -247,7 +249,6 @@ async fn resumable_export_inner(
     check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let mut partials = Vec::new();
-    let mut complete_found = false;
     let mut empty_downloads = 0_u8;
     let mut repeated_starts = 0_u8;
     let requested_start = request.start;
@@ -264,7 +265,6 @@ async fn resumable_export_inner(
                 path,
                 info: ExportInfo::default(),
             });
-            complete_found = true;
             break;
         }
         let reindex_path = path.clone();
@@ -284,13 +284,14 @@ async fn resumable_export_inner(
         }
         partials.push(PartialExport { path, info });
         if complete {
-            complete_found = true;
             break;
         }
+        // The partials end before the requested data does, so stop without
+        // replacing the destination once resumes no longer make progress.
         if info.message_count == 0 {
             empty_downloads += 1;
             if empty_downloads > 1 {
-                break;
+                return Err(incomplete_download());
             }
             continue;
         }
@@ -301,14 +302,14 @@ async fn resumable_export_inner(
         if request.start == Some(start) {
             repeated_starts += 1;
             if repeated_starts > 1 {
-                break;
+                return Err(incomplete_download());
             }
         } else {
             repeated_starts = 0;
         }
         request.start = Some(start);
         if request.end.is_none() {
-            request.end = Some(OffsetDateTime::now_utc());
+            request.end = Some(resume_end(runtime, request, cancellation).await?);
         }
         // The resumed request starts at the last message received. With a
         // replay policy, the server would first resend the latest message on
@@ -323,11 +324,6 @@ async fn resumable_export_inner(
             request.replay_policy.clear();
             request.replay_lookback_seconds = 0.0;
         }
-    }
-    if check == CompletionCheck::EndMagic && !complete_found {
-        return Err(api::ApiError::Conversion(
-            "the stream ended before the download was complete".into(),
-        ));
     }
     let merged = staging.join("complete");
     if partials.len() == 1 {
@@ -349,6 +345,32 @@ async fn resumable_export_inner(
         }
     }
     crate::config::replace_file(&merged, destination).map_err(api::ApiError::Write)
+}
+
+fn incomplete_download() -> api::ApiError {
+    api::ApiError::Conversion("the stream ended before the download was complete".into())
+}
+
+/// A resumed request needs an end time. An episode export keeps the episode's
+/// window rather than continuing to the present.
+async fn resume_end(
+    runtime: &Runtime,
+    request: &StreamRequest,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<OffsetDateTime, api::ApiError> {
+    if request.episode_id.is_empty() {
+        return Ok(OffsetDateTime::now_utc());
+    }
+    let episode: Episode = runtime
+        .client
+        .get_with_cancellation(&episode_endpoint(&request.episode_id), &(), cancellation)
+        .await?;
+    OffsetDateTime::parse(&episode.end_time, &Rfc3339).map_err(|error| {
+        api::ApiError::Conversion(format!(
+            "invalid episode end time {:?}: {error}",
+            episode.end_time
+        ))
+    })
 }
 
 async fn download_response(

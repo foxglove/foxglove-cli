@@ -574,6 +574,86 @@ fn resumed_exports_do_not_request_the_replay_again() {
     );
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn stalled_resumes_fail_and_preserve_destination() {
+    let workspace = Workspace::new();
+    let mut partial = recording(&[message(1, 1, vec![1]), message(1, 2, vec![2])]);
+    partial.truncate(partial.len() - 4);
+    let mut replies = Vec::new();
+    for _ in 0..3 {
+        replies.extend(export_replies(partial.clone()));
+    }
+    let server = Server::new(replies);
+    fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "export",
+        "--recording-id",
+        "rec",
+        "--output-file",
+        "output.mcap",
+    ]))
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        fs::read(workspace.0.join("output.mcap")).unwrap(),
+        b"existing destination"
+    );
+    assert_eq!(
+        fs::read_dir(&workspace.0).unwrap().count(),
+        1,
+        "staging was not cleaned"
+    );
+    assert_eq!(server.finish().len(), 6);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn resumed_episode_exports_end_at_the_episode_end() {
+    const SECOND: u64 = 1_000_000_000;
+    const JAN_1_2024: u64 = 1_704_067_200 * SECOND;
+    let messages = [
+        message(1, JAN_1_2024, vec![0]),
+        message(1, JAN_1_2024 + SECOND, vec![1]),
+        message(1, JAN_1_2024 + 2 * SECOND, vec![2]),
+    ];
+    let workspace = Workspace::new();
+    let mut partial = recording(&messages[..2]);
+    partial.truncate(partial.len() - 4);
+    let mut replies = export_replies(partial);
+    replies.push(Reply::json(
+        "GET",
+        "/v1/episodes/ep_one",
+        r#"{"id":"ep_one","projectId":"prj","startTime":"2024-01-01T00:00:00Z","endTime":"2024-01-01T00:00:02Z","createdAt":"2024-01-01T00:00:00Z"}"#,
+    ));
+    replies.extend(export_replies(recording(&messages[1..])));
+    let server = Server::new(replies);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "export",
+            "--episode-id",
+            "ep_one",
+            "--output-file",
+            "episode.mcap",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 5);
+    assert_eq!(
+        json_body(&requests[3]),
+        serde_json::json!({
+            "episodeId": "ep_one",
+            "start": "2024-01-01T00:00:01Z",
+            "end": "2024-01-01T00:00:02Z",
+            "outputFormat": "mcap",
+            "topics": [],
+        })
+    );
+}
+
 #[cfg(all(unix, feature = "test-support"))]
 #[test]
 #[ignore = "requires loopback sockets and Unix signal delivery"]
