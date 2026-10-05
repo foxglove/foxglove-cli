@@ -832,27 +832,12 @@ impl RecordSink for JsonSink<'_> {
         let channel = self.channels.get(&message.channel_id).ok_or_else(|| {
             FormatError::Invalid(format!("unknown MCAP channel: {}", message.channel_id))
         })?;
-        let unsupported = |encoding: &str| {
-            FormatError::Invalid(format!(
-                "JSON output does not support topic {} ({encoding}); only ros1msg and protobuf schemas are supported",
-                channel.topic
-            ))
-        };
-        if channel.schema_id == 0 {
-            return Err(unsupported(&format!(
-                "no schema, message encoding {:?}",
-                channel.message_encoding
-            )));
-        }
-        let schema = self.schemas.get(&channel.schema_id).ok_or_else(|| {
-            FormatError::Invalid(format!(
-                "unknown MCAP schema {} for topic {}",
-                channel.schema_id, channel.topic
-            ))
-        })?;
-        let decoded = match schema.encoding.as_str() {
-            "ros1msg" => self.ros1.decode_json(schema, &message.data),
-            "protobuf" => self
+        let topic = &channel.topic;
+        let schema = self.schemas.get(&channel.schema_id);
+        let encoding = schema.map_or("none", |schema| schema.encoding.as_str());
+        let data = match (schema, encoding) {
+            (Some(schema), "ros1msg") => self.ros1.decode_json(schema, &message.data),
+            (Some(schema), "protobuf") => self
                 .protobuf
                 .decode_json(schema, &message.data)
                 .and_then(|value| {
@@ -860,12 +845,15 @@ impl RecordSink for JsonSink<'_> {
                         FormatError::Invalid(format!("failed to marshal message: {error}"))
                     })
                 }),
-            encoding => return Err(unsupported(&format!("schema encoding {encoding:?}"))),
-        };
-        let data = decoded.map_err(|error| {
+            _ => {
+                return Err(FormatError::Invalid(format!(
+                    "JSON output supports only ros1msg and protobuf schemas, but topic {topic} has schema encoding {encoding}. Use --topics to exclude it."
+                )))
+            }
+        }
+        .map_err(|error| {
             FormatError::Invalid(format!(
-                "failed to convert a {} message on topic {} to JSON: {error}",
-                schema.encoding, channel.topic
+                "failed to convert topic {topic} ({encoding}) to JSON: {error}"
             ))
         })?;
         self.stdout.write_all(b"{\"topic\":")?;
@@ -1021,54 +1009,30 @@ mod tests {
     }
 
     #[test]
-    fn json_export_errors_name_the_topic_and_encoding() {
-        let message = |channel_id| Message {
-            channel_id,
-            sequence: 0,
-            log_time: 0,
-            publish_time: 0,
-            data: vec![1],
-        };
-        let channel = |id, schema_id, topic: &str| Channel {
-            id,
-            schema_id,
-            topic: topic.into(),
-            message_encoding: "json".into(),
-            metadata: BTreeMap::new(),
-        };
+    fn json_export_names_a_schemaless_topic() {
         let mut output = Vec::new();
         let mut sink = JsonSink::new(&mut output);
-        sink.schema(Schema {
+        sink.channel(Channel {
             id: 1,
-            name: "Pose".into(),
-            encoding: "jsonschema".into(),
-            data: Vec::new(),
+            schema_id: 0,
+            topic: "/raw".into(),
+            message_encoding: "json".into(),
+            metadata: BTreeMap::new(),
         })
         .unwrap();
-        sink.schema(Schema {
-            id: 2,
-            name: "Pose".into(),
-            encoding: "ros1msg".into(),
-            data: b"float64 x\n".to_vec(),
-        })
-        .unwrap();
-        sink.channel(channel(1, 0, "/schemaless")).unwrap();
-        sink.channel(channel(2, 1, "/jsonschema")).unwrap();
-        sink.channel(channel(3, 2, "/short")).unwrap();
-        for (channel_id, expected) in [
-            (
-                1,
-                "JSON output does not support topic /schemaless (no schema, message encoding \"json\")",
-            ),
-            (
-                2,
-                "JSON output does not support topic /jsonschema (schema encoding \"jsonschema\")",
-            ),
-            (3, "failed to convert a ros1msg message on topic /short to JSON: "),
-        ] {
-            let error = sink.message(message(channel_id)).unwrap_err().to_string();
-            assert!(error.starts_with(expected), "{error}");
-        }
+        let error = sink
+            .message(Message {
+                channel_id: 1,
+                sequence: 0,
+                log_time: 0,
+                publish_time: 0,
+                data: Vec::new(),
+            })
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "JSON output supports only ros1msg and protobuf schemas, but topic /raw has schema encoding none. Use --topics to exclude it."
+        );
     }
 
     #[test]

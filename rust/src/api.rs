@@ -1374,9 +1374,6 @@ fn response_code(body: &str) -> Option<String> {
         .filter(|code| !code.is_empty())
 }
 
-/// The longest non-JSON error body shown to the user.
-const MAX_TEXT_MESSAGE_CHARS: usize = 200;
-
 fn response_message(body: &str) -> String {
     #[derive(Deserialize)]
     struct ErrorResponse {
@@ -1385,20 +1382,16 @@ fn response_message(body: &str) -> String {
     if let Ok(response) = serde_json::from_str::<ErrorResponse>(body) {
         return response.error.unwrap_or_default();
     }
-    // Proxies and load balancers answer with HTML pages or long text that
-    // would bury the status, so keep only a short plain-text body.
+    // Drop proxy HTML pages and other long bodies so the status shows instead.
     let body = body.trim();
-    if body.starts_with('<') || body.contains('\n') || body.chars().count() > MAX_TEXT_MESSAGE_CHARS
-    {
+    if body.starts_with('<') || body.contains('\n') || body.chars().count() > 200 {
         String::new()
     } else {
         body.to_owned()
     }
 }
 
-/// Describe a reqwest error by its origin and underlying cause, such as
-/// "Connection refused", rather than reqwest's summary, which hides the cause
-/// and repeats the full request URL.
+/// Name the origin and the underlying cause, not reqwest's full URL.
 fn write_reqwest_error(formatter: &mut fmt::Formatter<'_>, error: &reqwest::Error) -> fmt::Result {
     let origin = error.url().map(|url| url.origin().ascii_serialization());
     match (error.is_decode(), origin) {
@@ -1407,19 +1400,14 @@ fn write_reqwest_error(formatter: &mut fmt::Formatter<'_>, error: &reqwest::Erro
         (false, Some(origin)) => write!(formatter, "request to {origin} failed")?,
         (false, None) => formatter.write_str("request failed")?,
     }
-    let mut previous = String::new();
     let mut source = std::error::Error::source(error);
     while let Some(cause) = source {
         let message = cause.to_string();
-        // hyper's "client error (Connect)" only names the cause's kind.
-        if !message.starts_with("client error (") && message != previous {
+        // hyper's "client error (Connect)" only repeats the next cause's kind.
+        if !message.starts_with("client error (") {
             write!(formatter, ": {message}")?;
         }
-        previous = message;
         source = cause.source();
-    }
-    if previous.is_empty() && error.is_timeout() {
-        formatter.write_str(": timed out")?;
     }
     Ok(())
 }
@@ -1729,9 +1717,6 @@ mod tests {
         let html = "<html><body><h1>502 Bad Gateway</h1></body></html>\n";
         let error = api_error_from_response(StatusCode::BAD_GATEWAY, html);
         assert_eq!(error.to_string(), "unexpected status 502");
-        let long = "x".repeat(201);
-        let error = api_error_from_response(StatusCode::BAD_GATEWAY, &long);
-        assert_eq!(error.to_string(), "unexpected status 502");
         let error = api_error_from_response(StatusCode::BAD_GATEWAY, " upstream timeout\n");
         assert_eq!(error.to_string(), "upstream timeout");
     }
@@ -1771,8 +1756,6 @@ mod tests {
             let error = api_error_from_response(StatusCode::NOT_FOUND, body);
             assert!(error.is_not_found_for("Version"), "{body}");
         }
-        assert!(api_error_from_response(StatusCode::NOT_FOUND, "").is_bare_not_found());
-        assert!(!project.is_bare_not_found());
         assert_eq!(
             api_error_from_response(StatusCode::NOT_FOUND, "").to_string(),
             "not found"

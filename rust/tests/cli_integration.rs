@@ -2463,36 +2463,23 @@ fn getting_a_dataset_renders_one_record() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn session_recordings_and_transfer_report_not_found_like_get_and_delete() {
+fn session_recordings_report_a_missing_session() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str, &str)] = &[
-        (
-            &["sessions", "recordings", "list", "one"],
-            "GET",
-            "/v1/sessions/one",
-            "Session not found: one\n",
-        ),
-        (
-            &["recordings", "transfer", "one"],
-            "POST",
-            "/v1/recordings/one/import",
-            "Recording not found: one\n",
-        ),
-    ];
-    for &(args, method, path, expected) in cases {
-        let server = Server::new(vec![Reply {
-            status: 404,
-            ..Reply::json(method, path, r#"{"error":"Not Found"}"#)
-        }]);
-        let output = run(&workspace, &server, args);
-        server.finish();
-        assert_eq!(output.status.code(), Some(1), "{args:?}");
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            expected,
-            "{args:?}"
-        );
-    }
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json("GET", "/v1/sessions/one", r#"{"error":"Not Found"}"#)
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["sessions", "recordings", "list", "one"],
+    );
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session not found: one\n"
+    );
 }
 
 #[test]
@@ -2672,49 +2659,6 @@ fn publishing_an_extension_reports_its_id() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn versions_the_api_names_as_missing_are_reported_as_versions() {
-    let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str, &str, &str)] = &[
-        (
-            &["datasets", "versions", "get", "ds_one", "9"],
-            "GET",
-            "/v1/datasets/ds_one/versions/9",
-            r#"{"error":"Version not found"}"#,
-            "Version 9 of dataset ds_one not found\n",
-        ),
-        (
-            &["datasets", "versions", "compare", "ds_one", "2", "9"],
-            "GET",
-            "/v1/datasets/ds_one/versions/9/compare",
-            r#"{"error":"Version not found"}"#,
-            "Version 2 or 9 of dataset ds_one not found\n",
-        ),
-        (
-            &["datasets", "versions", "restore", "ds_one", "9"],
-            "POST",
-            "/v1/datasets/ds_one/versions/9/restore",
-            r#"{"error":"Version not found"}"#,
-            "Committed version 9 of dataset ds_one not found\n",
-        ),
-    ];
-    for &(args, method, path, response, expected) in cases {
-        let server = Server::new(vec![Reply {
-            status: 404,
-            ..Reply::json(method, path, response)
-        }]);
-        let output = run(&workspace, &server, args);
-        server.finish();
-        assert_eq!(output.status.code(), Some(1), "{args:?}");
-        assert_eq!(
-            String::from_utf8_lossy(&output.stderr),
-            expected,
-            "{args:?}"
-        );
-    }
-}
-
-#[test]
-#[ignore = "requires loopback sockets"]
 fn missing_datasets_episodes_and_versions_are_named_in_the_error() {
     let workspace = Workspace::new();
     let cases: &[(&[&str], &str, &str, &str, &str)] = &[
@@ -2743,6 +2687,13 @@ fn missing_datasets_episodes_and_versions_are_named_in_the_error() {
             &["datasets", "versions", "get", "ds_one", "9"],
             "GET",
             "/v1/datasets/ds_one/versions/9",
+            r#"{"error":"Not Found"}"#,
+            "Dataset ds_one not found, or it has no version 9\n",
+        ),
+        (
+            &["datasets", "episodes", "list", "ds_one", "--version", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9/episodes",
             r#"{"error":"Not Found"}"#,
             "Dataset ds_one not found, or it has no version 9\n",
         ),

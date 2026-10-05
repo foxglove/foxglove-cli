@@ -262,8 +262,6 @@ fn version_not_found(id: &str, version: i64) -> Outcome {
     Outcome::failure(format!("Version {version} of dataset {id} not found\n"))
 }
 
-/// The API returns the same bare 404 for a missing dataset and a missing
-/// version.
 fn dataset_or_version_not_found(id: &str, version: i64) -> Outcome {
     Outcome::failure(format!(
         "Dataset {id} not found, or it has no version {version}\n"
