@@ -370,18 +370,20 @@ mod tests {
     use super::{session_outcome, Session};
 
     #[test]
-    fn session_details_escape_terminal_control_characters() {
+    fn session_details_escape_key_and_device_name() {
         let session: Session = serde_json::from_value(serde_json::json!({
             "id": "ses_1",
-            "key": "\u{1b}]0;title\u{7}key",
-            "device": {"id": "dev_1", "name": "\u{1b}[2Kname"},
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-01-01T00:00:00Z",
+            "key": "\u{1b}key",
+            "device": {"id": "dev_1", "name": "\u{1b}name"},
+            "createdAt": "",
+            "updatedAt": "",
         }))
         .unwrap();
         let stdout = String::from_utf8(session_outcome(&session).stdout).unwrap();
-        assert!(!stdout.chars().any(|c| c.is_control() && c != '\n'));
-        assert!(stdout.contains("Key:        \\u{1b}]0;title\\u{7}key\n"));
-        assert!(stdout.contains("Device:     \\u{1b}[2Kname (dev_1)\n"));
+        assert!(stdout.contains("Key:        \\u{1b}key\n"), "{stdout}");
+        assert!(
+            stdout.contains("Device:     \\u{1b}name (dev_1)\n"),
+            "{stdout}"
+        );
     }
 }

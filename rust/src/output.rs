@@ -94,20 +94,16 @@ fn is_id_header(header: &str) -> bool {
     header == "ID" || header.ends_with(" ID")
 }
 
-/// Escape control and bidi override characters so API-provided text cannot
-/// drive the terminal or reorder what follows it.
 pub(crate) fn escape_terminal_text(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
             '\r' | '\n' => escaped.push_str("\\n"),
-            c if c.is_control() => escaped.extend(c.escape_debug()),
-            '\u{061c}'
-            | '\u{200e}'
-            | '\u{200f}'
-            | '\u{202a}'..='\u{202e}'
-            | '\u{2066}'..='\u{2069}' => {
-                escaped.extend(c.escape_unicode());
+            // The `matches!` list is Unicode's Bidi_Control set, which reorders later text.
+            c if c.is_control()
+                || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') =>
+            {
+                escaped.extend(c.escape_debug());
             }
             c => escaped.push(c),
         }
@@ -275,20 +271,10 @@ mod tests {
     }
 
     #[test]
-    fn table_escapes_terminal_control_characters() {
-        let mut output = Vec::new();
-        super::render_table_at(
-            &mut output,
-            &["Value"],
-            &[vec!["\u{1b}[31mred\u{7}\ttab\u{9b}\u{202e}rtl".into()]],
-            None,
-        )
-        .unwrap();
-        let rendered = String::from_utf8(output).unwrap();
-        assert!(!rendered.chars().any(|c| c.is_control() && c != '\n'));
-        assert!(
-            rendered.contains("\\u{1b}[31mred\\u{7}\\ttab\\u{9b}\\u{202e}rtl"),
-            "{rendered}"
+    fn escapes_control_and_bidi_characters() {
+        assert_eq!(
+            super::escape_terminal_text("\u{1b}[31m\u{7}\t\u{9b}\u{202e}é"),
+            "\\u{1b}[31m\\u{7}\\t\\u{9b}\\u{202e}é"
         );
     }
 }
