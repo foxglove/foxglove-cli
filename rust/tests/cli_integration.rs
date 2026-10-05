@@ -5,7 +5,10 @@ use std::fs;
 use std::io::Cursor;
 use std::process::Output;
 
-use foxglove_rust::format::{Channel, McapWriter, Message, RecordSink, Schema};
+use foxglove_rust::format::{
+    read_rosbag_recover, Channel, Error as FormatError, McapWriter, Message, RecordSink,
+    RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
+};
 use support::{assert_success, Process, Reply, Server, Workspace};
 
 #[test]
@@ -219,6 +222,95 @@ fn export_episode_id_reaches_the_api_and_downloads_mcap() {
         json_body(&requests[0]),
         serde_json::json!({"episodeId": "ep_one", "outputFormat": "mcap", "topics": []})
     );
+}
+
+/// A ROS bag as the API streams it: unindexed, with each chunk followed by its
+/// index data records and no trailing index.
+fn streamed_bag(messages: u64) -> Vec<u8> {
+    let mut writer = RosbagWriter::new(Cursor::new(Vec::new())).unwrap();
+    writer
+        .connection(RosbagConnection {
+            id: 1,
+            topic: "/typed".into(),
+            type_name: "example/Message".into(),
+            md5sum: "abc".into(),
+            message_definition: b"uint8 value\n".to_vec(),
+            caller_id: None,
+            latching: None,
+        })
+        .unwrap();
+    for time in 0..messages {
+        writer
+            .message(&RosbagMessage {
+                connection_id: 1,
+                time,
+                data: vec![0; 400 * 1024],
+            })
+            .unwrap();
+    }
+    let mut bytes = writer.finish_into().unwrap().into_inner();
+    let u32_at = |bytes: &[u8], at: usize| {
+        usize::try_from(u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())).unwrap()
+    };
+    let mut offset = b"#ROSBAG V2.0\n".len();
+    while offset < bytes.len() {
+        let header_len = u32_at(&bytes, offset);
+        let header = &bytes[offset + 4..offset + 4 + header_len];
+        if header.windows(4).any(|field| field == b"op=\x07") {
+            break;
+        }
+        let data_at = offset + 4 + header_len;
+        offset = data_at + 4 + u32_at(&bytes, data_at);
+    }
+    bytes.truncate(offset);
+    for (name, len) in [("index_pos=", 8), ("conn_count=", 4), ("chunk_count=", 4)] {
+        let at = bytes
+            .windows(name.len())
+            .position(|window| window == name.as_bytes())
+            .unwrap()
+            + name.len();
+        bytes[at..at + len].fill(0);
+    }
+    bytes
+}
+
+#[derive(Default)]
+struct BagMessageCount(usize);
+
+impl RosbagSink for BagMessageCount {
+    fn connection(&mut self, _: RosbagConnection) -> Result<(), FormatError> {
+        Ok(())
+    }
+    fn message(&mut self, _: RosbagMessage) -> Result<(), FormatError> {
+        self.0 += 1;
+        Ok(())
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn bag_export_of_a_streamed_bag_finishes_in_one_request() {
+    let workspace = Workspace::new();
+    let server = Server::new(export_replies(streamed_bag(3)));
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "export",
+            "--recording-id",
+            "rec_one",
+            "--output-format",
+            "bag1",
+            "--output-file",
+            "recording.bag",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(server.finish().len(), 2);
+    let bag = fs::read(workspace.0.join("recording.bag")).unwrap();
+    let mut count = BagMessageCount::default();
+    assert!(read_rosbag_recover(&mut Cursor::new(bag), &mut count, false).unwrap());
+    assert_eq!(count.0, 3);
 }
 
 #[test]
