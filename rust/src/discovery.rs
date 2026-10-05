@@ -175,6 +175,10 @@ pub(crate) fn describe(mut root: Command, path: &[String], format: DescribeForma
 }
 
 fn render_description(writer: &mut dyn Write, description: &CommandDescription) -> io::Result<()> {
+    writeln!(
+        writer,
+        "Scripts and agents: pass --format json for structured results.\n"
+    )?;
     writeln!(writer, "{}", description.command)?;
     if !description.summary.is_empty() {
         writeln!(writer, "{}", description.summary)?;
@@ -722,7 +726,10 @@ mod tests {
         assert_eq!(describe.exit_code, 0);
         let describe = String::from_utf8(describe.stdout).unwrap();
         assert!(
-            describe.starts_with("foxglove sessions edit\n"),
+            describe.starts_with(
+                "Scripts and agents: pass --format json for structured results.\n\n\
+                 foxglove sessions edit\n"
+            ),
             "{describe}"
         );
         for heading in [
