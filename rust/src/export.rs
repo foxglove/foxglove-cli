@@ -842,7 +842,7 @@ impl RecordSink for JsonSink<'_> {
                 )))
             }
         };
-        let encoding = schema.map_or("none", |schema| schema.encoding.as_str());
+        let encoding = schema.map_or("", |schema| schema.encoding.as_str());
         let data = match (schema, encoding) {
             (Some(schema), "ros1msg") => self.ros1.decode_json(schema, &message.data),
             (Some(schema), "protobuf") => self
@@ -854,9 +854,14 @@ impl RecordSink for JsonSink<'_> {
                     })
                 }),
             _ => {
+                let found = if schema.is_some() {
+                    format!("schema encoding {encoding}")
+                } else {
+                    "no schema".to_owned()
+                };
                 return Err(FormatError::Invalid(format!(
-                    "JSON output supports only ros1msg and protobuf schemas, but topic {topic} has schema encoding {encoding}. Use --topics to exclude it."
-                )))
+                    "JSON output supports only ros1msg and protobuf schemas, but topic {topic} has {found}. Use --topics to export only the other topics."
+                )));
             }
         }
         .map_err(|error| {
@@ -1019,7 +1024,7 @@ mod tests {
     #[test]
     fn json_export_names_topics_without_a_known_schema() {
         for (schema_id, expected) in [
-            (0, "JSON output supports only ros1msg and protobuf schemas, but topic /raw has schema encoding none. Use --topics to exclude it."),
+            (0, "JSON output supports only ros1msg and protobuf schemas, but topic /raw has no schema. Use --topics to export only the other topics."),
             (7, "topic /raw refers to unknown MCAP schema 7"),
         ] {
             let mut output = Vec::new();
