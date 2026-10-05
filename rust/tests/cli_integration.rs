@@ -616,7 +616,7 @@ fn stalled_resumes_fail_and_preserve_destination() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn resumed_episode_exports_end_at_the_episode_end() {
+fn resumed_episode_exports_preserve_the_server_default_end() {
     const SECOND: u64 = 1_000_000_000;
     const JAN_1_2024: u64 = 1_704_067_200 * SECOND;
     let messages = [
@@ -628,11 +628,6 @@ fn resumed_episode_exports_end_at_the_episode_end() {
     let mut partial = recording(&messages[..2]);
     partial.truncate(partial.len() - 4);
     let mut replies = export_replies(partial);
-    replies.push(Reply::json(
-        "GET",
-        "/v1/episodes/ep_one",
-        r#"{"id":"ep_one","projectId":"prj","startTime":"2024-01-01T00:00:00Z","endTime":"2024-01-01T00:00:02Z","createdAt":"2024-01-01T00:00:00Z"}"#,
-    ));
     replies.extend(export_replies(recording(&messages[1..])));
     let server = Server::new(replies);
     let output = run(
@@ -647,8 +642,29 @@ fn resumed_episode_exports_end_at_the_episode_end() {
         ],
     );
     assert_success(&output);
-    let resumed = json_body(&server.finish()[3]);
-    assert_eq!(resumed["end"], "2024-01-01T00:00:02Z");
+    let requests = server.finish();
+    assert_eq!(requests.len(), 4);
+    let resumed = json_body(&requests[2]);
+    assert_eq!(resumed["episodeId"], "ep_one");
+    assert_eq!(resumed["start"], "2024-01-01T00:00:01Z");
+    assert!(resumed.get("end").is_none(), "{resumed}");
+    let mut records = Records::default();
+    foxglove_rust::format::read_mcap(
+        &mut fs::File::open(workspace.0.join("episode.mcap")).unwrap(),
+        &mut records,
+    )
+    .unwrap();
+    assert_eq!(
+        records
+            .messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>(),
+        messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[cfg(all(unix, feature = "test-support"))]

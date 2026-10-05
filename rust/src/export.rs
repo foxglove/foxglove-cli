@@ -9,7 +9,6 @@ use time::OffsetDateTime;
 
 use crate::api::{self, StreamRequest};
 use crate::cli::ExportArgs;
-use crate::episodes::{episode_endpoint, Episode};
 use crate::format::{
     Attachment, Channel, Error as FormatError, McapWriter, Message, ProtobufDecoder, RecordSink,
     Ros1DecoderCache, RosbagConnection, RosbagMessage, RosbagSink, RosbagWriter, Schema,
@@ -305,8 +304,9 @@ async fn resumable_export_inner(
             repeated_starts = 0;
         }
         request.start = Some(start);
-        if request.end.is_none() {
-            request.end = Some(resume_end(runtime, request, cancellation).await?);
+        // The API supplies the episode's end when omitted, even with a resume start.
+        if request.end.is_none() && request.episode_id.is_empty() {
+            request.end = Some(OffsetDateTime::now_utc());
         }
         // The resumed request starts at the last message received. With a
         // replay policy, the server would first resend the latest message on
@@ -348,24 +348,6 @@ fn incomplete_download() -> api::ApiError {
     api::ApiError::Conversion(
         "the download stopped making progress; the destination was not changed".into(),
     )
-}
-
-/// Resumes of an episode export end at the episode's end, not the present.
-async fn resume_end(
-    runtime: &Runtime,
-    request: &StreamRequest,
-    cancellation: &tokio_util::sync::CancellationToken,
-) -> Result<OffsetDateTime, api::ApiError> {
-    if request.episode_id.is_empty() {
-        return Ok(OffsetDateTime::now_utc());
-    }
-    let episode: Episode = runtime
-        .client
-        .get_with_cancellation(&episode_endpoint(&request.episode_id), &(), cancellation)
-        .await?;
-    let end = parse_timestamp_value(&episode.end_time, "episode end")
-        .map_err(api::ApiError::Conversion)?;
-    Ok(end.unwrap_or_else(OffsetDateTime::now_utc))
 }
 
 async fn download_response(

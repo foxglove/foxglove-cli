@@ -194,7 +194,7 @@ pub(crate) async fn list_episodes(
     }
 }
 
-pub(crate) fn episode_endpoint(id: &str) -> String {
+fn episode_endpoint(id: &str) -> String {
     format!("/v1/episodes/{}", encode_path_segment(id))
 }
 
