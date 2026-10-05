@@ -204,11 +204,12 @@ async fn complete_login(
                     // Device-code polling uses HTTP 403 to mean authorization is
                     // still pending. A 401 is an authentication error and must
                     // surface instead of retrying forever.
-                    Err(api::ApiError::Forbidden) => {}
+                    Err(api::ApiError::Forbidden) => last_error = None,
                     Err(api::ApiError::Response { status, message })
                         if status == 429 || message == "slow_down" =>
                     {
                         interval += SLOW_DOWN_STEP;
+                        last_error = None;
                     }
                     // The expiry timer bounds these retries.
                     Err(error) if error.is_retryable() => last_error = Some(error),
