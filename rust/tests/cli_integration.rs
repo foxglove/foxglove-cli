@@ -577,34 +577,47 @@ fn resumed_exports_do_not_request_the_replay_again() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn stalled_resumes_fail_and_preserve_destination() {
-    let workspace = Workspace::new();
-    let mut partial = recording(&[message(1, 1, vec![1]), message(1, 2, vec![2])]);
-    partial.truncate(partial.len() - 4);
-    let mut replies = Vec::new();
-    for _ in 0..3 {
-        replies.extend(export_replies(partial.clone()));
+    let truncated = |messages: &[Message]| {
+        let mut partial = recording(messages);
+        partial.truncate(partial.len() - 4);
+        partial
+    };
+    let progress = truncated(&[message(1, 1, vec![1]), message(1, 2, vec![2])]);
+    let empty = truncated(&[]);
+    // Resumes that repeat the same last message, then resumes that return
+    // no messages at all.
+    for responses in [
+        [progress.clone(), progress.clone(), progress.clone()],
+        [progress.clone(), empty.clone(), empty.clone()],
+    ] {
+        let workspace = Workspace::new();
+        let server = Server::new(responses.into_iter().flat_map(export_replies).collect());
+        fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
+        let output = Process::spawn(workspace.command(&server.url).args([
+            "export",
+            "--recording-id",
+            "rec",
+            "--output-file",
+            "output.mcap",
+        ]))
+        .finish();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("stopped making progress"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            fs::read(workspace.0.join("output.mcap")).unwrap(),
+            b"existing destination"
+        );
+        assert_eq!(
+            fs::read_dir(&workspace.0).unwrap().count(),
+            1,
+            "staging was not cleaned"
+        );
+        assert_eq!(server.finish().len(), 6);
     }
-    let server = Server::new(replies);
-    fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
-    let output = Process::spawn(workspace.command(&server.url).args([
-        "export",
-        "--recording-id",
-        "rec",
-        "--output-file",
-        "output.mcap",
-    ]))
-    .finish();
-    assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        fs::read(workspace.0.join("output.mcap")).unwrap(),
-        b"existing destination"
-    );
-    assert_eq!(
-        fs::read_dir(&workspace.0).unwrap().count(),
-        1,
-        "staging was not cleaned"
-    );
-    assert_eq!(server.finish().len(), 6);
 }
 
 #[test]

@@ -348,7 +348,10 @@ async fn resumable_export_inner(
 }
 
 fn incomplete_download() -> api::ApiError {
-    api::ApiError::Conversion("the stream ended before the download was complete".into())
+    api::ApiError::Conversion(
+        "the download stopped making progress after repeated resumes, so the destination was not changed; try again"
+            .into(),
+    )
 }
 
 /// A resumed request needs an end time. An episode export keeps the episode's
@@ -364,7 +367,14 @@ async fn resume_end(
     let episode: Episode = runtime
         .client
         .get_with_cancellation(&episode_endpoint(&request.episode_id), &(), cancellation)
-        .await?;
+        .await
+        .map_err(|error| match error {
+            api::ApiError::Cancelled => error,
+            error => api::ApiError::Context {
+                context: "failed to get the episode end time",
+                source: Box::new(error),
+            },
+        })?;
     OffsetDateTime::parse(&episode.end_time, &Rfc3339).map_err(|error| {
         api::ApiError::Conversion(format!(
             "invalid episode end time {:?}: {error}",
