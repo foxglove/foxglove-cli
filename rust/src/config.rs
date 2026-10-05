@@ -241,18 +241,23 @@ const ENVIRONMENT_OVERRIDES: [(&str, &str); 4] = [
     ("default_project_id", "DEFAULT_PROJECT_ID"),
 ];
 
-const LEGACY_ENVIRONMENT: [(&str, &str); 2] = [
-    ("BASE_URL", "FOXGLOVE_BASE_URL"),
-    ("BEARER_TOKEN", "FOXGLOVE_BEARER_TOKEN"),
+const LEGACY_ENVIRONMENT: [(&str, &str, &str); 3] = [
+    ("BASE_URL", "ignored", "FOXGLOVE_BASE_URL"),
+    ("BEARER_TOKEN", "ignored", "FOXGLOVE_BEARER_TOKEN"),
+    (
+        "DEFAULT_PROJECT_ID",
+        "deprecated",
+        "FOXGLOVE_DEFAULT_PROJECT_ID",
+    ),
 ];
 
 pub(crate) fn warn_legacy_environment() {
     let is_set = |name| env::var_os(name).is_some_and(|value| !value.is_empty());
-    for (legacy, replacement) in LEGACY_ENVIRONMENT {
+    for (legacy, status, replacement) in LEGACY_ENVIRONMENT {
         if is_set(legacy) && !is_set(replacement) {
             let _ = writeln!(
                 io::stderr(),
-                "warning: {legacy} is ignored; set {replacement} instead"
+                "warning: {legacy} is {status}; set {replacement} instead"
             );
         }
     }

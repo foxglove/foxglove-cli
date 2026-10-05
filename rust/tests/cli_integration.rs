@@ -25,7 +25,7 @@ fn explicit_empty_project_overrides_configured_default() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                 .args(["recordings", "list", "--format", "json"])
                 .args(&flags),
         )
@@ -48,7 +48,7 @@ fn clearing_project_default_requires_project_for_session_key() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args([
                 "recordings",
                 "list",
@@ -1251,7 +1251,7 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "default-project")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "default-project")
                 .args(["sessions", "edit", "old-key"])
                 .args(&flags),
         )
@@ -1410,14 +1410,16 @@ fn session_key_edit_reports_debug_project_scope() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["--debug", "sessions", "edit", "..", "--key", "new-key"]),
     )
     .finish();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.starts_with("[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"),
+        stderr.starts_with(
+            "[DEBUG] Project scope: prj_default (source: FOXGLOVE_DEFAULT_PROJECT_ID)\n"
+        ),
         "{stderr}"
     );
     assert!(
@@ -1458,7 +1460,7 @@ fn empty_environment_overrides_use_saved_configuration() {
         workspace
             .command("")
             .env("FOXGLOVE_BEARER_TOKEN", "")
-            .env("DEFAULT_PROJECT_ID", "")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "")
             .args(["recordings", "list", "--format", "json"]),
     )
     .finish();
@@ -2575,7 +2577,7 @@ fn creating_an_empty_dataset_sends_only_its_name_and_project() {
     let output = Process::spawn(
         workspace
             .command(&server.url)
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["datasets", "add", "--name", "Highway", "--description", ""]),
     )
     .finish();
@@ -3565,7 +3567,7 @@ fn an_episode_window_left_out_is_inferred_by_the_api() {
     let output = Process::spawn(
         workspace
             .command(&server.url)
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["episodes", "add", "--recording-id", "rec_one"]),
     )
     .finish();
@@ -3932,7 +3934,7 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
             }]);
             let mut command = workspace.command(&server.url);
             command
-                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                 .args(&args)
                 .args(&flag);
             let output = Process::spawn(&mut command).finish();
@@ -3960,7 +3962,7 @@ fn unassigned_pending_imports_omit_project_defaults() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "prj_default")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                 .args(["pending-imports", "list", "--without-project"])
                 .args(&flags),
         )
@@ -3978,7 +3980,7 @@ fn unassigned_pending_imports_reject_conflicting_scope_before_a_request() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_default")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
             .args(["pending-imports", "list", "--without-project"])
             .args(["--project-id", "prj_explicit"]),
     )
@@ -4015,7 +4017,8 @@ fn project_scope_debug_reports_each_resolution_source() {
             "",
             "prj_legacy",
             vec![],
-            "[DEBUG] Project scope: prj_legacy (source: DEFAULT_PROJECT_ID)\n",
+            "warning: DEFAULT_PROJECT_ID is deprecated; set FOXGLOVE_DEFAULT_PROJECT_ID instead\n\
+             [DEBUG] Project scope: prj_legacy (source: DEFAULT_PROJECT_ID)\n",
         ),
         (
             "",
@@ -4046,7 +4049,7 @@ fn project_scope_debug_reports_each_resolution_source() {
     let output = Process::spawn(
         workspace
             .command("http://127.0.0.1:1")
-            .env("DEFAULT_PROJECT_ID", "prj_environment")
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_environment")
             .args(["--debug", "pending-imports", "list", "--without-project"]),
     )
     .finish();
@@ -4079,7 +4082,7 @@ fn project_required_creation_reports_debug_scope() {
             let output = Process::spawn(
                 workspace
                     .command("http://127.0.0.1:1")
-                    .env("DEFAULT_PROJECT_ID", "prj_default")
+                    .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
                     .args(["--debug", command, "add"])
                     .args(&args)
                     .args(&flags),
@@ -4088,7 +4091,7 @@ fn project_required_creation_reports_debug_scope() {
             assert!(!output.status.success());
             let stderr = String::from_utf8_lossy(&output.stderr);
             let expected = if flags.is_empty() {
-                "[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"
+                "[DEBUG] Project scope: prj_default (source: FOXGLOVE_DEFAULT_PROJECT_ID)\n"
             } else {
                 "[DEBUG] Project scope: unscoped (source: --project-id)\n"
             };
