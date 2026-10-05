@@ -13,6 +13,7 @@ use crate::records::{format_output, Record};
 use crate::Outcome;
 
 const MAX_RESULTS: usize = 5;
+const JSON_HINT: &str = "Scripts and agents: pass --format json for structured results.\n";
 const STOP_WORDS: &[&str] = &[
     "a", "all", "an", "and", "by", "can", "do", "for", "from", "how", "i", "in", "into", "is",
     "it", "me", "my", "of", "on", "or", "some", "that", "the", "this", "to", "want", "with",
@@ -143,7 +144,12 @@ pub(crate) fn search(mut root: Command, query: &str, format: Format) -> Outcome 
             summary: document.summary.clone(),
         })
         .collect::<Vec<_>>();
-    format_output(&results, format)
+    let outcome = format_output(&results, format);
+    if format == Format::Table {
+        with_json_hint(outcome)
+    } else {
+        outcome
+    }
 }
 
 pub(crate) fn describe(mut root: Command, path: &[String], format: DescribeFormat) -> Outcome {
@@ -169,16 +175,20 @@ pub(crate) fn describe(mut root: Command, path: &[String], format: DescribeForma
         DescribeFormat::Json => render_json(&mut stdout, &description),
     };
     match result {
+        Ok(()) if format == DescribeFormat::Table => with_json_hint(Outcome::success(stdout)),
         Ok(()) => Outcome::success(stdout),
         Err(error) => Outcome::failure(format!("failed to render output: {error}\n")),
     }
 }
 
+fn with_json_hint(mut outcome: Outcome) -> Outcome {
+    if outcome.exit_code == 0 {
+        outcome.stderr.extend_from_slice(JSON_HINT.as_bytes());
+    }
+    outcome
+}
+
 fn render_description(writer: &mut dyn Write, description: &CommandDescription) -> io::Result<()> {
-    writeln!(
-        writer,
-        "Scripts and agents: pass --format json for structured results.\n"
-    )?;
     writeln!(writer, "{}", description.command)?;
     if !description.summary.is_empty() {
         writeln!(writer, "{}", description.summary)?;
@@ -713,8 +723,10 @@ mod tests {
 
     #[test]
     fn search_and_describe_print_tables_by_default() {
+        let hint = "Scripts and agents: pass --format json for structured results.\n";
         let search = invoke(&["cli", "search", "add to a dataset"]);
         assert_eq!(search.exit_code, 0);
+        assert_eq!(String::from_utf8(search.stderr).unwrap(), hint);
         let search = String::from_utf8(search.stdout).unwrap();
         assert!(search.starts_with(" Command "), "{search}");
         assert!(
@@ -724,12 +736,10 @@ mod tests {
 
         let describe = invoke(&["cli", "describe", "sessions", "edit"]);
         assert_eq!(describe.exit_code, 0);
+        assert_eq!(String::from_utf8(describe.stderr).unwrap(), hint);
         let describe = String::from_utf8(describe.stdout).unwrap();
         assert!(
-            describe.starts_with(
-                "Scripts and agents: pass --format json for structured results.\n\n\
-                 foxglove sessions edit\n"
-            ),
+            describe.starts_with("foxglove sessions edit\n"),
             "{describe}"
         );
         for heading in [
@@ -745,6 +755,14 @@ mod tests {
             );
         }
         assert!(describe.contains("exactly one"), "{describe}");
+
+        for args in [
+            ["cli", "search", "dataset", "--format", "json"],
+            ["cli", "search", "dataset", "--format", "csv"],
+            ["cli", "describe", "datasets", "--format", "json"],
+        ] {
+            assert!(invoke(&args).stderr.is_empty(), "{args:?}");
+        }
     }
 
     #[test]
