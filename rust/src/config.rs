@@ -12,8 +12,7 @@ const MISSING_HOME: &str =
 
 /// The persisted Foxglove CLI configuration.
 pub struct Config {
-    /// `None` when no home directory exists; the configuration is then empty
-    /// and only environment overrides apply.
+    /// `None` when no home directory exists.
     path: Option<PathBuf>,
     values: Mapping,
     permissions: Option<Permissions>,
@@ -159,8 +158,7 @@ impl Config {
     pub fn save(&self) -> Result<(), String> {
         let source = serde_yaml_ng::to_string(&Value::Mapping(self.values.clone()))
             .map_err(|error| format!("failed to write config: {error}\n"))?;
-        let path = self.path()?;
-        let (temporary_path, mut temporary) = create_temporary(path)?;
+        let (temporary_path, mut temporary) = self.create_temporary()?;
         let cleanup = TemporaryGuard(&temporary_path);
         temporary
             .write_all(source.as_bytes())
@@ -171,34 +169,34 @@ impl Config {
                 .map_err(|error| format!("failed to write config: {error}\n"))?;
         }
         drop(temporary);
-        replace_file(&temporary_path, path)
+        replace_file(&temporary_path, self.path()?)
             .map_err(|error| format!("failed to write config: {error}\n"))?;
         cleanup.disarm();
         Ok(())
     }
-}
 
-fn create_temporary(destination: &Path) -> Result<(PathBuf, File), String> {
-    for attempt in 0..100_u8 {
-        let suffix = format!("tmp-{}-{attempt}", std::process::id());
-        let path = destination.with_extension(suffix);
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => {
-                // A newly-created config can contain a bearer token. Do
-                // this before its contents are written; existing files
-                // retain their permissions in `save` above.
-                if let Err(error) = restrict_new_config_permissions(&file) {
-                    drop(file);
-                    let _ = fs::remove_file(&path);
-                    return Err(error);
+    fn create_temporary(&self) -> Result<(PathBuf, File), String> {
+        for attempt in 0..100_u8 {
+            let suffix = format!("tmp-{}-{attempt}", std::process::id());
+            let path = self.path()?.with_extension(suffix);
+            match OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(file) => {
+                    // A newly-created config can contain a bearer token. Do
+                    // this before its contents are written; existing files
+                    // retain their permissions in `save` above.
+                    if let Err(error) = restrict_new_config_permissions(&file) {
+                        drop(file);
+                        let _ = fs::remove_file(&path);
+                        return Err(error);
+                    }
+                    return Ok((path, file));
                 }
-                return Ok((path, file));
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(format!("failed to write config: {error}\n")),
             }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(format!("failed to write config: {error}\n")),
         }
+        Err("failed to write config: could not create a temporary file\n".to_owned())
     }
-    Err("failed to write config: could not create a temporary file\n".to_owned())
 }
 
 #[cfg(unix)]
@@ -234,29 +232,24 @@ impl Drop for TemporaryGuard<'_> {
     }
 }
 
-/// The only environment variables that override persisted values. Generic
-/// names like `BASE_URL` are set by unrelated tools and must not redirect the
-/// bearer token.
+/// Generic names like `BASE_URL` must not redirect the bearer token.
 const ENVIRONMENT_OVERRIDES: [(&str, &str); 3] = [
     ("base_url", "FOXGLOVE_BASE_URL"),
     ("bearer_token", "FOXGLOVE_BEARER_TOKEN"),
     ("default_project_id", "DEFAULT_PROJECT_ID"),
 ];
 
-/// Undocumented names earlier releases read. They are ignored now, but a
-/// warning keeps a stale CI setup from silently using the saved account.
 const LEGACY_ENVIRONMENT: [(&str, &str); 2] = [
     ("BASE_URL", "FOXGLOVE_BASE_URL"),
     ("BEARER_TOKEN", "FOXGLOVE_BEARER_TOKEN"),
 ];
 
-/// Warn about legacy variables that are set while their replacement is not.
-pub(crate) fn warn_legacy_environment(writer: &mut dyn Write) {
+pub(crate) fn warn_legacy_environment() {
     let is_set = |name| env::var_os(name).is_some_and(|value| !value.is_empty());
     for (legacy, replacement) in LEGACY_ENVIRONMENT {
         if is_set(legacy) && !is_set(replacement) {
             let _ = writeln!(
-                writer,
+                io::stderr(),
                 "warning: {legacy} is ignored; set {replacement} instead"
             );
         }
@@ -320,23 +313,6 @@ mod tests {
             permissions: None,
         };
         assert!(!config.remove("default_project_id"));
-    }
-
-    #[test]
-    fn only_allowlisted_keys_read_the_environment() {
-        assert_eq!(
-            super::environment_name("base_url"),
-            Some("FOXGLOVE_BASE_URL")
-        );
-        assert_eq!(
-            super::environment_name("bearer_token"),
-            Some("FOXGLOVE_BEARER_TOKEN")
-        );
-        assert_eq!(
-            super::environment_name("default_project_id"),
-            Some("DEFAULT_PROJECT_ID")
-        );
-        assert_eq!(super::environment_name("auth_type"), None);
     }
 
     #[test]

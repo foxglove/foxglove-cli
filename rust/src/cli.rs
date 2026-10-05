@@ -1844,7 +1844,6 @@ fn configure_api_key(
         Ok(config) => config,
         Err(error) => return Outcome::failure(error),
     };
-    // Fail before the prompt so the user doesn't paste a key for nothing.
     let path = match config.path() {
         Ok(path) => path.to_owned(),
         Err(error) => return Outcome::failure(format!("Configuration failed: {error}")),

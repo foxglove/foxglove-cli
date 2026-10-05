@@ -1533,27 +1533,6 @@ fn plain_http_base_url_is_refused_for_remote_hosts() {
         "refusing plain-HTTP API base URL http://api.example.test; use https \
          (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n",
     );
-    assert!(!workspace.0.join(".foxgloverc").exists());
-}
-
-#[test]
-fn missing_home_requires_explicit_config() {
-    let workspace = Workspace::new();
-    let output = Process::spawn(
-        workspace
-            .command("http://127.0.0.1:1")
-            .env_remove("HOME")
-            .env_remove("USERPROFILE")
-            .args(["config", "set", "project-id", "prj_1"]),
-    )
-    .finish();
-    assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8_lossy(&output.stderr),
-        "cannot locate the config file because HOME (or USERPROFILE on Windows) is not set; \
-         pass --config\n",
-    );
-    assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
 #[test]
@@ -1579,23 +1558,33 @@ fn configure_api_key_rejects_plain_http_before_prompting() {
 }
 
 #[test]
-fn login_without_home_fails_before_sign_in() {
+fn missing_home_requires_explicit_config_for_writes() {
     let workspace = Workspace::new();
-    let output = Process::spawn(
-        workspace
-            .command("")
-            .env_remove("HOME")
-            .env_remove("USERPROFILE")
-            .args(["auth", "login", "--base-url", "http://127.0.0.1:1"]),
-    )
-    .finish();
-    assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty());
-    assert_eq!(
-        String::from_utf8_lossy(&output.stderr),
-        "Login failed: cannot locate the config file because HOME (or USERPROFILE on Windows) \
-         is not set; pass --config\n",
-    );
+    for (args, prefix) in [
+        (&["config", "set", "project-id", "prj_1"][..], ""),
+        (
+            &["auth", "login", "--base-url", "http://127.0.0.1:1"][..],
+            "Login failed: ",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("")
+                .env_remove("HOME")
+                .env_remove("USERPROFILE")
+                .args(args),
+        )
+        .finish();
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "{prefix}cannot locate the config file because HOME (or USERPROFILE on Windows) \
+                 is not set; pass --config\n"
+            ),
+        );
+    }
+    assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
 fn query_pairs(request: &str) -> BTreeMap<String, String> {

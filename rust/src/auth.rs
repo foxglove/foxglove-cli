@@ -98,7 +98,6 @@ pub(crate) async fn login(
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
 
-    // Fail before the browser flow so a completed sign-in is never discarded.
     let mut config = match Config::load_from_path(config_path) {
         Ok(config) => config,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),

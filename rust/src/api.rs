@@ -378,12 +378,7 @@ pub fn ctrl_c_cancellation_token() -> CancellationToken {
     cancellation
 }
 
-/// Parse an API base URL, refusing plain HTTP to anything but loopback so the
-/// bearer token is never sent in cleartext over the network.
-///
-/// # Errors
-///
-/// Returns an error when the URL is invalid or uses `http` for a remote host.
+/// Parse an API base URL, refusing plain HTTP to anything but loopback.
 pub(crate) fn parse_base_url(base_url: &str) -> Result<Url, ApiError> {
     let mut url = Url::parse(base_url)
         .map_err(|error| ApiError::InvalidUrl(format!("invalid API base URL: {error}")))?;
@@ -414,8 +409,8 @@ impl FoxgloveClient {
     ///
     /// # Errors
     ///
-    /// Returns an error when the base URL is invalid or plain HTTP to a remote
-    /// host, or the HTTP client cannot be initialized.
+    /// Returns an error when the base URL is invalid or the HTTP client cannot
+    /// be initialized.
     pub fn new(
         base_url: &str,
         client_id: impl Into<String>,
