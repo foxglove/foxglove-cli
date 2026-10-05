@@ -179,12 +179,16 @@ async fn complete_login(
 ) -> Result<String, String> {
     let mut interval = Duration::from_secs(device_code.interval.max(1));
     let expires_in = Duration::from_secs(device_code.expires_in);
+    let mut last_error = None;
     let result = tokio::select! {
         biased;
         () = cancellation.cancelled() => Err("context canceled".to_owned()),
         // This timer covers both the polling delay and an in-flight request.
         // Poll it first so an expired code cannot start another request.
-        () = tokio::time::sleep(expires_in) => Err(LOGIN_EXPIRED.to_owned()),
+        () = tokio::time::sleep(expires_in) => Err(match last_error {
+            Some(error) => format!("{LOGIN_EXPIRED} (last error: {error})"),
+            None => LOGIN_EXPIRED.to_owned(),
+        }),
         result = async {
             // A zero-length sleep may wait for the next timer tick. Check here
             // so an already-expired code cannot send a token request.
@@ -207,7 +211,7 @@ async fn complete_login(
                         interval += SLOW_DOWN_STEP;
                     }
                     // The expiry timer bounds these retries.
-                    Err(error) if error.is_retryable() => {}
+                    Err(error) if error.is_retryable() => last_error = Some(error),
                     Err(error) => return Err(format!("failed to request token: {error}")),
                 }
                 tokio::time::sleep(interval).await;

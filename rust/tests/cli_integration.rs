@@ -634,6 +634,38 @@ fn login_keeps_polling_through_transient_errors_and_slow_down() {
 #[cfg(feature = "test-support")]
 #[test]
 #[ignore = "requires loopback sockets"]
+fn login_expiry_reports_the_last_transient_error() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/auth/device-code",
+            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":5}"#,
+        ),
+        Reply {
+            status: 502,
+            ..Reply::json("POST", "/v1/auth/token", "")
+        },
+    ]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "auth",
+        "login",
+        "--base-url",
+        &server.url,
+    ]))
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("expired before it was authorized; run `foxglove auth login` again (last error: unexpected status 502)"),
+        "{stderr}"
+    );
+    server.finish();
+}
+
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires loopback sockets"]
 fn login_requires_device_code_interval_and_expiry() {
     for missing_field in ["interval", "expiresIn"] {
         let workspace = Workspace::new();
@@ -1336,6 +1368,29 @@ fn gets_are_retried_after_429_and_5xx_responses() {
     ]);
     assert_success(&run(&workspace, &server, &["devices", "list"]));
     assert_eq!(server.finish().len(), 3);
+
+    let server = Server::new(
+        (0..3)
+            .map(|_| Reply {
+                status: 503,
+                ..Reply::json("GET", "/v1/devices", "")
+            })
+            .collect(),
+    );
+    let output = run(&workspace, &server, &["devices", "list"]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unexpected status 503"), "{stderr}");
+    assert_eq!(server.finish().len(), 3);
+
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let started = std::time::Instant::now();
+    let output = Process::spawn(workspace.command(&url).args(["devices", "list"])).finish();
+    assert_eq!(output.status.code(), Some(1));
+    // Waits 1 s and then 2 s between the three connection attempts.
+    assert!(started.elapsed() >= std::time::Duration::from_secs(3));
 
     let server = Server::new(vec![Reply {
         status: 503,

@@ -163,6 +163,9 @@ impl fmt::Display for ApiError {
             Self::ForbiddenWithMessage(message)
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
+            Self::Transport(error) | Self::Decode(error) if error.is_timeout() => {
+                write!(formatter, "{error}: timed out")
+            }
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
             Self::Serialization(error) => error.fmt(formatter),
             Self::Cancelled => formatter.write_str("operation cancelled"),
@@ -363,8 +366,8 @@ pub struct DeviceCodeResponse {
 #[derive(Clone, Debug)]
 pub struct FoxgloveClient {
     http: reqwest::Client,
-    // reqwest's read timeout also covers sending the body, so file uploads
-    // skip it.
+    // reqwest's read timeout also covers sending the body, so recording
+    // uploads skip it.
     upload_http: reqwest::Client,
     base_url: Url,
     client_id: String,
