@@ -37,9 +37,10 @@ impl Config {
         if let Some(path) = path {
             return Self::load(path.to_owned());
         }
-        let home = env::var_os("HOME")
-            .or_else(|| env::var_os("USERPROFILE"))
-            .unwrap_or_default();
+        let home = ["HOME", "USERPROFILE"]
+            .into_iter()
+            .find_map(|name| env::var_os(name).filter(|value| !value.is_empty()))
+            .ok_or("cannot locate the config file because HOME is not set; pass --config\n")?;
         Self::load(PathBuf::from(home).join(".foxgloverc"))
     }
 
@@ -217,15 +218,27 @@ impl Drop for TemporaryGuard<'_> {
     }
 }
 
-pub(crate) fn environment_name(key: &str) -> String {
-    key.to_ascii_uppercase()
+/// The only environment variables that override persisted values. Generic
+/// names like `BASE_URL` are set by unrelated tools and must not redirect the
+/// bearer token.
+const ENVIRONMENT_OVERRIDES: [(&str, &str); 3] = [
+    ("base_url", "FOXGLOVE_BASE_URL"),
+    ("bearer_token", "FOXGLOVE_BEARER_TOKEN"),
+    ("default_project_id", "DEFAULT_PROJECT_ID"),
+];
+
+pub(crate) fn environment_name(key: &str) -> Option<&'static str> {
+    ENVIRONMENT_OVERRIDES
+        .iter()
+        .find(|(config_key, _)| *config_key == key)
+        .map(|(_, name)| *name)
 }
 
 fn environment_value(key: &str) -> Option<String> {
     // Viper ignores empty environment values unless AllowEmptyEnv is enabled.
     // Keep explicitly empty persisted values intact: only environment overrides
     // use this fallback rule.
-    env::var(environment_name(key))
+    env::var(environment_name(key)?)
         .ok()
         .filter(|value| !value.is_empty())
 }
@@ -271,6 +284,23 @@ mod tests {
             permissions: None,
         };
         assert!(!config.remove("default_project_id"));
+    }
+
+    #[test]
+    fn only_allowlisted_keys_read_the_environment() {
+        assert_eq!(
+            super::environment_name("base_url"),
+            Some("FOXGLOVE_BASE_URL")
+        );
+        assert_eq!(
+            super::environment_name("bearer_token"),
+            Some("FOXGLOVE_BEARER_TOKEN")
+        );
+        assert_eq!(
+            super::environment_name("default_project_id"),
+            Some("DEFAULT_PROJECT_ID")
+        );
+        assert_eq!(super::environment_name("auth_type"), None);
     }
 
     #[test]

@@ -54,6 +54,8 @@ $ foxglove auth configure-api-key
 This will overwrite any previously set credential. Use the [API key settings page](https://app.foxglove.dev/~/settings/apikeys)
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
+In CI, set `FOXGLOVE_BEARER_TOKEN` (and optionally `FOXGLOVE_BASE_URL`) instead; they take precedence over the config file.
+
 ### Lists and pagination
 
 List commands that accept `--limit` return 50 results by default; pass `--limit`

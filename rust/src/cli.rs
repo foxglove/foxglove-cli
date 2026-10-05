@@ -1818,13 +1818,11 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
 
 fn environment_note(config: &Config, key: &str) -> String {
     let name = config_name(key);
-    if config.is_env_set(name) {
-        format!(
-            "{} is set in the environment and takes precedence over {key} in the config file\n",
-            crate::config::environment_name(name)
-        )
-    } else {
-        String::new()
+    match crate::config::environment_name(name) {
+        Some(variable) if config.is_env_set(name) => format!(
+            "{variable} is set in the environment and takes precedence over {key} in the config file\n"
+        ),
+        _ => String::new(),
     }
 }
 
@@ -1877,6 +1875,9 @@ fn configure_api_key(
         .clone()
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
+    if let Err(error) = crate::api::parse_base_url(&base_url) {
+        return Outcome::failure(format!("Configuration failed: {error}\n"));
+    }
     config.set("auth_type", Value::Number(2.into()));
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(token));

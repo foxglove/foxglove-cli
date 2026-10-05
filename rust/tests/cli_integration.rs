@@ -1457,7 +1457,7 @@ fn empty_environment_overrides_use_saved_configuration() {
     let output = Process::spawn(
         workspace
             .command("")
-            .env("BEARER_TOKEN", "")
+            .env("FOXGLOVE_BEARER_TOKEN", "")
             .env("DEFAULT_PROJECT_ID", "")
             .args(["recordings", "list", "--format", "json"]),
     )
@@ -1467,6 +1467,67 @@ fn empty_environment_overrides_use_saved_configuration() {
     assert_eq!(requests.len(), 1);
     assert!(requests[0].contains("projectId=saved-project"));
     assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn unprefixed_environment_does_not_override_saved_auth() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        format!("base_url: {}\nbearer_token: saved-token\n", server.url),
+    )
+    .unwrap();
+    let output = Process::spawn(
+        workspace
+            .command("")
+            .env("FOXGLOVE_BEARER_TOKEN", "")
+            .env("BASE_URL", "http://127.0.0.1:1")
+            .env("BEARER_TOKEN", "environment-token")
+            .args(["recordings", "list", "--format", "json"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}
+
+#[test]
+fn plain_http_base_url_is_refused_for_remote_hosts() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://api.example.test")
+            .args(["recordings", "list"]),
+    )
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "refusing plain-HTTP API base URL http://api.example.test; use https\n",
+    );
+    assert!(!workspace.0.join(".foxgloverc").exists());
+}
+
+#[test]
+fn missing_home_requires_explicit_config() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .env_remove("HOME")
+            .env_remove("USERPROFILE")
+            .args(["config", "set", "project-id", "prj_1"]),
+    )
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "cannot locate the config file because HOME is not set; pass --config\n",
+    );
+    assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
 fn query_pairs(request: &str) -> BTreeMap<String, String> {

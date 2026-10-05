@@ -42,9 +42,11 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
             "Not signed in. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.\n",
         );
     }
+    // The saved auth_type describes the saved token, not FOXGLOVE_BEARER_TOKEN.
     let auth_type = runtime
         .config
         .get_string("auth_type")
+        .filter(|_| !runtime.config.is_env_set("bearer_token"))
         .and_then(|value| value.parse::<i32>().ok());
     if auth_type == Some(2) || (auth_type != Some(1) && token.starts_with("fox_sk_")) {
         return Outcome::success("Authenticated with API key\n");
