@@ -1583,6 +1583,7 @@ fn command_project_scope(
     Some(runtime.project_scope(flag.as_deref()))
 }
 
+#[allow(clippy::too_many_lines)]
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
