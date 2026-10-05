@@ -1489,9 +1489,33 @@ fn unprefixed_environment_does_not_override_saved_auth() {
     )
     .finish();
     assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "warning: BASE_URL is ignored; set FOXGLOVE_BASE_URL instead\n\
+         warning: BEARER_TOKEN is ignored; set FOXGLOVE_BEARER_TOKEN instead\n",
+    );
     let requests = server.finish();
     assert_eq!(requests.len(), 1);
     assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn missing_home_uses_environment_credentials() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env_remove("HOME")
+            .env_remove("USERPROFILE")
+            .args(["recordings", "list", "--format", "json"]),
+    )
+    .finish();
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains("authorization: Bearer fixture\r\n"));
 }
 
 #[test]
@@ -1506,7 +1530,8 @@ fn plain_http_base_url_is_refused_for_remote_hosts() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "refusing plain-HTTP API base URL http://api.example.test; use https\n",
+        "refusing plain-HTTP API base URL http://api.example.test; use https \
+         (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n",
     );
     assert!(!workspace.0.join(".foxgloverc").exists());
 }
@@ -1525,7 +1550,8 @@ fn missing_home_requires_explicit_config() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "cannot locate the config file because HOME is not set; pass --config\n",
+        "cannot locate the config file because HOME (or USERPROFILE on Windows) is not set; \
+         pass --config\n",
     );
     assert!(!workspace.0.join(".foxgloverc").exists());
 }

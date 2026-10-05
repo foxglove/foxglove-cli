@@ -30,6 +30,8 @@ impl Workspace {
             .env("USERPROFILE", &self.0)
             .env("FOXGLOVE_BASE_URL", base_url)
             .env("FOXGLOVE_BEARER_TOKEN", "fixture")
+            .env_remove("BASE_URL")
+            .env_remove("BEARER_TOKEN")
             .env_remove("DEFAULT_PROJECT_ID")
             .env_remove("SSL_CERT_FILE")
             .env_remove("SSL_CERT_DIR")

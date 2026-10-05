@@ -7,9 +7,14 @@ use std::path::{Path, PathBuf};
 
 use serde_yaml_ng::{Mapping, Value};
 
+const MISSING_HOME: &str =
+    "cannot locate the config file because HOME (or USERPROFILE on Windows) is not set; pass --config\n";
+
 /// The persisted Foxglove CLI configuration.
 pub struct Config {
-    path: PathBuf,
+    /// `None` when no home directory exists; the configuration is then empty
+    /// and only environment overrides apply.
+    path: Option<PathBuf>,
     values: Mapping,
     permissions: Option<Permissions>,
 }
@@ -37,11 +42,17 @@ impl Config {
         if let Some(path) = path {
             return Self::load(path.to_owned());
         }
-        let home = ["HOME", "USERPROFILE"]
+        match ["HOME", "USERPROFILE"]
             .into_iter()
             .find_map(|name| env::var_os(name).filter(|value| !value.is_empty()))
-            .ok_or("cannot locate the config file because HOME is not set; pass --config\n")?;
-        Self::load(PathBuf::from(home).join(".foxgloverc"))
+        {
+            Some(home) => Self::load(PathBuf::from(home).join(".foxgloverc")),
+            None => Ok(Self {
+                path: None,
+                values: Mapping::new(),
+                permissions: None,
+            }),
+        }
     }
 
     /// Load a configuration from an explicit path.
@@ -89,16 +100,20 @@ impl Config {
             }
         };
         Ok(Self {
-            path,
+            path: Some(path),
             values,
             permissions,
         })
     }
 
     /// Return the selected path, primarily for the interactive auth prompt.
-    #[must_use]
-    pub fn path(&self) -> &Path {
-        &self.path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no `--config` was given and no home directory
+    /// exists.
+    pub fn path(&self) -> Result<&Path, String> {
+        self.path.as_deref().ok_or_else(|| MISSING_HOME.to_owned())
     }
 
     /// Return a string value using Viper's environment-over-file precedence.
@@ -144,7 +159,8 @@ impl Config {
     pub fn save(&self) -> Result<(), String> {
         let source = serde_yaml_ng::to_string(&Value::Mapping(self.values.clone()))
             .map_err(|error| format!("failed to write config: {error}\n"))?;
-        let (temporary_path, mut temporary) = self.create_temporary()?;
+        let path = self.path()?;
+        let (temporary_path, mut temporary) = create_temporary(path)?;
         let cleanup = TemporaryGuard(&temporary_path);
         temporary
             .write_all(source.as_bytes())
@@ -155,34 +171,34 @@ impl Config {
                 .map_err(|error| format!("failed to write config: {error}\n"))?;
         }
         drop(temporary);
-        replace_file(&temporary_path, &self.path)
+        replace_file(&temporary_path, path)
             .map_err(|error| format!("failed to write config: {error}\n"))?;
         cleanup.disarm();
         Ok(())
     }
+}
 
-    fn create_temporary(&self) -> Result<(PathBuf, File), String> {
-        for attempt in 0..100_u8 {
-            let suffix = format!("tmp-{}-{attempt}", std::process::id());
-            let path = self.path.with_extension(suffix);
-            match OpenOptions::new().write(true).create_new(true).open(&path) {
-                Ok(file) => {
-                    // A newly-created config can contain a bearer token. Do
-                    // this before its contents are written; existing files
-                    // retain their permissions in `save` above.
-                    if let Err(error) = restrict_new_config_permissions(&file) {
-                        drop(file);
-                        let _ = fs::remove_file(&path);
-                        return Err(error);
-                    }
-                    return Ok((path, file));
+fn create_temporary(destination: &Path) -> Result<(PathBuf, File), String> {
+    for attempt in 0..100_u8 {
+        let suffix = format!("tmp-{}-{attempt}", std::process::id());
+        let path = destination.with_extension(suffix);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => {
+                // A newly-created config can contain a bearer token. Do
+                // this before its contents are written; existing files
+                // retain their permissions in `save` above.
+                if let Err(error) = restrict_new_config_permissions(&file) {
+                    drop(file);
+                    let _ = fs::remove_file(&path);
+                    return Err(error);
                 }
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(format!("failed to write config: {error}\n")),
+                return Ok((path, file));
             }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("failed to write config: {error}\n")),
         }
-        Err("failed to write config: could not create a temporary file\n".to_owned())
     }
+    Err("failed to write config: could not create a temporary file\n".to_owned())
 }
 
 #[cfg(unix)]
@@ -226,6 +242,26 @@ const ENVIRONMENT_OVERRIDES: [(&str, &str); 3] = [
     ("bearer_token", "FOXGLOVE_BEARER_TOKEN"),
     ("default_project_id", "DEFAULT_PROJECT_ID"),
 ];
+
+/// Undocumented names earlier releases read. They are ignored now, but a
+/// warning keeps a stale CI setup from silently using the saved account.
+const LEGACY_ENVIRONMENT: [(&str, &str); 2] = [
+    ("BASE_URL", "FOXGLOVE_BASE_URL"),
+    ("BEARER_TOKEN", "FOXGLOVE_BEARER_TOKEN"),
+];
+
+/// Warn about legacy variables that are set while their replacement is not.
+pub(crate) fn warn_legacy_environment(writer: &mut dyn Write) {
+    let is_set = |name| env::var_os(name).is_some_and(|value| !value.is_empty());
+    for (legacy, replacement) in LEGACY_ENVIRONMENT {
+        if is_set(legacy) && !is_set(replacement) {
+            let _ = writeln!(
+                writer,
+                "warning: {legacy} is ignored; set {replacement} instead"
+            );
+        }
+    }
+}
 
 pub(crate) fn environment_name(key: &str) -> Option<&'static str> {
     ENVIRONMENT_OVERRIDES
@@ -279,7 +315,7 @@ mod tests {
     #[test]
     fn missing_value_is_not_removed() {
         let mut config = Config {
-            path: "unused".into(),
+            path: Some("unused".into()),
             values: Mapping::new(),
             permissions: None,
         };
@@ -319,7 +355,7 @@ mod tests {
         let path = test_path();
         fs::write(&path, "default_project_id: explicit\n").unwrap();
         let config = Config::load_from_path(Some(&path)).unwrap();
-        assert_eq!(config.path(), path);
+        assert_eq!(config.path().unwrap(), path);
         assert_eq!(
             config.get_string("default_project_id").as_deref(),
             Some("explicit")

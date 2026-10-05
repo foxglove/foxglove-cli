@@ -29,6 +29,7 @@ pub(crate) fn load(
     debug: bool,
 ) -> Result<Runtime, String> {
     let config = Config::load_from_path(config_path)?;
+    crate::config::warn_legacy_environment(&mut std::io::stderr());
     let project_id = config.get_string("default_project_id").unwrap_or_default();
     let project_source = if project_id.is_empty() {
         "none"

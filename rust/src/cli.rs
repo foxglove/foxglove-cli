@@ -1847,10 +1847,14 @@ fn configure_api_key(
     let token = match args.api_key.clone() {
         Some(token) if !token.is_empty() => token,
         _ => {
+            let path = match config.path() {
+                Ok(path) => path,
+                Err(error) => return Outcome::failure(format!("Configuration failed: {error}")),
+            };
             if let Err(error) = writeln!(
                 prompt_writer,
                 "Enter an API key (will be written to {}):",
-                config.path().display()
+                path.display()
             )
             .and_then(|()| prompt_writer.flush())
             {

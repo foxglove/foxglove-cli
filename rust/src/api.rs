@@ -389,7 +389,7 @@ pub(crate) fn parse_base_url(base_url: &str) -> Result<Url, ApiError> {
         .map_err(|error| ApiError::InvalidUrl(format!("invalid API base URL: {error}")))?;
     if url.scheme() == "http" && !is_loopback(&url) {
         return Err(ApiError::InvalidUrl(format!(
-            "refusing plain-HTTP API base URL {base_url}; use https"
+            "refusing plain-HTTP API base URL {base_url}; use https (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)"
         )));
     }
     if !url.path().ends_with('/') {

@@ -55,6 +55,7 @@ This will overwrite any previously set credential. Use the [API key settings pag
 to add the capabilities you intend to use (e.g. `data.upload` for importing data, `data.stream` for exporting, etc.).
 
 In CI, set `FOXGLOVE_BEARER_TOKEN` (and optionally `FOXGLOVE_BASE_URL`) instead; they take precedence over the config file.
+`BEARER_TOKEN`, `BASE_URL`, and `AUTH_TYPE` are no longer read. The base URL must use `https` unless the host is loopback.
 
 ### Lists and pagination
 
