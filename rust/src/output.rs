@@ -94,8 +94,17 @@ fn is_id_header(header: &str) -> bool {
     header == "ID" || header.ends_with(" ID")
 }
 
-fn escape_cell(cell: &str) -> String {
-    cell.replace(['\r', '\n'], "\\n")
+/// Escape control characters so API-provided text cannot drive the terminal.
+pub(crate) fn escape_cell(cell: &str) -> String {
+    let mut escaped = String::with_capacity(cell.len());
+    for c in cell.chars() {
+        match c {
+            '\r' | '\n' => escaped.push_str("\\n"),
+            c if c.is_control() => escaped.extend(c.escape_debug()),
+            c => escaped.push(c),
+        }
+    }
+    escaped
 }
 
 fn terminal_width() -> Option<u16> {
@@ -255,5 +264,23 @@ mod tests {
         assert!(String::from_utf8(output)
             .unwrap()
             .contains("left|right\\nnext"),);
+    }
+
+    #[test]
+    fn table_escapes_terminal_control_characters() {
+        let mut output = Vec::new();
+        super::render_table_at(
+            &mut output,
+            &["Value"],
+            &[vec!["\u{1b}[31mred\u{7}\ttab\u{9b}".into()]],
+            None,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(output).unwrap();
+        assert!(!rendered.chars().any(|c| c.is_control() && c != '\n'));
+        assert!(
+            rendered.contains("\\u{1b}[31mred\\u{7}\\ttab\\u{9b}"),
+            "{rendered}"
+        );
     }
 }

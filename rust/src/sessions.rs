@@ -8,7 +8,7 @@ use crate::cli::{
     SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
     SessionRecordingMutationArgs,
 };
-use crate::output::Format;
+use crate::output::{escape_cell, Format};
 use crate::records::{
     fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
@@ -164,7 +164,13 @@ fn session_outcome(session: &Session) -> Outcome {
     let device = session
         .device
         .as_ref()
-        .map(|device| format!("Device:     {} ({})\n", device.name, device.id))
+        .map(|device| {
+            format!(
+                "Device:     {} ({})\n",
+                escape_cell(&device.name),
+                device.id
+            )
+        })
         .unwrap_or_default();
     let recordings = if session.recordings.is_empty() {
         "(none)".to_owned()
@@ -179,7 +185,7 @@ fn session_outcome(session: &Session) -> Outcome {
     Outcome::success(format!(
         "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
         session.id,
-        session.key,
+        escape_cell(&session.key),
         session.project_id,
         device,
         session.created_at,
@@ -356,5 +362,26 @@ pub(crate) async fn patch_session_recordings(
             if add { "add" } else { "remove" },
             if add { "to" } else { "from" }
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{session_outcome, Session};
+
+    #[test]
+    fn session_details_escape_terminal_control_characters() {
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "key": "\u{1b}]0;title\u{7}key",
+            "device": {"id": "dev_1", "name": "\u{1b}[2Kname"},
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z",
+        }))
+        .unwrap();
+        let stdout = String::from_utf8(session_outcome(&session).stdout).unwrap();
+        assert!(!stdout.chars().any(|c| c.is_control() && c != '\n'));
+        assert!(stdout.contains("Key:        \\u{1b}]0;title\\u{7}key\n"));
+        assert!(stdout.contains("Device:     \\u{1b}[2Kname (dev_1)\n"));
     }
 }
