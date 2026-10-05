@@ -8,7 +8,7 @@ use crate::cli::{
     SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
     SessionRecordingMutationArgs,
 };
-use crate::output::Format;
+use crate::output::{escape_terminal_text, Format};
 use crate::records::{
     fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
@@ -164,7 +164,13 @@ fn session_outcome(session: &Session) -> Outcome {
     let device = session
         .device
         .as_ref()
-        .map(|device| format!("Device:     {} ({})\n", device.name, device.id))
+        .map(|device| {
+            format!(
+                "Device:     {} ({})\n",
+                escape_terminal_text(&device.name),
+                device.id
+            )
+        })
         .unwrap_or_default();
     let recordings = if session.recordings.is_empty() {
         "(none)".to_owned()
@@ -179,7 +185,7 @@ fn session_outcome(session: &Session) -> Outcome {
     Outcome::success(format!(
         "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
         session.id,
-        session.key,
+        escape_terminal_text(&session.key),
         session.project_id,
         device,
         session.created_at,
@@ -356,5 +362,28 @@ pub(crate) async fn patch_session_recordings(
             if add { "add" } else { "remove" },
             if add { "to" } else { "from" }
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{session_outcome, Session};
+
+    #[test]
+    fn session_details_escape_key_and_device_name() {
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "key": "\u{1b}key",
+            "device": {"id": "dev_1", "name": "\u{1b}name"},
+            "createdAt": "",
+            "updatedAt": "",
+        }))
+        .unwrap();
+        let stdout = String::from_utf8(session_outcome(&session).stdout).unwrap();
+        assert!(stdout.contains("Key:        \\u{1b}key\n"), "{stdout}");
+        assert!(
+            stdout.contains("Device:     \\u{1b}name (dev_1)\n"),
+            "{stdout}"
+        );
     }
 }

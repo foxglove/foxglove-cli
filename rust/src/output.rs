@@ -75,7 +75,7 @@ fn render_table_at(
         .set_header(headers.iter().copied())
         .add_rows(
             rows.iter()
-                .map(|row| row.iter().map(|cell| escape_cell(cell))),
+                .map(|row| row.iter().map(|cell| escape_terminal_text(cell))),
         );
     if let Some(width) = width {
         table
@@ -94,8 +94,21 @@ fn is_id_header(header: &str) -> bool {
     header == "ID" || header.ends_with(" ID")
 }
 
-fn escape_cell(cell: &str) -> String {
-    cell.replace(['\r', '\n'], "\\n")
+pub(crate) fn escape_terminal_text(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\r' | '\n' => escaped.push_str("\\n"),
+            // The `matches!` list is Unicode's Bidi_Control set, which reorders later text.
+            c if c.is_control()
+                || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}') =>
+            {
+                escaped.extend(c.escape_debug());
+            }
+            c => escaped.push(c),
+        }
+    }
+    escaped
 }
 
 fn terminal_width() -> Option<u16> {
@@ -255,5 +268,13 @@ mod tests {
         assert!(String::from_utf8(output)
             .unwrap()
             .contains("left|right\\nnext"),);
+    }
+
+    #[test]
+    fn escapes_control_and_bidi_characters() {
+        assert_eq!(
+            super::escape_terminal_text("\u{1b}[31m\u{7}\t\u{9b}\u{202e}é"),
+            "\\u{1b}[31m\\u{7}\\t\\u{9b}\\u{202e}é"
+        );
     }
 }
