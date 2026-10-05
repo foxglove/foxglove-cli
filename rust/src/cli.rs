@@ -73,7 +73,7 @@ fn parse_dataset_version(value: &str) -> Result<DatasetVersionSelector, String> 
 #[command(
     name = ROOT_COMMAND,
     about = "Command line client for the Foxglove data platform",
-    after_help = "Find a command with `foxglove cli search <QUERY>` and list its arguments with `foxglove cli describe <COMMAND>`. Both print JSON.",
+    after_help = "Find a command with `foxglove cli search <QUERY>` and list its arguments with `foxglove cli describe <COMMAND>`. Scripts and agents should pass `--format json` to commands that accept it.",
     disable_version_flag = true,
     subcommand_precedence_over_arg = true,
     args_override_self = true
@@ -224,14 +224,21 @@ pub(crate) struct LoginArgs {
 
 #[derive(Debug, Subcommand)]
 enum DiscoveryCommand {
-    #[command(about = "Describe a command's arguments and options as JSON")]
+    #[command(about = "Describe a command's arguments and options")]
     Describe(DescribeArgs),
-    #[command(about = "Search all commands by intent and print the best matches as JSON")]
+    #[command(about = "Search all commands by intent and print the best matches")]
     Search(SearchArgs),
 }
 
 #[derive(Debug, Args)]
 struct DescribeArgs {
+    #[arg(
+        long,
+        help = "Render output in table or JSON format",
+        value_enum,
+        default_value = "table"
+    )]
+    format: discovery::DescribeFormat,
     #[arg(
         value_name = "COMMAND",
         help = "Command path, such as `datasets episodes add` (default: the root command)"
@@ -241,6 +248,8 @@ struct DescribeArgs {
 
 #[derive(Debug, Args)]
 struct SearchArgs {
+    #[command(flatten)]
+    format: FormatArgs,
     #[arg(
         value_name = "QUERY",
         required = true,
@@ -1483,10 +1492,10 @@ async fn dispatch(cli: Cli, stdin: &mut dyn BufRead, writer: &mut dyn Write) -> 
     match command {
         CliCommand::Version => Outcome::success(format!("{}\n", runtime::version())),
         CliCommand::Cli(DiscoveryCommand::Describe(args)) => {
-            discovery::describe(Cli::command(), &args.command)
+            discovery::describe(Cli::command(), &args.command, args.format)
         }
         CliCommand::Cli(DiscoveryCommand::Search(args)) => {
-            discovery::search(Cli::command(), &args.query.join(" "))
+            discovery::search(Cli::command(), &args.query.join(" "), args.format.format)
         }
         CliCommand::Config(ConfigCommand::Get(args)) => run_config_get(args.key, config.as_deref()),
         CliCommand::Config(ConfigCommand::Set(args)) => run_config_set(&args, config.as_deref()),

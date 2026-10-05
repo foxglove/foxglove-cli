@@ -2,12 +2,14 @@
 
 use std::any::TypeId;
 use std::collections::{BTreeSet, HashMap};
+use std::io::{self, Write};
 
 use clap::{Arg, ArgAction, Command};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::output::render_json;
+use crate::output::{render_json, render_table, Format};
+use crate::records::{format_output, Record};
 use crate::Outcome;
 
 const MAX_RESULTS: usize = 5;
@@ -21,10 +23,28 @@ const FIELD_WEIGHTS: [f64; 4] = [8.0, 5.0, 2.0, 0.5];
 const PREFIX_WEIGHT: f64 = 0.5;
 const LEAF_WEIGHT: f64 = 1.5;
 
+/// Output formats for `cli describe`, which has no flat CSV form.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, clap::ValueEnum)]
+pub(crate) enum DescribeFormat {
+    #[default]
+    Table,
+    Json,
+}
+
 #[derive(Serialize)]
 struct CommandSummary {
     command: String,
     summary: String,
+}
+
+impl Record for CommandSummary {
+    fn headers() -> &'static [&'static str] {
+        &["Command", "Summary"]
+    }
+
+    fn fields(&self) -> Vec<String> {
+        vec![self.command.clone(), self.summary.clone()]
+    }
 }
 
 #[derive(Serialize)]
@@ -88,6 +108,17 @@ enum ValueType {
     String,
 }
 
+impl ValueType {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Boolean => "boolean",
+            Self::Integer => "integer",
+            Self::Number => "number",
+            Self::String => "string",
+        }
+    }
+}
+
 struct Document {
     command: String,
     summary: String,
@@ -95,7 +126,7 @@ struct Document {
     fields: [Vec<String>; 4],
 }
 
-pub(crate) fn search(mut root: Command, query: &str) -> Outcome {
+pub(crate) fn search(mut root: Command, query: &str, format: Format) -> Outcome {
     let terms = query_terms(query);
     if terms.is_empty() {
         return Outcome::failure(
@@ -112,10 +143,10 @@ pub(crate) fn search(mut root: Command, query: &str) -> Outcome {
             summary: document.summary.clone(),
         })
         .collect::<Vec<_>>();
-    json_outcome(&results)
+    format_output(&results, format)
 }
 
-pub(crate) fn describe(mut root: Command, path: &[String]) -> Outcome {
+pub(crate) fn describe(mut root: Command, path: &[String], format: DescribeFormat) -> Outcome {
     root.build();
     let mut words = path
         .iter()
@@ -131,15 +162,132 @@ pub(crate) fn describe(mut root: Command, path: &[String]) -> Outcome {
         };
         command = next;
     }
-    json_outcome(&description(command, &words))
+    let description = description(command, &words);
+    let mut stdout = Vec::new();
+    let result = match format {
+        DescribeFormat::Table => render_description(&mut stdout, &description),
+        DescribeFormat::Json => render_json(&mut stdout, &description),
+    };
+    match result {
+        Ok(()) => Outcome::success(stdout),
+        Err(error) => Outcome::failure(format!("failed to render output: {error}\n")),
+    }
 }
 
-fn json_outcome(value: &impl Serialize) -> Outcome {
-    let mut stdout = Vec::new();
-    match render_json(&mut stdout, value) {
-        Ok(()) => Outcome::success(stdout),
-        Err(error) => Outcome::failure(format!("failed to render JSON: {error}\n")),
+fn render_description(writer: &mut dyn Write, description: &CommandDescription) -> io::Result<()> {
+    writeln!(writer, "{}", description.command)?;
+    if !description.summary.is_empty() {
+        writeln!(writer, "{}", description.summary)?;
     }
+    if let Some(text) = &description.description {
+        writeln!(writer, "\n{text}")?;
+    }
+    writeln!(writer, "\nUsage: {}", description.usage)?;
+    section(
+        writer,
+        "Arguments",
+        &["Argument", "Type", "Required", "Description"],
+        &description
+            .arguments
+            .iter()
+            .map(|argument| {
+                vec![
+                    repeatable(&argument.name, argument.multiple),
+                    argument.kind.name().to_owned(),
+                    argument.required.to_string(),
+                    argument.description.clone().unwrap_or_default(),
+                ]
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    let (global, local): (Vec<_>, Vec<_>) =
+        description.options.iter().partition(|option| option.global);
+    section(writer, "Options", OPTION_HEADERS, &option_rows(&local))?;
+    section(
+        writer,
+        "Global options",
+        OPTION_HEADERS,
+        &option_rows(&global),
+    )?;
+    section(
+        writer,
+        "Groups",
+        &["Options", "Rule"],
+        &description
+            .groups
+            .iter()
+            .map(|group| {
+                let rule = match (group.required, group.multiple) {
+                    (true, false) => "exactly one",
+                    (true, true) => "at least one",
+                    (false, _) => "at most one",
+                };
+                vec![group.options.join(", "), rule.to_owned()]
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    section(
+        writer,
+        "Subcommands",
+        CommandSummary::headers(),
+        &description
+            .subcommands
+            .iter()
+            .map(Record::fields)
+            .collect::<Vec<_>>(),
+    )
+}
+
+const OPTION_HEADERS: &[&str] = &["Option", "Type", "Required", "Default", "Description"];
+
+fn option_rows(options: &[&OptionDescription]) -> Vec<Vec<String>> {
+    options
+        .iter()
+        .map(|option| {
+            vec![
+                repeatable(
+                    &option.short.as_ref().map_or_else(
+                        || option.usage.clone(),
+                        |short| format!("{short}, {}", option.usage),
+                    ),
+                    option.multiple,
+                ),
+                option.kind.name().to_owned(),
+                option.required.to_string(),
+                option
+                    .default
+                    .as_ref()
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .map_or_else(|| value.to_string(), str::to_owned)
+                    })
+                    .unwrap_or_default(),
+                option.description.clone().unwrap_or_default(),
+            ]
+        })
+        .collect()
+}
+
+fn repeatable(name: &str, multiple: bool) -> String {
+    if multiple {
+        format!("{name}...")
+    } else {
+        name.to_owned()
+    }
+}
+
+fn section(
+    writer: &mut dyn Write,
+    title: &str,
+    headers: &[&str],
+    rows: &[Vec<String>],
+) -> io::Result<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    writeln!(writer, "\n{title}:")?;
+    render_table(writer, headers, rows)
 }
 
 fn unknown_command(parent: &Command, parent_path: &[&str], word: &str) -> Outcome {
@@ -490,7 +638,7 @@ mod tests {
     }
 
     fn json(args: &[&str]) -> Value {
-        let outcome = invoke(args);
+        let outcome = invoke(&[args, &["--format", "json"]].concat());
         assert_eq!(
             outcome.exit_code,
             0,
@@ -501,7 +649,7 @@ mod tests {
     }
 
     fn search(query: &str) -> Vec<String> {
-        json(&["cli", "search", query])
+        json(&["cli", "search", query])["data"]
             .as_array()
             .unwrap()
             .iter()
@@ -512,7 +660,7 @@ mod tests {
     #[test]
     fn search_returns_at_most_five_commands_with_summaries() {
         let results = json(&["cli", "search", "list"]);
-        let results = results.as_array().unwrap();
+        let results = results["data"].as_array().unwrap();
         assert_eq!(results.len(), 5);
         for result in results {
             let object = result.as_object().unwrap();
@@ -553,7 +701,43 @@ mod tests {
             json(&["cli", "search", "add", "to", "a", "dataset"]),
             json(&["cli", "search", "add to a dataset"])
         );
-        assert_eq!(json(&["cli", "search", "zzzz"]), Value::Array(Vec::new()));
+        assert_eq!(
+            json(&["cli", "search", "zzzz"]),
+            serde_json::json!({"data": []})
+        );
+    }
+
+    #[test]
+    fn search_and_describe_print_tables_by_default() {
+        let search = invoke(&["cli", "search", "add to a dataset"]);
+        assert_eq!(search.exit_code, 0);
+        let search = String::from_utf8(search.stdout).unwrap();
+        assert!(search.starts_with(" Command "), "{search}");
+        assert!(
+            search.contains("foxglove datasets episodes add"),
+            "{search}"
+        );
+
+        let describe = invoke(&["cli", "describe", "sessions", "edit"]);
+        assert_eq!(describe.exit_code, 0);
+        let describe = String::from_utf8(describe.stdout).unwrap();
+        assert!(
+            describe.starts_with("foxglove sessions edit\n"),
+            "{describe}"
+        );
+        for heading in [
+            "\nUsage: foxglove sessions edit ",
+            "\nArguments:\n",
+            "\nOptions:\n",
+            "\nGlobal options:\n",
+            "\nGroups:\n",
+        ] {
+            assert!(
+                describe.contains(heading),
+                "{heading:?} missing from {describe}"
+            );
+        }
+        assert!(describe.contains("exactly one"), "{describe}");
     }
 
     #[test]

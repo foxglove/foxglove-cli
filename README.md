@@ -334,21 +334,34 @@ $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 
 ## Command discovery
 
-Scripts and agents can find commands and their arguments without parsing
-`--help` text. Both commands work offline and print JSON.
+Find commands and their arguments without reading every `--help` page. Both
+commands work offline and print tables by default. Scripts and agents should
+pass `--format json`, which every command with a `--format` option accepts.
 
 Search for up to five commands that match a description of what you want to do:
 
 ```
 $ foxglove cli search "add to a dataset"
-[{"command":"foxglove datasets episodes add","summary":"Add episodes to a dataset as pending changes"},{"command":"foxglove datasets add","summary":"Create a dataset"},...]
+ Command                              Summary
+------------------------------------------------------------------------------------------
+ foxglove datasets episodes add       Add episodes to a dataset as pending changes
+ foxglove datasets add                Create a dataset
+ ...
 ```
 
-Describe a command's `usage`, positional `arguments`, `options`, and
-`subcommands`. Options with `"global": true` are accepted by every command:
+With `--format json`, the matches are listed under `data`, like other list
+commands:
 
 ```
-$ foxglove cli describe datasets episodes add
+$ foxglove cli search "add to a dataset" --format json
+{"data":[{"command":"foxglove datasets episodes add","summary":"Add episodes to a dataset as pending changes"},...]}
+```
+
+Describe a command's usage, positional arguments, options, and subcommands.
+Options with `"global": true` are accepted by every command:
+
+```
+$ foxglove cli describe datasets episodes add --format json
 {
   "command": "foxglove datasets episodes add",
   "summary": "Add episodes to a dataset as pending changes",
