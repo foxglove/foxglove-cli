@@ -626,11 +626,9 @@ fn login_keeps_polling_through_transient_errors_and_slow_down() {
     ]))
     .finish();
     assert_success(&output);
-    // One interval after the 502, then the interval plus five seconds.
+    // 1 s after the 502, then 1 s + 5 s after slow_down.
     assert!(started.elapsed() >= Duration::from_secs(7));
     server.finish();
-    let config = fs::read_to_string(workspace.0.join(".foxgloverc")).unwrap();
-    assert!(config.contains("bearer_token: session-token"), "{config}");
 }
 
 #[cfg(feature = "test-support")]

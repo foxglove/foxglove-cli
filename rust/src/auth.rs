@@ -15,7 +15,6 @@ use crate::output;
 use crate::runtime::{self, Runtime};
 use crate::Outcome;
 
-/// How much a `slow_down` or 429 response lengthens the polling interval.
 const SLOW_DOWN_STEP: Duration = Duration::from_secs(5);
 
 const LOGIN_EXPIRED: &str =
@@ -202,8 +201,12 @@ async fn complete_login(
                     // still pending. A 401 is an authentication error and must
                     // surface instead of retrying forever.
                     Err(api::ApiError::Forbidden) => {}
-                    Err(error) if is_slow_down(&error) => interval += SLOW_DOWN_STEP,
-                    // The expiry timer bounds retries of transient failures.
+                    Err(api::ApiError::Response { status, message })
+                        if status == 429 || message == "slow_down" =>
+                    {
+                        interval += SLOW_DOWN_STEP;
+                    }
+                    // The expiry timer bounds these retries.
                     Err(error) if error.is_retryable() => {}
                     Err(error) => return Err(format!("failed to request token: {error}")),
                 }
@@ -218,10 +221,6 @@ async fn complete_login(
         .await
         .map_err(|error| format!("failed to sign in: {error}"))?;
     Ok(bearer_token)
-}
-
-fn is_slow_down(error: &api::ApiError) -> bool {
-    matches!(error, api::ApiError::Response { status, message } if *status == 429 || message == "slow_down")
 }
 
 #[cfg(feature = "test-support")]

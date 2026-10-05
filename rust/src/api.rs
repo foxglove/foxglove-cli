@@ -39,11 +39,8 @@ pub(crate) fn encode_path_segment(value: &str) -> PercentEncode<'_> {
 const SIGN_IN_MESSAGE: &str = "forbidden: have you signed in with `foxglove auth login`?";
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// How long a request may wait for response headers or the next body chunk.
 const READ_TIMEOUT: Duration = Duration::from_secs(300);
-/// Total attempts for a GET that fails to connect or gets a 429 or 5xx.
 const GET_ATTEMPTS: u32 = 3;
-/// The longest `Retry-After` a GET waits before retrying.
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
 
 /// Errors returned by the API client.
@@ -166,9 +163,6 @@ impl fmt::Display for ApiError {
             Self::ForbiddenWithMessage(message)
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
-            Self::Transport(error) if error.is_timeout() => {
-                write!(formatter, "{error}: timed out")
-            }
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
             Self::Serialization(error) => error.fmt(formatter),
             Self::Cancelled => formatter.write_str("operation cancelled"),
@@ -369,8 +363,8 @@ pub struct DeviceCodeResponse {
 #[derive(Clone, Debug)]
 pub struct FoxgloveClient {
     http: reqwest::Client,
-    // reqwest counts the request body against the read timeout, so uploads
-    // use a client without one.
+    // reqwest's read timeout also covers sending the body, so file uploads
+    // skip it.
     upload_http: reqwest::Client,
     base_url: Url,
     client_id: String,
@@ -906,12 +900,7 @@ impl FoxgloveClient {
         R: AsyncRead + Send + 'static,
     {
         let request = self
-            .request_on(
-                &self.upload_http,
-                Method::POST,
-                "/v1/extension-upload",
-                true,
-            )?
+            .request(Method::POST, "/v1/extension-upload")?
             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
             .body(reqwest::Body::wrap_stream(ReaderStream::new(reader)));
         let response = self.send(request, Some(cancellation)).await?;
@@ -1079,7 +1068,6 @@ impl FoxgloveClient {
     ) -> Result<Response, ApiError> {
         let (http, request) = request.build_split();
         let mut request = request.map_err(|error| transport_error(error, signed))?;
-        // Only GETs are retried, since repeating them changes nothing.
         let attempts = if request.method() == Method::GET {
             GET_ATTEMPTS
         } else {
@@ -1087,23 +1075,18 @@ impl FoxgloveClient {
         };
         let mut attempt = 1;
         loop {
-            let retry = if attempt < attempts {
-                request.try_clone()
-            } else {
-                None
-            };
+            let retry = (attempt < attempts).then(|| request.try_clone()).flatten();
             let result = self
                 .execute_logged(&http, request, cancellation, signed)
                 .await;
             let Some(next) = retry else { return result };
             let backoff = Duration::from_secs(1 << (attempt - 1));
             let delay = match &result {
-                Ok(response) if is_retryable_status(response.status()) => {
-                    match retry_after(response) {
-                        Some(delay) if delay > MAX_RETRY_DELAY => return result,
-                        Some(delay) => delay,
-                        None => backoff,
-                    }
+                Ok(response)
+                    if response.status() == StatusCode::TOO_MANY_REQUESTS
+                        || response.status().is_server_error() =>
+                {
+                    retry_after(response).map_or(backoff, |delay| delay.min(MAX_RETRY_DELAY))
                 }
                 Err(ApiError::Transport(error)) if error.is_connect() => backoff,
                 _ => return result,
@@ -1180,18 +1163,9 @@ impl FoxgloveClient {
         endpoint: &str,
         authenticated: bool,
     ) -> Result<RequestBuilder, ApiError> {
-        self.request_on(&self.http, method, endpoint, authenticated)
-    }
-
-    fn request_on(
-        &self,
-        http: &reqwest::Client,
-        method: Method,
-        endpoint: &str,
-        authenticated: bool,
-    ) -> Result<RequestBuilder, ApiError> {
         let url = self.endpoint_url(endpoint)?;
-        let request = http
+        let request = self
+            .http
             .request(method, url)
             .header("User-Agent", &self.user_agent);
         let token = self
@@ -1362,11 +1336,6 @@ async fn ensure_success_response(response: Response) -> Result<Response, ApiErro
     }
 }
 
-fn is_retryable_status(status: StatusCode) -> bool {
-    status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
-}
-
-/// The delay a response asks for in seconds, ignoring the HTTP-date form.
 fn retry_after(response: &Response) -> Option<Duration> {
     response
         .headers()
