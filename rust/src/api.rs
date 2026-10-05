@@ -378,13 +378,18 @@ pub fn ctrl_c_cancellation_token() -> CancellationToken {
     cancellation
 }
 
-/// Parse an API base URL, refusing plain HTTP to anything but loopback.
+/// Parse an API base URL, accepting only https, or http to loopback.
 pub(crate) fn parse_base_url(base_url: &str) -> Result<Url, ApiError> {
     let mut url = Url::parse(base_url)
         .map_err(|error| ApiError::InvalidUrl(format!("invalid API base URL: {error}")))?;
-    if url.scheme() == "http" && !is_loopback(&url) {
+    let allowed = match url.scheme() {
+        "https" => true,
+        "http" => is_loopback(&url),
+        _ => false,
+    };
+    if !allowed {
         return Err(ApiError::InvalidUrl(format!(
-            "refusing plain-HTTP API base URL {base_url}; use https (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)"
+            "unsupported API base URL {base_url}; use https, or http for localhost (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)"
         )));
     }
     if !url.path().ends_with('/') {
@@ -1461,7 +1466,7 @@ mod tests {
     };
 
     #[test]
-    fn plain_http_base_url_is_limited_to_loopback() {
+    fn base_url_must_be_https_or_loopback_http() {
         for url in [
             "https://api.example.test",
             "http://localhost:8080",
@@ -1474,6 +1479,8 @@ mod tests {
             "http://api.example.test",
             "http://10.0.0.1",
             "http://127.0.0.1.example.test",
+            "ftp://api.example.test",
+            "file:///tmp/api",
         ] {
             assert!(
                 matches!(parse_base_url(url), Err(ApiError::InvalidUrl(_))),

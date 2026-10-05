@@ -56,6 +56,7 @@ to add the capabilities you intend to use (e.g. `data.upload` for importing data
 
 In CI, set `FOXGLOVE_BEARER_TOKEN` (and optionally `FOXGLOVE_BASE_URL`) instead; they take precedence over the config file.
 `BEARER_TOKEN`, `BASE_URL`, and `AUTH_TYPE` are no longer read. The base URL must use `https` unless the host is loopback.
+`FOXGLOVE_DEFAULT_PROJECT_ID` sets the default project; `DEFAULT_PROJECT_ID` still works but is deprecated.
 
 ### Lists and pagination
 

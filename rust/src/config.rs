@@ -232,10 +232,12 @@ impl Drop for TemporaryGuard<'_> {
     }
 }
 
-/// Generic names like `BASE_URL` must not redirect the bearer token.
-const ENVIRONMENT_OVERRIDES: [(&str, &str); 3] = [
+/// Generic names like `BASE_URL` must not redirect the bearer token. Earlier
+/// entries for a key take precedence; `DEFAULT_PROJECT_ID` is deprecated.
+const ENVIRONMENT_OVERRIDES: [(&str, &str); 4] = [
     ("base_url", "FOXGLOVE_BASE_URL"),
     ("bearer_token", "FOXGLOVE_BEARER_TOKEN"),
+    ("default_project_id", "FOXGLOVE_DEFAULT_PROJECT_ID"),
     ("default_project_id", "DEFAULT_PROJECT_ID"),
 ];
 
@@ -256,11 +258,13 @@ pub(crate) fn warn_legacy_environment() {
     }
 }
 
+/// The environment variable that overrides `key`, if one is set.
 pub(crate) fn environment_name(key: &str) -> Option<&'static str> {
     ENVIRONMENT_OVERRIDES
         .iter()
-        .find(|(config_key, _)| *config_key == key)
+        .filter(|(config_key, _)| *config_key == key)
         .map(|(_, name)| *name)
+        .find(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
 }
 
 fn environment_value(key: &str) -> Option<String> {

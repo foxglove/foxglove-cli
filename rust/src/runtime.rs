@@ -33,10 +33,8 @@ pub(crate) fn load(
     let project_id = config.get_string("default_project_id").unwrap_or_default();
     let project_source = if project_id.is_empty() {
         "none"
-    } else if config.is_env_set("default_project_id") {
-        "DEFAULT_PROJECT_ID"
     } else {
-        "default_project_id"
+        crate::config::environment_name("default_project_id").unwrap_or("default_project_id")
     };
     let base_url = config
         .get_string("base_url")

@@ -1530,7 +1530,7 @@ fn plain_http_base_url_is_refused_for_remote_hosts() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "refusing plain-HTTP API base URL http://api.example.test; use https \
+        "unsupported API base URL http://api.example.test; use https, or http for localhost \
          (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n",
     );
 }
@@ -1553,7 +1553,7 @@ fn configure_api_key_rejects_plain_http_before_prompting() {
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr)
-        .starts_with("Configuration failed: refusing plain-HTTP API base URL"));
+        .starts_with("Configuration failed: unsupported API base URL"));
     assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
@@ -3998,18 +3998,27 @@ fn project_scope_debug_reports_each_resolution_source() {
         "default_project_id: prj_saved\n",
     )
     .unwrap();
-    for (environment, flags, expected) in [
+    for (environment, legacy, flags, expected) in [
         (
+            "",
             "",
             vec!["--project-id", "prj_flag"],
             "[DEBUG] Project scope: prj_flag (source: --project-id)\n",
         ),
         (
             "prj_environment",
+            "prj_legacy",
             vec![],
-            "[DEBUG] Project scope: prj_environment (source: DEFAULT_PROJECT_ID)\n",
+            "[DEBUG] Project scope: prj_environment (source: FOXGLOVE_DEFAULT_PROJECT_ID)\n",
         ),
         (
+            "",
+            "prj_legacy",
+            vec![],
+            "[DEBUG] Project scope: prj_legacy (source: DEFAULT_PROJECT_ID)\n",
+        ),
+        (
+            "",
             "",
             vec![],
             "[DEBUG] Project scope: prj_saved (source: default_project_id)\n",
@@ -4018,7 +4027,8 @@ fn project_scope_debug_reports_each_resolution_source() {
         let output = Process::spawn(
             workspace
                 .command("http://127.0.0.1:1")
-                .env("DEFAULT_PROJECT_ID", environment)
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", environment)
+                .env("DEFAULT_PROJECT_ID", legacy)
                 .args([
                     "--debug",
                     "export",

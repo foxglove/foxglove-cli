@@ -33,6 +33,7 @@ impl Workspace {
             .env_remove("BASE_URL")
             .env_remove("BEARER_TOKEN")
             .env_remove("DEFAULT_PROJECT_ID")
+            .env_remove("FOXGLOVE_DEFAULT_PROJECT_ID")
             .env_remove("SSL_CERT_FILE")
             .env_remove("SSL_CERT_DIR")
             .env_remove("HTTP_PROXY")

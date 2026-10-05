@@ -19,8 +19,8 @@ use crate::{
 };
 
 const ROOT_COMMAND: &str = "foxglove";
-const PROJECT_ID_HELP: &str = "Project ID (defaults to DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
-const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
+const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
+const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
@@ -249,7 +249,7 @@ struct CompletionArgs {
 enum ConfigCommand {
     #[command(
         about = "Get a configuration value",
-        long_about = "Get a configuration value. DEFAULT_PROJECT_ID, when set, takes precedence over project-id in the config file."
+        long_about = "Get a configuration value. FOXGLOVE_DEFAULT_PROJECT_ID, when set, takes precedence over project-id in the config file."
     )]
     Get(ConfigKeyArgs),
     #[command(about = "Set a configuration value")]
@@ -1766,7 +1766,7 @@ fn run_config_get(selected_key: ConfigKey, path: Option<&std::path::Path>) -> Ou
     match config.get_string(config_name(key)) {
         Some(value) => Outcome {
             stdout: format!("{value}\n").into_bytes(),
-            stderr: environment_note(&config, key).into_bytes(),
+            stderr: environment_note(key).into_bytes(),
             ..Outcome::default()
         },
         None => Outcome::failure(format!("No value set for key '{key}'\n")),
@@ -1789,7 +1789,7 @@ fn run_config_set(args: &ConfigSetArgs, path: Option<&std::path::Path>) -> Outco
     match config.save() {
         Ok(()) => Outcome::notice(format!(
             "Configuration updated: {key} = {value}\n{}",
-            environment_note(&config, key)
+            environment_note(key)
         )),
         Err(error) => Outcome::failure(error),
     }
@@ -1804,22 +1804,22 @@ fn run_config_unset(selected_key: ConfigKey, path: Option<&std::path::Path>) -> 
     if !config.remove(config_name(key)) {
         return Outcome::failure(format!(
             "No value set for key '{key}'\n{}",
-            environment_note(&config, key)
+            environment_note(key)
         ));
     }
     match config.save() {
         Ok(()) => Outcome::notice(format!(
             "Configuration removed: {key}\n{}",
-            environment_note(&config, key)
+            environment_note(key)
         )),
         Err(error) => Outcome::failure(error),
     }
 }
 
-fn environment_note(config: &Config, key: &str) -> String {
+fn environment_note(key: &str) -> String {
     let name = config_name(key);
     match crate::config::environment_name(name) {
-        Some(variable) if config.is_env_set(name) => format!(
+        Some(variable) => format!(
             "{variable} is set in the environment and takes precedence over {key} in the config file\n"
         ),
         _ => String::new(),
