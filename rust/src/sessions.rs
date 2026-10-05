@@ -8,7 +8,7 @@ use crate::cli::{
     SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
     SessionRecordingMutationArgs,
 };
-use crate::output::{escape_cell, Format};
+use crate::output::{escape_terminal_text, Format};
 use crate::records::{
     fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
@@ -167,7 +167,7 @@ fn session_outcome(session: &Session) -> Outcome {
         .map(|device| {
             format!(
                 "Device:     {} ({})\n",
-                escape_cell(&device.name),
+                escape_terminal_text(&device.name),
                 device.id
             )
         })
@@ -185,7 +185,7 @@ fn session_outcome(session: &Session) -> Outcome {
     Outcome::success(format!(
         "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
         session.id,
-        escape_cell(&session.key),
+        escape_terminal_text(&session.key),
         session.project_id,
         device,
         session.created_at,
