@@ -600,6 +600,7 @@ fn stalled_resumes_fail_and_preserve_destination() {
         ]))
         .finish();
         assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("stopped making progress"));
         assert_eq!(
             fs::read(workspace.0.join("output.mcap")).unwrap(),
             b"existing destination"
