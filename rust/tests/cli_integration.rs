@@ -1887,7 +1887,7 @@ fn an_empty_cursor_requests_the_first_page() {
 }
 
 #[test]
-fn blank_filters_and_keys_are_rejected() {
+fn blank_and_conflicting_filters_are_rejected() {
     let workspace = Workspace::new();
     for args in [
         &["episodes", "list", "--recording-id="][..],
@@ -1897,10 +1897,26 @@ fn blank_filters_and_keys_are_rejected() {
         &["upload", "--key", "", "data.mcap"],
         &["upload", "--session-key", " \r", "data.mcap"],
         &["pending-imports", "list", "--key", ""],
+        &["sessions", "add", "--device-id", " "],
+        &[
+            "recordings",
+            "list",
+            "--without-device",
+            "--device-id",
+            "dev_1",
+        ],
+        &[
+            "recordings",
+            "list",
+            "--without-session",
+            "--session-key",
+            "key",
+        ],
     ] {
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
         assert!(!output.status.success(), "{args:?}");
-        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be empty"));
+        // Matches both "cannot be empty" and "cannot be used with".
+        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be"));
     }
 }
 

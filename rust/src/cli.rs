@@ -968,7 +968,7 @@ enum EventsCommand {
 pub(crate) struct EventAddArgs {
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: String,
     #[arg(
         long,
@@ -1264,7 +1264,7 @@ enum SessionsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SessionAddArgs {
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true)]
+    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_id: Option<String>,
     #[arg(
         long,
