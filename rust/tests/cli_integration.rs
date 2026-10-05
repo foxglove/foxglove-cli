@@ -1420,7 +1420,10 @@ fn session_key_edit_reports_debug_project_scope() {
         stderr.starts_with("[DEBUG] Project scope: prj_default (source: DEFAULT_PROJECT_ID)\n"),
         "{stderr}"
     );
-    assert!(stderr.contains("API path segments must not be"), "{stderr}");
+    assert!(
+        stderr.contains("IDs, keys and names must not be"),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1434,7 +1437,7 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
         )
         .finish();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("API path segments must not be"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("IDs, keys and names must not be"));
     }
 }
 
@@ -2553,6 +2556,27 @@ fn getting_a_dataset_renders_one_record() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn session_recordings_report_a_missing_session() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json("GET", "/v1/sessions/one", r#"{"error":"Not Found"}"#)
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["sessions", "recordings", "list", "one"],
+    );
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session not found: one\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn deleting_what_is_not_found_fails() {
     let workspace = Workspace::new();
     let cases: &[(&[&str], &str, &str, &str)] = &[
@@ -2757,21 +2781,28 @@ fn missing_datasets_episodes_and_versions_are_named_in_the_error() {
             "GET",
             "/v1/datasets/ds_one/versions/9",
             r#"{"error":"Not Found"}"#,
-            "Version 9 of dataset ds_one not found\n",
+            "Dataset ds_one not found, or it has no version 9\n",
+        ),
+        (
+            &["datasets", "episodes", "list", "ds_one", "--version", "9"],
+            "GET",
+            "/v1/datasets/ds_one/versions/9/episodes",
+            r#"{"error":"Not Found"}"#,
+            "Dataset ds_one not found, or it has no version 9\n",
         ),
         (
             &["datasets", "versions", "compare", "ds_one", "2", "9"],
             "GET",
             "/v1/datasets/ds_one/versions/9/compare",
             r#"{"error":"Not Found"}"#,
-            "Version 2 or 9 of dataset ds_one not found\n",
+            "Dataset ds_one not found, or it has no version 2 or 9\n",
         ),
         (
             &["datasets", "versions", "restore", "ds_one", "9"],
             "POST",
             "/v1/datasets/ds_one/versions/9/restore",
             r#"{"error":"Not Found"}"#,
-            "Committed version 9 of dataset ds_one not found\n",
+            "Dataset ds_one not found, or it has no committed version 9\n",
         ),
         (
             &["datasets", "versions", "get", "ds_one", "9"],

@@ -831,21 +831,43 @@ impl RecordSink for JsonSink<'_> {
         let channel = self.channels.get(&message.channel_id).ok_or_else(|| {
             FormatError::Invalid(format!("unknown MCAP channel: {}", message.channel_id))
         })?;
-        let schema = self.schemas.get(&channel.schema_id).ok_or_else(|| {
-            FormatError::Invalid(format!("unknown MCAP schema: {}", channel.schema_id))
-        })?;
-        let data = match schema.encoding.as_str() {
-            "ros1msg" => self.ros1.decode_json(schema, &message.data)?,
-            "protobuf" => serde_json::to_vec(&self.protobuf.decode_json(schema, &message.data)?)
-                .map_err(|error| {
-                    FormatError::Invalid(format!("failed to marshal message: {error}"))
-                })?,
-            _ => {
-                return Err(FormatError::Invalid(
-                    "JSON output only supported for ros1msg and protobuf schemas".into(),
-                ))
+        let topic = &channel.topic;
+        let schema = match (channel.schema_id, self.schemas.get(&channel.schema_id)) {
+            (0, _) => None,
+            (_, Some(schema)) => Some(schema),
+            (id, None) => {
+                return Err(FormatError::Invalid(format!(
+                    "topic {topic} refers to unknown MCAP schema {id}"
+                )))
             }
         };
+        let encoding = schema.map_or("", |schema| schema.encoding.as_str());
+        let data = match (schema, encoding) {
+            (Some(schema), "ros1msg") => self.ros1.decode_json(schema, &message.data),
+            (Some(schema), "protobuf") => self
+                .protobuf
+                .decode_json(schema, &message.data)
+                .and_then(|value| {
+                    serde_json::to_vec(&value).map_err(|error| {
+                        FormatError::Invalid(format!("failed to marshal message: {error}"))
+                    })
+                }),
+            _ => {
+                let found = if schema.is_some() {
+                    format!("schema encoding {encoding}")
+                } else {
+                    "no schema".to_owned()
+                };
+                return Err(FormatError::Invalid(format!(
+                    "JSON output supports only ros1msg and protobuf schemas, but topic {topic} has {found}. Use --topics to export only the other topics."
+                )));
+            }
+        }
+        .map_err(|error| {
+            FormatError::Invalid(format!(
+                "failed to convert topic {topic} ({encoding}) to JSON: {error}"
+            ))
+        })?;
         self.stdout.write_all(b"{\"topic\":")?;
         serde_json::to_writer(&mut *self.stdout, &channel.topic)
             .map_err(|error| FormatError::Invalid(format!("failed to write JSON: {error}")))?;
@@ -996,6 +1018,35 @@ mod tests {
         let output = String::from_utf8(progress.into_writer()).expect("utf8 progress");
         assert!(output.contains("exporting: 1025 bytes"));
         assert_eq!(output.matches('\n').count(), 1);
+    }
+
+    #[test]
+    fn json_export_names_topics_without_a_known_schema() {
+        for (schema_id, expected) in [
+            (0, "JSON output supports only ros1msg and protobuf schemas, but topic /raw has no schema. Use --topics to export only the other topics."),
+            (7, "topic /raw refers to unknown MCAP schema 7"),
+        ] {
+            let mut output = Vec::new();
+            let mut sink = JsonSink::new(&mut output);
+            sink.channel(Channel {
+                id: 1,
+                schema_id,
+                topic: "/raw".into(),
+                message_encoding: "json".into(),
+                metadata: BTreeMap::new(),
+            })
+            .unwrap();
+            let error = sink
+                .message(Message {
+                    channel_id: 1,
+                    sequence: 0,
+                    log_time: 0,
+                    publish_time: 0,
+                    data: Vec::new(),
+                })
+                .unwrap_err();
+            assert_eq!(error.to_string(), expected);
+        }
     }
 
     #[test]

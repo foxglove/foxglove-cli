@@ -213,6 +213,9 @@ pub(crate) async fn list_session_recordings(
             Outcome::success("No recordings in this session.\n")
         }
         Ok(session) => format_output(&session.recordings, Format::Table),
+        Err(error) if error.is_not_found_for("session") => {
+            Outcome::failure(format!("Session not found: {}\n", args.session))
+        }
         Err(error) => Outcome::failure(format!("Failed to list session recordings: {error}\n")),
     }
 }
