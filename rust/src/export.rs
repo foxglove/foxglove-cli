@@ -833,7 +833,15 @@ impl RecordSink for JsonSink<'_> {
             FormatError::Invalid(format!("unknown MCAP channel: {}", message.channel_id))
         })?;
         let topic = &channel.topic;
-        let schema = self.schemas.get(&channel.schema_id);
+        let schema = match (channel.schema_id, self.schemas.get(&channel.schema_id)) {
+            (0, _) => None,
+            (_, Some(schema)) => Some(schema),
+            (id, None) => {
+                return Err(FormatError::Invalid(format!(
+                    "topic {topic} refers to unknown MCAP schema {id}"
+                )))
+            }
+        };
         let encoding = schema.map_or("none", |schema| schema.encoding.as_str());
         let data = match (schema, encoding) {
             (Some(schema), "ros1msg") => self.ros1.decode_json(schema, &message.data),
