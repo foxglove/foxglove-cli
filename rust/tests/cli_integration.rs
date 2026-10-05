@@ -1553,6 +1553,19 @@ fn plain_http_base_url_is_refused_for_remote_hosts() {
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
         "unsupported API base URL http://api.example.test; use https, or http for localhost \
+         (change or unset FOXGLOVE_BASE_URL)\n",
+    );
+
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        "base_url: http://api.example.test\n",
+    )
+    .unwrap();
+    let output = Process::spawn(workspace.command("").args(["recordings", "list"])).finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "unsupported API base URL http://api.example.test; use https, or http for localhost \
          (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n",
     );
 }

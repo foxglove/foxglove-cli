@@ -48,9 +48,12 @@ pub(crate) fn load(
         user_agent(),
     )
     .map_err(|error| match error {
-        ApiError::InvalidUrl(message) => format!(
-            "{message} (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n"
-        ),
+        ApiError::InvalidUrl(message) => match crate::config::environment_name("base_url") {
+            Some(name) => format!("{message} (change or unset {name})\n"),
+            None => format!(
+                "{message} (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n"
+            ),
+        },
         error => format!("{error}\n"),
     })?
     .with_debug(debug);
