@@ -1451,7 +1451,11 @@ fn session_key_edit_reports_debug_project_scope() {
 #[test]
 fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
-    for key in ["", ".", ".."] {
+    for (key, error) in [
+        ("", "cannot be empty"),
+        (".", "IDs, keys and names must not be"),
+        ("..", "IDs, keys and names must not be"),
+    ] {
         let output = Process::spawn(
             workspace
                 .command("http://127.0.0.1:1")
@@ -1459,7 +1463,7 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
         )
         .finish();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("IDs, keys and names must not be"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains(error));
     }
 }
 
@@ -1816,6 +1820,75 @@ fn list_limits_must_be_between_one_and_two_thousand() {
                 .contains("must be an integer between 1 and 2000"),
             "--limit {limit}"
         );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn empty_recording_device_and_session_filters_reach_the_api() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("DEFAULT_PROJECT_ID", "prj_default\r")
+            .args([
+                "recordings",
+                "list",
+                "--device-id=",
+                "--session-id=",
+                "--session-key",
+                " key\r",
+            ]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("deviceId", ""),
+            ("limit", "50"),
+            ("projectId", "prj_default"),
+            ("sessionId", ""),
+            ("sessionKey", "key"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_empty_cursor_requests_the_first_page() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/datasets", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "datasets",
+        "list",
+        "--project-id",
+        " prj_explicit\r",
+        "--cursor",
+        " ",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "50"), ("projectId", "prj_explicit")])
+    );
+}
+
+#[test]
+fn blank_filters_and_keys_are_rejected() {
+    let workspace = Workspace::new();
+    for args in [
+        &["episodes", "list", "--recording-id="][..],
+        &["events", "list", "--sort-by", "", "--sort-order", "desc"],
+        &["upload", "--key", "", "data.mcap"],
+        &["upload", "--session-key", " \r", "data.mcap"],
+        &["pending-imports", "list", "--key", ""],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be empty"));
     }
 }
 

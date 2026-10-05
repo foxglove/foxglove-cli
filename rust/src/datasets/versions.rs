@@ -212,7 +212,7 @@ pub(crate) async fn list_versions(
 ) -> Outcome {
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = VersionListQuery {
-        cursor: args.cursor.as_deref(),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         limit,
         sort_order: args.sort_order.clone().unwrap_or_default(),
     };
@@ -306,7 +306,7 @@ pub(crate) async fn compare_versions(
     let query = CompareQuery {
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
-        cursor: args.cursor.as_deref(),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         include: include_recordings(args.include_recordings),
     };
     let page = match runtime

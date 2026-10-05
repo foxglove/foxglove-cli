@@ -108,8 +108,9 @@ impl Record for Recording {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RecordingListQuery {
-    #[serde(skip_serializing_if = "String::is_empty")]
-    device_id: String,
+    // An empty device or session ID filters to recordings without one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_id: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
     #[serde(rename = "edgeSite.id", skip_serializing_if = "String::is_empty")]
@@ -125,8 +126,8 @@ struct RecordingListQuery {
     path: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    session_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_id: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     session_key: String,
     #[serde(rename = "site.id", skip_serializing_if = "String::is_empty")]
@@ -160,7 +161,7 @@ pub(crate) async fn list_recordings(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query = RecordingListQuery {
-        device_id: args.device_id.clone().unwrap_or_default(),
+        device_id: args.device_id.clone(),
         device_name: args.device_name.clone().unwrap_or_default(),
         edge_site_id: args.edge_site_id.clone().unwrap_or_default(),
         end,
@@ -169,7 +170,7 @@ pub(crate) async fn list_recordings(
         offset,
         path: args.path.clone().unwrap_or_default(),
         project_id,
-        session_id: args.session_id.clone().unwrap_or_default(),
+        session_id: args.session_id.clone(),
         session_key,
         site_id: args.site_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),

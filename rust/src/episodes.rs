@@ -166,7 +166,7 @@ pub(crate) async fn list_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
-        cursor: args.cursor.as_deref(),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
