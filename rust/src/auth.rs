@@ -98,6 +98,14 @@ pub(crate) async fn login(
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
 
+    // Fail before the browser flow so a completed sign-in is never discarded.
+    let mut config = match Config::load_from_path(config_path) {
+        Ok(config) => config,
+        Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
+    };
+    if let Err(error) = config.path() {
+        return Outcome::failure(format!("Login failed: {error}"));
+    }
     let cancellation = api::ctrl_c_cancellation_token();
     let (instructions, device_code, browser) = match start_login(&client, &cancellation).await {
         Ok(result) => result,
@@ -124,10 +132,6 @@ pub(crate) async fn login(
                 ..Outcome::default()
             }
         }
-        Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
-    };
-    let mut config = match Config::load_from_path(config_path) {
-        Ok(config) => config,
         Err(error) => return Outcome::failure(format!("Login failed: {error}\n")),
     };
     config.set("auth_type", Value::Number(1.into()));

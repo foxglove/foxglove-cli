@@ -1844,13 +1844,22 @@ fn configure_api_key(
         Ok(config) => config,
         Err(error) => return Outcome::failure(error),
     };
+    // Fail before the prompt so the user doesn't paste a key for nothing.
+    let path = match config.path() {
+        Ok(path) => path.to_owned(),
+        Err(error) => return Outcome::failure(format!("Configuration failed: {error}")),
+    };
+    let base_url = args
+        .base_url
+        .clone()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
+    if let Err(error) = crate::api::parse_base_url(&base_url) {
+        return Outcome::failure(format!("Configuration failed: {error}\n"));
+    }
     let token = match args.api_key.clone() {
         Some(token) if !token.is_empty() => token,
         _ => {
-            let path = match config.path() {
-                Ok(path) => path,
-                Err(error) => return Outcome::failure(format!("Configuration failed: {error}")),
-            };
             if let Err(error) = writeln!(
                 prompt_writer,
                 "Enter an API key (will be written to {}):",
@@ -1874,14 +1883,6 @@ fn configure_api_key(
             token.to_owned()
         }
     };
-    let base_url = args
-        .base_url
-        .clone()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| runtime::DEFAULT_BASE_URL.to_owned());
-    if let Err(error) = crate::api::parse_base_url(&base_url) {
-        return Outcome::failure(format!("Configuration failed: {error}\n"));
-    }
     config.set("auth_type", Value::Number(2.into()));
     config.set("base_url", Value::String(base_url));
     config.set("bearer_token", Value::String(token));

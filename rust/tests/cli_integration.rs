@@ -1556,6 +1556,48 @@ fn missing_home_requires_explicit_config() {
     assert!(!workspace.0.join(".foxgloverc").exists());
 }
 
+#[test]
+fn configure_api_key_rejects_plain_http_before_prompting() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("")
+            .args([
+                "auth",
+                "configure-api-key",
+                "--base-url",
+                "http://api.example.test",
+            ])
+            .stdin(std::process::Stdio::null()),
+    )
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .starts_with("Configuration failed: refusing plain-HTTP API base URL"));
+    assert!(!workspace.0.join(".foxgloverc").exists());
+}
+
+#[test]
+fn login_without_home_fails_before_sign_in() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(
+        workspace
+            .command("")
+            .env_remove("HOME")
+            .env_remove("USERPROFILE")
+            .args(["auth", "login", "--base-url", "http://127.0.0.1:1"]),
+    )
+    .finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Login failed: cannot locate the config file because HOME (or USERPROFILE on Windows) \
+         is not set; pass --config\n",
+    );
+}
+
 fn query_pairs(request: &str) -> BTreeMap<String, String> {
     let target = request.split_whitespace().nth(1).unwrap();
     reqwest::Url::parse(&format!("http://localhost{target}"))
