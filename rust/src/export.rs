@@ -1017,30 +1017,32 @@ mod tests {
     }
 
     #[test]
-    fn json_export_names_a_schemaless_topic() {
-        let mut output = Vec::new();
-        let mut sink = JsonSink::new(&mut output);
-        sink.channel(Channel {
-            id: 1,
-            schema_id: 0,
-            topic: "/raw".into(),
-            message_encoding: "json".into(),
-            metadata: BTreeMap::new(),
-        })
-        .unwrap();
-        let error = sink
-            .message(Message {
-                channel_id: 1,
-                sequence: 0,
-                log_time: 0,
-                publish_time: 0,
-                data: Vec::new(),
+    fn json_export_names_topics_without_a_known_schema() {
+        for (schema_id, expected) in [
+            (0, "JSON output supports only ros1msg and protobuf schemas, but topic /raw has schema encoding none. Use --topics to exclude it."),
+            (7, "topic /raw refers to unknown MCAP schema 7"),
+        ] {
+            let mut output = Vec::new();
+            let mut sink = JsonSink::new(&mut output);
+            sink.channel(Channel {
+                id: 1,
+                schema_id,
+                topic: "/raw".into(),
+                message_encoding: "json".into(),
+                metadata: BTreeMap::new(),
             })
-            .unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "JSON output supports only ros1msg and protobuf schemas, but topic /raw has schema encoding none. Use --topics to exclude it."
-        );
+            .unwrap();
+            let error = sink
+                .message(Message {
+                    channel_id: 1,
+                    sequence: 0,
+                    log_time: 0,
+                    publish_time: 0,
+                    data: Vec::new(),
+                })
+                .unwrap_err();
+            assert_eq!(error.to_string(), expected);
+        }
     }
 
     #[test]
