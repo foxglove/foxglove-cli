@@ -574,6 +574,99 @@ fn resumed_exports_do_not_request_the_replay_again() {
     );
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn stalled_resumes_fail_and_preserve_destination() {
+    let truncated = |messages: &[Message]| {
+        let mut partial = recording(messages);
+        partial.truncate(partial.len() - 4);
+        partial
+    };
+    let progress = truncated(&[message(1, 1, vec![1]), message(1, 2, vec![2])]);
+    let empty = truncated(&[]);
+    for responses in [
+        [progress.clone(), progress.clone(), progress.clone()],
+        [progress.clone(), empty.clone(), empty.clone()],
+    ] {
+        let workspace = Workspace::new();
+        let server = Server::new(responses.into_iter().flat_map(export_replies).collect());
+        fs::write(workspace.0.join("output.mcap"), b"existing destination").unwrap();
+        let output = Process::spawn(workspace.command(&server.url).args([
+            "export",
+            "--recording-id",
+            "rec",
+            "--output-file",
+            "output.mcap",
+        ]))
+        .finish();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("stopped making progress"));
+        assert_eq!(
+            fs::read(workspace.0.join("output.mcap")).unwrap(),
+            b"existing destination"
+        );
+        assert_eq!(
+            fs::read_dir(&workspace.0).unwrap().count(),
+            1,
+            "staging was not cleaned"
+        );
+        assert_eq!(server.finish().len(), 6);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn resumed_episode_exports_preserve_the_server_default_end() {
+    const SECOND: u64 = 1_000_000_000;
+    const JAN_1_2024: u64 = 1_704_067_200 * SECOND;
+    let messages = [
+        message(1, JAN_1_2024, vec![0]),
+        message(1, JAN_1_2024 + SECOND, vec![1]),
+        message(1, JAN_1_2024 + 2 * SECOND, vec![2]),
+    ];
+    let workspace = Workspace::new();
+    let mut partial = recording(&messages[..2]);
+    partial.truncate(partial.len() - 4);
+    let mut replies = export_replies(partial);
+    replies.extend(export_replies(recording(&messages[1..])));
+    let server = Server::new(replies);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "export",
+            "--episode-id",
+            "ep_one",
+            "--output-file",
+            "episode.mcap",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 4);
+    let resumed = json_body(&requests[2]);
+    assert_eq!(resumed["episodeId"], "ep_one");
+    assert_eq!(resumed["start"], "2024-01-01T00:00:01Z");
+    assert!(resumed.get("end").is_none(), "{resumed}");
+    let mut records = Records::default();
+    foxglove_rust::format::read_mcap(
+        &mut fs::File::open(workspace.0.join("episode.mcap")).unwrap(),
+        &mut records,
+    )
+    .unwrap();
+    assert_eq!(
+        records
+            .messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>(),
+        messages
+            .iter()
+            .map(|message| (message.log_time, message.data.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
 #[cfg(all(unix, feature = "test-support"))]
 #[test]
 #[ignore = "requires loopback sockets and Unix signal delivery"]

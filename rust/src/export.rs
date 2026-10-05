@@ -247,7 +247,6 @@ async fn resumable_export_inner(
     check: CompletionCheck,
 ) -> Result<(), api::ApiError> {
     let mut partials = Vec::new();
-    let mut complete_found = false;
     let mut empty_downloads = 0_u8;
     let mut repeated_starts = 0_u8;
     let requested_start = request.start;
@@ -264,7 +263,6 @@ async fn resumable_export_inner(
                 path,
                 info: ExportInfo::default(),
             });
-            complete_found = true;
             break;
         }
         let reindex_path = path.clone();
@@ -284,13 +282,12 @@ async fn resumable_export_inner(
         }
         partials.push(PartialExport { path, info });
         if complete {
-            complete_found = true;
             break;
         }
         if info.message_count == 0 {
             empty_downloads += 1;
             if empty_downloads > 1 {
-                break;
+                return Err(incomplete_download());
             }
             continue;
         }
@@ -301,13 +298,14 @@ async fn resumable_export_inner(
         if request.start == Some(start) {
             repeated_starts += 1;
             if repeated_starts > 1 {
-                break;
+                return Err(incomplete_download());
             }
         } else {
             repeated_starts = 0;
         }
         request.start = Some(start);
-        if request.end.is_none() {
+        // The API supplies the episode's end when omitted, even with a resume start.
+        if request.end.is_none() && request.episode_id.is_empty() {
             request.end = Some(OffsetDateTime::now_utc());
         }
         // The resumed request starts at the last message received. With a
@@ -323,11 +321,6 @@ async fn resumable_export_inner(
             request.replay_policy.clear();
             request.replay_lookback_seconds = 0.0;
         }
-    }
-    if check == CompletionCheck::EndMagic && !complete_found {
-        return Err(api::ApiError::Conversion(
-            "the stream ended before the download was complete".into(),
-        ));
     }
     let merged = staging.join("complete");
     if partials.len() == 1 {
@@ -349,6 +342,12 @@ async fn resumable_export_inner(
         }
     }
     crate::config::replace_file(&merged, destination).map_err(api::ApiError::Write)
+}
+
+fn incomplete_download() -> api::ApiError {
+    api::ApiError::Conversion(
+        "the download stopped making progress; the destination was not changed".into(),
+    )
 }
 
 async fn download_response(
