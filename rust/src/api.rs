@@ -389,7 +389,7 @@ pub(crate) fn parse_base_url(base_url: &str) -> Result<Url, ApiError> {
     };
     if !allowed {
         return Err(ApiError::InvalidUrl(format!(
-            "unsupported API base URL {base_url}; use https, or http for localhost (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)"
+            "unsupported API base URL {base_url}; use https, or http for localhost"
         )));
     }
     if !url.path().ends_with('/') {

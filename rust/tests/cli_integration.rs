@@ -1574,8 +1574,10 @@ fn configure_api_key_rejects_plain_http_before_prompting() {
     .finish();
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
-    assert!(String::from_utf8_lossy(&output.stderr)
-        .starts_with("Configuration failed: unsupported API base URL"));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Configuration failed: unsupported API base URL http://api.example.test; use https, or http for localhost\n",
+    );
     assert!(!workspace.0.join(".foxgloverc").exists());
 }
 

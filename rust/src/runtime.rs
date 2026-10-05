@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::api::FoxgloveClient;
+use crate::api::{ApiError, FoxgloveClient};
 use crate::config::Config;
 
 pub(crate) const DEFAULT_CLIENT_ID: &str = "d51173be08ed4cf7a734aed9ac30afd0";
@@ -47,7 +47,12 @@ pub(crate) fn load(
         token,
         user_agent(),
     )
-    .map_err(|error| format!("{error}\n"))?
+    .map_err(|error| match error {
+        ApiError::InvalidUrl(message) => format!(
+            "{message} (run `foxglove auth login --base-url https://...` or set FOXGLOVE_BASE_URL)\n"
+        ),
+        error => format!("{error}\n"),
+    })?
     .with_debug(debug);
     Ok(Runtime {
         client,
