@@ -12,7 +12,7 @@
 use std::fmt;
 use std::io::{self, Write as _};
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, PercentEncode, NON_ALPHANUMERIC};
 use reqwest::{Method, RequestBuilder, Response, StatusCode, Url};
@@ -37,6 +37,11 @@ pub(crate) fn encode_path_segment(value: &str) -> PercentEncode<'_> {
 }
 
 const SIGN_IN_MESSAGE: &str = "forbidden: have you signed in with `foxglove auth login`?";
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const READ_TIMEOUT: Duration = Duration::from_secs(300);
+const GET_ATTEMPTS: u32 = 3;
+const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
 
 /// Errors returned by the API client.
 #[derive(Debug)]
@@ -158,6 +163,9 @@ impl fmt::Display for ApiError {
             Self::ForbiddenWithMessage(message)
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
+            Self::Transport(error) | Self::Decode(error) if error.is_timeout() => {
+                write!(formatter, "{error}: timed out")
+            }
             Self::Transport(error) | Self::Decode(error) => error.fmt(formatter),
             Self::Serialization(error) => error.fmt(formatter),
             Self::Cancelled => formatter.write_str("operation cancelled"),
@@ -358,6 +366,9 @@ pub struct DeviceCodeResponse {
 #[derive(Clone, Debug)]
 pub struct FoxgloveClient {
     http: reqwest::Client,
+    // reqwest's read timeout also covers sending the body, so recording
+    // uploads skip it.
+    upload_http: reqwest::Client,
     base_url: Url,
     client_id: String,
     user_agent: String,
@@ -403,10 +414,13 @@ impl FoxgloveClient {
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }
+        let builder = || reqwest::Client::builder().connect_timeout(CONNECT_TIMEOUT);
         Ok(Self {
-            http: reqwest::Client::builder()
+            http: builder()
+                .read_timeout(READ_TIMEOUT)
                 .build()
                 .map_err(ApiError::Transport)?,
+            upload_http: builder().build().map_err(ApiError::Transport)?,
             base_url,
             client_id: client_id.into(),
             user_agent: user_agent.into(),
@@ -586,13 +600,7 @@ impl FoxgloveClient {
                     drop(response);
                     Err(ApiError::Forbidden)
                 }
-                status => {
-                    let _ = response.text().await;
-                    Err(ApiError::Response {
-                        status: status.as_u16(),
-                        message: format!("unexpected status {}", status.as_u16()),
-                    })
-                }
+                _ => Err(error_from_response(response).await),
             }
         })
         .await
@@ -936,7 +944,7 @@ impl FoxgloveClient {
         let body = reqwest::Body::wrap_stream(ReaderStream::new(reader));
         let response = self
             .send_signed(
-                self.http
+                self.upload_http
                     .put(url)
                     .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
                     // Signed storage links are followed outside the authenticated
@@ -1061,12 +1069,49 @@ impl FoxgloveClient {
         cancellation: Option<&CancellationToken>,
         signed: bool,
     ) -> Result<Response, ApiError> {
-        // Signed URL errors would otherwise print the signature.
-        let transport = |error: reqwest::Error| {
-            ApiError::Transport(if signed { error.without_url() } else { error })
-        };
         let (http, request) = request.build_split();
-        let request = request.map_err(transport)?;
+        let mut request = request.map_err(|error| transport_error(error, signed))?;
+        let attempts = if request.method() == Method::GET {
+            GET_ATTEMPTS
+        } else {
+            1
+        };
+        let mut attempt = 1;
+        loop {
+            let retry = (attempt < attempts).then(|| request.try_clone()).flatten();
+            let result = self
+                .execute_logged(&http, request, cancellation, signed)
+                .await;
+            let Some(next) = retry else { return result };
+            let backoff = Duration::from_secs(1 << (attempt - 1));
+            let delay = match &result {
+                Ok(response)
+                    if response.status() == StatusCode::TOO_MANY_REQUESTS
+                        || response.status().is_server_error() =>
+                {
+                    retry_after(response).map_or(backoff, |delay| delay.min(MAX_RETRY_DELAY))
+                }
+                Err(ApiError::Transport(error)) if error.is_connect() => backoff,
+                _ => return result,
+            };
+            drop(result);
+            with_optional_cancellation(cancellation, async {
+                tokio::time::sleep(delay).await;
+                Ok(())
+            })
+            .await?;
+            request = next;
+            attempt += 1;
+        }
+    }
+
+    async fn execute_logged(
+        &self,
+        http: &reqwest::Client,
+        request: reqwest::Request,
+        cancellation: Option<&CancellationToken>,
+        signed: bool,
+    ) -> Result<Response, ApiError> {
         let debug = self.debug.then(|| {
             (
                 request.method().clone(),
@@ -1075,7 +1120,9 @@ impl FoxgloveClient {
             )
         });
         let result = with_optional_cancellation(cancellation, async {
-            http.execute(request).await.map_err(transport)
+            http.execute(request)
+                .await
+                .map_err(|error| transport_error(error, signed))
         })
         .await;
         if let Some((method, target, started)) = debug {
@@ -1239,6 +1286,11 @@ impl ResponseStream {
     }
 }
 
+fn transport_error(error: reqwest::Error, signed: bool) -> ApiError {
+    // Signed URL errors would otherwise print the signature.
+    ApiError::Transport(if signed { error.without_url() } else { error })
+}
+
 fn debug_target(url: &Url, signed: bool) -> String {
     let origin = url.origin().ascii_serialization();
     match (signed, url.query()) {
@@ -1285,6 +1337,18 @@ async fn ensure_success_response(response: Response) -> Result<Response, ApiErro
     } else {
         Err(error_from_response(response).await)
     }
+}
+
+fn retry_after(response: &Response) -> Option<Duration> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+        .map(Duration::from_secs)
 }
 
 fn pagination_cursor(response: &Response, name: &str) -> Option<String> {
