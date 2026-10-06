@@ -19,10 +19,11 @@ before upgrading scripts.
   file. `BEARER_TOKEN`, `BASE_URL`, and `AUTH_TYPE` are ignored, with a warning
   for the first two. `DEFAULT_PROJECT_ID` still works but is deprecated. The
   base URL must use `https`, or `http` for a loopback host.
-- **List commands return one page.** Every list command returns at most 50
-  results unless you pass `--limit` (1–2000), and prints a hint on stderr when
+- **List commands return one page.** Most list commands return at most 50
+  results unless you pass `--limit` (1–2000), and print a hint on stderr when
   more may exist. v1 returned everything for most commands. Page with
-  `--offset`, or `--cursor` for datasets and episodes.
+  `--offset`, or `--cursor` for datasets and episodes. `projects list`,
+  `extensions list`, and `event-types list` still return all results.
 - **JSON list output is wrapped.** `--format json` on list commands prints
   compact `{"data": [...]}` instead of an indented bare array, plus
   `nextCursor` where cursor pagination applies.

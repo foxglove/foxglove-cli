@@ -128,19 +128,22 @@ Import IDs and recording IDs are different values. For upload status, use
 | `--json` on list and get commands | `--format json` |
 | `--json` on `data export` | `export --output-format json` |
 | `devices add --serial-number VALUE` | Remove it; v1 ignored it |
-| `data export --import-id ID` | `export --recording-id ID` |
-| `attachments list --import-id ID` | `attachments list --recording-id ID` |
+| `data export --import-id IMPORT_ID` | `export --recording-id RECORDING_ID` |
+| `attachments list --import-id IMPORT_ID` | `attachments list --recording-id RECORDING_ID` |
 | `pending-imports list --error …` | Remove it and filter on the `error` field of `--format json` output |
 
+Import IDs are not recording IDs; find the recording ID with `recordings list`.
 Passing a removed flag fails with an unexpected-argument error.
 
 ## List output
 
 v1 returned everything the API sent in one response for most list commands,
 and defaulted to 2000 results for `recordings list` and 100 for `events list`.
-v2 list commands return one page of 50 results by default; pass `--limit`
-(1–2000) to change it. When more results may exist, a hint on stderr says how to
-fetch the next page.
+v2 list commands that accept `--limit` return one page of 50 results by
+default; pass `--limit` (1–2000) to change it. When more results may exist, a
+hint on stderr says how to fetch the next page. `projects list`,
+`extensions list`, and `event-types list` have no `--limit` and still return
+all results.
 
 `--format json` prints an object instead of a bare array, and is no longer
 indented:
@@ -151,8 +154,8 @@ indented:
 
 Update JSON consumers to read `.data`, for example `jq '.data[]'` instead of
 `jq '.[]'`. `datasets`, `episodes`, and `datasets versions compare` also return
-`nextCursor`; pass it to `--cursor` for the next page. Other list commands page
-with `--offset`.
+`nextCursor`; pass it to `--cursor` for the next page. The other commands that
+accept `--limit` page with `--offset`.
 
 To fetch everything, loop until a page has fewer items than `--limit`:
 
@@ -207,7 +210,8 @@ project on `export`, `recordings list`, `coverage list`, and `topics list`;
 - `--output-format mcap0` is now `--output-format mcap`, which is still the
   default. `bag1` and `json` are unchanged.
 - `--start` and `--end` must be given together.
-- `--import-id` is removed; use `--recording-id`.
+- `--import-id` is removed; use `--recording-id` with the recording's ID from
+  `recordings list`, not the import ID.
 - With `--output-format json`, `--output-file` now writes to the file; v1
   wrote JSON to stdout. JSON exports are still newline-delimited.
 
