@@ -15,7 +15,7 @@ v2 reads only these:
 | `DEFAULT_PROJECT_ID` | `FOXGLOVE_DEFAULT_PROJECT_ID` (old name deprecated but still read) |
 | `AUTH_TYPE` | Remove |
 
-The old names print a warning. The base URL must be `https`, or `http` for
+`BEARER_TOKEN`, `BASE_URL`, and `DEFAULT_PROJECT_ID` print a warning. The base URL must be `https`, or `http` for
 loopback. If `HOME` (or `USERPROFILE`) is unset, pass `--config PATH`.
 
 ## Commands and flags
@@ -64,13 +64,16 @@ foxglove devices list --format json | jq '.data[]'   # v1: jq '.[]'
 default project in v1 and now use it. To search all projects, pass
 `--project-id=`.
 
-Precedence is `--project-id`, then `FOXGLOVE_DEFAULT_PROJECT_ID`, then the
-saved `config set project-id` value. `config set project-id` rejects empty
+Precedence is `--project-id`, then `FOXGLOVE_DEFAULT_PROJECT_ID`, then
+`DEFAULT_PROJECT_ID`, then the saved `config set project-id` value. `config set project-id` rejects empty
 values; use `config unset project-id`.
 
 ## Other changes
 
 - `export --start` and `--end` must be given together.
+- `export --output-format json --output-file` writes to the file; v1 wrote to
+  stdout.
+- A malformed config file is an error; v1 ignored it.
 - `events list` returns newest first, `--sort-order` requires `--sort-by`, and
   `events add` requires `--device-id`, `--start`, and `--end`.
 - `upload --session-key` no longer requires a project and cannot be combined
