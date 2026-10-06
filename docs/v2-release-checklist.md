@@ -1,17 +1,16 @@
 # v2 release checklist
 
 These are release gates, not claims that publication or cross-platform validation
-has already happened. Merge the command, timestamp, and project-default PRs
-before cutting an RC with these notes. Current drafts: [commands #175](https://github.com/foxglove/foxglove-cli/pull/175),
-[timestamps #174](https://github.com/foxglove/foxglove-cli/pull/174), and
-[project defaults #176](https://github.com/foxglove/foxglove-cli/pull/176).
+has already happened.
 
-- [ ] Merge all pre-v2 changes and review the migration guide against final help.
-- [ ] Run Rust tests (including ignored HTTP tests), lint, docs, audit, Go
-  compatibility, and native build/package checks in CI. Keep the frozen Go
-  baseline and historical goldens unchanged.
-- [ ] Exercise migration examples, removed-path rejection, existing credentials,
-  project overrides, fractional boundaries, and edge transfer status.
+- [ ] Merge all pre-v2 changes, then review the migration guide and release notes
+  against final help and every `### Changelog` entry since v1.0.33.
+- [ ] Run Rust tests (including ignored HTTP tests), lint, docs, audit, and native
+  build/package checks in CI.
+- [ ] Exercise migration examples, removed-path and removed-flag rejection,
+  existing credentials, `FOXGLOVE_` environment variables and legacy-name
+  warnings, project overrides, list paging and the JSON envelope, fractional
+  boundaries, and edge transfer status.
 - [ ] Verify six native artifacts, checksums, embedded versions, and Linux
   distribution smoke tests. The release tag/`FOXGLOVE_VERSION` is authoritative;
   Cargo's package version supplies the untagged build fallback.
@@ -29,5 +28,5 @@ before cutting an RC with these notes. Current drafts: [commands #175](https://g
 - [ ] After RC acceptance, set Cargo package/lock versions to `2.0.0`, verify the
   final notes, and publish `v2.0.0` through the existing release workflow.
 
-Additive conveniences (new environment names, output aliases, pagination,
-structured output extensions, and `--wait`) and retirement of Go CI are deferred.
+Additive conveniences (output aliases, structured output extensions, and
+`--wait`) are deferred.
