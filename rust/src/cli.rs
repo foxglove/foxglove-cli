@@ -49,6 +49,18 @@ fn parse_non_blank(value: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
+/// Reject accidental surrounding whitespace when assigning a session key.
+fn parse_new_key(value: &str) -> Result<String, String> {
+    let key = parse_non_blank(value)?;
+    if key.trim() != key {
+        return Err(
+            "cannot start or end with whitespace; remove surrounding whitespace explicitly"
+                .to_owned(),
+        );
+    }
+    Ok(key)
+}
+
 /// Normalize machine-generated IDs while rejecting blank values.
 fn parse_id(value: &str) -> Result<String, String> {
     parse_non_blank(value.trim())
@@ -1279,8 +1291,8 @@ pub(crate) struct SessionAddArgs {
     pub(crate) device_id: Option<String>,
     #[arg(
         long,
-        help = "Session key, unique within the project",
-        value_parser = parse_non_blank,
+        help = "Session key, unique within the project (cannot start or end with whitespace)",
+        value_parser = parse_new_key,
         allow_hyphen_values = true
     )]
     pub(crate) key: Option<String>,
@@ -1305,8 +1317,8 @@ pub(crate) struct SessionEditArgs {
     pub(crate) session: String,
     #[arg(
         long,
-        help = "New session key, unique within the project",
-        value_parser = parse_non_blank,
+        help = "New session key, unique within the project (cannot start or end with whitespace)",
+        value_parser = parse_new_key,
         allow_hyphen_values = true
     )]
     pub(crate) key: Option<String>,
@@ -2122,6 +2134,10 @@ mod tests {
                         error.to_string().contains("cannot be empty"),
                         "{argv:?}: {error}"
                     );
+                    assert!(
+                        error.to_string().contains(&format!("for '--{flag} <")),
+                        "{argv:?}: {error}"
+                    );
                 }
             }
         }
@@ -2156,8 +2172,6 @@ mod tests {
                 &["recordings", "list"],
                 &["device-name", "session-key", "path"],
             ),
-            (&["sessions", "add"], &["key"]),
-            (&["sessions", "edit", "session"], &["key"]),
             (&["sessions", "list"], &["device-name"]),
             (
                 &["topics", "list"],

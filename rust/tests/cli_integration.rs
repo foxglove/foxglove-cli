@@ -1245,6 +1245,55 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
 }
 
 #[test]
+fn assigning_session_keys_rejects_surrounding_whitespace() {
+    let workspace = Workspace::new();
+    for command in [
+        &["sessions", "add", "--device-id", "dev_one"][..],
+        &["sessions", "edit", "old-key"],
+    ] {
+        for key in [" batch", "batch ", "batch\r", "\tbatch", "batch\u{a0}"] {
+            let output = Process::spawn(
+                workspace
+                    .command("http://127.0.0.1:1")
+                    .args(command)
+                    .args(["--key", key]),
+            )
+            .finish();
+            assert!(!output.status.success(), "{command:?}: {key:?}");
+            let error = String::from_utf8_lossy(&output.stderr);
+            assert!(error.contains("for '--key <KEY>'"), "{error}");
+            assert!(
+                error.contains("cannot start or end with whitespace"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_export_topics_fail_before_requesting_or_replacing_output() {
+    let workspace = Workspace::new();
+    let destination = workspace.0.join("existing.mcap");
+    fs::write(&destination, b"existing export").unwrap();
+    for topics in ["", ",", ",,"] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
+            "export",
+            "--recording-id",
+            "rec_one",
+            "--topics",
+            topics,
+            "--output-file",
+            "existing.mcap",
+        ]))
+        .finish();
+        assert!(!output.status.success(), "{topics:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr),
+            "Failed to build request: --topics must name at least one topic; omit --topics to export all topics\n");
+        assert_eq!(fs::read(&destination).unwrap(), b"existing export");
+    }
+}
+
+#[test]
 #[ignore = "requires loopback sockets"]
 fn session_add_sends_key() {
     let workspace = Workspace::new();
@@ -1262,7 +1311,7 @@ fn session_add_sends_key() {
             "--device-id",
             "dev_one",
             "--key",
-            " drive-41\r",
+            "drive-41",
         ],
     );
     assert_success(&output);
@@ -1274,7 +1323,7 @@ fn session_add_sends_key() {
     assert_eq!(requests.len(), 1);
     assert_eq!(
         json_body(&requests[0]),
-        serde_json::json!({"deviceId": "dev_one", "key": " drive-41\r"})
+        serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
     );
 }
 
@@ -1289,9 +1338,9 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
             "Session updated: ses_one\nSession key: new-key\n",
         ),
         (
-            vec!["--key", " new-key\r"],
-            serde_json::json!({"key": " new-key\r"}),
-            "Session updated: ses_one\nSession key:  new-key\r\n",
+            vec!["--key", "new key"],
+            serde_json::json!({"key": "new key"}),
+            "Session updated: ses_one\nSession key: new key\n",
         ),
         (
             vec!["--remove-key"],
