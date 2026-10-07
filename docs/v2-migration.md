@@ -80,6 +80,10 @@ values; use `config unset project-id`.
   with `--session-id`.
 - Timestamps keep fractional seconds, so `00:00:00.500Z` no longer rounds down
   to `00:00:00Z`.
+- Blank values for ID, key, name, and other filter flags are errors; v1 dropped
+  the filter and matched more data. Check scripts that pass possibly empty
+  variables, such as `--device-id "$DEVICE"`. Omit `export --topics` to export
+  all topics. `--project-id=` still skips the default project.
 - Deleting a missing resource exits non-zero; v1 exited 0.
 - `recordings list` drops `messageCount` and adds `sessionId`.
 - `--config` is honored; v1 always used `~/.foxgloverc`.

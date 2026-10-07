@@ -24,6 +24,9 @@ before upgrading scripts.
   be given together.
 - `events list` returns newest first, `--sort-order` requires `--sort-by`, and
   `events add` requires `--device-id`, `--start`, and `--end`.
+- Blank values such as `--recording-id=` or `--key=` are rejected instead of
+  silently dropping the filter, and `export --topics ""` is rejected instead of
+  exporting all topics.
 - Deleting a missing resource fails instead of exiting 0.
 - `recordings list` drops message count and adds session ID.
 - `--config` is honored; v1 ignored it.
@@ -36,6 +39,7 @@ before upgrading scripts.
   file.
 - `datasets` and `episodes` commands, including `datasets download` (beta).
 - `sessions edit` and `sessions add --key`.
+- `recordings list --without-device` and `--without-session`.
 - `upload` prints its request ID, and `--debug` logs HTTP requests.
 - `event-types list` shows custom properties, and `devices edit -p` works
   without `--name` and supports multiline-string and multi-enum properties.
