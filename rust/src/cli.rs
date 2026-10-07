@@ -53,10 +53,9 @@ fn parse_non_blank(value: &str) -> Result<String, String> {
 fn parse_new_key(value: &str) -> Result<String, String> {
     let key = parse_non_blank(value)?;
     if key.trim() != key {
-        return Err(
-            "cannot start or end with whitespace; remove surrounding whitespace explicitly"
-                .to_owned(),
-        );
+        return Err(format!(
+            "{key:?} cannot start or end with whitespace; remove the leading or trailing whitespace"
+        ));
     }
     Ok(key)
 }
