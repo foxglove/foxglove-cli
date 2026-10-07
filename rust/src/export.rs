@@ -179,7 +179,6 @@ fn topic_list(raw: Option<&str>) -> Result<Vec<String>, String> {
     let topics: Vec<String> = raw
         .unwrap_or_default()
         .split(',')
-        .map(str::trim)
         .filter(|topic| !topic.is_empty())
         .map(ToOwned::to_owned)
         .collect();
@@ -1074,9 +1073,13 @@ mod tests {
     use crate::format::McapWriter;
 
     #[test]
-    fn topics_are_trimmed_and_must_name_a_topic() {
-        assert_eq!(topic_list(Some("/a, /b\r")).unwrap(), ["/a", "/b"]);
-        assert!(topic_list(Some(" , ")).is_err());
+    fn topics_preserve_exact_names_and_must_name_a_topic() {
+        assert_eq!(topic_list(None).unwrap(), Vec::<String>::new());
+        assert_eq!(topic_list(Some("/a, /b\r")).unwrap(), ["/a", " /b\r"]);
+        assert_eq!(topic_list(Some(" /camera , ")).unwrap(), [" /camera ", " "]);
+        for raw in ["", ",", ",,"] {
+            assert!(topic_list(Some(raw)).is_err(), "{raw:?}");
+        }
     }
 
     #[test]

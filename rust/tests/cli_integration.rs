@@ -1038,6 +1038,42 @@ fn ctrl_c_interrupts_login_polling_and_preserves_credentials() {
     }
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_lookups_preserve_surrounding_whitespace() {
+    const KEY: &str = " batch ";
+    const PATH: &str = "/v1/sessions/%20batch%20";
+    const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
+    assert_each_request_reaches(&[
+        (&["sessions", "get", KEY], "GET", PATH, SESSION),
+        (&["sessions", "delete", KEY], "DELETE", PATH, "{}"),
+        (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            PATH,
+            SESSION,
+        ),
+        (
+            &["sessions", "recordings", "list", KEY],
+            "GET",
+            PATH,
+            SESSION,
+        ),
+        (
+            &["sessions", "recordings", "add", KEY, "rec"],
+            "PATCH",
+            PATH,
+            "{}",
+        ),
+        (
+            &["sessions", "recordings", "remove", KEY, "rec"],
+            "PATCH",
+            PATH,
+            "{}",
+        ),
+    ]);
+}
+
 type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);
 
 fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {
@@ -1238,7 +1274,7 @@ fn session_add_sends_key() {
     assert_eq!(requests.len(), 1);
     assert_eq!(
         json_body(&requests[0]),
-        serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
+        serde_json::json!({"deviceId": "dev_one", "key": " drive-41\r"})
     );
 }
 
@@ -1254,8 +1290,8 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
         ),
         (
             vec!["--key", " new-key\r"],
-            serde_json::json!({"key": "new-key"}),
-            "Session updated: ses_one\nSession key: new-key\n",
+            serde_json::json!({"key": " new-key\r"}),
+            "Session updated: ses_one\nSession key:  new-key\r\n",
         ),
         (
             vec!["--remove-key"],
@@ -1471,7 +1507,11 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
 #[ignore = "requires loopback sockets"]
 fn empty_environment_overrides_use_saved_configuration() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+    ]);
     fs::write(
         workspace.0.join(".foxgloverc"),
         format!(
@@ -1480,19 +1520,29 @@ fn empty_environment_overrides_use_saved_configuration() {
         ),
     )
     .unwrap();
-    let output = Process::spawn(
-        workspace
-            .command("")
-            .env("FOXGLOVE_BEARER_TOKEN", "")
-            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "")
-            .args(["recordings", "list", "--format", "json"]),
-    )
-    .finish();
-    assert_success(&output);
+    for project in ["", " ", "\r\n\t"] {
+        let output = Process::spawn(
+            workspace
+                .command("")
+                .env("FOXGLOVE_BEARER_TOKEN", "")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", project)
+                .args(["--debug", "recordings", "list", "--format", "json"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("Project scope: saved-project (source: default_project_id)"),
+            "{project:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     let requests = server.finish();
-    assert_eq!(requests.len(), 1);
-    assert!(requests[0].contains("projectId=saved-project"));
-    assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+    assert_eq!(requests.len(), 3);
+    for request in requests {
+        assert_eq!(query_pairs(&request)["projectId"], "saved-project");
+        assert!(request.contains("authorization: Bearer saved-token\r\n"));
+    }
 }
 
 #[test]
@@ -1838,7 +1888,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
         let output = Process::spawn(
             workspace
                 .command(&server.url)
-                .env("DEFAULT_PROJECT_ID", "prj_default\r")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default\r")
                 .args(["recordings", "list"])
                 .args(args),
         )
@@ -1852,7 +1902,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
             ("deviceId", ""),
             ("limit", "50"),
             ("projectId", "prj_default"),
-            ("sessionKey", "key"),
+            ("sessionKey", " key\r"),
         ])
     );
     assert_eq!(
