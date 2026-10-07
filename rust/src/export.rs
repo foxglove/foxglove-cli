@@ -164,14 +164,7 @@ fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequ
         include_attachments: args.include_attachments,
         replay_policy: args.replay_policy.clone().unwrap_or_default(),
         replay_lookback_seconds: args.replay_lookback_seconds.unwrap_or_default(),
-        topics: args
-            .topics
-            .as_deref()
-            .unwrap_or_default()
-            .split(',')
-            .filter(|topic| !topic.is_empty())
-            .map(str::to_owned)
-            .collect(),
+        topics: topic_list(args.topics.as_deref())?,
         session_id: args.session_id.clone().unwrap_or_default(),
         session_key: args.session_key.clone().unwrap_or_default(),
     };
@@ -180,6 +173,21 @@ fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequ
         return Err("both --start and --end must be specified, or neither".to_owned());
     }
     Ok(request)
+}
+
+fn topic_list(raw: Option<&str>) -> Result<Vec<String>, String> {
+    let topics: Vec<String> = raw
+        .unwrap_or_default()
+        .split(',')
+        .filter(|topic| !topic.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+    if raw.is_some() && topics.is_empty() {
+        return Err(
+            "--topics must name at least one topic; omit --topics to export all topics".to_owned(),
+        );
+    }
+    Ok(topics)
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1063,6 +1071,16 @@ mod tests {
     use std::io::Cursor;
 
     use crate::format::McapWriter;
+
+    #[test]
+    fn topics_preserve_exact_names_and_must_name_a_topic() {
+        assert_eq!(topic_list(None).unwrap(), Vec::<String>::new());
+        assert_eq!(topic_list(Some("/a, /b\r")).unwrap(), ["/a", " /b\r"]);
+        assert_eq!(topic_list(Some(" /camera , ")).unwrap(), [" /camera ", " "]);
+        for raw in ["", ",", ",,"] {
+            assert!(topic_list(Some(raw)).is_err(), "{raw:?}");
+        }
+    }
 
     #[test]
     fn renders_ros1_mcap_as_ndjson() {

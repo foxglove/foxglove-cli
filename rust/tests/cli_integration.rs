@@ -1038,6 +1038,42 @@ fn ctrl_c_interrupts_login_polling_and_preserves_credentials() {
     }
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_lookups_preserve_surrounding_whitespace() {
+    const KEY: &str = " batch ";
+    const PATH: &str = "/v1/sessions/%20batch%20";
+    const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
+    assert_each_request_reaches(&[
+        (&["sessions", "get", KEY], "GET", PATH, SESSION),
+        (&["sessions", "delete", KEY], "DELETE", PATH, "{}"),
+        (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            PATH,
+            SESSION,
+        ),
+        (
+            &["sessions", "recordings", "list", KEY],
+            "GET",
+            PATH,
+            SESSION,
+        ),
+        (
+            &["sessions", "recordings", "add", KEY, "rec"],
+            "PATCH",
+            PATH,
+            "{}",
+        ),
+        (
+            &["sessions", "recordings", "remove", KEY, "rec"],
+            "PATCH",
+            PATH,
+            "{}",
+        ),
+    ]);
+}
+
 type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);
 
 fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {
@@ -1209,6 +1245,55 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
 }
 
 #[test]
+fn assigning_session_keys_rejects_surrounding_whitespace() {
+    let workspace = Workspace::new();
+    for command in [
+        &["sessions", "add", "--device-id", "dev_one"][..],
+        &["sessions", "edit", "old-key"],
+    ] {
+        for key in [" batch", "batch ", "batch\r", "\tbatch", "batch\u{a0}"] {
+            let output = Process::spawn(
+                workspace
+                    .command("http://127.0.0.1:1")
+                    .args(command)
+                    .args(["--key", key]),
+            )
+            .finish();
+            assert!(!output.status.success(), "{command:?}: {key:?}");
+            let error = String::from_utf8_lossy(&output.stderr);
+            assert!(error.contains("for '--key <KEY>'"), "{error}");
+            assert!(
+                error.contains("cannot start or end with whitespace"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_export_topics_fail_before_requesting_or_replacing_output() {
+    let workspace = Workspace::new();
+    let destination = workspace.0.join("existing.mcap");
+    fs::write(&destination, b"existing export").unwrap();
+    for topics in ["", ",", ",,"] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
+            "export",
+            "--recording-id",
+            "rec_one",
+            "--topics",
+            topics,
+            "--output-file",
+            "existing.mcap",
+        ]))
+        .finish();
+        assert!(!output.status.success(), "{topics:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr),
+            "Failed to build request: --topics must name at least one topic; omit --topics to export all topics\n");
+        assert_eq!(fs::read(&destination).unwrap(), b"existing export");
+    }
+}
+
+#[test]
 #[ignore = "requires loopback sockets"]
 fn session_add_sends_key() {
     let workspace = Workspace::new();
@@ -1226,7 +1311,7 @@ fn session_add_sends_key() {
             "--device-id",
             "dev_one",
             "--key",
-            " drive-41\r",
+            "drive-41",
         ],
     );
     assert_success(&output);
@@ -1253,9 +1338,9 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
             "Session updated: ses_one\nSession key: new-key\n",
         ),
         (
-            vec!["--key", " new-key\r"],
-            serde_json::json!({"key": "new-key"}),
-            "Session updated: ses_one\nSession key: new-key\n",
+            vec!["--key", "new key"],
+            serde_json::json!({"key": "new key"}),
+            "Session updated: ses_one\nSession key: new key\n",
         ),
         (
             vec!["--remove-key"],
@@ -1451,7 +1536,11 @@ fn session_key_edit_reports_debug_project_scope() {
 #[test]
 fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
-    for key in ["", ".", ".."] {
+    for (key, error) in [
+        ("", "cannot be empty"),
+        (".", "IDs, keys and names must not be"),
+        ("..", "IDs, keys and names must not be"),
+    ] {
         let output = Process::spawn(
             workspace
                 .command("http://127.0.0.1:1")
@@ -1459,7 +1548,7 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
         )
         .finish();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("IDs, keys and names must not be"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains(error));
     }
 }
 
@@ -1467,7 +1556,11 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
 #[ignore = "requires loopback sockets"]
 fn empty_environment_overrides_use_saved_configuration() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+    ]);
     fs::write(
         workspace.0.join(".foxgloverc"),
         format!(
@@ -1476,19 +1569,29 @@ fn empty_environment_overrides_use_saved_configuration() {
         ),
     )
     .unwrap();
-    let output = Process::spawn(
-        workspace
-            .command("")
-            .env("FOXGLOVE_BEARER_TOKEN", "")
-            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "")
-            .args(["recordings", "list", "--format", "json"]),
-    )
-    .finish();
-    assert_success(&output);
+    for project in ["", " ", "\r\n\t"] {
+        let output = Process::spawn(
+            workspace
+                .command("")
+                .env("FOXGLOVE_BEARER_TOKEN", "")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", project)
+                .args(["--debug", "recordings", "list", "--format", "json"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("Project scope: saved-project (source: default_project_id)"),
+            "{project:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     let requests = server.finish();
-    assert_eq!(requests.len(), 1);
-    assert!(requests[0].contains("projectId=saved-project"));
-    assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+    assert_eq!(requests.len(), 3);
+    for request in requests {
+        assert_eq!(query_pairs(&request)["projectId"], "saved-project");
+        assert!(request.contains("authorization: Bearer saved-token\r\n"));
+    }
 }
 
 #[test]
@@ -1816,6 +1919,103 @@ fn list_limits_must_be_between_one_and_two_thousand() {
                 .contains("must be an integer between 1 and 2000"),
             "--limit {limit}"
         );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn recordings_without_a_device_or_session_send_empty_filters() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+    ]);
+    for args in [
+        &["--without-device", "--session-key", " key\r"][..],
+        &["--without-session"],
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default\r")
+                .args(["recordings", "list"])
+                .args(args),
+        )
+        .finish();
+        assert_success(&output);
+    }
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[
+            ("deviceId", ""),
+            ("limit", "50"),
+            ("projectId", "prj_default"),
+            ("sessionKey", " key\r"),
+        ])
+    );
+    assert_eq!(
+        query_pairs(&requests[1]),
+        expected_pairs(&[
+            ("limit", "50"),
+            ("projectId", "prj_default"),
+            ("sessionId", ""),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_empty_cursor_requests_the_first_page() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/datasets", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "datasets",
+        "list",
+        "--project-id",
+        " prj_explicit\r",
+        "--cursor",
+        " ",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "50"), ("projectId", "prj_explicit")])
+    );
+}
+
+#[test]
+fn blank_and_conflicting_filters_are_rejected() {
+    let workspace = Workspace::new();
+    for args in [
+        &["episodes", "list", "--recording-id="][..],
+        &["recordings", "list", "--device-id="],
+        &["sessions", "list", "--device-id", " "],
+        &["events", "list", "--sort-by", "", "--sort-order", "desc"],
+        &["upload", "--key", "", "data.mcap"],
+        &["upload", "--session-key", " \r", "data.mcap"],
+        &["pending-imports", "list", "--key", ""],
+        &["sessions", "add", "--device-id", " "],
+        &[
+            "recordings",
+            "list",
+            "--without-device",
+            "--device-id",
+            "dev_1",
+        ],
+        &[
+            "recordings",
+            "list",
+            "--without-session",
+            "--session-key",
+            "key",
+        ],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        // Matches both "cannot be empty" and "cannot be used with".
+        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be"));
     }
 }
 

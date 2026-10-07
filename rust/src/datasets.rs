@@ -164,7 +164,7 @@ pub(crate) async fn list_datasets(
 ) -> Outcome {
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetListQuery {
-        cursor: args.cursor.as_deref(),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         sort_by: args.sort_by.clone().unwrap_or_default(),
@@ -198,7 +198,7 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
-        cursor: args.cursor.as_deref(),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
