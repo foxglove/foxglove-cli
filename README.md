@@ -8,8 +8,6 @@ More information can also be found in the [Foxglove API docs](https://docs.foxgl
 
 Upgrading from v1? See the [v2 migration guide](docs/v2-migration.md) and
 [release notes](https://github.com/foxglove/foxglove-cli/releases).
-Maintainers should follow the
-[v2 release checklist](docs/v2-release-checklist.md).
 
 ## Installation
 
