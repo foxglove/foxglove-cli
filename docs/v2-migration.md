@@ -1,12 +1,34 @@
 # Migrating to Foxglove CLI v2
 
-v2 is a Rust rewrite that removes deprecated commands and flags. Your saved
-login, API key, and `~/.foxgloverc` keep working. Scripts and CI jobs usually
-need the changes below.
+Foxglove CLI v2 expands dataset and episode workflows, adds direct
+Edge-to-Primary recording transfers, and improves download reliability and
+error reporting. Commands, configuration, and list output have also changed.
+Your saved login, API key, and `~/.foxgloverc` keep working; use this guide to
+update scripts and CI jobs.
+
+## What's better in v2
+
+- Manage datasets and episodes, compare and restore dataset versions, and
+  download a committed dataset version as MCAP files with `datasets download`
+  (beta).
+- Request an Edge-to-Primary recording transfer with `recordings transfer ID`,
+  without uploading a local file. Follow its progress with
+  `recordings list --import-status`.
+- Edit sessions with `sessions edit` and assign keys with `sessions add --key`.
+  Update device properties without renaming the device, including
+  multiline-string and multi-enum properties.
+- Resume exports more reliably. Failed downloads keep existing files, and
+  completed downloads replace files atomically on all platforms.
+- Diagnose failures with clearer authentication, permission, and connection
+  errors, upload request IDs, and HTTP request logs from `--debug`. HTTP
+  timeouts and retries for transient GET failures improve request reliability.
+
+See [GitHub Releases](https://github.com/foxglove/foxglove-cli/releases) for the
+changelog. The sections below explain the changes needed when upgrading from v1.
 
 ## Environment variables
 
-v2 reads only these:
+Update your environment variables:
 
 | v1 | v2 |
 | --- | --- |
@@ -15,8 +37,10 @@ v2 reads only these:
 | `DEFAULT_PROJECT_ID` | `FOXGLOVE_DEFAULT_PROJECT_ID` (old name deprecated but still read) |
 | `AUTH_TYPE` | Remove |
 
-`BEARER_TOKEN`, `BASE_URL`, and `DEFAULT_PROJECT_ID` print a warning. The base URL must be `https`, or `http` for
-loopback. If `HOME` (or `USERPROFILE`) is unset, pass `--config PATH`.
+`BEARER_TOKEN`, `BASE_URL`, and `AUTH_TYPE` are ignored. `DEFAULT_PROJECT_ID`
+is still read as a deprecated fallback. Setting `BEARER_TOKEN`, `BASE_URL`, or
+`DEFAULT_PROJECT_ID` prints a warning. The base URL must be `https`, or `http`
+for loopback. If `HOME` (or `USERPROFILE`) is unset, pass `--config PATH`.
 
 ## Commands and flags
 
@@ -65,8 +89,8 @@ default project in v1 and now use it. To search all projects, pass
 `--project-id=`.
 
 Precedence is `--project-id`, then `FOXGLOVE_DEFAULT_PROJECT_ID`, then
-`DEFAULT_PROJECT_ID`, then the saved `config set project-id` value. `config set project-id` rejects empty
-values; use `config unset project-id`.
+`DEFAULT_PROJECT_ID`, then the saved `config set project-id` value.
+`config set project-id` rejects empty values; use `config unset project-id`.
 
 ## Other changes
 
@@ -78,17 +102,18 @@ values; use `config unset project-id`.
   `events add` requires `--device-id`, `--start`, and `--end`.
 - `upload --session-key` no longer requires a project and cannot be combined
   with `--session-id`.
-- Timestamps keep fractional seconds, so `00:00:00.500Z` no longer rounds down
-  to `00:00:00Z`.
+- Timestamps preserve precise boundaries by keeping fractional seconds, so
+  `00:00:00.500Z` no longer rounds down to `00:00:00Z`.
 - Blank values for ID, key, name, and other filter flags are errors; v1 dropped
   the filter and matched more data. Check scripts that pass possibly empty
   variables, such as `--device-id "$DEVICE"`. Omit `export --topics` to export
-  all topics. `--project-id=` still skips the default project.
+  all topics. `--project-id=` still skips the default project. To find recordings
+  without a device or session, use `recordings list --without-device` or
+  `--without-session`.
 - Deleting a missing resource exits non-zero; v1 exited 0.
 - `recordings list` drops `messageCount` and adds `sessionId`.
 - `--config` is honored; v1 always used `~/.foxgloverc`.
 - `attachments download` refuses to write to a terminal; use `--output-file`.
-- Table and message text changed. Parse `--format json` or `csv`. Exit codes
-  are unchanged.
+- Table and message text changed. Parse `--format json` or `csv`.
 - Regenerate shell completion with `foxglove completion SHELL`. Device names no
   longer complete.

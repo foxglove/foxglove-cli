@@ -7,7 +7,8 @@ Once you've installed the CLI tool, run `foxglove -h` from the command line for 
 More information can also be found in the [Foxglove API docs](https://docs.foxglove.dev/api).
 
 Upgrading from v1? See the [v2 migration guide](docs/v2-migration.md) and
-[curated release notes](docs/v2-release-notes.md). Maintainers should follow the
+[release notes](https://github.com/foxglove/foxglove-cli/releases).
+Maintainers should follow the
 [v2 release checklist](docs/v2-release-checklist.md).
 
 ## Installation
