@@ -1040,8 +1040,9 @@ pub(crate) struct EventListArgs {
         long,
         help = "Sort order for the --sort-by field: asc or desc",
         allow_hyphen_values = true,
-        requires = "sort_by"
-    , value_parser = parse_non_blank)]
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
     pub(crate) sort_order: Option<String>,
     #[arg(
         long,
