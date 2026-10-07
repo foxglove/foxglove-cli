@@ -129,7 +129,7 @@ jobs:
           cat dist/*.sha256 | sort > dist/CHECKSUMS.txt
           (cd dist && sha256sum -c CHECKSUMS.txt)
           rm dist/*.sha256
-      - name: Create draft release with six Rust artifacts
+      - name: Create draft release
         uses: softprops/action-gh-release@v3
         with:
           files: |
