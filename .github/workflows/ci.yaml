@@ -78,6 +78,15 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Check release tag format
+        if: github.event_name == 'release'
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]] || {
+            echo "release tag must look like v1.2.3 or v1.2.3-rc.1: $RELEASE_TAG" >&2
+            exit 1
+          }
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
       - uses: actions/checkout@v7
         with:
           lfs: true
