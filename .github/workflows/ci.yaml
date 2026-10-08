@@ -120,9 +120,6 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -132,15 +129,12 @@ jobs:
           cat dist/*.sha256 | sort > dist/CHECKSUMS.txt
           (cd dist && sha256sum -c CHECKSUMS.txt)
           rm dist/*.sha256
-      - name: Generate release notes
-        run: git log --oneline --no-merges --first-parent "$(git describe --tags --abbrev=0 HEAD^)"..HEAD > CHANGELOG.txt
-      - name: Publish six Rust artifacts
+      - name: Create draft release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/foxglove-*
             dist/CHECKSUMS.txt
-          body_path: CHANGELOG.txt
-          draft: false
+          generate_release_notes: true
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
