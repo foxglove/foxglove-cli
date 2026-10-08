@@ -2,10 +2,6 @@
 
 Interact with Foxglove, directly from the command line.
 
-Once you've installed the CLI tool, run `foxglove -h` from the command line for a complete list of subcommands, arguments, and usage details.
-
-More information can also be found in the [Foxglove API docs](https://docs.foxglove.dev/api).
-
 Upgrading from v1? See the [v2 migration guide](docs/v2-migration.md) and
 [release notes](https://github.com/foxglove/foxglove-cli/releases).
 
@@ -13,14 +9,27 @@ Upgrading from v1? See the [v2 migration guide](docs/v2-migration.md) and
 
 Download the latest release for your OS and architecture:
 
-| OS/Arch       |                                                                                                                                 |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| linux/amd64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-amd64 -o foxglove && chmod +x foxglove |
-| macos/amd64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-amd64 -o foxglove && chmod +x foxglove |
-| windows/amd64 | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-amd64.exe -o foxglove.exe            |
-| linux/arm64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-arm64 -o foxglove && chmod +x foxglove |
-| macos/arm64   | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-arm64 -o foxglove && chmod +x foxglove |
-| windows/arm64 | curl -L https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe            |
+| OS/Arch                    | Download command |
+| -------------------------- | ---------------- |
+| linux/amd64                | `curl -fL https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-amd64 -o foxglove && chmod +x foxglove` |
+| macos/amd64 (Intel)        | `curl -fL https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-amd64 -o foxglove && chmod +x foxglove` |
+| windows/amd64              | `curl.exe -fL https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-amd64.exe -o foxglove.exe` |
+| linux/arm64                | `curl -fL https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-linux-arm64 -o foxglove && chmod +x foxglove` |
+| macos/arm64 (Apple Silicon) | `curl -fL https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-macos-arm64 -o foxglove && chmod +x foxglove` |
+| windows/arm64              | `curl.exe -fL https://github.com/foxglove/foxglove-cli/releases/latest/download/foxglove-windows-arm64.exe -o foxglove.exe` |
+
+The download is saved in your current folder. Run `./foxglove --help` to try it,
+or install it on macOS/Linux so you can run `foxglove` from any folder:
+
+```sh
+sudo mkdir -p /usr/local/bin
+sudo install -m 755 ./foxglove /usr/local/bin/foxglove
+foxglove --help
+foxglove auth login
+```
+
+On Windows, run `.\foxglove.exe --help` in PowerShell, or move `foxglove.exe`
+to a folder on your `Path` to use `foxglove` from any folder.
 
 To install a specific release, see the [releases page](https://github.com/foxglove/foxglove-cli/releases).
 
