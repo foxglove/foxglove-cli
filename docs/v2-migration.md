@@ -1,8 +1,7 @@
 # Migrating to Foxglove CLI v2
 
-Foxglove CLI v2 adds support for Datasets and improves download reliability,
-error handling and standardizes commands. We've also ported the CLI to Rust
-and restructured our code to make future changes simpler.
+Foxglove CLI v2 adds dataset support, improves download reliability and error
+handling, and standardizes commands. We also ported the CLI to Rust.
 
 ## What's better in v2
 
