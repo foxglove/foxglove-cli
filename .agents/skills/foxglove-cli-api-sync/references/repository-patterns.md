@@ -19,7 +19,7 @@ These pointers were checked against CLI commit `57f6eae`. Read the current files
 
 ## CLI conventions
 
-New functionality needs independent Rust regression tests.
+New behavior needs focused Rust regression coverage. Extend existing tests when they exercise the changed behavior; a separate test is not required for each field. Serde-only response-model additions normally belong in existing model serialization tests, not new HTTP subprocess tests.
 
 Maintain normal Clap definitions in `cli.rs`; help and `clap_complete` derive from that tree. Follow neighboring command verbs (`list`, `add`, etc.), plural resource groups, kebab-case flags, positional IDs, value hints, and the existing explicit-boolean syntax. Wire new commands through dispatch and module declarations as well as parsing. Validate incompatible arguments before sending a request.
 
@@ -52,4 +52,4 @@ make build
 
 `rust-test-ignored` runs the complete Rust suite including deliberately ignored loopback HTTP tests; ordinary `cargo test` omits them. `rust-audit` requires the auditor version pinned in the development instructions; retain only the repository's reviewed advisory exception. If prerequisites, network, loopback permissions, or platform dependencies block a check, report the actual limitation and keep completed checks useful.
 
-Run affected command help and completion checks when the command tree changes. Use the existing local test support to check request serialization, success and error responses, empty results, and output streams. Keep contract expectations independent of implementation helpers when sharing them would conceal the same bug in both. Rely on CI for the full native platform matrix; do not claim local testing covers other platforms.
+Run affected command help and completion checks when the command tree changes. When request or HTTP behavior changes, use the existing local test support to check affected serialization, responses, and output streams. Avoid duplicating unchanged HTTP behavior for a model-only change. Keep contract expectations independent of implementation helpers when sharing them would conceal the same bug in both. Rely on CI for the full native platform matrix; do not claim local testing covers other platforms.
