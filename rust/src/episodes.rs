@@ -15,6 +15,8 @@ use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct RecordingObjectLocation {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) scheme: Option<String>,
     pub(crate) bucket: String,
     pub(crate) path: String,
     #[serde(
@@ -388,6 +390,7 @@ mod tests {
                     "id": "rec_azure",
                     "path": "two.mcap",
                     "location": {
+                        "scheme": "az",
                         "bucket": "robot-logs",
                         "path": "fleet/two.mcap",
                         "azureStorageAccountName": "fleetstorage",
@@ -409,6 +412,7 @@ mod tests {
         assert_eq!(
             recordings[1]["location"],
             serde_json::json!({
+                "scheme": "az",
                 "bucket": "robot-logs",
                 "path": "fleet/two.mcap",
                 "azureStorageAccountName": "fleetstorage",
