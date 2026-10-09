@@ -34,7 +34,7 @@ List operations currently use shared default limits and truncation warnings. Mat
 - Encode dynamic IDs with `encode_path_segment` and preserve existing rejection of invalid path segments. Pass queries separately with Serde wire names; never interpolate raw user IDs or query values into URLs.
 - Distinguish omitted, null, empty, false, and zero on requests, especially PATCH-like updates. `Option<T>` alone may not express both omitted and explicit null. On responses, use defaults or `null_to_default` only when the contract and output semantics justify them, not to hide a malformed required field. Handle evolving enums without unnecessarily breaking response decoding.
 - Check time helpers before reusing them: preserve the precision required by the endpoint and output format. Do not silently lose precision in a new contract, or alter all existing commands to solve a local requirement.
-- Reuse `Record`/renderers for list output; cover new fields in supported formats and preserve JSON wire names. Preserve missing optional expansions versus empty collections where that distinction matters.
+- Reuse `Record`/renderers for list output; cover new fields in the formats required by the requested behavior and preserve JSON wire names. Update manual headers and fields for CSV/table additions; preserve existing summaries for nested JSON-only metadata. Preserve missing optional expansions versus empty collections where that distinction matters.
 - Keep API bearer tokens off presigned storage requests and diagnostics. Reuse transfer staging, cleanup, and cancellation paths for file operations.
 
 ## Validation
