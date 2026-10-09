@@ -15,6 +15,8 @@ use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct RecordingObjectLocation {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) scheme: Option<String>,
     pub(crate) bucket: String,
     pub(crate) path: String,
     #[serde(
@@ -330,7 +332,30 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_time_range, Episode};
+    use super::{parse_time_range, Episode, RecordingObjectLocation};
+
+    #[test]
+    fn recording_location_schemes_survive_json_round_trips() {
+        for scheme in ["gs", "s3", "https", "file", "az", "future-storage"] {
+            let location = serde_json::json!({
+                "scheme": scheme,
+                "bucket": "robot-logs",
+                "path": "fleet/one.mcap",
+                "azureStorageAccountName": "fleetstorage",
+            });
+            let record: RecordingObjectLocation = serde_json::from_value(location.clone()).unwrap();
+            assert_eq!(record.scheme.as_deref(), Some(scheme));
+            assert_eq!(serde_json::to_value(record).unwrap(), location);
+        }
+    }
+
+    #[test]
+    fn older_recording_locations_omit_the_scheme_from_json_output() {
+        let location = serde_json::json!({"bucket": "robot-logs", "path": "fleet/one.mcap"});
+        let record: RecordingObjectLocation = serde_json::from_value(location.clone()).unwrap();
+        assert!(record.scheme.is_none());
+        assert_eq!(serde_json::to_value(record).unwrap(), location);
+    }
 
     #[test]
     fn an_absent_recordings_list_is_omitted_from_json_output() {
