@@ -344,6 +344,57 @@ all Foxglove organization members:
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
 
+## Command discovery
+
+Find commands and their arguments without reading every `--help` page. Both
+commands work offline and print tables by default. Scripts and agents should
+pass `--format json`, which every command with a `--format` option accepts.
+
+Search for up to five commands that match a description of what you want to do:
+
+```
+$ foxglove cli search "add to a dataset"
+ Command                              Summary
+------------------------------------------------------------------------------------------
+ foxglove datasets episodes add       Add episodes to a dataset as pending changes
+ foxglove datasets add                Create a dataset
+ ...
+```
+
+With `--format json`, the matches are listed under `data`, like other list
+commands:
+
+```
+$ foxglove cli search "add to a dataset" --format json
+{"data":[{"command":"foxglove datasets episodes add","summary":"Add episodes to a dataset as pending changes"},...]}
+```
+
+Describe a command's usage, positional arguments, options, and subcommands.
+Options with `"global": true` are accepted by every command:
+
+```
+$ foxglove cli describe datasets episodes add --format json
+{
+  "command": "foxglove datasets episodes add",
+  "summary": "Add episodes to a dataset as pending changes",
+  "usage": "foxglove datasets episodes add [OPTIONS] <DATASET_ID> <EPISODE_ID>...",
+  "arguments": [
+    {"name": "DATASET_ID", "type": "string", "required": true, "multiple": false},
+    {"name": "EPISODE_ID", "type": "string", "required": true, "multiple": true}
+  ],
+  "options": [
+    {"name": "--client-id", "usage": "--client-id <CLIENT_ID>", "type": "string", "required": false, "multiple": false, "description": "Foxglove client ID", "global": true},
+    {"name": "--config", "usage": "--config <CONFIG>", "type": "string", "required": false, "multiple": false, "description": "Config file", "global": true},
+    {"name": "--debug", "usage": "--debug[=true|false]", "type": "boolean", "required": false, "multiple": false, "default": false, "description": "Enable debug logging", "global": true}
+  ],
+  "subcommands": []
+}
+```
+
+The CLI prints this on one line. Keys with no value are left out. A command
+that accepts only one of some options, or requires one of them, lists them
+under `groups`.
+
 ## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support generated
