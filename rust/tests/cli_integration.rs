@@ -3851,6 +3851,55 @@ fn an_event_episode_sends_only_the_event_id() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn event_episode_errors_from_the_api_are_shown_in_full() {
+    let workspace = Workspace::new();
+    for (status, body) in [
+        (
+            404,
+            serde_json::json!({"error": "Events not found: evt_gone"}),
+        ),
+        (
+            400,
+            serde_json::json!({"error": "No completed recordings were found for event evt_gone"}),
+        ),
+        (
+            400,
+            serde_json::json!({
+                "error": "Event inputs may resolve at most 10,000 recording memberships per request. Split the events into smaller requests.",
+                "code": "EventRecordingMembershipLimitExceeded",
+            }),
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status,
+            ..Reply::json("POST", "/v1/episodes", &body.to_string())
+        }]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "episodes",
+                "add",
+                "--project-id",
+                "prj_explicit",
+                "--event-id",
+                "evt_gone",
+            ],
+        );
+        server.finish();
+        assert!(!output.status.success(), "{body}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "Failed to create episode: {}\n",
+                body["error"].as_str().unwrap()
+            ),
+        );
+    }
+}
+
+#[test]
 fn an_episode_takes_either_an_event_or_recordings() {
     let workspace = Workspace::new();
     for (flags, expected) in [

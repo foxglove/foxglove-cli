@@ -877,7 +877,7 @@ pub(crate) struct EpisodeAddArgs {
     pub(crate) metadata: Option<String>,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Recording in the episode; repeat to add more", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
+    #[arg(long, help = "Recording in the episode; repeat to add more (required unless --event-id is given)", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) recording_id: Vec<String>,
     #[arg(
         long,
