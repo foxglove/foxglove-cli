@@ -257,8 +257,7 @@ Episode created: ep_BCUw2zxpBnToJbOS
 
 Or create one from an event. The episode snapshots the event's current time range
 and the completed recordings from its device that overlap it; later edits to the
-event or new imports do not change it. An event can resolve to at most 10,000
-recordings:
+event or new imports do not change it:
 
 ```
 $ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"merge"}'
