@@ -3815,6 +3815,77 @@ fn an_episode_window_left_out_is_inferred_by_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn an_event_episode_sends_only_the_event_id() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/episodes",
+        r#"{"episodes":[{"id":"ep_event","created":true}]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "add",
+            "--project-id",
+            "prj_explicit",
+            "--event-id",
+            "evt_one",
+            "--metadata",
+            r#"{"label":"merge"}"#,
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({
+            "projectId": "prj_explicit",
+            "episodes": [{"eventId": "evt_one", "metadata": {"label": "merge"}}],
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode created: ep_event\n"
+    );
+}
+
+#[test]
+fn an_episode_takes_either_an_event_or_recordings() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec![],
+            "error: the following required arguments were not provided:\n  <--event-id <EVENT_ID>|--recording-id <RECORDING_ID>>\n",
+        ),
+        (
+            vec!["--event-id", "evt_one", "--recording-id", "rec_one"],
+            "error: the argument '--event-id <EVENT_ID>' cannot be used with '--recording-id <RECORDING_ID>'\n",
+        ),
+        (
+            vec!["--event-id", "evt_one", "--start", "2024-01-02"],
+            "error: the argument '--event-id <EVENT_ID>' cannot be used with '--start <START>'\n",
+        ),
+        (
+            vec!["--event-id", "evt_one", "--end", "2024-01-03"],
+            "error: the argument '--event-id <EVENT_ID>' cannot be used with '--end <END>'\n",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["episodes", "add", "--project-id", "prj"])
+                .args(&flags),
+        )
+        .finish();
+        assert!(!output.status.success(), "{flags:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.starts_with(expected), "{flags:?}: {stderr}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn getting_an_episode_can_include_its_recordings() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(

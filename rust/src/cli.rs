@@ -857,6 +857,7 @@ enum EpisodesCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("source").args(["event_id", "recording_id"]).required(true)))]
 pub(crate) struct EpisodeAddArgs {
     #[arg(
         long,
@@ -864,11 +865,19 @@ pub(crate) struct EpisodeAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(
+        long,
+        help = "Event whose time range and device's completed recordings form the episode (cannot be combined with --start or --end)",
+        allow_hyphen_values = true,
+        value_parser = parse_id,
+        conflicts_with_all = ["start", "end"]
+    )]
+    pub(crate) event_id: Option<String>,
     #[arg(long, help = "Metadata as a JSON object", allow_hyphen_values = true)]
     pub(crate) metadata: Option<String>,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Recording in the episode; repeat to add more", required = true, allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
+    #[arg(long, help = "Recording in the episode; repeat to add more", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) recording_id: Vec<String>,
     #[arg(
         long,

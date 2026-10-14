@@ -255,6 +255,16 @@ $ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
 Episode created: ep_BCUw2zxpBnToJbOS
 ```
 
+Or create one from an event. The episode snapshots the event's current time range
+and the completed recordings from its device that overlap it; later edits to the
+event or new imports do not change it. An event can resolve to at most 10,000
+recordings:
+
+```
+$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"merge"}'
+Episode created: ep_Rz6pXk3mWq9TfLbN
+```
+
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
 on when each episode joined the dataset:
 
