@@ -237,6 +237,9 @@ struct CreateEpisodesRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EpisodeInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     recordings: Vec<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     start_time: String,
@@ -273,6 +276,7 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
         })
         .transpose()?;
     Ok(EpisodeInput {
+        event_id: args.event_id.clone(),
         recordings: args.recording_id.clone(),
         start_time,
         end_time,
