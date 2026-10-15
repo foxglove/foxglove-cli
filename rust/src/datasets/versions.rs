@@ -196,18 +196,17 @@ struct DiscardResponse {
 #[serde(rename_all = "camelCase")]
 struct RestoreResponse {
     #[serde(default)]
-    updated: usize,
-    #[serde(default)]
-    discarded_updates: usize,
-
-    #[serde(default)]
     added: usize,
     #[serde(default)]
     removed: usize,
     #[serde(default)]
+    updated: usize,
+    #[serde(default)]
     discarded_adds: usize,
     #[serde(default)]
     discarded_removes: usize,
+    #[serde(default)]
+    discarded_updates: usize,
 }
 
 pub(crate) async fn list_versions(
@@ -403,24 +402,24 @@ pub(crate) async fn restore_version(
 
 fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs) -> String {
     let mut summary = String::new();
-    if response.discarded_adds > 0 || response.discarded_removes > 0 {
+    if response.discarded_adds > 0
+        || response.discarded_removes > 0
+        || response.discarded_updates > 0
+    {
         let _ = writeln!(
             summary,
             "Discarded {}",
-            pending_changes(response.discarded_adds, response.discarded_removes)
-        );
-    }
-    if response.discarded_updates > 0 {
-        let _ = writeln!(
-            summary,
-            "Discarded {}",
-            plural(response.discarded_updates, "pending episode version update")
+            pending_changes(
+                response.discarded_adds,
+                response.discarded_removes,
+                response.discarded_updates
+            )
         );
     }
     if response.added == 0 && response.removed == 0 && response.updated == 0 {
         let _ = writeln!(summary, "The draft matches version {}", args.version);
     } else {
-        let _ = writeln!(
+        let _ = write!(
             summary,
             "Restored version {} into the draft: {} added, {} removed",
             args.version,
@@ -428,26 +427,29 @@ fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs)
             response.removed
         );
         if response.updated > 0 {
-            let _ = writeln!(
-                summary,
-                "Updated {}",
-                plural(response.updated, "episode version")
-            );
+            let _ = write!(summary, ", {} updated", response.updated);
         }
+        summary.push('\n');
         summary.push_str(&commit_hint(&args.dataset_id));
     }
     summary
 }
 
-fn pending_changes(additions: usize, removals: usize) -> String {
-    match (additions, removals) {
-        (additions, 0) => plural(additions, "pending addition"),
-        (0, removals) => plural(removals, "pending removal"),
-        (additions, removals) => format!(
-            "{} and {}",
-            plural(additions, "pending addition"),
-            plural(removals, "pending removal")
-        ),
+fn pending_changes(additions: usize, removals: usize, updates: usize) -> String {
+    let mut parts: Vec<String> = [
+        (additions, "pending addition"),
+        (removals, "pending removal"),
+        (updates, "pending episode version update"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, noun)| plural(count, noun))
+    .collect();
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", parts.join(", "))
     }
 }
 
@@ -486,7 +488,7 @@ pub(crate) async fn discard_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> 
         }
         Ok(response) => Outcome::notice(format!(
             "Discarded {}\n",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(response.discarded_adds, response.discarded_removes, 0)
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to discard dataset changes: {error}\n")),

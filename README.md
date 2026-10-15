@@ -300,6 +300,11 @@ $ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
 $ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
 ```
 
+Restoring a dataset version also restores the selected version of each episode.
+An updated episode count means the draft selects a different version of an
+episode already in the dataset. With `--force`, the discard summary includes
+pending episode version updates.
+
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode plus a `manifest.json`:
 

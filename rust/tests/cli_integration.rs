@@ -3657,6 +3657,16 @@ fn restoring_a_version_reports_the_changes_it_staged() {
             r#"{"added":0,"removed":0,"discardedAdds":2,"discardedRemoves":0}"#,
             "Discarded 2 pending additions\nThe draft matches version 3\n",
         ),
+        (
+            vec![], vec![],
+            r#"{"added":0,"removed":0,"updated":2}"#,
+            "Restored version 3 into the draft: 0 episodes added, 0 removed, 2 updated\nRun foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
+        (
+            vec!["--force"], vec![("force", "true")],
+            r#"{"added":0,"removed":0,"updated":2,"discardedAdds":1,"discardedRemoves":0,"discardedUpdates":1}"#,
+            "Discarded 1 pending addition and 1 pending episode version update\nRestored version 3 into the draft: 0 episodes added, 0 removed, 2 updated\nRun foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
     ] {
         let server = Server::new(vec![Reply::json(
             "POST",
@@ -4595,27 +4605,4 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
             assert_eq!(lines.len(), 3, "{stdout}");
         }
     }
-}
-
-#[test]
-#[ignore = "requires loopback sockets"]
-fn restoring_only_version_updates_still_requires_a_commit() {
-    let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json(
-        "POST",
-        "/v1/datasets/ds_one/versions/1/restore",
-        r#"{"added":0,"removed":0,"updated":2,"discardedAdds":0,"discardedRemoves":0,"discardedUpdates":1}"#,
-    )]);
-    let output = run(
-        &workspace,
-        &server,
-        &["datasets", "versions", "restore", "ds_one", "1", "--force"],
-    );
-    assert_success(&output);
-    server.finish();
-    let message = String::from_utf8_lossy(&output.stderr);
-    assert!(message.contains("Updated 2 episode versions"));
-    assert!(message.contains("Discarded 1 pending episode version update"));
-    assert!(message.contains("datasets commit ds_one"));
-    assert!(!message.contains("The draft matches"));
 }
