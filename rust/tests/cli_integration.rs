@@ -4596,3 +4596,23 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_exact_recording_set_is_comma_separated() {
+    let workspace = Workspace::new();
+    let cases: &[(&[&str], &str, &str)] =
+        &[(&["episodes", "list"], "/v1/episodes", r#"{"episodes":[]}"#)];
+    for &(args, path, body) in cases {
+        let server = Server::new(vec![Reply::json("GET", path, body)]);
+        let mut command = args.to_vec();
+        command.extend(["--exact-recording-ids", "rec_1,rec_2", "--format", "json"]);
+        assert_success(&run(&workspace, &server, &command));
+        let requests = server.finish();
+        let target = requests[0].split_whitespace().nth(1).unwrap();
+        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
+        assert!(url
+            .query_pairs()
+            .any(|(name, value)| name == "exactRecordingIds" && value == "rec_1,rec_2"));
+    }
+}

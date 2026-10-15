@@ -913,6 +913,9 @@ pub(crate) struct EpisodeGetArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeListArgs {
+    #[arg(long, help = "Exact recording set; comma-separated IDs (maximum 50)", value_delimiter = ',', value_parser = parse_id, num_args = 1)]
+    pub(crate) exact_recording_ids: Vec<String>,
+
     #[command(flatten)]
     format: FormatArgs,
     #[arg(

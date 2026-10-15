@@ -116,6 +116,9 @@ pub(crate) struct EpisodeListResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EpisodeListQuery<'a> {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    exact_recording_ids: String,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -167,7 +170,11 @@ pub(crate) async fn list_episodes(
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
+    if args.exact_recording_ids.len() > 50 {
+        return Outcome::failure("--exact-recording-ids accepts at most 50 IDs\n");
+    }
     let query = EpisodeListQuery {
+        exact_recording_ids: args.exact_recording_ids.join(","),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
