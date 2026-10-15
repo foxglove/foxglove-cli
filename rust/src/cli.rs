@@ -901,7 +901,7 @@ pub(crate) struct EpisodeVersionListArgs {
     format: FormatArgs,
     #[arg(value_name = "EPISODE_ID")]
     pub(crate) episode_id: String,
-    #[arg(long, help = "Maximum items (1-2000, default: 50)", value_parser = parse_list_limit)]
+    #[arg(long, help = "Maximum number of items to return (1-2000, default: 50)", allow_hyphen_values = true, value_parser = parse_list_limit)]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
@@ -1789,10 +1789,6 @@ async fn dispatch_dataset_version_command(
 
 async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
     match command {
-        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
-            let format = args.format.format;
-            episodes::list_versions(runtime, &args, format).await
-        }
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Get(args) => {
@@ -1802,6 +1798,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::List(args) => {
             let format = args.format.format;
             episodes::list_episodes(runtime, &args, format).await
+        }
+        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_versions(runtime, &args, format).await
         }
     }
 }

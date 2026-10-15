@@ -4636,4 +4636,23 @@ fn episode_version_history_is_paginated_and_preserves_authors() {
     assert_eq!(value["data"][0]["creatorOrgMemberId"], "member_1");
     assert_eq!(value["data"][0]["changedFields"][0], "labels");
     assert_eq!(value["nextCursor"], "next");
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "GET",
+            "/v1/episodes/ep_missing/versions",
+            r#"{"error":"Episode not found"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["episodes", "versions", "list", "ep_missing"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode not found: ep_missing\n"
+    );
+    server.finish();
 }

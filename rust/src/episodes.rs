@@ -405,6 +405,9 @@ pub(crate) async fn list_versions(
             ),
             page.next_cursor.as_deref(),
         ),
+        Err(error) if error.is_not_found_for("episode") => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
         Err(error) => Outcome::failure(format!("Failed to list episode versions: {error}\n")),
     }
 }
