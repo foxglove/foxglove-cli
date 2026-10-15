@@ -2127,8 +2127,8 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At\n\
-         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z\n"
+        "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At,Version,Latest Version\n\
+         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z,,\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -4594,5 +4594,59 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
         } else {
             assert_eq!(lines.len(), 3, "{stdout}");
         }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn reading_an_episode_version_preserves_labels_and_version_metadata() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/episodes/ep_1",
+        r#"{"id":"ep_1","projectId":"prj_1","startTime":"2026-01-01T00:00:00Z","endTime":"2026-01-01T00:01:00Z","createdAt":"2026-01-01T00:00:00Z","version":2,"latestVersion":3,"labels":{"task":{"type":"TEXT","content":"drive"}}}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "get",
+            "ep_1",
+            "--version",
+            "2",
+            "--include-recordings",
+            "--include-labels",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(query_pairs(&requests[0])["version"], "2");
+    assert_eq!(query_pairs(&requests[0])["include"], "recordings,labels");
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["version"], 2);
+    assert_eq!(value["latestVersion"], 3);
+    assert_eq!(value["labels"]["task"]["content"], "drive");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_text_label_queries_reach_the_api() {
+    let workspace = Workspace::new();
+    let cases: &[(&[&str], &str, &str)] =
+        &[(&["episodes", "list"], "/v1/episodes", r#"{"episodes":[]}"#)];
+    for &(args, path, body) in cases {
+        let server = Server::new(vec![Reply::json("GET", path, body)]);
+        let mut command = args.to_vec();
+        command.extend(["--label-query", "task:drive", "--format", "json"]);
+        assert_success(&run(&workspace, &server, &command));
+        let requests = server.finish();
+        let target = requests[0].split_whitespace().nth(1).unwrap();
+        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
+        assert!(url
+            .query_pairs()
+            .any(|(name, value)| name == "labelQuery" && value == "task:drive"));
     }
 }

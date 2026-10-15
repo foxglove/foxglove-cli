@@ -29,6 +29,9 @@ pub(crate) struct RecordingObjectLocation {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct EpisodeRecording {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resolvable: Option<bool>,
+
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) path: String,
@@ -46,6 +49,17 @@ pub(crate) struct EpisodeRecording {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Episode {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) version: Option<i32>,
+    #[serde(
+        rename = "latestVersion",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub(crate) latest_version: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) labels: Option<Value>,
+
     pub(crate) id: String,
     #[serde(rename = "projectId")]
     pub(crate) project_id: String,
@@ -91,6 +105,8 @@ impl Record for Episode {
             "Recordings",
             "Metadata",
             "Created At",
+            "Version",
+            "Latest Version",
         ]
     }
 
@@ -103,6 +119,12 @@ impl Record for Episode {
             self.recording_ids(),
             compact_json(&self.metadata),
             self.created_at.clone(),
+            self.version
+                .map(|version| version.to_string())
+                .unwrap_or_default(),
+            self.latest_version
+                .map(|version| version.to_string())
+                .unwrap_or_default(),
         ]
     }
 }
@@ -116,6 +138,9 @@ pub(crate) struct EpisodeListResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EpisodeListQuery<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_query: Option<String>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -145,6 +170,17 @@ pub(crate) fn include_recordings(requested: bool) -> String {
     }
 }
 
+pub(crate) fn episode_includes(recordings: bool, labels: bool) -> String {
+    let mut include = Vec::new();
+    if recordings {
+        include.push("recordings");
+    }
+    if labels {
+        include.push("labels");
+    }
+    include.join(",")
+}
+
 pub(crate) fn parse_time_range(
     start: Option<&str>,
     end: Option<&str>,
@@ -168,10 +204,11 @@ pub(crate) async fn list_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
+        label_query: args.label_query.clone(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
-        include: include_recordings(args.include_recordings),
+        include: episode_includes(args.include_recordings, args.include_labels),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
@@ -202,6 +239,9 @@ fn episode_endpoint(id: &str) -> String {
 
 #[derive(Serialize)]
 struct EpisodeGetQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<i32>,
+
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
 }
@@ -212,7 +252,8 @@ pub(crate) async fn get_episode(
     format: Format,
 ) -> Outcome {
     let query = EpisodeGetQuery {
-        include: include_recordings(args.include_recordings),
+        version: args.version,
+        include: episode_includes(args.include_recordings, args.include_labels),
     };
     match runtime
         .client
@@ -364,12 +405,16 @@ mod tests {
             "metadata": {},
             "createdAt": "2024-01-02T03:04:07Z",
             "recordings": [
-                {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true},
+                {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true, "resolvable": true},
                 {"id": "rec_two", "path": "two.mcap", "start": "", "end": "", "available": false},
             ],
         }))
         .unwrap();
         assert_eq!(record.recording_ids(), "rec_one,rec_two");
+        assert_eq!(
+            record.recordings.as_ref().unwrap()[0].resolvable,
+            Some(true)
+        );
     }
 
     #[test]
