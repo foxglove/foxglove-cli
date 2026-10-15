@@ -13,7 +13,7 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::episode_includes;
+use crate::episodes::{episode_includes, Episode};
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
@@ -111,6 +111,19 @@ impl Record for DatasetVersionDetail {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct DatasetEpisodeChange {
     change: String,
+    /// Episode version selected by the base dataset version.
+    #[serde(
+        rename = "previousVersion",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    previous_version: Option<i32>,
+    #[serde(
+        rename = "previousEpisode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    previous_episode: Option<Episode>,
     #[serde(flatten)]
     entry: DatasetEpisode,
 }
@@ -128,12 +141,31 @@ impl Record for DatasetEpisodeChange {
             "Added At",
             "Added In Version",
             "Created At",
+            "Episode Version",
+            "Previous Episode Version",
         ]
     }
 
     fn fields(&self) -> Vec<String> {
         let mut fields = vec![self.change.clone()];
         fields.extend(self.entry.fields());
+        fields.push(
+            self.entry
+                .episode
+                .version
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        );
+        fields.push(
+            self.previous_version
+                .or_else(|| {
+                    self.previous_episode
+                        .as_ref()
+                        .and_then(|episode| episode.version)
+                })
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        );
         fields
     }
 }
@@ -141,6 +173,9 @@ impl Record for DatasetEpisodeChange {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DatasetChangesetResponse {
+    #[serde(default)]
+    changed_count: Option<usize>,
+
     #[serde(default)]
     changes: Vec<DatasetEpisodeChange>,
     #[serde(default)]
@@ -342,9 +377,12 @@ pub(crate) async fn compare_versions(
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(
-                "{} added, {} removed\n",
+                "{} added, {} removed{}\n",
                 plural(page.added_count, "episode"),
-                page.removed_count
+                page.removed_count,
+                page.changed_count
+                    .map(|count| format!(", {count} changed"))
+                    .unwrap_or_default()
             )
             .as_bytes(),
         );
@@ -520,7 +558,7 @@ mod tests {
     #[test]
     fn a_change_leads_with_its_side_and_keeps_the_membership_columns() {
         assert_eq!(
-            DatasetEpisodeChange::headers()[1..],
+            DatasetEpisodeChange::headers()[1..=DatasetEpisode::headers().len()],
             *DatasetEpisode::headers()
         );
         let change: DatasetEpisodeChange = serde_json::from_value(serde_json::json!({
@@ -542,5 +580,22 @@ mod tests {
         let output = serde_json::to_value(&change).unwrap();
         assert_eq!(output["change"], "removed");
         assert_eq!(output["episode"]["id"], "ep_fixture");
+        let mut changed = output;
+        changed["change"] = "changed".into();
+        changed["episode"]["version"] = 3.into();
+        changed["previousVersion"] = 2.into();
+        changed["previousEpisode"] = changed["episode"].clone();
+        changed["previousEpisode"]["version"] = 2.into();
+        let changed: DatasetEpisodeChange = serde_json::from_value(changed).unwrap();
+        let output = serde_json::to_value(&changed).unwrap();
+        assert_eq!(output["previousEpisode"]["version"], 2);
+        assert_eq!(
+            changed.fields().len(),
+            DatasetEpisodeChange::headers().len()
+        );
+        assert_eq!(
+            &changed.fields()[1 + DatasetEpisode::headers().len()..],
+            ["3", "2"]
+        );
     }
 }

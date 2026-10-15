@@ -574,7 +574,7 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetVersionsCommand {
-    #[command(about = "List the episodes added and removed between two versions")]
+    #[command(about = "List episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
     #[command(about = "Get a dataset version")]
     Get(DatasetVersionGetArgs),
