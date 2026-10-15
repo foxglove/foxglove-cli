@@ -4601,33 +4601,54 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
 #[ignore = "requires loopback sockets"]
 fn dataset_episode_pins_can_be_added_or_updated() {
     let workspace = Workspace::new();
-    for operation in ["add", "update"] {
+    for (operation, version, response, summary) in [
+        ("add", Some("3"), r#"{"added":1}"#, "Added 1 episode"),
+        ("update", Some("3"), r#"{"updated":1}"#, "Updated 1 episode"),
+        ("update", None, r#"{"updated":1}"#, "Updated 1 episode"),
+        (
+            "update",
+            None,
+            r#"{"updated":0}"#,
+            "Updated 0 episodes (1 unchanged)",
+        ),
+    ] {
         let server = Server::new(vec![Reply::json(
             "PATCH",
             "/v1/datasets/ds_fixture/episodes",
-            r#"{"added":0,"updated":1,"removed":0,"alreadyPresent":0}"#,
+            response,
         )]);
-        let output = run(
-            &workspace,
-            &server,
-            &[
-                "datasets",
-                "episodes",
-                operation,
-                "ds_fixture",
-                "ep_one",
-                "--episode-version",
-                "3",
-            ],
-        );
+        let mut args = vec!["datasets", "episodes", operation, "ds_fixture", "ep_one"];
+        if let Some(version) = version {
+            args.extend(["--episode-version", version]);
+        }
+        let output = run(&workspace, &server, &args);
         assert_success(&output);
-        assert!(String::from_utf8_lossy(&output.stderr).contains("commit"));
-        let requests = server.finish();
-        let body: serde_json::Value =
-            serde_json::from_str(requests[0].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        let hint = if summary.contains("unchanged") {
+            ""
+        } else {
+            "Run foxglove datasets commit ds_fixture to commit the draft as a new version.\n"
+        };
         assert_eq!(
-            body,
-            serde_json::json!({operation:[{"id":"ep_one","version":3}]})
+            String::from_utf8_lossy(&output.stderr),
+            format!("{summary}\n{hint}")
         );
+        let reference = version.map_or_else(
+            || serde_json::json!("ep_one"),
+            |_| serde_json::json!({"id":"ep_one","version":3}),
+        );
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({operation:[reference]})
+        );
+    }
+    for operation in ["add", "update", "remove"] {
+        let server = Server::new(vec![]);
+        let ids: Vec<String> = (0..2001).map(|n| format!("ep_{n}")).collect();
+        let mut args = vec!["datasets", "episodes", operation, "ds_fixture"];
+        args.extend(ids.iter().map(String::as_str));
+        let output = run(&workspace, &server, &args);
+        assert!(!output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stderr), "At most 2000 episode IDs can be changed at once (got 2001). Split the IDs into more than one command.\n");
+        server.finish();
     }
 }
