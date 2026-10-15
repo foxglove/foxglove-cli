@@ -4667,7 +4667,7 @@ fn episode_text_label_queries_reach_the_api() {
 #[ignore = "requires loopback sockets"]
 fn dataset_label_queries_reach_the_selected_version() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str, &str, Option<&str>)] = &[
+    let cases = [
         (
             &[
                 "datasets",
@@ -4679,7 +4679,7 @@ fn dataset_label_queries_reach_the_selected_version() {
                 "--include-labels",
                 "--label-query",
                 r#"task:"fold towel""#,
-            ],
+            ][..],
             "/v1/datasets/ds_fixture/versions/2/episodes",
             r#"{"episodes":[]}"#,
             "labels",
@@ -4695,14 +4695,14 @@ fn dataset_label_queries_reach_the_selected_version() {
                 "2",
                 "--include-labels",
                 "--include-recordings",
-            ],
+            ][..],
             "/v1/datasets/ds_fixture/versions/2/compare",
             r#"{"changes":[],"addedCount":0,"removedCount":0}"#,
             "recordings,labels",
             None,
         ),
     ];
-    for &(args, path, body, include, label_query) in cases {
+    for &(args, path, body, include, label_query) in &cases {
         let server = Server::new(vec![Reply::json("GET", path, body)]);
         let mut args = args.to_vec();
         args.extend(["--format", "json"]);
