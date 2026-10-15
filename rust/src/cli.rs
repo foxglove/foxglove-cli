@@ -355,6 +355,9 @@ pub(crate) struct CoverageListArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ExportArgs {
+    #[arg(long, help = "Episode version to export (default: latest)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
+
     #[arg(
         long,
         help = "MCAP chunk compression: zstd, lz4, or \"\" for none (default: lz4)",

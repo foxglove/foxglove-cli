@@ -68,6 +68,11 @@ enum Status {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestEpisode {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    version: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    labels: Option<Value>,
+
     index: usize,
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -205,6 +210,7 @@ async fn fetch_all_episodes(
     loop {
         let mut query = vec![
             ("limit".to_owned(), DOWNLOAD_PAGE_SIZE.to_string()),
+            ("include".to_owned(), "labels".to_owned()),
             ("sortBy".to_owned(), "startTime".to_owned()),
             ("sortOrder".to_owned(), "asc".to_owned()),
         ];
@@ -280,6 +286,7 @@ fn episode_request(
     };
     Ok(StreamRequest {
         episode_id: entry.episode.id.clone(),
+        episode_version: entry.episode.version,
         start: Some(bound(&entry.episode.start_time)?),
         end: Some(bound(&entry.episode.end_time)?),
         output_format: "mcap".to_owned(),
@@ -370,6 +377,8 @@ fn manifest_entry(
         ),
     };
     let mut episode = ManifestEpisode {
+        version: entry.episode.version,
+        labels: entry.episode.labels.clone(),
         index,
         id: entry.episode.id.clone(),
         file: byte_size.map(|_| file.clone()),
@@ -439,7 +448,8 @@ async fn download_episodes(
         let name = episode_file_name(index, &entry.episode.id);
         let path = directory.join(&name);
         let on_disk = earlier.get(&name).filter(|episode| {
-            std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
+            episode.version == entry.episode.version
+                && std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
         });
         let result = if let Some(complete) = on_disk.filter(|episode| is_complete(episode)) {
             EpisodeResult::Reused(complete.byte_size.unwrap_or_default())
@@ -573,6 +583,15 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         }
     };
 
+    if let Some(entry) = episodes
+        .iter()
+        .find(|entry| entry.episode.version.is_none_or(|version| version < 1))
+    {
+        return Outcome::failure(format!(
+            "Episode {} has no valid version pin; cannot download this dataset reproducibly\n",
+            entry.episode.id
+        ));
+    }
     let root = default_directory_name(&dataset.name, version.version_number);
     let directory = args
         .output
