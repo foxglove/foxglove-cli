@@ -51,17 +51,16 @@ impl Record for Topic {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TopicListQuery {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    episode_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    episode_version: Option<i32>,
-
     #[serde(skip_serializing_if = "String::is_empty")]
     device_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    episode_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    episode_version: Option<i32>,
     #[serde(skip_serializing_if = "is_false")]
     include_schemas: bool,
     limit: i64,
@@ -120,11 +119,11 @@ pub(crate) async fn list_topics(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query = TopicListQuery {
-        episode_id: args.episode_id.clone(),
-        episode_version: args.episode_version,
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
         end,
+        episode_id: args.episode_id.clone(),
+        episode_version: args.episode_version,
         include_schemas: args.include_schemas,
         limit,
         offset,

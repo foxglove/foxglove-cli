@@ -1387,11 +1387,6 @@ enum TopicsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct TopicListArgs {
-    #[arg(long, help = "Episode version (default: latest)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
-    pub(crate) episode_version: Option<i32>,
-    #[arg(long, help = "Episode ID", value_parser = parse_id, conflicts_with_all = ["device_id", "device_name", "recording_id", "recording_key", "session_id", "session_key"])]
-    pub(crate) episode_id: Option<String>,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
@@ -1404,6 +1399,10 @@ pub(crate) struct TopicListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Episode ID", allow_hyphen_values = true, value_parser = parse_id, conflicts_with_all = ["device_id", "device_name", "recording_id", "recording_key", "session_id", "session_key"])]
+    pub(crate) episode_id: Option<String>,
+    #[arg(long, help = "Episode version to list topics for; requires --episode-id (default: the newest episode version)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
     #[arg(
         long, help = "Include full topic schemas",
         action = clap::ArgAction::Set,
@@ -2121,6 +2120,7 @@ mod tests {
         (
             &["topics", "list"],
             &[
+                "episode-id",
                 "device-id",
                 "device-name",
                 "recording-id",
@@ -2132,6 +2132,33 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn topic_episode_version_requires_an_exclusive_episode_selector() {
+        for args in [
+            vec!["foxglove", "topics", "list", "--episode-version", "2"],
+            vec![
+                "foxglove",
+                "topics",
+                "list",
+                "--episode-id",
+                "ep_1",
+                "--recording-id",
+                "rec_1",
+            ],
+            vec![
+                "foxglove",
+                "topics",
+                "list",
+                "--episode-id",
+                "ep_1",
+                "--device-id",
+                "dev_1",
+            ],
+        ] {
+            assert!(super::Cli::try_parse_from(args).is_err());
+        }
+    }
+
     #[test]
     fn blank_selectors_are_rejected_on_every_affected_command() {
         for &(path, flags) in SELECTOR_CASES {

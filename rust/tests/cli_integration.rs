@@ -4601,21 +4601,15 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
 #[ignore = "requires loopback sockets"]
 fn topic_queries_select_historical_episode_versions() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str)] = &[(
-        &["topics", "list", "--episode-id", "ep_1"],
-        "/v1/data/topics",
-        r"[]",
-    )];
-    for &(args, path, body) in cases {
-        let server = Server::new(vec![Reply::json("GET", path, body)]);
-        let mut command = args.to_vec();
-        command.extend(["--episode-version", "2", "--format", "json"]);
-        assert_success(&run(&workspace, &server, &command));
-        let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        assert!(url
-            .query_pairs()
-            .any(|(name, value)| name == "episodeVersion" && value == "2"));
+    for version in [None, Some("2")] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/data/topics", "[]")]);
+        let mut args = vec!["topics", "list", "--episode-id", "ep_1", "--format", "json"];
+        if let Some(version) = version {
+            args.extend(["--episode-version", version]);
+        }
+        assert_success(&run(&workspace, &server, &args));
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query["episodeId"], "ep_1");
+        assert_eq!(query.get("episodeVersion").map(String::as_str), version);
     }
 }
