@@ -4754,4 +4754,29 @@ fn episode_edits_preserve_label_removals_and_report_conflicts() {
         assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
         server.finish();
     }
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "PATCH",
+            "/v1/episodes/ep_missing",
+            r#"{"error":"Episode not found"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "edit",
+            "ep_missing",
+            "--applies-to-version",
+            "1",
+        ],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode not found: ep_missing\n"
+    );
+    server.finish();
 }

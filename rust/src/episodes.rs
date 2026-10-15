@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::api::encode_path_segment;
+use crate::api::{encode_path_segment, ApiError};
 use crate::cli::{EpisodeAddArgs, EpisodeEditArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
 use crate::output::Format;
 use crate::records::{
@@ -379,13 +379,13 @@ pub(crate) async fn edit_episode(
         .await
     {
         Ok(episode) => format_record(&episode, format),
-        Err(error) => {
-            let mut message = format!("Failed to edit episode: {error}\n");
-            if matches!(error, crate::api::ApiError::Response { status: 409, .. }) {
-                message.push_str("Get the episode again and review its current state before retrying with --applies-to-version set to its current version.\n");
-            }
-            Outcome::failure(message)
+        Err(error) if error.is_not_found_for("episode") => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
         }
+        Err(error @ ApiError::Response { status: 409, .. }) => Outcome::failure(format!(
+            "Failed to edit episode: {error}\nGet the episode again and review its current state before retrying with --applies-to-version set to its current version.\n"
+        )),
+        Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
     }
 }
 
