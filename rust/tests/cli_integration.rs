@@ -4662,3 +4662,53 @@ fn episode_text_label_queries_reach_the_api() {
         ])
     );
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn dataset_label_queries_reach_the_selected_version() {
+    let workspace = Workspace::new();
+    let cases = [
+        (
+            &[
+                "datasets",
+                "episodes",
+                "list",
+                "ds_fixture",
+                "--version",
+                "2",
+                "--include-labels",
+                "--label-query",
+                r#"task:"fold towel""#,
+            ][..],
+            "/v1/datasets/ds_fixture/versions/2/episodes",
+            r#"{"episodes":[]}"#,
+            "labels",
+            Some(r#"task:"fold towel""#),
+        ),
+        (
+            &[
+                "datasets",
+                "versions",
+                "compare",
+                "ds_fixture",
+                "1",
+                "2",
+                "--include-labels",
+                "--include-recordings",
+            ][..],
+            "/v1/datasets/ds_fixture/versions/2/compare",
+            r#"{"changes":[],"addedCount":0,"removedCount":0}"#,
+            "recordings,labels",
+            None,
+        ),
+    ];
+    for &(args, path, body, include, label_query) in &cases {
+        let server = Server::new(vec![Reply::json("GET", path, body)]);
+        let mut args = args.to_vec();
+        args.extend(["--format", "json"]);
+        assert_success(&run(&workspace, &server, &args));
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query["include"], include);
+        assert_eq!(query.get("labelQuery").map(String::as_str), label_query);
+    }
+}

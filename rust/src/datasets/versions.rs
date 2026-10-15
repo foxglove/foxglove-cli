@@ -307,7 +307,7 @@ pub(crate) async fn compare_versions(
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
-        include: episode_includes(args.include_recordings, false),
+        include: episode_includes(args.include_recordings, args.include_labels),
     };
     let page = match runtime
         .client

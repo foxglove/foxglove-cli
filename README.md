@@ -299,6 +299,14 @@ $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
 Committed version 1 with 2 episodes (2 added, 0 removed)
 ```
 
+Pass `--include-labels` with `--format json` to include episode labels in
+`datasets episodes list` or `datasets versions compare`. Dataset episode lists
+also accept `--label-query`, including when a dataset version is selected:
+
+```
+$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --label-query 'task:"fold towel"' --include-labels --format json
+```
+
 List a dataset's versions, see which episodes changed between two of them, or
 restore an earlier one into the draft. `datasets episodes list --version` lists
 any version by number:
