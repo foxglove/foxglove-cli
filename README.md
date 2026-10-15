@@ -245,6 +245,15 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
+Read a historical episode version or filter by text labels. Labels are included
+in JSON output when requested. Every space-separated query term must match;
+URI labels are not searched.
+
+```
+$ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --format json
+$ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:
