@@ -254,6 +254,25 @@ $ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --forma
 $ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
 ```
 
+Create an episode from one or more recordings. The window defaults to the span
+of its recordings, and an existing episode with the same window and recordings
+is reused:
+
+```
+$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
+    --start 2026-04-19T13:22:44Z --end 2026-04-19T13:23:14Z
+Episode created: ep_BCUw2zxpBnToJbOS
+```
+
+Or create one from an event. The episode snapshots the event's current time range
+and the completed recordings from its device that overlap it; later edits to the
+event or new imports do not change it:
+
+```
+$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"merge"}'
+Episode created: ep_Rz6pXk3mWq9TfLbN
+```
+
 Edit an episode's window, recordings, or labels. Labels merge by key; a null
 value removes that label. `--applies-to-version` checks the latest version before
 applying the edit. On conflict, read the episode again, review its changes, and
@@ -280,25 +299,6 @@ Example `patches.json`:
 
 ```
 $ foxglove episodes edit-bulk patches.json --format json
-```
-
-Create an episode from one or more recordings. The window defaults to the span
-of its recordings, and an existing episode with the same window and recordings
-is reused:
-
-```
-$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
-    --start 2026-04-19T13:22:44Z --end 2026-04-19T13:23:14Z
-Episode created: ep_BCUw2zxpBnToJbOS
-```
-
-Or create one from an event. The episode snapshots the event's current time range
-and the completed recordings from its device that overlap it; later edits to the
-event or new imports do not change it:
-
-```
-$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"merge"}'
-Episode created: ep_Rz6pXk3mWq9TfLbN
 ```
 
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
