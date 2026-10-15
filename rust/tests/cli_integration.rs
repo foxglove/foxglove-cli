@@ -4662,3 +4662,127 @@ fn episode_text_label_queries_reach_the_api() {
         ])
     );
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_edits_preserve_label_removals_and_report_conflicts() {
+    let workspace = Workspace::new();
+    let mut reply = Reply::json(
+        "PATCH",
+        "/v1/episodes/ep%231",
+        r#"{"error":"Version conflict","conflicts":[{"id":"ep#1","currentVersion":3}]}"#,
+    );
+    reply.status = 409;
+    let server = Server::new(vec![reply]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "edit",
+            "ep#1",
+            "--applies-to-version",
+            "2",
+            "--start",
+            "2024-01-02T03:04:05.123Z",
+            "--add-recording",
+            "rec_new",
+            "--remove-recording",
+            "rec_old",
+            "--labels",
+            r#"{"task":{"type":"TEXT","content":"fold"},"old":null}"#,
+            "--format",
+            "json",
+        ],
+    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("ep#1: current version 3"));
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value =
+        serde_json::from_str(requests[0].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"appliesToVersion":2,"startTime":"2024-01-02T03:04:05.123Z","recordings":{"add":["rec_new"],"remove":["rec_old"]},"labels":{"task":{"type":"TEXT","content":"fold"},"old":null}})
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Get the episode again"));
+    for format in ["json", "table"] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/episodes/ep_one",
+            r#"{"id":"ep_one","projectId":"prj_one","startTime":"2024-01-02T00:00:00Z","endTime":"2024-01-02T00:01:00Z","createdAt":"2024-01-02T00:00:00Z","version":3,"latestVersion":3}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "episodes",
+                "edit",
+                "ep_one",
+                "--applies-to-version",
+                "3",
+                "--format",
+                format,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({"appliesToVersion":3})
+        );
+        if format == "json" {
+            let episode: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(episode["id"], "ep_one");
+            assert_eq!(episode["version"], 3);
+        } else {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(stdout.contains("ep_one"));
+            assert!(stdout.contains("Version"));
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn invalid_episode_edits_and_missing_episodes_report_clear_errors() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (vec![], "Nothing to update"),
+        (vec!["--labels", "{"], "Invalid --labels JSON"),
+        (vec!["--labels", "[]"], "--labels must be a JSON object"),
+        (vec!["--start", ""], "--start cannot be empty"),
+    ] {
+        let server = Server::new(vec![]);
+        let mut args = vec!["episodes", "edit", "ep_one"];
+        args.extend(flags);
+        let output = run(&workspace, &server, &args);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
+        server.finish();
+    }
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "PATCH",
+            "/v1/episodes/ep_missing",
+            r#"{"error":"Episode not found"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "edit",
+            "ep_missing",
+            "--applies-to-version",
+            "1",
+        ],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode not found: ep_missing\n"
+    );
+    server.finish();
+}

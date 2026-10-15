@@ -1405,9 +1405,32 @@ fn response_message(body: &str) -> String {
     #[derive(Deserialize)]
     struct ErrorResponse {
         error: Option<String>,
+        #[serde(default)]
+        conflicts: serde_json::Value,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct EpisodeConflict {
+        id: String,
+        current_version: i32,
     }
     if let Ok(response) = serde_json::from_str::<ErrorResponse>(body) {
-        return response.error.unwrap_or_default();
+        let mut message = response.error.unwrap_or_default();
+        for conflict in response
+            .conflicts
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| serde_json::from_value::<EpisodeConflict>(value.clone()).ok())
+        {
+            use std::fmt::Write as _;
+            let _ = write!(
+                message,
+                "; {}: current version {}",
+                conflict.id, conflict.current_version
+            );
+        }
+        return message;
     }
     // Drop proxy HTML pages and other long bodies so the status shows instead.
     let body = body.trim();
@@ -1707,6 +1730,14 @@ mod tests {
     #[test]
     fn error_payload_uses_error_then_raw_body() {
         assert_eq!(response_message(r#"{"error":"bad"}"#), "bad");
+        assert_eq!(
+            response_message(r#"{"error":"bad","conflicts":null}"#),
+            "bad"
+        );
+        assert_eq!(
+            response_message(r#"{"error":"bad","conflicts":[{"id":"ep_one"}]}"#),
+            "bad"
+        );
         assert_eq!(response_message(r#"{"message":"bad"}"#), "");
         assert_eq!(response_message("bad"), "bad");
     }

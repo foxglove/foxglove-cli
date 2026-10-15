@@ -273,6 +273,17 @@ $ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"me
 Episode created: ep_Rz6pXk3mWq9TfLbN
 ```
 
+Edit an episode's window, recordings, or labels. Labels merge by key; a null
+value removes that label. `--applies-to-version` checks the latest version before
+applying the edit. On conflict, read the episode again, review its changes, and
+choose whether to retry with the current version. A precondition-only edit checks
+the version without changing the episode.
+
+```
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --applies-to-version 2 \
+    --labels '{"task":{"type":"TEXT","content":"fold"},"old":null}' --format json
+```
+
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
 on when each episode joined the dataset:
 
