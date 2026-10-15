@@ -852,6 +852,8 @@ enum EpisodesCommand {
     Delete(EpisodeIdArgs),
     #[command(about = "Get an episode")]
     Get(EpisodeGetArgs),
+    #[command(about = "Edit an episode and create a version when its contents change")]
+    Edit(EpisodeEditArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
 }
@@ -885,6 +887,29 @@ pub(crate) struct EpisodeAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeEditArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
+    pub(crate) episode_id: String,
+    #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) applies_to_version: Option<i32>,
+    #[arg(long, help = "New start of the episode window (ISO 8601)")]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "New end of the episode window (ISO 8601)")]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Recording ID to add; repeat for more", value_parser = parse_id)]
+    pub(crate) add_recording: Vec<String>,
+    #[arg(long, help = "Recording ID to remove; repeat for more", value_parser = parse_id)]
+    pub(crate) remove_recording: Vec<String>,
+    #[arg(
+        long,
+        help = "JSON object of TEXT or URI labels; null values remove keys"
+    )]
+    pub(crate) labels: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1781,6 +1806,10 @@ async fn dispatch_dataset_version_command(
 
 async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
     match command {
+        EpisodesCommand::Edit(args) => {
+            let format = args.format.format;
+            episodes::edit_episode(runtime, &args, format).await
+        }
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Get(args) => {

@@ -4650,3 +4650,47 @@ fn episode_text_label_queries_reach_the_api() {
             .any(|(name, value)| name == "labelQuery" && value == "task:drive"));
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_edits_preserve_label_removals_and_report_conflicts() {
+    let workspace = Workspace::new();
+    let mut reply = Reply::json(
+        "PATCH",
+        "/v1/episodes/ep%231",
+        r#"{"error":"Version conflict","conflicts":[{"id":"ep#1","currentVersion":3}]}"#,
+    );
+    reply.status = 409;
+    let server = Server::new(vec![reply]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "edit",
+            "ep#1",
+            "--applies-to-version",
+            "2",
+            "--start",
+            "2024-01-02T03:04:05.123Z",
+            "--add-recording",
+            "rec_new",
+            "--remove-recording",
+            "rec_old",
+            "--labels",
+            r#"{"task":{"type":"TEXT","content":"fold"},"old":null}"#,
+            "--format",
+            "json",
+        ],
+    );
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("ep#1: current version 3"));
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value =
+        serde_json::from_str(requests[0].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+    assert_eq!(
+        body,
+        serde_json::json!({"appliesToVersion":2,"startTime":"2024-01-02T03:04:05.123Z","recordings":{"add":["rec_new"],"remove":["rec_old"]},"labels":{"task":{"type":"TEXT","content":"fold"},"old":null}})
+    );
+}

@@ -1405,9 +1405,26 @@ fn response_message(body: &str) -> String {
     #[derive(Deserialize)]
     struct ErrorResponse {
         error: Option<String>,
+        #[serde(default)]
+        conflicts: Vec<EpisodeConflict>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct EpisodeConflict {
+        id: String,
+        current_version: i32,
     }
     if let Ok(response) = serde_json::from_str::<ErrorResponse>(body) {
-        return response.error.unwrap_or_default();
+        let mut message = response.error.unwrap_or_default();
+        for conflict in response.conflicts {
+            use std::fmt::Write as _;
+            let _ = write!(
+                message,
+                "; {}: current version {}",
+                conflict.id, conflict.current_version
+            );
+        }
+        return message;
     }
     // Drop proxy HTML pages and other long bodies so the status shows instead.
     let body = body.trim();

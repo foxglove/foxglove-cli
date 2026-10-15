@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::encode_path_segment;
-use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
+use crate::cli::{EpisodeAddArgs, EpisodeEditArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
@@ -373,6 +373,67 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
         }
         Err(error) => Outcome::failure(format!("Failed to delete episode: {error}\n")),
     }
+}
+
+pub(crate) async fn edit_episode(
+    runtime: &Runtime,
+    args: &EpisodeEditArgs,
+    format: Format,
+) -> Outcome {
+    let request = match episode_patch(args) {
+        Ok(request) => request,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    match runtime
+        .client
+        .patch::<_, _, Episode>(&episode_endpoint(&args.episode_id), &(), &request)
+        .await
+    {
+        Ok(episode) => format_record(&episode, format),
+        Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
+    }
+}
+
+fn episode_patch(args: &EpisodeEditArgs) -> Result<Value, String> {
+    let mut patch = serde_json::Map::new();
+    for (key, value, flag) in [
+        ("startTime", args.start.as_deref(), "start"),
+        ("endTime", args.end.as_deref(), "end"),
+    ] {
+        if let Some(value) = value {
+            if value.trim().is_empty() {
+                return Err(format!("--{flag} cannot be empty"));
+            }
+            patch.insert(key.to_owned(), parse_timestamp_millis(value, flag)?.into());
+        }
+    }
+    if let Some(version) = args.applies_to_version {
+        patch.insert("appliesToVersion".to_owned(), version.into());
+    }
+    let mut recordings = serde_json::Map::new();
+    for (key, ids) in [
+        ("add", &args.add_recording),
+        ("remove", &args.remove_recording),
+    ] {
+        if !ids.is_empty() {
+            recordings.insert(key.to_owned(), serde_json::json!(ids));
+        }
+    }
+    if !recordings.is_empty() {
+        patch.insert("recordings".to_owned(), recordings.into());
+    }
+    if let Some(raw) = &args.labels {
+        let labels: Value =
+            serde_json::from_str(raw).map_err(|error| format!("Invalid --labels JSON: {error}"))?;
+        if !labels.is_object() {
+            return Err("--labels must be a JSON object".to_owned());
+        }
+        patch.insert("labels".to_owned(), labels);
+    }
+    if patch.is_empty() {
+        return Err("Nothing to update".to_owned());
+    }
+    Ok(patch.into())
 }
 
 #[cfg(test)]
