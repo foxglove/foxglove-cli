@@ -620,6 +620,9 @@ pub(crate) struct DatasetVersionGetArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct DatasetVersionCompareArgs {
+    #[arg(long, help = "Include episode labels", action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool)]
+    pub(crate) include_labels: bool,
+
     #[command(flatten)]
     format: FormatArgs,
     #[arg(value_name = "DATASET_ID")]
@@ -705,6 +708,12 @@ pub(crate) struct DatasetListArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct DatasetEpisodeListArgs {
+    #[arg(long, help = "Filter TEXT labels using key:value terms", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) label_query: Option<String>,
+
+    #[arg(long, help = "Include episode labels", action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool)]
+    pub(crate) include_labels: bool,
+
     #[command(flatten)]
     format: FormatArgs,
     #[arg(value_name = "DATASET_ID")]

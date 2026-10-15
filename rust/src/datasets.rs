@@ -19,7 +19,7 @@ use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
     DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
-use crate::episodes::{include_recordings, parse_time_range, Episode};
+use crate::episodes::{episode_includes, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, null_to_default, plural,
@@ -139,6 +139,9 @@ struct DatasetListQuery<'a> {
 #[serde(rename_all = "camelCase")]
 struct DatasetEpisodeListQuery<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
+    label_query: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
@@ -198,10 +201,11 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
+        label_query: args.label_query.clone(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
-        include: include_recordings(args.include_recordings),
+        include: episode_includes(args.include_recordings, args.include_labels),
         limit,
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),

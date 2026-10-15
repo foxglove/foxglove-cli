@@ -4650,3 +4650,34 @@ fn episode_text_label_queries_reach_the_api() {
             .any(|(name, value)| name == "labelQuery" && value == "task:drive"));
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn dataset_label_queries_reach_the_selected_version() {
+    let workspace = Workspace::new();
+    let cases: &[(&[&str], &str, &str)] = &[(
+        &[
+            "datasets",
+            "episodes",
+            "list",
+            "ds_fixture",
+            "--version",
+            "2",
+            "--include-labels",
+        ],
+        "/v1/datasets/ds_fixture/versions/2/episodes",
+        r#"{"episodes":[]}"#,
+    )];
+    for &(args, path, body) in cases {
+        let server = Server::new(vec![Reply::json("GET", path, body)]);
+        let mut command = args.to_vec();
+        command.extend(["--label-query", r#"task:"fold towel""#, "--format", "json"]);
+        assert_success(&run(&workspace, &server, &command));
+        let requests = server.finish();
+        let target = requests[0].split_whitespace().nth(1).unwrap();
+        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
+        assert!(url
+            .query_pairs()
+            .any(|(name, value)| name == "labelQuery" && value == r#"task:"fold towel""#));
+    }
+}

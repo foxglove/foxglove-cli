@@ -162,14 +162,6 @@ struct EpisodeListQuery<'a> {
     start: String,
 }
 
-pub(crate) fn include_recordings(requested: bool) -> String {
-    if requested {
-        "recordings".to_owned()
-    } else {
-        String::new()
-    }
-}
-
 pub(crate) fn episode_includes(recordings: bool, labels: bool) -> String {
     let mut include = Vec::new();
     if recordings {

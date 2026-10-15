@@ -13,7 +13,7 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::include_recordings;
+use crate::episodes::episode_includes;
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
@@ -307,7 +307,7 @@ pub(crate) async fn compare_versions(
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
-        include: include_recordings(args.include_recordings),
+        include: episode_includes(args.include_recordings, args.include_labels),
     };
     let page = match runtime
         .client
