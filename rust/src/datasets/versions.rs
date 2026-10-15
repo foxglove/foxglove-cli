@@ -427,7 +427,7 @@ fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs)
             response.removed
         );
         if response.updated > 0 {
-            let _ = write!(summary, ", {} updated", response.updated);
+            let _ = write!(summary, ", {} changed", response.updated);
         }
         summary.push('\n');
         summary.push_str(&commit_hint(&args.dataset_id));
