@@ -447,7 +447,9 @@ pub(crate) struct UploadArgs {
 enum DatasetsCommand {
     #[command(about = "Create a dataset")]
     Add(DatasetAddArgs),
-    #[command(about = "Commit a dataset's pending changes as a new version")]
+    #[command(
+        about = "Commit a dataset's pending changes as a new version; changed counts episodes whose selected version changed"
+    )]
     Commit(DatasetIdArgs),
     #[command(about = "Delete a dataset")]
     Delete(DatasetIdArgs),

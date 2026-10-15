@@ -24,13 +24,6 @@ use crate::Outcome;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(super) struct DatasetVersion {
-    #[serde(
-        rename = "changedEpisodeCount",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    changed_episode_count: Option<usize>,
-
     #[serde(rename = "versionNumber")]
     pub(super) version_number: i64,
     #[serde(
@@ -47,6 +40,12 @@ pub(super) struct DatasetVersion {
     added_episode_count: usize,
     #[serde(rename = "removedEpisodeCount", default)]
     removed_episode_count: usize,
+    #[serde(
+        rename = "changedEpisodeCount",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    changed_episode_count: Option<usize>,
 }
 
 impl Record for DatasetVersion {
@@ -58,8 +57,8 @@ impl Record for DatasetVersion {
             "Episode Count",
             "Added",
             "Removed",
-            "Created At",
             "Changed",
+            "Created At",
         ]
     }
 
@@ -76,10 +75,10 @@ impl Record for DatasetVersion {
             self.episode_count.to_string(),
             self.added_episode_count.to_string(),
             self.removed_episode_count.to_string(),
-            self.created_at.clone(),
             self.changed_episode_count
                 .map(|count| count.to_string())
                 .unwrap_or_default(),
+            self.created_at.clone(),
         ]
     }
 }
@@ -107,8 +106,8 @@ impl Record for DatasetVersionDetail {
             "Episode Count",
             "Added",
             "Removed",
-            "Created At",
             "Changed",
+            "Created At",
             "Missing Recordings",
         ]
     }
@@ -504,7 +503,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             versions[0].fields(),
-            ["5", "draft", "", "12", "3", "1", "2024-01-03T00:00:00Z", ""]
+            ["5", "draft", "", "12", "3", "1", "", "2024-01-03T00:00:00Z"]
         );
         assert_eq!(
             versions[1].fields()[1..3],
@@ -533,6 +532,7 @@ mod tests {
         assert_eq!(output["versionNumber"], 4);
         assert_eq!(output["hasMissingRecordings"], true);
         assert_eq!(output["changedEpisodeCount"], 3);
+        assert_eq!(detail.fields()[6], "3");
     }
 
     #[test]
