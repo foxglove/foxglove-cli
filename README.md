@@ -254,6 +254,16 @@ $ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --forma
 $ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
 ```
 
+Include creation context in JSON episode lists, dataset episode lists, or
+dataset version comparisons with `--include-creation-context`. Supply context
+when creating an episode with `--creation-context`; omitted or null context uses
+the server default derived from the source recordings.
+
+```
+$ foxglove episodes list --include-creation-context --format json
+$ foxglove episodes add --project-id prj_WEJUVEOVApoIpe1M --recording-id rec_lwjzOMxryMmP3yXg --creation-context '{"version":1,"basis":{"kind":"recordings","recordingIds":["rec_lwjzOMxryMmP3yXg"]}}'
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:
@@ -297,6 +307,14 @@ $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
 $ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
 $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
 Committed version 1 with 2 episodes (2 added, 0 removed)
+```
+
+Pass `--include-labels` with `--format json` to include episode labels in
+`datasets episodes list` or `datasets versions compare`. Dataset episode lists
+also accept `--label-query`, including when a dataset version is selected:
+
+```
+$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --label-query 'task:"fold towel"' --include-labels --format json
 ```
 
 List a dataset's versions, see which episodes changed between two of them, or

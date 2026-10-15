@@ -139,9 +139,6 @@ struct DatasetListQuery<'a> {
 #[serde(rename_all = "camelCase")]
 struct DatasetEpisodeListQuery<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    label_query: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
@@ -149,6 +146,8 @@ struct DatasetEpisodeListQuery<'a> {
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_query: Option<&'a str>,
     limit: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
@@ -201,7 +200,6 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
-        label_query: args.label_query.clone(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
@@ -210,6 +208,7 @@ pub(crate) async fn list_dataset_episodes(
             args.include_labels,
             args.include_creation_context,
         ),
+        label_query: args.label_query.as_deref(),
         limit,
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
