@@ -4650,3 +4650,31 @@ fn episode_text_label_queries_reach_the_api() {
             .any(|(name, value)| name == "labelQuery" && value == "task:drive"));
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn comparison_reports_episode_version_changes() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/datasets/ds_fixture/versions/2/compare",
+        r#"{"changes":[],"addedCount":0,"removedCount":0,"changedCount":2}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "versions",
+            "compare",
+            "ds_fixture",
+            "1",
+            "2",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("2 changed"));
+    server.finish();
+}
