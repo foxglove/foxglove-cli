@@ -85,6 +85,9 @@ impl Record for PendingImport {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PendingImportListQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    site_backfill_job_id: Option<String>,
+
     #[serde(skip_serializing_if = "String::is_empty")]
     device_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -139,6 +142,7 @@ pub(crate) async fn list_pending_imports(
         }
     };
     let query = PendingImportListQuery {
+        site_backfill_job_id: args.site_backfill_job_id.clone(),
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
         filename: args.filename.clone().unwrap_or_default(),
