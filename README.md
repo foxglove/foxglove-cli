@@ -287,7 +287,7 @@ $ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7s
 $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
 $ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
 $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
-Committed version 1 with 2 episodes (2 added, 0 removed)
+Committed version 1 with 2 episodes (2 added, 0 removed, 0 changed)
 ```
 
 List a dataset's versions, see which episodes changed between two of them, or
