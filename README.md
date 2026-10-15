@@ -254,6 +254,34 @@ $ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --forma
 $ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
 ```
 
+Edit an episode's window, recordings, or labels. Labels merge by key; a null
+value removes that label. `--applies-to-version` checks the latest version before
+applying the edit. On conflict, read the episode again, review its changes, and
+choose whether to retry with the current version. A precondition-only edit checks
+the version without changing the episode.
+
+```
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --applies-to-version 2 \
+    --labels '{"task":{"type":"TEXT","content":"fold"},"old":null}' --format json
+```
+
+Apply multiple edits atomically from a JSON file: the API applies all patches or
+none. Each entry requires `id` and can contain `appliesToVersion`, `startTime`,
+`endTime`, `recordings` with `add`/`remove` arrays, and `labels`. Label values merge
+by key; null removes a key. An ID-only patch is a no-op returning the current
+version. Timestamps are sent unchanged and must use the API's ISO 8601 date-time
+format at millisecond precision (for example `2026-04-19T13:22:44.123Z`).
+
+Example `patches.json`:
+
+```json
+{"episodes":[{"id":"ep_example","appliesToVersion":2,"recordings":{"add":["rec_new"]},"labels":{"old":null}}]}
+```
+
+```
+$ foxglove episodes edit-bulk patches.json --format json
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:

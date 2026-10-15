@@ -32,9 +32,6 @@ pub(crate) struct RecordingObjectLocation {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct EpisodeRecording {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) resolvable: Option<bool>,
-
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) path: String,
@@ -48,21 +45,12 @@ pub(crate) struct EpisodeRecording {
     pub(crate) device_id: String,
     #[serde(default)]
     pub(crate) available: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resolvable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Episode {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) version: Option<i32>,
-    #[serde(
-        rename = "latestVersion",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub(crate) latest_version: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) labels: Option<Value>,
-
     pub(crate) id: String,
     #[serde(rename = "projectId")]
     pub(crate) project_id: String,
@@ -82,6 +70,16 @@ pub(crate) struct Episode {
     pub(crate) has_missing_recordings: Option<bool>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) version: Option<i32>,
+    #[serde(
+        rename = "latestVersion",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub(crate) latest_version: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) labels: Option<Value>,
 }
 
 impl Episode {
@@ -142,9 +140,6 @@ pub(crate) struct EpisodeListResponse {
 #[serde(rename_all = "camelCase")]
 struct EpisodeListQuery<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    label_query: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
@@ -152,6 +147,8 @@ struct EpisodeListQuery<'a> {
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_query: Option<&'a str>,
     limit: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
@@ -163,14 +160,6 @@ struct EpisodeListQuery<'a> {
     sort_order: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
-}
-
-pub(crate) fn include_recordings(requested: bool) -> String {
-    if requested {
-        "recordings".to_owned()
-    } else {
-        String::new()
-    }
 }
 
 pub(crate) fn episode_includes(recordings: bool, labels: bool) -> String {
@@ -207,11 +196,11 @@ pub(crate) async fn list_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
-        label_query: args.label_query.clone(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: episode_includes(args.include_recordings, args.include_labels),
+        label_query: args.label_query.as_deref(),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
@@ -393,7 +382,13 @@ pub(crate) async fn edit_episode(
         .await
     {
         Ok(episode) => format_record(&episode, format),
-        Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
+        Err(error) => {
+            let mut message = format!("Failed to edit episode: {error}\n");
+            if matches!(error, crate::api::ApiError::Response { status: 409, .. }) {
+                message.push_str("Get the episode again and review its current state before retrying with --applies-to-version set to its current version.\n");
+            }
+            Outcome::failure(message)
+        }
     }
 }
 
@@ -410,6 +405,7 @@ fn episode_patch(args: &EpisodeEditArgs) -> Result<Value, String> {
             patch.insert(key.to_owned(), parse_timestamp_millis(value, flag)?.into());
         }
     }
+    // A precondition-only patch checks the current version without changing it.
     if let Some(version) = args.applies_to_version {
         patch.insert("appliesToVersion".to_owned(), version.into());
     }
@@ -467,15 +463,18 @@ fn bulk_patch(raw: &[u8]) -> Result<Value, String> {
         .and_then(Value::as_array)
         .ok_or("Patch file must contain an episodes array")?;
     if !(1..=2000).contains(&episodes.len()) {
-        return Err("Patch file must contain 1-2000 episodes".to_owned());
+        return Err(format!(
+            "Patch file contains {} episodes; it must contain 1-2000",
+            episodes.len()
+        ));
     }
     let mut ids = std::collections::HashSet::new();
-    for episode in episodes {
+    for (index, episode) in episodes.iter().enumerate() {
         let id = episode
             .get("id")
             .and_then(Value::as_str)
             .filter(|id| !id.trim().is_empty())
-            .ok_or("Each patch needs a nonempty episode id")?;
+            .ok_or_else(|| format!("Patch {} needs a nonempty episode id", index + 1))?;
         if !ids.insert(id) {
             return Err(format!("Duplicate episode ID: {id}"));
         }
@@ -514,13 +513,28 @@ mod tests {
 
     #[test]
     fn invalid_bulk_patches_are_rejected() {
-        for raw in [
-            r#"{"episodes":[]}"#,
-            r#"{"episodes":[{"id":"ep_one"},{"id":"ep_one"}]}"#,
-            r#"{"episodes":[{}]}"#,
+        for (raw, expected) in [
+            (r#"{"episodes":[]}"#, "1-2000"),
+            (
+                r#"{"episodes":[{"id":"ep_one"},{"id":"ep_one"}]}"#,
+                "Duplicate episode ID: ep_one",
+            ),
+            (
+                r#"{"episodes":[{}]}"#,
+                "Patch 1 needs a nonempty episode id",
+            ),
+            (r#"{"episodes":{}}"#, "episodes array"),
+            (
+                r#"{"episodes":[{"id":"  "}]}"#,
+                "Patch 1 needs a nonempty episode id",
+            ),
         ] {
-            assert!(bulk_patch(raw.as_bytes()).is_err());
+            assert!(
+                bulk_patch(raw.as_bytes()).unwrap_err().contains(expected),
+                "{raw}"
+            );
         }
+        assert!(bulk_patch(br#"{"episodes":[{"id":"ep_one"}]}"#).is_ok());
     }
 
     #[test]

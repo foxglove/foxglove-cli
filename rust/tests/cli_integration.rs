@@ -4635,20 +4635,32 @@ fn reading_an_episode_version_preserves_labels_and_version_metadata() {
 #[ignore = "requires loopback sockets"]
 fn episode_text_label_queries_reach_the_api() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str)] =
-        &[(&["episodes", "list"], "/v1/episodes", r#"{"episodes":[]}"#)];
-    for &(args, path, body) in cases {
-        let server = Server::new(vec![Reply::json("GET", path, body)]);
-        let mut command = args.to_vec();
-        command.extend(["--label-query", "task:drive", "--format", "json"]);
-        assert_success(&run(&workspace, &server, &command));
-        let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        assert!(url
-            .query_pairs()
-            .any(|(name, value)| name == "labelQuery" && value == "task:drive"));
-    }
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/episodes",
+        r#"{"episodes":[]}"#,
+    )]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "list",
+            "--label-query",
+            "task:drive",
+            "--include-labels",
+            "--format",
+            "json",
+        ],
+    ));
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("labelQuery", "task:drive"),
+            ("include", "labels"),
+            ("limit", "50"),
+        ])
+    );
 }
 
 #[test]
@@ -4693,6 +4705,55 @@ fn episode_edits_preserve_label_removals_and_report_conflicts() {
         body,
         serde_json::json!({"appliesToVersion":2,"startTime":"2024-01-02T03:04:05.123Z","recordings":{"add":["rec_new"],"remove":["rec_old"]},"labels":{"task":{"type":"TEXT","content":"fold"},"old":null}})
     );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Get the episode again"));
+    for format in ["json", "table"] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/episodes/ep_one",
+            r#"{"id":"ep_one","projectId":"prj_one","startTime":"2024-01-02T00:00:00Z","endTime":"2024-01-02T00:01:00Z","createdAt":"2024-01-02T00:00:00Z","version":3,"latestVersion":3}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "episodes",
+                "edit",
+                "ep_one",
+                "--applies-to-version",
+                "3",
+                "--format",
+                format,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({"appliesToVersion":3})
+        );
+        if format == "json" {
+            let episode: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(episode["id"], "ep_one");
+            assert_eq!(episode["version"], 3);
+        } else {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(stdout.contains("ep_one"));
+            assert!(stdout.contains("Version"));
+        }
+    }
+    for (flags, expected) in [
+        (vec![], "Nothing to update"),
+        (vec!["--labels", "{"], "Invalid --labels JSON"),
+        (vec!["--labels", "[]"], "--labels must be a JSON object"),
+        (vec!["--start", ""], "--start cannot be empty"),
+    ] {
+        let server = Server::new(vec![]);
+        let mut args = vec!["episodes", "edit", "ep_one"];
+        args.extend(flags);
+        let output = run(&workspace, &server, &args);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
+        server.finish();
+    }
 }
 
 #[test]
@@ -4709,14 +4770,7 @@ fn bulk_episode_edits_send_one_atomic_request_and_keep_result_order() {
     let output = run(
         &workspace,
         &server,
-        &[
-            "episodes",
-            "edit-bulk",
-            "--file",
-            "patch.json",
-            "--format",
-            "json",
-        ],
+        &["episodes", "edit-bulk", "patch.json", "--format", "json"],
     );
     assert_success(&output);
     let output: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();

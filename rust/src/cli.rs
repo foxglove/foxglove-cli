@@ -850,12 +850,12 @@ enum EpisodesCommand {
     Add(EpisodeAddArgs),
     #[command(about = "Delete an episode")]
     Delete(EpisodeIdArgs),
-    #[command(about = "Get an episode")]
-    Get(EpisodeGetArgs),
     #[command(about = "Edit an episode and create a version when its contents change")]
     Edit(EpisodeEditArgs),
     #[command(about = "Apply episode patches atomically from a JSON file")]
     EditBulk(EpisodeBulkEditArgs),
+    #[command(about = "Get an episode")]
+    Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
 }
@@ -897,19 +897,28 @@ pub(crate) struct EpisodeEditArgs {
     format: FormatArgs,
     #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
     pub(crate) episode_id: String,
-    #[arg(long, help = "Fail unless the latest episode version matches this value", value_parser = clap::value_parser!(i32).range(1..))]
+    #[arg(long, allow_hyphen_values = true, help = "Fail unless the latest episode version matches this value", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) applies_to_version: Option<i32>,
-    #[arg(long, help = "New start of the episode window (ISO 8601)")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "New start of the episode window (ISO 8601)"
+    )]
     pub(crate) start: Option<String>,
-    #[arg(long, help = "New end of the episode window (ISO 8601)")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "New end of the episode window (ISO 8601)"
+    )]
     pub(crate) end: Option<String>,
-    #[arg(long, help = "Recording ID to add; repeat for more", value_parser = parse_id)]
+    #[arg(long, allow_hyphen_values = true, help = "Recording ID to add; repeat for more", value_parser = parse_id)]
     pub(crate) add_recording: Vec<String>,
-    #[arg(long, help = "Recording ID to remove; repeat for more", value_parser = parse_id)]
+    #[arg(long, allow_hyphen_values = true, help = "Recording ID to remove; repeat for more", value_parser = parse_id)]
     pub(crate) remove_recording: Vec<String>,
     #[arg(
         long,
-        help = "JSON object of TEXT or URI labels; null values remove keys"
+        allow_hyphen_values = true,
+        help = "Merge labels by key, e.g. '{\"task\":{\"type\":\"TEXT\",\"content\":\"fold\"}}'; a null value removes that key"
     )]
     pub(crate) labels: Option<String>,
 }
@@ -918,7 +927,7 @@ pub(crate) struct EpisodeEditArgs {
 pub(crate) struct EpisodeBulkEditArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(long, help = "JSON file containing {\"episodes\":[{\"id\":\"...\",...}]} (1-2000 unique IDs)", value_hint = clap::ValueHint::FilePath)]
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with an episodes array of patches (1-2000 unique IDs)")]
     pub(crate) file: std::path::PathBuf,
 }
 
@@ -930,12 +939,6 @@ pub(crate) struct EpisodeIdArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeGetArgs {
-    #[arg(long, help = "Episode version (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
-    pub(crate) version: Option<i32>,
-
-    #[arg(long, help = "Include episode labels in JSON output", action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool)]
-    pub(crate) include_labels: bool,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(value_name = "EPISODE_ID")]
@@ -950,16 +953,22 @@ pub(crate) struct EpisodeGetArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
+    #[arg(
+        long, help = "Include episode labels in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_labels: bool,
+    #[arg(long, help = "Episode version (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeListArgs {
-    #[arg(long, help = "Filter text labels, e.g. task:drive; space-separated terms must all match (quote values containing spaces)", allow_hyphen_values = true, value_parser = parse_non_blank)]
-    pub(crate) label_query: Option<String>,
-
-    #[arg(long, help = "Include episode labels in JSON output", action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool)]
-    pub(crate) include_labels: bool,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(
@@ -987,6 +996,18 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
+    #[arg(
+        long, help = "Include episode labels in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_labels: bool,
+    #[arg(long, help = "Filter text labels, e.g. 'task:\"fold towel\"'; space-separated terms must all match", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) label_query: Option<String>,
     #[arg(
         long,
         help = "Maximum number of items to return (1-2000, default: 50)",
@@ -1816,16 +1837,16 @@ async fn dispatch_dataset_version_command(
 
 async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
     match command {
-        EpisodesCommand::EditBulk(args) => {
-            let format = args.format.format;
-            episodes::edit_episodes(runtime, &args, format).await
-        }
+        EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
+        EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Edit(args) => {
             let format = args.format.format;
             episodes::edit_episode(runtime, &args, format).await
         }
-        EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
-        EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
+        EpisodesCommand::EditBulk(args) => {
+            let format = args.format.format;
+            episodes::edit_episodes(runtime, &args, format).await
+        }
         EpisodesCommand::Get(args) => {
             let format = args.format.format;
             episodes::get_episode(runtime, &args, format).await
