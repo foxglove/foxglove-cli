@@ -854,6 +854,8 @@ enum EpisodesCommand {
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+    #[command(about = "Inspect episode version history", subcommand)]
+    Versions(EpisodeVersionsCommand),
 }
 
 #[derive(Debug, Args)]
@@ -885,6 +887,24 @@ pub(crate) struct EpisodeAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EpisodeVersionsCommand {
+    #[command(about = "List episode versions, newest first")]
+    List(EpisodeVersionListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(long, help = "Maximum items (1-2000, default: 50)", value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Cursor from the preceding page", value_parser = parse_non_blank)]
+    pub(crate) cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1769,6 +1789,10 @@ async fn dispatch_dataset_version_command(
 
 async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
     match command {
+        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_versions(runtime, &args, format).await
+        }
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Get(args) => {
