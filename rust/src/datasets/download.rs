@@ -68,13 +68,12 @@ enum Status {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManifestEpisode {
+    index: usize,
+    id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     version: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     labels: Option<Value>,
-
-    index: usize,
-    id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<String>,
     start_time: String,
@@ -448,6 +447,8 @@ async fn download_episodes(
         let name = episode_file_name(index, &entry.episode.id);
         let path = directory.join(&name);
         let on_disk = earlier.get(&name).filter(|episode| {
+            // Files without the selected version may contain newer episode data.
+            // Download again rather than reuse bytes from an unverified version.
             episode.version == entry.episode.version
                 && std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
         });
@@ -588,8 +589,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         .find(|entry| entry.episode.version.is_none_or(|version| version < 1))
     {
         return Outcome::failure(format!(
-            "Episode {} has no valid version pin; cannot download this dataset reproducibly\n",
-            entry.episode.id
+            "Dataset version {} lists episode {} without a valid episode version. Try again later or contact Foxglove support.\n",
+            version.version_number, entry.episode.id
         ));
     }
     let root = default_directory_name(&dataset.name, version.version_number);
@@ -620,8 +621,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         selection: ManifestSelection {
             topics: topic_list(args.topics.as_deref()),
-            // The app always includes attachments and never writes this field, so a
-            // default download writes the same manifest as the app.
+            // Omit the default attachment selection, matching the app manifest.
+            // Explicitly disabling attachments changes which files can be reused.
             include_attachments: (!args.include_attachments).then_some(false),
             episode_count: episodes.len(),
         },

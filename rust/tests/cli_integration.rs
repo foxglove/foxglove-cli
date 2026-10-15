@@ -4685,6 +4685,45 @@ fn dataset_download_requires_a_version_pin_before_streaming() {
     let server = Server::new(dataset_replies(&[episode.to_string()]));
     let output = run(&workspace, &server, &["datasets", "download", "ds_one"]);
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("no valid version pin"));
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("Dataset version 4 lists episode ep_one without a valid episode version"));
     assert_eq!(server.finish().len(), 3);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn resuming_a_dataset_redownloads_unverified_episode_versions() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", false)]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+    for old_version in [None, Some(1)] {
+        let mut manifest = download_manifest(&workspace);
+        for episode in manifest["episodes"].as_array_mut().unwrap() {
+            if let Some(version) = old_version {
+                episode["version"] = serde_json::json!(version);
+            } else {
+                episode.as_object_mut().unwrap().remove("version");
+            }
+        }
+        fs::write(
+            workspace.0.join("Highway-merges-v4/manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let mut replies = dataset_replies(&[dataset_episode("ep_one", false)]);
+        replies.extend(export_replies(episode_mcap()));
+        let server = Server::new(replies);
+        assert_success(&download_dataset(&workspace, &server, &[]));
+        let requests = server.finish();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.starts_with("POST /v1/data/stream "))
+                .count(),
+            1
+        );
+    }
 }
