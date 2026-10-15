@@ -19,7 +19,7 @@ use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
     DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
-use crate::episodes::{include_recordings, parse_time_range, Episode};
+use crate::episodes::{episode_includes, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, null_to_default, plural,
@@ -201,7 +201,7 @@ pub(crate) async fn list_dataset_episodes(
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
-        include: include_recordings(args.include_recordings),
+        include: episode_includes(args.include_recordings, false),
         limit,
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
