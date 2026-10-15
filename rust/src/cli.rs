@@ -373,6 +373,8 @@ pub(crate) struct ExportArgs {
     pub(crate) end: Option<String>,
     #[arg(long, help = "Episode ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) episode_id: Option<String>,
+    #[arg(long, help = "Episode version to export (default: latest)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
     #[arg(
         long, help = "Include MCAP attachments",
         action = clap::ArgAction::Set,

@@ -184,6 +184,10 @@ impl std::error::Error for ApiError {
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamRequest {
+    /// Version of the episode selected by `episode_id`; omit for latest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode_version: Option<i32>,
+
     #[serde(skip_serializing_if = "String::is_empty")]
     pub recording_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -235,6 +239,12 @@ impl StreamRequest {
         let session = !self.session_id.is_empty() || !self.session_key.is_empty();
         let device = !self.device_id.is_empty() || !self.device_name.is_empty();
         let episode = !self.episode_id.is_empty();
+        if self
+            .episode_version
+            .is_some_and(|version| !episode || version < 1)
+        {
+            return Err("episode-version requires episode-id and must be positive".to_owned());
+        }
         if !(recording || session || device || episode) {
             return Err("either recording-id/key, session-id/session-key, episode-id, or device-id/device-name with start/end are required".to_owned());
         }
