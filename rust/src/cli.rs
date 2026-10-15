@@ -741,7 +741,12 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(
+        long,
+        help = "Filter to episodes whose metadata matches key:value terms, e.g. 'task:\"fold towel\" attempts:3'; all terms must match",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
     pub(crate) metadata_query: Option<String>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
@@ -949,7 +954,12 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
-    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(
+        long,
+        help = "Filter to episodes whose metadata matches key:value terms, e.g. 'task:\"fold towel\" attempts:3'; all terms must match",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
     pub(crate) metadata_query: Option<String>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
