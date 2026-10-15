@@ -245,6 +245,14 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
+Filter episode metadata with space-separated `key:value` terms; all terms must
+match. Keep inner double quotes around values containing spaces. The same flag
+works with `datasets episodes list`, including a selected dataset version:
+
+```
+$ foxglove episodes list --metadata-query 'task:"fold towel" attempts:3'
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:

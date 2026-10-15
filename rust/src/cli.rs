@@ -705,9 +705,6 @@ pub(crate) struct DatasetListArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct DatasetEpisodeListArgs {
-    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
-    pub(crate) metadata_query: Option<String>,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(value_name = "DATASET_ID")]
@@ -744,6 +741,8 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) metadata_query: Option<String>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
     #[arg(
@@ -916,9 +915,6 @@ pub(crate) struct EpisodeGetArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeListArgs {
-    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
-    pub(crate) metadata_query: Option<String>,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(
@@ -953,6 +949,8 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) metadata_query: Option<String>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]

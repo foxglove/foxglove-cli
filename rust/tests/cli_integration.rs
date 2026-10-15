@@ -1990,6 +1990,15 @@ fn blank_and_conflicting_filters_are_rejected() {
     let workspace = Workspace::new();
     for args in [
         &["episodes", "list", "--recording-id="][..],
+        &["episodes", "list", "--metadata-query", " "],
+        &[
+            "datasets",
+            "episodes",
+            "list",
+            "ds_1",
+            "--metadata-query",
+            " ",
+        ],
         &["recordings", "list", "--device-id="],
         &["sessions", "list", "--device-id", " "],
         &["events", "list", "--sort-by", "", "--sort-order", "desc"],
@@ -4615,21 +4624,16 @@ fn episode_metadata_queries_preserve_expression() {
         ),
     ];
     for &(args, path, body) in cases {
-        let server = Server::new(vec![Reply::json("GET", path, body)]);
-        let mut command = args.to_vec();
-        command.extend([
-            "--metadata-query",
-            r#"task:"fold towel" attempts:3"#,
-            "--format",
-            "json",
-        ]);
-        assert_success(&run(&workspace, &server, &command));
-        let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        assert!(url
-            .query_pairs()
-            .any(|(name, value)| name == "metadataQuery"
-                && value == r#"task:"fold towel" attempts:3"#));
+        for expression in [None, Some(r#"task:"fold towel" attempts:3"#)] {
+            let server = Server::new(vec![Reply::json("GET", path, body)]);
+            let mut command = args.to_vec();
+            if let Some(expression) = expression {
+                command.extend(["--metadata-query", expression]);
+            }
+            command.extend(["--format", "json"]);
+            assert_success(&run(&workspace, &server, &command));
+            let query = query_pairs(&server.finish()[0]);
+            assert_eq!(query.get("metadataQuery").map(String::as_str), expression);
+        }
     }
 }
