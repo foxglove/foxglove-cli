@@ -705,6 +705,9 @@ pub(crate) struct DatasetListArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct DatasetEpisodeListArgs {
+    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) metadata_query: Option<String>,
+
     #[command(flatten)]
     format: FormatArgs,
     #[arg(value_name = "DATASET_ID")]
@@ -913,6 +916,9 @@ pub(crate) struct EpisodeGetArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeListArgs {
+    #[arg(long, help = "Filter metadata using key:value terms; quote values containing spaces", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) metadata_query: Option<String>,
+
     #[command(flatten)]
     format: FormatArgs,
     #[arg(

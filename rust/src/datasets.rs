@@ -139,6 +139,9 @@ struct DatasetListQuery<'a> {
 #[serde(rename_all = "camelCase")]
 struct DatasetEpisodeListQuery<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
+    metadata_query: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
@@ -198,6 +201,7 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
+        metadata_query: args.metadata_query.clone(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
