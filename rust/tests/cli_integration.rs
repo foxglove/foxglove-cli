@@ -4694,3 +4694,40 @@ fn episode_edits_preserve_label_removals_and_report_conflicts() {
         serde_json::json!({"appliesToVersion":2,"startTime":"2024-01-02T03:04:05.123Z","recordings":{"add":["rec_new"],"remove":["rec_old"]},"labels":{"task":{"type":"TEXT","content":"fold"},"old":null}})
     );
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn bulk_episode_edits_send_one_atomic_request_and_keep_result_order() {
+    let workspace = Workspace::new();
+    let patch = r#"{"episodes":[{"id":"ep_two","appliesToVersion":1,"labels":{"old":null}},{"id":"ep_one","recordings":{"add":["rec_one"]}}]}"#;
+    fs::write(workspace.0.join("patch.json"), patch).unwrap();
+    let server = Server::new(vec![Reply::json(
+        "PATCH",
+        "/v1/episodes",
+        r#"{"episodes":[{"id":"ep_two","version":2},{"id":"ep_one","version":3}]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "edit-bulk",
+            "--file",
+            "patch.json",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    let output: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        output["data"],
+        serde_json::json!([{"id":"ep_two","version":2},{"id":"ep_one","version":3}])
+    );
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::from_str::<serde_json::Value>(patch).unwrap()
+    );
+}

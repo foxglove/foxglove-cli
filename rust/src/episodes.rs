@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::encode_path_segment;
-use crate::cli::{EpisodeAddArgs, EpisodeEditArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
+use crate::cli::{
+    EpisodeAddArgs, EpisodeBulkEditArgs, EpisodeEditArgs, EpisodeGetArgs, EpisodeIdArgs,
+    EpisodeListArgs,
+};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
@@ -436,9 +439,89 @@ fn episode_patch(args: &EpisodeEditArgs) -> Result<Value, String> {
     Ok(patch.into())
 }
 
+#[derive(Deserialize, Serialize)]
+struct EpisodeUpdateResult {
+    id: String,
+    version: i32,
+}
+
+impl Record for EpisodeUpdateResult {
+    fn headers() -> &'static [&'static str] {
+        &["ID", "Version"]
+    }
+    fn fields(&self) -> Vec<String> {
+        vec![self.id.clone(), self.version.to_string()]
+    }
+}
+
+#[derive(Deserialize)]
+struct EpisodeUpdatesResponse {
+    episodes: Vec<EpisodeUpdateResult>,
+}
+
+fn bulk_patch(raw: &[u8]) -> Result<Value, String> {
+    let request: Value =
+        serde_json::from_slice(raw).map_err(|error| format!("Invalid patch JSON: {error}"))?;
+    let episodes = request
+        .get("episodes")
+        .and_then(Value::as_array)
+        .ok_or("Patch file must contain an episodes array")?;
+    if !(1..=2000).contains(&episodes.len()) {
+        return Err("Patch file must contain 1-2000 episodes".to_owned());
+    }
+    let mut ids = std::collections::HashSet::new();
+    for episode in episodes {
+        let id = episode
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.trim().is_empty())
+            .ok_or("Each patch needs a nonempty episode id")?;
+        if !ids.insert(id) {
+            return Err(format!("Duplicate episode ID: {id}"));
+        }
+    }
+    Ok(request)
+}
+
+pub(crate) async fn edit_episodes(
+    runtime: &Runtime,
+    args: &EpisodeBulkEditArgs,
+    format: Format,
+) -> Outcome {
+    let raw = match tokio::fs::read(&args.file).await {
+        Ok(raw) => raw,
+        Err(error) => {
+            return Outcome::failure(format!("Failed to read {}: {error}\n", args.file.display()))
+        }
+    };
+    let request = match bulk_patch(&raw) {
+        Ok(request) => request,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    match runtime
+        .client
+        .patch::<_, _, EpisodeUpdatesResponse>("/v1/episodes", &(), &request)
+        .await
+    {
+        Ok(response) => format_list_output(&response.episodes, format, NextCursor::NotPaginated),
+        Err(error) => Outcome::failure(format!("Failed to edit episodes: {error}\n")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_time_range, Episode};
+    use super::{bulk_patch, parse_time_range, Episode};
+
+    #[test]
+    fn invalid_bulk_patches_are_rejected() {
+        for raw in [
+            r#"{"episodes":[]}"#,
+            r#"{"episodes":[{"id":"ep_one"},{"id":"ep_one"}]}"#,
+            r#"{"episodes":[{}]}"#,
+        ] {
+            assert!(bulk_patch(raw.as_bytes()).is_err());
+        }
+    }
 
     #[test]
     fn an_absent_recordings_list_is_omitted_from_json_output() {

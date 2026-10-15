@@ -854,6 +854,8 @@ enum EpisodesCommand {
     Get(EpisodeGetArgs),
     #[command(about = "Edit an episode and create a version when its contents change")]
     Edit(EpisodeEditArgs),
+    #[command(about = "Apply episode patches atomically from a JSON file")]
+    EditBulk(EpisodeBulkEditArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
 }
@@ -910,6 +912,14 @@ pub(crate) struct EpisodeEditArgs {
         help = "JSON object of TEXT or URI labels; null values remove keys"
     )]
     pub(crate) labels: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeBulkEditArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "JSON file containing {\"episodes\":[{\"id\":\"...\",...}]} (1-2000 unique IDs)", value_hint = clap::ValueHint::FilePath)]
+    pub(crate) file: std::path::PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1806,6 +1816,10 @@ async fn dispatch_dataset_version_command(
 
 async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
     match command {
+        EpisodesCommand::EditBulk(args) => {
+            let format = args.format.format;
+            episodes::edit_episodes(runtime, &args, format).await
+        }
         EpisodesCommand::Edit(args) => {
             let format = args.format.format;
             episodes::edit_episode(runtime, &args, format).await
