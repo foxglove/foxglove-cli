@@ -4667,26 +4667,47 @@ fn episode_text_label_queries_reach_the_api() {
 #[ignore = "requires loopback sockets"]
 fn comparison_reports_episode_version_changes() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json(
-        "GET",
-        "/v1/datasets/ds_fixture/versions/2/compare",
-        r#"{"changes":[],"addedCount":0,"removedCount":0,"changedCount":2}"#,
-    )]);
-    let output = run(
-        &workspace,
-        &server,
-        &[
-            "datasets",
-            "versions",
-            "compare",
-            "ds_fixture",
-            "1",
-            "2",
-            "--format",
-            "json",
-        ],
-    );
-    assert_success(&output);
-    assert!(String::from_utf8_lossy(&output.stderr).contains("2 changed"));
-    server.finish();
+    let mut entry: serde_json::Value = serde_json::from_str(&change("changed", "ep_one")).unwrap();
+    entry["episode"]["version"] = serde_json::json!(3);
+    entry["previousVersion"] = serde_json::json!(2);
+    entry["previousEpisode"] = entry["episode"].clone();
+    entry["previousEpisode"]["version"] = serde_json::json!(2);
+    let response =
+        serde_json::json!({"changes":[entry],"addedCount":0,"removedCount":0,"changedCount":1})
+            .to_string();
+    for format in ["json", "table"] {
+        let server = Server::new(vec![Reply::json(
+            "GET",
+            "/v1/datasets/ds_fixture/versions/2/compare",
+            &response,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "datasets",
+                "versions",
+                "compare",
+                "ds_fixture",
+                "1",
+                "2",
+                "--format",
+                format,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "0 episodes added, 0 removed, 1 changed\n"
+        );
+        server.finish();
+        if format == "json" {
+            let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(value["data"][0]["change"], "changed");
+            assert_eq!(value["data"][0]["previousEpisode"]["version"], 2);
+            assert_eq!(value["data"][0]["episode"]["version"], 3);
+        } else {
+            assert!(String::from_utf8_lossy(&output.stdout).contains("Previous Episode Version"));
+        }
+    }
 }

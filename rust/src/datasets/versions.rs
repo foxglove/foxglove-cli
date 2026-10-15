@@ -13,7 +13,7 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::episode_includes;
+use crate::episodes::{episode_includes, Episode};
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
@@ -110,20 +110,20 @@ impl Record for DatasetVersionDetail {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct DatasetEpisodeChange {
+    change: String,
     #[serde(
         rename = "previousVersion",
         default,
         skip_serializing_if = "Option::is_none"
     )]
+    // Episode version selected by the base dataset version.
     previous_version: Option<i32>,
     #[serde(
         rename = "previousEpisode",
         default,
         skip_serializing_if = "Option::is_none"
     )]
-    previous_episode: Option<crate::episodes::Episode>,
-
-    change: String,
+    previous_episode: Option<Episode>,
     #[serde(flatten)]
     entry: DatasetEpisode,
 }
@@ -158,6 +158,11 @@ impl Record for DatasetEpisodeChange {
         );
         fields.push(
             self.previous_version
+                .or_else(|| {
+                    self.previous_episode
+                        .as_ref()
+                        .and_then(|episode| episode.version)
+                })
                 .map(|v| v.to_string())
                 .unwrap_or_default(),
         );
@@ -588,6 +593,9 @@ mod tests {
             changed.fields().len(),
             DatasetEpisodeChange::headers().len()
         );
-        assert_eq!(&changed.fields()[10..], ["3", "2"]);
+        assert_eq!(
+            &changed.fields()[1 + DatasetEpisode::headers().len()..],
+            ["3", "2"]
+        );
     }
 }
