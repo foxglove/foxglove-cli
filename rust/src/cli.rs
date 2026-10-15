@@ -920,12 +920,6 @@ pub(crate) struct EpisodeIdArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeGetArgs {
-    #[arg(long, help = "Episode version (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
-    pub(crate) version: Option<i32>,
-
-    #[arg(long, help = "Include episode labels in JSON output", action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool)]
-    pub(crate) include_labels: bool,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(value_name = "EPISODE_ID")]
@@ -940,16 +934,22 @@ pub(crate) struct EpisodeGetArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
+    #[arg(
+        long, help = "Include episode labels in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_labels: bool,
+    #[arg(long, help = "Episode version (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeListArgs {
-    #[arg(long, help = "Filter text labels, e.g. task:drive; space-separated terms must all match (quote values containing spaces)", allow_hyphen_values = true, value_parser = parse_non_blank)]
-    pub(crate) label_query: Option<String>,
-
-    #[arg(long, help = "Include episode labels in JSON output", action = clap::ArgAction::Set, num_args = 0..=1, require_equals = true, default_missing_value = "true", default_value = "false", value_parser = parse_bool)]
-    pub(crate) include_labels: bool,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(
@@ -977,6 +977,18 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
+    #[arg(
+        long, help = "Include episode labels in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_labels: bool,
+    #[arg(long, help = "Filter text labels, e.g. 'task:\"fold towel\"'; space-separated terms must all match", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) label_query: Option<String>,
     #[arg(
         long,
         help = "Maximum number of items to return (1-2000, default: 50)",

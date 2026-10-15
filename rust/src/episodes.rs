@@ -29,9 +29,6 @@ pub(crate) struct RecordingObjectLocation {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct EpisodeRecording {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) resolvable: Option<bool>,
-
     pub(crate) id: String,
     #[serde(default)]
     pub(crate) path: String,
@@ -45,21 +42,12 @@ pub(crate) struct EpisodeRecording {
     pub(crate) device_id: String,
     #[serde(default)]
     pub(crate) available: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resolvable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Episode {
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) version: Option<i32>,
-    #[serde(
-        rename = "latestVersion",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub(crate) latest_version: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) labels: Option<Value>,
-
     pub(crate) id: String,
     #[serde(rename = "projectId")]
     pub(crate) project_id: String,
@@ -79,6 +67,16 @@ pub(crate) struct Episode {
     pub(crate) has_missing_recordings: Option<bool>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) version: Option<i32>,
+    #[serde(
+        rename = "latestVersion",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub(crate) latest_version: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) labels: Option<Value>,
 }
 
 impl Episode {
@@ -139,9 +137,6 @@ pub(crate) struct EpisodeListResponse {
 #[serde(rename_all = "camelCase")]
 struct EpisodeListQuery<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
-    label_query: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
@@ -149,6 +144,8 @@ struct EpisodeListQuery<'a> {
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_query: Option<&'a str>,
     limit: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
@@ -160,14 +157,6 @@ struct EpisodeListQuery<'a> {
     sort_order: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
-}
-
-pub(crate) fn include_recordings(requested: bool) -> String {
-    if requested {
-        "recordings".to_owned()
-    } else {
-        String::new()
-    }
 }
 
 pub(crate) fn episode_includes(recordings: bool, labels: bool) -> String {
@@ -204,11 +193,11 @@ pub(crate) async fn list_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = EpisodeListQuery {
-        label_query: args.label_query.clone(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
         include: episode_includes(args.include_recordings, args.include_labels),
+        label_query: args.label_query.as_deref(),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
