@@ -284,6 +284,23 @@ $ foxglove episodes edit ep_BCUw2zxpBnToJbOS --applies-to-version 2 \
     --labels '{"task":{"type":"TEXT","content":"fold"},"old":null}' --format json
 ```
 
+Apply multiple edits atomically from a JSON file: the API applies all patches or
+none. Each entry requires `id` and can contain `appliesToVersion`, `startTime`,
+`endTime`, `recordings` with `add`/`remove` arrays, and `labels`. Label values merge
+by key; null removes a key. An ID-only patch is a no-op returning the current
+version. Timestamps are sent unchanged and must use the API's ISO 8601 date-time
+format at millisecond precision (for example `2026-04-19T13:22:44.123Z`).
+
+Example `patches.json`:
+
+```json
+{"episodes":[{"id":"ep_example","appliesToVersion":2,"recordings":{"add":["rec_new"]},"labels":{"old":null}}]}
+```
+
+```
+$ foxglove episodes edit-bulk patches.json --format json
+```
+
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
 on when each episode joined the dataset:
 

@@ -852,6 +852,8 @@ enum EpisodesCommand {
     Delete(EpisodeIdArgs),
     #[command(about = "Edit an episode and create a version when its contents change")]
     Edit(EpisodeEditArgs),
+    #[command(about = "Apply episode patches atomically from a JSON file")]
+    EditBulk(EpisodeBulkEditArgs),
     #[command(about = "Get an episode")]
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
@@ -919,6 +921,14 @@ pub(crate) struct EpisodeEditArgs {
         help = "Merge labels by key, e.g. '{\"task\":{\"type\":\"TEXT\",\"content\":\"fold\"}}'; a null value removes that key"
     )]
     pub(crate) labels: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeBulkEditArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with an episodes array of patches (1-2000 unique IDs)")]
+    pub(crate) file: std::path::PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1832,6 +1842,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::Edit(args) => {
             let format = args.format.format;
             episodes::edit_episode(runtime, &args, format).await
+        }
+        EpisodesCommand::EditBulk(args) => {
+            let format = args.format.format;
+            episodes::edit_episodes(runtime, &args, format).await
         }
         EpisodesCommand::Get(args) => {
             let format = args.format.format;
