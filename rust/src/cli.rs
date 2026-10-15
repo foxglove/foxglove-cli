@@ -897,7 +897,7 @@ pub(crate) struct EpisodeEditArgs {
     format: FormatArgs,
     #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
     pub(crate) episode_id: String,
-    #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
+    #[arg(long, help = "Fail unless the latest episode version matches this value", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) applies_to_version: Option<i32>,
     #[arg(long, help = "New start of the episode window (ISO 8601)")]
     pub(crate) start: Option<String>,
