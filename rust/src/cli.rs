@@ -2015,7 +2015,7 @@ mod tests {
     use std::ffi::OsString;
     use std::io::Cursor;
 
-    use clap::{CommandFactory, Parser};
+    use clap::{error::ErrorKind, CommandFactory, Parser};
 
     use crate::output::Format;
     use crate::run;
@@ -2134,28 +2134,37 @@ mod tests {
     ];
     #[test]
     fn topic_episode_version_requires_an_exclusive_episode_selector() {
-        for args in [
-            vec!["foxglove", "topics", "list", "--episode-version", "2"],
-            vec![
-                "foxglove",
-                "topics",
-                "list",
-                "--episode-id",
-                "ep_1",
-                "--recording-id",
-                "rec_1",
-            ],
-            vec![
-                "foxglove",
-                "topics",
-                "list",
-                "--episode-id",
-                "ep_1",
-                "--device-id",
-                "dev_1",
-            ],
+        for (args, kind) in [
+            (
+                vec!["foxglove", "topics", "list", "--episode-version", "2"],
+                ErrorKind::MissingRequiredArgument,
+            ),
+            (
+                vec![
+                    "foxglove",
+                    "topics",
+                    "list",
+                    "--episode-id",
+                    "ep_1",
+                    "--recording-id",
+                    "rec_1",
+                ],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                vec![
+                    "foxglove",
+                    "topics",
+                    "list",
+                    "--episode-id",
+                    "ep_1",
+                    "--device-id",
+                    "dev_1",
+                ],
+                ErrorKind::ArgumentConflict,
+            ),
         ] {
-            assert!(super::Cli::try_parse_from(args).is_err());
+            assert_eq!(super::Cli::try_parse_from(args).unwrap_err().kind(), kind);
         }
     }
 
