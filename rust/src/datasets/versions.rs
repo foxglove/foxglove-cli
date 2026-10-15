@@ -111,12 +111,12 @@ impl Record for DatasetVersionDetail {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct DatasetEpisodeChange {
     change: String,
+    /// Episode version selected by the base dataset version.
     #[serde(
         rename = "previousVersion",
         default,
         skip_serializing_if = "Option::is_none"
     )]
-    // Episode version selected by the base dataset version.
     previous_version: Option<i32>,
     #[serde(
         rename = "previousEpisode",
