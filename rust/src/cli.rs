@@ -850,10 +850,10 @@ enum EpisodesCommand {
     Add(EpisodeAddArgs),
     #[command(about = "Delete an episode")]
     Delete(EpisodeIdArgs),
-    #[command(about = "Get an episode")]
-    Get(EpisodeGetArgs),
     #[command(about = "Edit an episode and create a version when its contents change")]
     Edit(EpisodeEditArgs),
+    #[command(about = "Get an episode")]
+    Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
 }
@@ -895,19 +895,28 @@ pub(crate) struct EpisodeEditArgs {
     format: FormatArgs,
     #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
     pub(crate) episode_id: String,
-    #[arg(long, help = "Fail unless the latest episode version matches this value", value_parser = clap::value_parser!(i32).range(1..))]
+    #[arg(long, allow_hyphen_values = true, help = "Fail unless the latest episode version matches this value", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) applies_to_version: Option<i32>,
-    #[arg(long, help = "New start of the episode window (ISO 8601)")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "New start of the episode window (ISO 8601)"
+    )]
     pub(crate) start: Option<String>,
-    #[arg(long, help = "New end of the episode window (ISO 8601)")]
+    #[arg(
+        long,
+        allow_hyphen_values = true,
+        help = "New end of the episode window (ISO 8601)"
+    )]
     pub(crate) end: Option<String>,
-    #[arg(long, help = "Recording ID to add; repeat for more", value_parser = parse_id)]
+    #[arg(long, allow_hyphen_values = true, help = "Recording ID to add; repeat for more", value_parser = parse_id)]
     pub(crate) add_recording: Vec<String>,
-    #[arg(long, help = "Recording ID to remove; repeat for more", value_parser = parse_id)]
+    #[arg(long, allow_hyphen_values = true, help = "Recording ID to remove; repeat for more", value_parser = parse_id)]
     pub(crate) remove_recording: Vec<String>,
     #[arg(
         long,
-        help = "JSON object of TEXT or URI labels; null values remove keys"
+        allow_hyphen_values = true,
+        help = "Merge labels by key, e.g. '{\"task\":{\"type\":\"TEXT\",\"content\":\"fold\"}}'; a null value removes that key"
     )]
     pub(crate) labels: Option<String>,
 }
@@ -1818,12 +1827,12 @@ async fn dispatch_dataset_version_command(
 
 async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesCommand) -> Outcome {
     match command {
+        EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
+        EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Edit(args) => {
             let format = args.format.format;
             episodes::edit_episode(runtime, &args, format).await
         }
-        EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
-        EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Get(args) => {
             let format = args.format.format;
             episodes::get_episode(runtime, &args, format).await

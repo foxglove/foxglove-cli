@@ -4705,4 +4705,53 @@ fn episode_edits_preserve_label_removals_and_report_conflicts() {
         body,
         serde_json::json!({"appliesToVersion":2,"startTime":"2024-01-02T03:04:05.123Z","recordings":{"add":["rec_new"],"remove":["rec_old"]},"labels":{"task":{"type":"TEXT","content":"fold"},"old":null}})
     );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Get the episode again"));
+    for format in ["json", "table"] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/episodes/ep_one",
+            r#"{"id":"ep_one","projectId":"prj_one","startTime":"2024-01-02T00:00:00Z","endTime":"2024-01-02T00:01:00Z","createdAt":"2024-01-02T00:00:00Z","version":3,"latestVersion":3}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "episodes",
+                "edit",
+                "ep_one",
+                "--applies-to-version",
+                "3",
+                "--format",
+                format,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({"appliesToVersion":3})
+        );
+        if format == "json" {
+            let episode: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(episode["id"], "ep_one");
+            assert_eq!(episode["version"], 3);
+        } else {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(stdout.contains("ep_one"));
+            assert!(stdout.contains("Version"));
+        }
+    }
+    for (flags, expected) in [
+        (vec![], "Nothing to update"),
+        (vec!["--labels", "{"], "Invalid --labels JSON"),
+        (vec!["--labels", "[]"], "--labels must be a JSON object"),
+        (vec!["--start", ""], "--start cannot be empty"),
+    ] {
+        let server = Server::new(vec![]);
+        let mut args = vec!["episodes", "edit", "ep_one"];
+        args.extend(flags);
+        let output = run(&workspace, &server, &args);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
+        server.finish();
+    }
 }

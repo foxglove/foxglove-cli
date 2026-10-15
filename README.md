@@ -254,6 +254,17 @@ $ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --forma
 $ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
 ```
 
+Edit an episode's window, recordings, or labels. Labels merge by key; a null
+value removes that label. `--applies-to-version` checks the latest version before
+applying the edit. On conflict, read the episode again, review its changes, and
+choose whether to retry with the current version. A precondition-only edit checks
+the version without changing the episode.
+
+```
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --applies-to-version 2 \
+    --labels '{"task":{"type":"TEXT","content":"fold"},"old":null}' --format json
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:

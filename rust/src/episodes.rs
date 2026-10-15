@@ -379,7 +379,13 @@ pub(crate) async fn edit_episode(
         .await
     {
         Ok(episode) => format_record(&episode, format),
-        Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
+        Err(error) => {
+            let mut message = format!("Failed to edit episode: {error}\n");
+            if matches!(error, crate::api::ApiError::Response { status: 409, .. }) {
+                message.push_str("Get the episode again and review its current state before retrying with --applies-to-version set to its current version.\n");
+            }
+            Outcome::failure(message)
+        }
     }
 }
 
@@ -396,6 +402,7 @@ fn episode_patch(args: &EpisodeEditArgs) -> Result<Value, String> {
             patch.insert(key.to_owned(), parse_timestamp_millis(value, flag)?.into());
         }
     }
+    // A precondition-only patch checks the current version without changing it.
     if let Some(version) = args.applies_to_version {
         patch.insert("appliesToVersion".to_owned(), version.into());
     }
