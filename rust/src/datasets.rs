@@ -435,8 +435,7 @@ pub(crate) async fn delete_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
 
 const MAX_EPISODE_CHANGES: usize = 2000;
 
-#[derive(Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Copy)]
 pub(crate) enum EpisodeChange {
     Add,
     Update,
