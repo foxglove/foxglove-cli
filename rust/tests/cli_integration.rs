@@ -4596,3 +4596,20 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn discarding_version_updates_reports_them() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets/ds_one/discard",
+        r#"{"discardedAdds":0,"discardedRemoves":0,"discardedUpdates":2}"#,
+    )]);
+    let output = run(&workspace, &server, &["datasets", "discard", "ds_one"]);
+    assert_success(&output);
+    server.finish();
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("2 episode version updates"));
+    assert!(!message.contains("No pending changes"));
+}
