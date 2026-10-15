@@ -4740,6 +4740,12 @@ fn episode_edits_preserve_label_removals_and_report_conflicts() {
             assert!(stdout.contains("Version"));
         }
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn invalid_episode_edits_and_missing_episodes_report_clear_errors() {
+    let workspace = Workspace::new();
     for (flags, expected) in [
         (vec![], "Nothing to update"),
         (vec!["--labels", "{"], "Invalid --labels JSON"),
