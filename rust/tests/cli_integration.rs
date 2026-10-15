@@ -4596,3 +4596,26 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn restoring_only_version_updates_still_requires_a_commit() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets/ds_one/versions/1/restore",
+        r#"{"added":0,"removed":0,"updated":2,"discardedAdds":0,"discardedRemoves":0,"discardedUpdates":1}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["datasets", "versions", "restore", "ds_one", "1", "--force"],
+    );
+    assert_success(&output);
+    server.finish();
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("Updated 2 episode versions"));
+    assert!(message.contains("Discarded 1 pending episode version update"));
+    assert!(message.contains("datasets commit ds_one"));
+    assert!(!message.contains("The draft matches"));
+}

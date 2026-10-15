@@ -196,6 +196,11 @@ struct DiscardResponse {
 #[serde(rename_all = "camelCase")]
 struct RestoreResponse {
     #[serde(default)]
+    updated: usize,
+    #[serde(default)]
+    discarded_updates: usize,
+
+    #[serde(default)]
     added: usize,
     #[serde(default)]
     removed: usize,
@@ -405,7 +410,14 @@ fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs)
             pending_changes(response.discarded_adds, response.discarded_removes)
         );
     }
-    if response.added == 0 && response.removed == 0 {
+    if response.discarded_updates > 0 {
+        let _ = writeln!(
+            summary,
+            "Discarded {}",
+            plural(response.discarded_updates, "pending episode version update")
+        );
+    }
+    if response.added == 0 && response.removed == 0 && response.updated == 0 {
         let _ = writeln!(summary, "The draft matches version {}", args.version);
     } else {
         let _ = writeln!(
@@ -415,6 +427,13 @@ fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs)
             plural(response.added, "episode"),
             response.removed
         );
+        if response.updated > 0 {
+            let _ = writeln!(
+                summary,
+                "Updated {}",
+                plural(response.updated, "episode version")
+            );
+        }
         summary.push_str(&commit_hint(&args.dataset_id));
     }
     summary
