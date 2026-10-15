@@ -449,7 +449,7 @@ enum DatasetsCommand {
     Add(DatasetAddArgs),
     #[command(
         about = "Commit a dataset's pending changes as a new version",
-        long_about = "Commit a dataset's pending changes as a new version. The summary reports added, removed, and changed episodes. A changed episode is in both versions, but with a different selected episode version."
+        long_about = "Commit a dataset's pending changes as a new version. The summary reports added, removed, and changed episodes. A changed episode is present in the new dataset version and the previous committed dataset version, but uses a different episode version."
     )]
     Commit(DatasetIdArgs),
     #[command(about = "Delete a dataset")]
@@ -581,12 +581,12 @@ enum DatasetVersionsCommand {
     Compare(DatasetVersionCompareArgs),
     #[command(
         about = "Get a dataset version",
-        long_about = "Get a dataset version. Changed counts episodes present in both versions with a different selected episode version."
+        long_about = "Get a dataset version. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version."
     )]
     Get(DatasetVersionGetArgs),
     #[command(
         about = "List a dataset's versions",
-        long_about = "List a dataset's versions. Changed counts episodes present in both versions with a different selected episode version."
+        long_about = "List a dataset's versions. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version."
     )]
     List(DatasetVersionListArgs),
     #[command(about = "Restore a committed version's episodes as pending changes")]
