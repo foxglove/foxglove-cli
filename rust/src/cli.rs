@@ -913,9 +913,6 @@ pub(crate) struct EpisodeGetArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeListArgs {
-    #[arg(long, help = "Exact recording set; comma-separated IDs (maximum 50)", value_delimiter = ',', value_parser = parse_id, num_args = 1)]
-    pub(crate) exact_recording_ids: Vec<String>,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(
@@ -924,6 +921,8 @@ pub(crate) struct EpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Filter to episodes whose recordings are exactly these display IDs; comma-separated (maximum 50)", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_id, num_args = 1)]
+    pub(crate) exact_recording_ids: Vec<String>,
     #[arg(
         long, help = "Filter to episodes with, or without, recordings that are no longer available",
         action = clap::ArgAction::Set,

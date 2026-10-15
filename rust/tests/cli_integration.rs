@@ -1990,6 +1990,7 @@ fn blank_and_conflicting_filters_are_rejected() {
     let workspace = Workspace::new();
     for args in [
         &["episodes", "list", "--recording-id="][..],
+        &["episodes", "list", "--exact-recording-ids", "rec_1,"],
         &["recordings", "list", "--device-id="],
         &["sessions", "list", "--device-id", " "],
         &["events", "list", "--sort-by", "", "--sort-order", "desc"],
@@ -4601,18 +4602,43 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
 #[ignore = "requires loopback sockets"]
 fn episode_exact_recording_set_is_comma_separated() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str)] =
-        &[(&["episodes", "list"], "/v1/episodes", r#"{"episodes":[]}"#)];
-    for &(args, path, body) in cases {
-        let server = Server::new(vec![Reply::json("GET", path, body)]);
-        let mut command = args.to_vec();
-        command.extend(["--exact-recording-ids", "rec_1,rec_2", "--format", "json"]);
-        assert_success(&run(&workspace, &server, &command));
-        let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        assert!(url
-            .query_pairs()
-            .any(|(name, value)| name == "exactRecordingIds" && value == "rec_1,rec_2"));
-    }
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/episodes",
+        r#"{"episodes":[]}"#,
+    )]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "list",
+            "--exact-recording-ids",
+            " rec_1 ,rec_2",
+            "--exact-recording-ids",
+            "rec_3",
+            "--format",
+            "json",
+        ],
+    ));
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("exactRecordingIds", "rec_1,rec_2,rec_3"), ("limit", "50"),])
+    );
+    let server = Server::new(vec![]);
+    let ids = (0..51)
+        .map(|i| format!("rec_{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let output = run(
+        &workspace,
+        &server,
+        &["episodes", "list", "--exact-recording-ids", &ids],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "--exact-recording-ids accepts at most 50 IDs\n"
+    );
+    server.finish();
 }

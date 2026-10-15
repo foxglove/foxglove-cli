@@ -245,6 +245,13 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
+Match an exact set of recording display IDs, with none missing or extra
+(maximum 50 IDs). The flag accepts comma-separated values and may be repeated:
+
+```
+$ foxglove episodes list --exact-recording-ids rec_lwjzOMxryMmP3yXg,rec_4lVQ9mTp7vRqJY2s
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:
