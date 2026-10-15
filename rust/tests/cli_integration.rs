@@ -1990,6 +1990,15 @@ fn blank_and_conflicting_filters_are_rejected() {
     let workspace = Workspace::new();
     for args in [
         &["episodes", "list", "--recording-id="][..],
+        &["episodes", "list", "--metadata-query", " "],
+        &[
+            "datasets",
+            "episodes",
+            "list",
+            "ds_1",
+            "--metadata-query",
+            " ",
+        ],
         &["recordings", "list", "--device-id="],
         &["sessions", "list", "--device-id", " "],
         &["events", "list", "--sort-by", "", "--sort-order", "desc"],
@@ -4593,6 +4602,38 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
             );
         } else {
             assert_eq!(lines.len(), 3, "{stdout}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_metadata_queries_preserve_expression() {
+    let workspace = Workspace::new();
+    let cases: &[(&[&str], &str, &str)] = &[
+        (&["episodes", "list"], "/v1/episodes", r#"{"episodes":[]}"#),
+        (
+            &["datasets", "episodes", "list", "ds_1"],
+            "/v1/datasets/ds_1/episodes",
+            r#"{"episodes":[]}"#,
+        ),
+        (
+            &["datasets", "episodes", "list", "ds_1", "--version", "2"],
+            "/v1/datasets/ds_1/versions/2/episodes",
+            r#"{"episodes":[]}"#,
+        ),
+    ];
+    for &(args, path, body) in cases {
+        for expression in [None, Some(r#"task:"fold towel" attempts:3"#)] {
+            let server = Server::new(vec![Reply::json("GET", path, body)]);
+            let mut command = args.to_vec();
+            if let Some(expression) = expression {
+                command.extend(["--metadata-query", expression]);
+            }
+            command.extend(["--format", "json"]);
+            assert_success(&run(&workspace, &server, &command));
+            let query = query_pairs(&server.finish()[0]);
+            assert_eq!(query.get("metadataQuery").map(String::as_str), expression);
         }
     }
 }

@@ -147,6 +147,8 @@ struct DatasetEpisodeListQuery<'a> {
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
     limit: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata_query: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -203,6 +205,7 @@ pub(crate) async fn list_dataset_episodes(
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
+        metadata_query: args.metadata_query.as_deref(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
