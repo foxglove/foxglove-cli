@@ -656,6 +656,16 @@ pub(crate) struct DatasetVersionCompareArgs {
     )]
     pub(crate) include_labels: bool,
     #[arg(
+        long, help = "Include episode creation context in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
+    #[arg(
         long,
         help = "Maximum number of changes to return (1-2000, default: 50)",
         allow_hyphen_values = true,
@@ -754,6 +764,16 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_labels: bool,
+    #[arg(
+        long, help = "Include episode creation context in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
     #[arg(long, help = "Filter text labels, e.g. 'task:\"fold towel\"'; space-separated terms must all match", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) label_query: Option<String>,
     #[arg(
@@ -883,6 +903,11 @@ enum EpisodesCommand {
 pub(crate) struct EpisodeAddArgs {
     #[arg(
         long,
+        help = "Creation context JSON, e.g. '{\"version\":1,\"basis\":{\"kind\":\"recordings\",\"recordingIds\":[\"rec_...\"]}}'; omitted or null uses the server default from the episode source"
+    )]
+    pub(crate) creation_context: Option<String>,
+    #[arg(
+        long,
         help = "End of the episode window (ISO 8601); give with --start (default: the end of its recordings)",
         allow_hyphen_values = true
     )]
@@ -984,6 +1009,16 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_labels: bool,
+    #[arg(
+        long, help = "Include episode creation context in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
     #[arg(long, help = "Filter text labels, e.g. 'task:\"fold towel\"'; space-separated terms must all match", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) label_query: Option<String>,
     #[arg(

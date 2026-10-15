@@ -254,6 +254,16 @@ $ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --forma
 $ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
 ```
 
+Include creation context in JSON episode lists, dataset episode lists, or
+dataset version comparisons with `--include-creation-context`. Supply context
+when creating an episode with `--creation-context`; omitted or null context uses
+the server default derived from the source recordings.
+
+```
+$ foxglove episodes list --include-creation-context --format json
+$ foxglove episodes add --project-id prj_WEJUVEOVApoIpe1M --recording-id rec_lwjzOMxryMmP3yXg --creation-context '{"version":1,"basis":{"kind":"recordings","recordingIds":["rec_lwjzOMxryMmP3yXg"]}}'
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode with the same window and recordings
 is reused:
