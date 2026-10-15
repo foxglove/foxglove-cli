@@ -903,7 +903,7 @@ pub(crate) struct EpisodeVersionListArgs {
     pub(crate) episode_id: String,
     #[arg(long, help = "Maximum items (1-2000, default: 50)", value_parser = parse_list_limit)]
     pub(crate) limit: Option<i64>,
-    #[arg(long, help = "Cursor from the preceding page", value_parser = parse_non_blank)]
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
 }
 

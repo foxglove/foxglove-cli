@@ -4613,15 +4613,23 @@ fn episode_version_history_is_paginated_and_preserves_authors() {
         &workspace,
         &server,
         &[
-            "episodes", "versions", "list", "ep#1", "--limit", "1", "--cursor", "previous",
-            "--format", "json",
+            "episodes",
+            "versions",
+            "list",
+            "ep#1",
+            "--limit",
+            "1",
+            "--cursor",
+            "-previous",
+            "--format",
+            "json",
         ],
     );
     assert_success(&output);
     let requests = server.finish();
     assert_eq!(
         query_pairs(&requests[0]),
-        expected_pairs(&[("limit", "1"), ("cursor", "previous")])
+        expected_pairs(&[("limit", "1"), ("cursor", "-previous")])
     );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["data"][0]["version"], 2);

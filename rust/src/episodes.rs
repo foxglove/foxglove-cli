@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::encode_path_segment;
-use crate::cli::EpisodeVersionListArgs;
-use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
+use crate::cli::{
+    EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs, EpisodeVersionListArgs,
+};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
@@ -386,7 +387,7 @@ pub(crate) async fn list_versions(
     }
     let query = Query {
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
-        cursor: args.cursor.as_deref(),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
     };
     match runtime
         .client
