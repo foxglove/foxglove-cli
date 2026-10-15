@@ -1387,6 +1387,11 @@ enum TopicsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct TopicListArgs {
+    #[arg(long, help = "Episode version (default: latest)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
+    #[arg(long, help = "Episode ID", value_parser = parse_id, conflicts_with_all = ["device_id", "device_name", "recording_id", "recording_key", "session_id", "session_key"])]
+    pub(crate) episode_id: Option<String>,
+
     #[command(flatten)]
     format: FormatArgs,
     #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
