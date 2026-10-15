@@ -3470,9 +3470,9 @@ fn versions_are_listed_with_the_draft_marked() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Created At\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z\n\
-         2,draft,,3,1,0,2024-01-02T00:00:00Z\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Created At,Changed\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z,\n\
+         2,draft,,3,1,0,2024-01-02T00:00:00Z,\n"
     );
 }
 
@@ -3517,8 +3517,8 @@ fn a_version_reports_whether_its_recordings_are_missing() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Created At,Missing Recordings\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z,true\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Created At,Changed,Missing Recordings\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z,,true\n"
     );
 }
 
@@ -4595,4 +4595,19 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
             assert_eq!(lines.len(), 3, "{stdout}");
         }
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn committing_versions_reports_changed_episode_count() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets/ds_one/commit",
+        r#"{"committed":{"versionNumber":2,"episodeCount":3,"addedEpisodeCount":0,"removedEpisodeCount":0,"changedEpisodeCount":2}}"#,
+    )]);
+    let output = run(&workspace, &server, &["datasets", "commit", "ds_one"]);
+    assert_success(&output);
+    server.finish();
+    assert!(String::from_utf8_lossy(&output.stderr).contains("0 added, 0 removed, 2 changed"));
 }
