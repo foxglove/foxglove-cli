@@ -4681,3 +4681,66 @@ fn dataset_label_queries_reach_the_selected_version() {
             .any(|(name, value)| name == "labelQuery" && value == r#"task:"fold towel""#));
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_creation_context_is_submitted_and_can_be_requested_with_other_includes() {
+    let workspace = Workspace::new();
+    let context = r#"{"version":1,"basis":{"kind":"recordings","recordingIds":["rec_one"]}}"#;
+    let server = Server::new(vec![
+        Reply::json(
+            "POST",
+            "/v1/episodes",
+            r#"{"episodes":[{"id":"ep_one","created":true}]}"#,
+        ),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_fixture/versions/2/episodes",
+            r#"{"episodes":[]}"#,
+        ),
+    ]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "add",
+            "--project-id",
+            "prj_default",
+            "--recording-id",
+            "rec_one",
+            "--creation-context",
+            context,
+        ],
+    ));
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "episodes",
+            "list",
+            "ds_fixture",
+            "--version",
+            "2",
+            "--include-recordings",
+            "--include-labels",
+            "--include-creation-context",
+            "--format",
+            "json",
+        ],
+    ));
+    let requests = server.finish();
+    assert_eq!(
+        json_body(&requests[0])["episodes"][0]["creationContext"],
+        serde_json::from_str::<serde_json::Value>(context).unwrap()
+    );
+    let url = reqwest::Url::parse(&format!(
+        "http://localhost{}",
+        requests[1].split_whitespace().nth(1).unwrap()
+    ))
+    .unwrap();
+    assert!(url
+        .query_pairs()
+        .any(|(key, value)| key == "include" && value == "recordings,labels,creationContext"));
+}

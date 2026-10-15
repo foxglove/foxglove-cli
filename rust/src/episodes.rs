@@ -49,6 +49,14 @@ pub(crate) struct EpisodeRecording {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Episode {
+    #[serde(
+        rename = "creationContext",
+        default,
+        deserialize_with = "included_creation_context",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) creation_context: Option<Value>,
+
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) version: Option<i32>,
     #[serde(
@@ -79,6 +87,13 @@ pub(crate) struct Episode {
     pub(crate) has_missing_recordings: Option<bool>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
+}
+
+// Preserve an explicitly included null separately from an omitted expansion.
+fn included_creation_context<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 
 impl Episode {
@@ -162,13 +177,16 @@ struct EpisodeListQuery<'a> {
     start: String,
 }
 
-pub(crate) fn episode_includes(recordings: bool, labels: bool) -> String {
+pub(crate) fn episode_includes(recordings: bool, labels: bool, creation_context: bool) -> String {
     let mut include = Vec::new();
     if recordings {
         include.push("recordings");
     }
     if labels {
         include.push("labels");
+    }
+    if creation_context {
+        include.push("creationContext");
     }
     include.join(",")
 }
@@ -200,7 +218,11 @@ pub(crate) async fn list_episodes(
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
-        include: episode_includes(args.include_recordings, args.include_labels),
+        include: episode_includes(
+            args.include_recordings,
+            args.include_labels,
+            args.include_creation_context,
+        ),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
@@ -245,7 +267,7 @@ pub(crate) async fn get_episode(
 ) -> Outcome {
     let query = EpisodeGetQuery {
         version: args.version,
-        include: episode_includes(args.include_recordings, args.include_labels),
+        include: episode_includes(args.include_recordings, args.include_labels, false),
     };
     match runtime
         .client
@@ -270,6 +292,9 @@ struct CreateEpisodesRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct EpisodeInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creation_context: Option<Value>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     event_id: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -308,7 +333,20 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
             _ => Err(format!("--metadata must be a JSON object: {raw}")),
         })
         .transpose()?;
+    let creation_context = args
+        .creation_context
+        .as_deref()
+        .map(|raw| {
+            let value: Value = serde_json::from_str(raw)
+                .map_err(|error| format!("Invalid --creation-context JSON: {error}"))?;
+            if !value.is_object() && !value.is_null() {
+                return Err("--creation-context must be a JSON object or null".to_owned());
+            }
+            Ok(value)
+        })
+        .transpose()?;
     Ok(EpisodeInput {
+        creation_context,
         event_id: args.event_id.clone(),
         recordings: args.recording_id.clone(),
         start_time,
@@ -370,10 +408,12 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
 #[cfg(test)]
 mod tests {
     use super::{parse_time_range, Episode};
+    use serde_json::Value;
 
     #[test]
     fn an_absent_recordings_list_is_omitted_from_json_output() {
         let record: Episode = serde_json::from_value(serde_json::json!({
+            "creationContext": {"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_one"]}},
             "id": "ep_fixture",
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
@@ -384,7 +424,26 @@ mod tests {
         .unwrap();
         let output = serde_json::to_value(&record).unwrap();
         assert!(output.get("recordings").is_none());
+        assert_eq!(
+            output["creationContext"]["basis"]["recordingIds"][0],
+            "rec_one"
+        );
         assert_eq!(record.recording_ids(), "");
+        let mut response = output;
+        response["creationContext"] = Value::Null;
+        let explicit_null: Episode = serde_json::from_value(response.clone()).unwrap();
+        assert_eq!(
+            serde_json::to_value(explicit_null)
+                .unwrap()
+                .get("creationContext"),
+            Some(&Value::Null)
+        );
+        response.as_object_mut().unwrap().remove("creationContext");
+        let omitted: Episode = serde_json::from_value(response).unwrap();
+        assert!(serde_json::to_value(omitted)
+            .unwrap()
+            .get("creationContext")
+            .is_none());
     }
 
     #[test]
