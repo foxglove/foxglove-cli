@@ -44,8 +44,9 @@ pub fn render_csv(
 }
 
 /// Render a table. When stdout is a terminal or `COLUMNS` is set, cells other
-/// than IDs wrap to fit that width. ID columns never wrap, so a table with many
-/// IDs can be wider than that width. Otherwise rows are not wrapped.
+/// than IDs and command-line names wrap to fit that width. Those columns never
+/// wrap, so a table can be wider than that width. Otherwise rows are not
+/// wrapped.
 ///
 /// # Errors
 ///
@@ -82,7 +83,7 @@ fn render_table_at(
             .set_width(width)
             .set_content_arrangement(ContentArrangement::Dynamic);
         for (column, header) in table.column_iter_mut().zip(headers) {
-            if is_id_header(header) {
+            if is_unwrapped_header(header) {
                 column.set_constraint(ColumnConstraint::ContentWidth);
             }
         }
@@ -90,8 +91,8 @@ fn render_table_at(
     writeln!(writer, "{table}")
 }
 
-fn is_id_header(header: &str) -> bool {
-    header == "ID" || header.ends_with(" ID")
+fn is_unwrapped_header(header: &str) -> bool {
+    matches!(header, "ID" | "Command" | "Option" | "Argument") || header.ends_with(" ID")
 }
 
 pub(crate) fn escape_terminal_text(text: &str) -> String {
@@ -236,6 +237,30 @@ mod tests {
         assert!(lines.len() > 3, "{rendered}");
         for line in lines {
             assert!(line.chars().count() <= 60, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn command_line_name_columns_never_wrap_in_a_narrow_table() {
+        for header in ["Command", "Option", "Argument"] {
+            let mut output = Vec::new();
+            super::render_table_at(
+                &mut output,
+                &[header, "Description"],
+                &[vec![
+                    "--project-id <PROJECT_ID>".into(),
+                    "a long description ".repeat(4),
+                ]],
+                Some(40),
+            )
+            .unwrap();
+            let rendered = String::from_utf8(output).unwrap();
+            assert!(
+                rendered
+                    .lines()
+                    .any(|line| line.starts_with(" --project-id <PROJECT_ID> ")),
+                "{rendered}"
+            );
         }
     }
 
