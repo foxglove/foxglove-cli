@@ -448,7 +448,8 @@ enum DatasetsCommand {
     #[command(about = "Create a dataset")]
     Add(DatasetAddArgs),
     #[command(
-        about = "Commit a dataset's pending changes as a new version; changed counts episodes whose selected version changed"
+        about = "Commit a dataset's pending changes as a new version",
+        long_about = "Commit a dataset's pending changes as a new version. The summary reports added, removed, and changed episodes. A changed episode is in both versions, but with a different selected episode version."
     )]
     Commit(DatasetIdArgs),
     #[command(about = "Delete a dataset")]
@@ -578,9 +579,15 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 enum DatasetVersionsCommand {
     #[command(about = "List the episodes added and removed between two versions")]
     Compare(DatasetVersionCompareArgs),
-    #[command(about = "Get a dataset version")]
+    #[command(
+        about = "Get a dataset version",
+        long_about = "Get a dataset version. Changed counts episodes present in both versions with a different selected episode version."
+    )]
     Get(DatasetVersionGetArgs),
-    #[command(about = "List a dataset's versions")]
+    #[command(
+        about = "List a dataset's versions",
+        long_about = "List a dataset's versions. Changed counts episodes present in both versions with a different selected episode version."
+    )]
     List(DatasetVersionListArgs),
     #[command(about = "Restore a committed version's episodes as pending changes")]
     Restore(DatasetVersionRestoreArgs),
