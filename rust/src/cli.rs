@@ -1102,9 +1102,6 @@ enum PendingImportsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct PendingImportListArgs {
-    #[arg(long, help = "Only imports enqueued by this site backfill job", allow_hyphen_values = true, value_parser = parse_id)]
-    pub(crate) site_backfill_job_id: Option<String>,
-
     #[command(flatten)]
     format: FormatArgs,
     #[arg(
@@ -1154,6 +1151,8 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) show_quarantined: bool,
     #[arg(long, help = "Site ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) site_id: Option<String>,
+    #[arg(long, help = "Only imports enqueued by this site backfill job", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_backfill_job_id: Option<String>,
     #[arg(
         long,
         help = "Only imports updated since this time",

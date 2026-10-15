@@ -4601,21 +4601,21 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
 #[ignore = "requires loopback sockets"]
 fn pending_imports_accept_backfill_job_filter() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str)] = &[(
-        &["pending-imports", "list"],
-        "/v1/data/pending-imports",
-        r"[]",
-    )];
-    for &(args, path, body) in cases {
-        let server = Server::new(vec![Reply::json("GET", path, body)]);
-        let mut command = args.to_vec();
-        command.extend(["--site-backfill-job-id", "sbj_1", "--format", "json"]);
-        assert_success(&run(&workspace, &server, &command));
-        let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        assert!(url
-            .query_pairs()
-            .any(|(name, value)| name == "siteBackfillJobId" && value == "sbj_1"));
-    }
+    let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "pending-imports",
+            "list",
+            "--site-backfill-job-id",
+            "sbj_1",
+            "--format",
+            "json",
+        ],
+    ));
+    assert_eq!(
+        query_pairs(&server.finish()[0])["siteBackfillJobId"],
+        "sbj_1"
+    );
 }
