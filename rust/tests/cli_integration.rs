@@ -4596,3 +4596,38 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
         }
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn dataset_episode_pins_can_be_added_or_updated() {
+    let workspace = Workspace::new();
+    for operation in ["add", "update"] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/datasets/ds_fixture/episodes",
+            r#"{"added":0,"updated":1,"removed":0,"alreadyPresent":0}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "datasets",
+                "episodes",
+                operation,
+                "ds_fixture",
+                "ep_one",
+                "--episode-version",
+                "3",
+            ],
+        );
+        assert_success(&output);
+        assert!(String::from_utf8_lossy(&output.stderr).contains("commit"));
+        let requests = server.finish();
+        let body: serde_json::Value =
+            serde_json::from_str(requests[0].split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({operation:[{"id":"ep_one","version":3}]})
+        );
+    }
+}

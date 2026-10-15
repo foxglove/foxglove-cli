@@ -303,6 +303,9 @@ struct CreateDatasetRequest {
 #[serde(rename_all = "camelCase")]
 struct EpisodesPatchResponse {
     #[serde(default)]
+    updated: usize,
+
+    #[serde(default)]
     added: usize,
     #[serde(default)]
     removed: usize,
@@ -431,31 +434,26 @@ pub(crate) async fn delete_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
     }
 }
 
-#[derive(Serialize)]
-struct PatchDatasetEpisodesRequest {
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    add: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    remove: Vec<String>,
-}
-
 pub(crate) async fn patch_dataset_episodes(
     runtime: &Runtime,
     args: &DatasetEpisodeMutationArgs,
-    add: bool,
+    operation: &str,
+    episode_version: Option<i32>,
 ) -> Outcome {
-    let episode_ids = args.episode_ids.clone();
-    let request = if add {
-        PatchDatasetEpisodesRequest {
-            add: episode_ids,
-            remove: Vec::new(),
-        }
-    } else {
-        PatchDatasetEpisodesRequest {
-            add: Vec::new(),
-            remove: episode_ids,
-        }
-    };
+    if args.episode_ids.len() > 2000 {
+        return Outcome::failure("At most 2000 episode IDs may be changed at once\n");
+    }
+    let references: Vec<Value> = args
+        .episode_ids
+        .iter()
+        .map(|id| {
+            episode_version.map_or_else(
+                || Value::String(id.clone()),
+                |version| serde_json::json!({"id":id,"version":version}),
+            )
+        })
+        .collect();
+    let request = serde_json::json!({operation: references});
     match runtime
         .client
         .patch::<_, _, EpisodesPatchResponse>(
@@ -466,21 +464,18 @@ pub(crate) async fn patch_dataset_episodes(
         .await
     {
         Ok(response) => {
-            let mut stderr = if add {
-                additions(&response)
-            } else {
-                removals(&response, &args.episode_ids)
+            let mut stderr = match operation {
+                "add" => additions(&response),
+                "update" => format!("Updated {} episode versions\n", response.updated),
+                _ => removals(&response, &args.episode_ids),
             };
-            if response.added > 0 || response.removed > 0 {
+            if response.added > 0 || response.removed > 0 || response.updated > 0 {
                 stderr.push_str(&commit_hint(&args.dataset_id));
             }
             Outcome::notice(stderr)
         }
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
-        Err(error) => Outcome::failure(format!(
-            "Failed to {} episodes: {error}\n",
-            if add { "add" } else { "remove" }
-        )),
+        Err(error) => Outcome::failure(format!("Failed to {operation} episodes: {error}\n")),
     }
 }
 
