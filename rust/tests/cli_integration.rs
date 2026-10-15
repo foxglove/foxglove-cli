@@ -3657,6 +3657,16 @@ fn restoring_a_version_reports_the_changes_it_staged() {
             r#"{"added":0,"removed":0,"discardedAdds":2,"discardedRemoves":0}"#,
             "Discarded 2 pending additions\nThe draft matches version 3\n",
         ),
+        (
+            vec![], vec![],
+            r#"{"added":0,"removed":0,"updated":2}"#,
+            "Restored version 3 into the draft: 0 episodes added, 0 removed, 2 changed\nRun foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
+        (
+            vec!["--force"], vec![("force", "true")],
+            r#"{"added":0,"removed":0,"updated":2,"discardedAdds":1,"discardedRemoves":0,"discardedUpdates":1}"#,
+            "Discarded 1 pending addition and 1 pending episode version update\nRestored version 3 into the draft: 0 episodes added, 0 removed, 2 changed\nRun foxglove datasets commit ds_one to commit the draft as a new version.\n",
+        ),
     ] {
         let server = Server::new(vec![Reply::json(
             "POST",
