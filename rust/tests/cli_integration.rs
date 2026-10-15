@@ -4644,20 +4644,32 @@ fn reading_an_episode_version_preserves_labels_and_version_metadata() {
 #[ignore = "requires loopback sockets"]
 fn episode_text_label_queries_reach_the_api() {
     let workspace = Workspace::new();
-    let cases: &[(&[&str], &str, &str)] =
-        &[(&["episodes", "list"], "/v1/episodes", r#"{"episodes":[]}"#)];
-    for &(args, path, body) in cases {
-        let server = Server::new(vec![Reply::json("GET", path, body)]);
-        let mut command = args.to_vec();
-        command.extend(["--label-query", "task:drive", "--format", "json"]);
-        assert_success(&run(&workspace, &server, &command));
-        let requests = server.finish();
-        let target = requests[0].split_whitespace().nth(1).unwrap();
-        let url = reqwest::Url::parse(&format!("http://localhost{target}")).unwrap();
-        assert!(url
-            .query_pairs()
-            .any(|(name, value)| name == "labelQuery" && value == "task:drive"));
-    }
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/episodes",
+        r#"{"episodes":[]}"#,
+    )]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "list",
+            "--label-query",
+            "task:drive",
+            "--include-labels",
+            "--format",
+            "json",
+        ],
+    ));
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("labelQuery", "task:drive"),
+            ("include", "labels"),
+            ("limit", "50"),
+        ])
+    );
 }
 
 #[test]
