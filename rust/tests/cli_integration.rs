@@ -3729,12 +3729,14 @@ fn committing_and_discarding_report_the_counts() {
             "No pending changes to discard\n",
         ),
         (
-            "discard", "/v1/datasets/ds_one/discard",
+            "discard",
+            "/v1/datasets/ds_one/discard",
             r#"{"discardedAdds":0,"discardedRemoves":0,"discardedUpdates":2}"#,
             "Discarded 2 pending episode version updates\n",
         ),
         (
-            "discard", "/v1/datasets/ds_one/discard",
+            "discard",
+            "/v1/datasets/ds_one/discard",
             r#"{"discardedAdds":2,"discardedRemoves":1,"discardedUpdates":1}"#,
             "Discarded 2 pending additions, 1 pending removal and 1 pending episode version update\n",
         ),
