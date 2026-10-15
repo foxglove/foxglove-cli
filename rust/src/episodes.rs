@@ -468,15 +468,18 @@ fn bulk_patch(raw: &[u8]) -> Result<Value, String> {
             episodes.len()
         ));
     }
-    let mut ids = std::collections::HashSet::new();
+    let mut ids = std::collections::HashMap::new();
     for (index, episode) in episodes.iter().enumerate() {
         let id = episode
             .get("id")
             .and_then(Value::as_str)
             .filter(|id| !id.trim().is_empty())
             .ok_or_else(|| format!("Patch {} needs a nonempty episode id", index + 1))?;
-        if !ids.insert(id) {
-            return Err(format!("Duplicate episode ID: {id}"));
+        if let Some(first) = ids.insert(id, index + 1) {
+            return Err(format!(
+                "Patches {first} and {} have the same episode ID: {id}",
+                index + 1
+            ));
         }
     }
     Ok(request)
@@ -503,6 +506,9 @@ pub(crate) async fn edit_episodes(
         .await
     {
         Ok(response) => format_list_output(&response.episodes, format, NextCursor::NotPaginated),
+        Err(error @ ApiError::Response { status: 409, .. }) => Outcome::failure(format!(
+            "Failed to edit episodes: {error}\nNo patches were applied. Get the conflicting episodes again and review their changes, then update appliesToVersion in the file before retrying.\n"
+        )),
         Err(error) => Outcome::failure(format!("Failed to edit episodes: {error}\n")),
     }
 }
@@ -517,7 +523,7 @@ mod tests {
             (r#"{"episodes":[]}"#, "1-2000"),
             (
                 r#"{"episodes":[{"id":"ep_one"},{"id":"ep_one"}]}"#,
-                "Duplicate episode ID: ep_one",
+                "Patches 1 and 2 have the same episode ID: ep_one",
             ),
             (
                 r#"{"episodes":[{}]}"#,

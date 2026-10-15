@@ -4815,4 +4815,21 @@ fn bulk_episode_edits_send_one_atomic_request_and_keep_result_order() {
         json_body(&requests[0]),
         serde_json::from_str::<serde_json::Value>(patch).unwrap()
     );
+    let server = Server::new(vec![Reply {
+        status: 409,
+        ..Reply::json(
+            "PATCH",
+            "/v1/episodes",
+            r#"{"error":"Version conflict","conflicts":[{"id":"ep_two","currentVersion":4}]}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["episodes", "edit-bulk", "patch.json", "--format", "json"],
+    );
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stderr), "Failed to edit episodes: Version conflict; ep_two: current version 4\nNo patches were applied. Get the conflicting episodes again and review their changes, then update appliesToVersion in the file before retrying.\n");
+    assert_eq!(server.finish().len(), 1);
 }
