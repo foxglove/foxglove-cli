@@ -4642,3 +4642,26 @@ fn episode_exact_recording_set_is_comma_separated() {
     );
     server.finish();
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn pending_imports_accept_backfill_job_filter() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "pending-imports",
+            "list",
+            "--site-backfill-job-id",
+            "sbj_1",
+            "--format",
+            "json",
+        ],
+    ));
+    assert_eq!(
+        query_pairs(&server.finish()[0])["siteBackfillJobId"],
+        "sbj_1"
+    );
+}
