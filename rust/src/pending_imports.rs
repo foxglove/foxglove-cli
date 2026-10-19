@@ -104,6 +104,8 @@ struct PendingImportListQuery {
     request_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     site_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    site_backfill_job_id: Option<String>,
     #[serde(skip_serializing_if = "is_false")]
     show_completed: bool,
     #[serde(skip_serializing_if = "is_false")]
@@ -149,6 +151,7 @@ pub(crate) async fn list_pending_imports(
         project_id,
         request_id: args.request_id.clone().unwrap_or_default(),
         site_id: args.site_id.clone().unwrap_or_default(),
+        site_backfill_job_id: args.site_backfill_job_id.clone(),
         show_completed: args.show_completed,
         show_quarantined: args.show_quarantined,
         updated_since,
