@@ -8,6 +8,7 @@ pub mod config;
 mod coverage;
 mod datasets;
 mod devices;
+mod discovery;
 mod episodes;
 mod event_types;
 mod events;
