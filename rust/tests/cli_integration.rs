@@ -3470,9 +3470,9 @@ fn versions_are_listed_with_the_draft_marked() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Created At\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z\n\
-         2,draft,,3,1,0,2024-01-02T00:00:00Z\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z\n\
+         2,draft,,3,1,0,,2024-01-02T00:00:00Z\n"
     );
 }
 
@@ -3517,8 +3517,8 @@ fn a_version_reports_whether_its_recordings_are_missing() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Created At,Missing Recordings\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,2024-01-01T00:00:00Z,true\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Missing Recordings\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,true\n"
     );
 }
 
@@ -3727,6 +3727,12 @@ fn committing_and_discarding_report_the_counts() {
             "/v1/datasets/ds_one/discard",
             r#"{"discardedAdds":0,"discardedRemoves":0}"#,
             "No pending changes to discard\n",
+        ),
+        (
+            "commit",
+            "/v1/datasets/ds_one/commit",
+            r#"{"committed":{"versionNumber":2,"episodeCount":3,"addedEpisodeCount":0,"removedEpisodeCount":0,"changedEpisodeCount":2}}"#,
+            "Committed version 2 with 3 episodes (0 added, 0 removed, 2 changed)\n",
         ),
     ] {
         let server = Server::new(vec![Reply::json("POST", path, response)]);

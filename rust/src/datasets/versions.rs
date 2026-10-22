@@ -40,6 +40,12 @@ pub(super) struct DatasetVersion {
     added_episode_count: usize,
     #[serde(rename = "removedEpisodeCount", default)]
     removed_episode_count: usize,
+    #[serde(
+        rename = "changedEpisodeCount",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    changed_episode_count: Option<usize>,
 }
 
 impl Record for DatasetVersion {
@@ -51,6 +57,7 @@ impl Record for DatasetVersion {
             "Episode Count",
             "Added",
             "Removed",
+            "Changed",
             "Created At",
         ]
     }
@@ -68,6 +75,9 @@ impl Record for DatasetVersion {
             self.episode_count.to_string(),
             self.added_episode_count.to_string(),
             self.removed_episode_count.to_string(),
+            self.changed_episode_count
+                .map(|count| count.to_string())
+                .unwrap_or_default(),
             self.created_at.clone(),
         ]
     }
@@ -96,6 +106,7 @@ impl Record for DatasetVersionDetail {
             "Episode Count",
             "Added",
             "Removed",
+            "Changed",
             "Created At",
             "Missing Recordings",
         ]
@@ -442,11 +453,15 @@ pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
         .await
     {
         Ok(CommitResponse { committed }) => Outcome::notice(format!(
-            "Committed version {} with {} ({} added, {} removed)\n",
+            "Committed version {} with {} ({} added, {} removed{})\n",
             committed.version_number,
             plural(committed.episode_count, "episode"),
             committed.added_episode_count,
-            committed.removed_episode_count
+            committed.removed_episode_count,
+            committed
+                .changed_episode_count
+                .map(|count| format!(", {count} changed"))
+                .unwrap_or_default()
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to commit dataset: {error}\n")),
@@ -488,7 +503,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             versions[0].fields(),
-            ["5", "draft", "", "12", "3", "1", "2024-01-03T00:00:00Z"]
+            ["5", "draft", "", "12", "3", "1", "", "2024-01-03T00:00:00Z"]
         );
         assert_eq!(
             versions[1].fields()[1..3],
@@ -508,6 +523,7 @@ mod tests {
             "addedEpisodeCount": 10,
             "removedEpisodeCount": 0,
             "hasMissingRecordings": true,
+            "changedEpisodeCount": 3,
         }))
         .unwrap();
         assert_eq!(DatasetVersionDetail::headers().len(), detail.fields().len());
@@ -515,6 +531,8 @@ mod tests {
         let output = serde_json::to_value(&detail).unwrap();
         assert_eq!(output["versionNumber"], 4);
         assert_eq!(output["hasMissingRecordings"], true);
+        assert_eq!(output["changedEpisodeCount"], 3);
+        assert_eq!(detail.fields()[6], "3");
     }
 
     #[test]
