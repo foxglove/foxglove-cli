@@ -120,6 +120,8 @@ struct EpisodeListQuery<'a> {
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    exact_recording_ids: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -157,6 +159,8 @@ pub(crate) fn parse_time_range(
     Ok((start, end))
 }
 
+const MAX_EXACT_RECORDING_IDS: usize = 50;
+
 pub(crate) async fn list_episodes(
     runtime: &Runtime,
     args: &EpisodeListArgs,
@@ -167,9 +171,15 @@ pub(crate) async fn list_episodes(
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
+    if args.exact_recording_ids.len() > MAX_EXACT_RECORDING_IDS {
+        return Outcome::failure(format!(
+            "--exact-recording-ids accepts at most {MAX_EXACT_RECORDING_IDS} IDs\n"
+        ));
+    }
     let query = EpisodeListQuery {
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
+        exact_recording_ids: args.exact_recording_ids.join(","),
         has_missing_recordings: args.has_missing_recordings,
         include: include_recordings(args.include_recordings),
         limit,
