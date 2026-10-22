@@ -4599,6 +4599,23 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn topic_queries_select_historical_episode_versions() {
+    let workspace = Workspace::new();
+    for version in [None, Some("2")] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/data/topics", "[]")]);
+        let mut args = vec!["topics", "list", "--episode-id", "ep_1", "--format", "json"];
+        if let Some(version) = version {
+            args.extend(["--episode-version", version]);
+        }
+        assert_success(&run(&workspace, &server, &args));
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query["episodeId"], "ep_1");
+        assert_eq!(query.get("episodeVersion").map(String::as_str), version);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn pending_imports_accept_backfill_job_filter() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
