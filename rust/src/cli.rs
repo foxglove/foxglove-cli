@@ -570,11 +570,21 @@ pub(crate) struct DatasetDownloadArgs {
 #[derive(Debug, Subcommand)]
 enum DatasetEpisodesCommand {
     #[command(about = "Add episodes to a dataset as pending changes")]
-    Add(DatasetEpisodeMutationArgs),
+    Add(DatasetEpisodePinArgs),
+    #[command(about = "Update episode versions selected in the dataset draft")]
+    Update(DatasetEpisodePinArgs),
     #[command(about = "List the episodes in a dataset")]
     List(DatasetEpisodeListArgs),
     #[command(about = "Remove episodes from a dataset as pending changes")]
     Remove(DatasetEpisodeMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodePinArgs {
+    #[command(flatten)]
+    pub(crate) episodes: DatasetEpisodeMutationArgs,
+    #[arg(long, help = "Episode version to select for each ID (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
@@ -895,6 +905,8 @@ enum EpisodesCommand {
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+    #[command(about = "Inspect episode version history", subcommand)]
+    Versions(EpisodeVersionsCommand),
 }
 
 #[derive(Debug, Args)]
@@ -948,6 +960,24 @@ pub(crate) struct EpisodeEditArgs {
     pub(crate) add_recording_id: Vec<String>,
     #[arg(long, help = "Remove a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) remove_recording_id: Vec<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EpisodeVersionsCommand {
+    #[command(about = "List episode versions, newest first")]
+    List(EpisodeVersionListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(long, help = "Maximum number of items to return (1-2000, default: 50)", allow_hyphen_values = true, value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1816,14 +1846,30 @@ async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsC
         DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
         DatasetsCommand::Edit(args) => datasets::edit_dataset(runtime, &args).await,
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Add(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, true).await
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Add,
+                args.episode_version,
+            )
+            .await
+        }
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Update(args)) => {
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Update,
+                args.episode_version,
+            )
+            .await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Remove(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, false).await
+            datasets::patch_dataset_episodes(runtime, &args, datasets::EpisodeChange::Remove, None)
+                .await
         }
         DatasetsCommand::Get(args) => {
             let format = args.format.format;
@@ -1872,6 +1918,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::List(args) => {
             let format = args.format.format;
             episodes::list_episodes(runtime, &args, format).await
+        }
+        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_versions(runtime, &args, format).await
         }
     }
 }

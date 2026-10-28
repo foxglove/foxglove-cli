@@ -3741,6 +3741,18 @@ fn committing_and_discarding_report_the_counts() {
             r#"{"discardedAdds":0,"discardedRemoves":0}"#,
             "No pending changes to discard\n",
         ),
+        (
+            "discard",
+            "/v1/datasets/ds_one/discard",
+            r#"{"discardedAdds":0,"discardedRemoves":0,"discardedUpdates":2}"#,
+            "Discarded 2 pending episode version updates\n",
+        ),
+        (
+            "discard",
+            "/v1/datasets/ds_one/discard",
+            r#"{"discardedAdds":2,"discardedRemoves":1,"discardedUpdates":1}"#,
+            "Discarded 2 pending additions, 1 pending removal and 1 pending episode version update\n",
+        ),
     ] {
         let server = Server::new(vec![Reply::json("POST", path, response)]);
         let output = run(&workspace, &server, &["datasets", command, "ds_one"]);
@@ -4612,6 +4624,62 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn dataset_episode_pins_can_be_added_or_updated() {
+    let workspace = Workspace::new();
+    for (operation, version, response, summary) in [
+        ("add", Some("3"), r#"{"added":1}"#, "Added 1 episode"),
+        ("update", Some("3"), r#"{"updated":1}"#, "Updated 1 episode"),
+        ("update", None, r#"{"updated":1}"#, "Updated 1 episode"),
+        (
+            "update",
+            None,
+            r#"{"updated":0}"#,
+            "Updated 0 episodes (1 unchanged)",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/datasets/ds_fixture/episodes",
+            response,
+        )]);
+        let mut args = vec!["datasets", "episodes", operation, "ds_fixture", "ep_one"];
+        if let Some(version) = version {
+            args.extend(["--episode-version", version]);
+        }
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        let hint = if summary.contains("unchanged") {
+            ""
+        } else {
+            "Run foxglove datasets commit ds_fixture to commit the draft as a new version.\n"
+        };
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!("{summary}\n{hint}")
+        );
+        let reference = version.map_or_else(
+            || serde_json::json!("ep_one"),
+            |_| serde_json::json!({"id":"ep_one","version":3}),
+        );
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({operation:[reference]})
+        );
+    }
+    for operation in ["add", "update", "remove"] {
+        let server = Server::new(vec![]);
+        let ids: Vec<String> = (0..2001).map(|n| format!("ep_{n}")).collect();
+        let mut args = vec!["datasets", "episodes", operation, "ds_fixture"];
+        args.extend(ids.iter().map(String::as_str));
+        let output = run(&workspace, &server, &args);
+        assert!(!output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stderr), "At most 2000 episode IDs can be changed at once (got 2001). Split the IDs into more than one command.\n");
+        server.finish();
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn pending_imports_accept_backfill_job_filter() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
@@ -4631,4 +4699,64 @@ fn pending_imports_accept_backfill_job_filter() {
         query_pairs(&server.finish()[0])["siteBackfillJobId"],
         "sbj_1"
     );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_version_history_is_paginated_and_preserves_authors() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        headers: vec![("fg-pagination-next-cursor", "next")],
+        ..Reply::json(
+            "GET",
+            "/v1/episodes/ep%231/versions",
+            r#"{"versions":[{"version":2,"createdAt":"2026-01-01T00:00:00Z","creatorOrgMemberId":"member_1","changedFields":["properties"]}]}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "versions",
+            "list",
+            "ep#1",
+            "--limit",
+            "1",
+            "--cursor",
+            "-previous",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("limit", "1"), ("cursor", "-previous")])
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["data"][0]["version"], 2);
+    assert_eq!(value["data"][0]["creatorOrgMemberId"], "member_1");
+    assert_eq!(value["data"][0]["changedFields"][0], "properties");
+    assert_eq!(value["nextCursor"], "next");
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "GET",
+            "/v1/episodes/ep_missing/versions",
+            r#"{"error":"Episode not found"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["episodes", "versions", "list", "ep_missing"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode not found: ep_missing\n"
+    );
+    server.finish();
 }

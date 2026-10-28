@@ -212,12 +212,13 @@ struct CommitResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DiscardResponse {
-    #[serde(default)]
-    discarded_adds: usize,
-    #[serde(default)]
-    discarded_removes: usize,
+    #[serde(default, rename = "discardedAdds")]
+    adds: usize,
+    #[serde(default, rename = "discardedRemoves")]
+    removes: usize,
+    #[serde(default, rename = "discardedUpdates")]
+    updates: usize,
 }
 
 #[derive(Deserialize)]
@@ -512,12 +513,12 @@ pub(crate) async fn discard_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> 
         )
         .await
     {
-        Ok(response) if response.discarded_adds == 0 && response.discarded_removes == 0 => {
+        Ok(response) if response.adds == 0 && response.removes == 0 && response.updates == 0 => {
             Outcome::notice("No pending changes to discard\n")
         }
         Ok(response) => Outcome::notice(format!(
             "Discarded {}\n",
-            pending_changes(response.discarded_adds, response.discarded_removes, 0)
+            pending_changes(response.adds, response.removes, response.updates)
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to discard dataset changes: {error}\n")),
