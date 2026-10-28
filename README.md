@@ -381,8 +381,13 @@ episode plus a `manifest.json`:
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
 Episode 1 of 128: 41231 bytes
 ...
-Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
+Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 ```
+
+A version with recordings that are no longer available can't be downloaded.
+Select another version, or remove the affected episodes from the dataset and
+commit a new version. List them with
+`foxglove datasets episodes list DATASET_ID --version N --has-missing-recordings`.
 
 Use `--include-properties` to add episode custom properties to each manifest
 entry, including empty `{}` values. This also works when resuming a download:

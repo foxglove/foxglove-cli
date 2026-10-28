@@ -577,7 +577,7 @@ fn property_downloads_page_and_preserve_empty_absent_and_skipped_properties() {
         serde_json::json!({"weather":"rain"})
     );
     assert_eq!(manifest["episodes"][1]["properties"], serde_json::json!({}));
-    assert_eq!(manifest["episodes"][1]["status"], "skipped");
+    assert_eq!(manifest["episodes"][1]["status"], "failed");
     assert!(manifest["episodes"][2].get("properties").is_none());
     assert_eq!(manifest["episodes"][2]["status"], "failed");
 }
