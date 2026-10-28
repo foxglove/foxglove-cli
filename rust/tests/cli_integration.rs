@@ -660,6 +660,8 @@ fn resumed_episode_exports_preserve_the_server_default_end() {
             "export",
             "--episode-id",
             "ep_one",
+            "--episode-version",
+            "2",
             "--output-file",
             "episode.mcap",
         ],
@@ -667,8 +669,10 @@ fn resumed_episode_exports_preserve_the_server_default_end() {
     assert_success(&output);
     let requests = server.finish();
     assert_eq!(requests.len(), 4);
+    assert_eq!(json_body(&requests[0])["episodeVersion"], 2);
     let resumed = json_body(&requests[2]);
     assert_eq!(resumed["episodeId"], "ep_one");
+    assert_eq!(resumed["episodeVersion"], 2);
     assert_eq!(resumed["start"], "2024-01-01T00:00:01Z");
     assert!(resumed.get("end").is_none(), "{resumed}");
     let mut records = Records::default();
@@ -2343,6 +2347,8 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
     let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
     let stream: serde_json::Value = serde_json::from_str(body).unwrap();
     assert_eq!(stream["episodeId"], "ep_one");
+    assert_eq!(stream["episodeVersion"], 1);
+    assert_eq!(manifest["episodes"][0]["version"], 1);
     assert_eq!(stream["topics"], serde_json::json!(["/a", "/b"]));
     assert_eq!(stream["start"], "2024-01-02T03:04:05Z");
     assert_eq!(stream["end"], "2024-01-02T03:04:06Z");
@@ -4933,4 +4939,43 @@ fn bulk_episode_edits_send_one_atomic_request_and_keep_result_order() {
     assert!(output.stdout.is_empty());
     assert_eq!(String::from_utf8_lossy(&output.stderr), "Failed to edit episodes: Version conflict; ep_two: current version 4\nNo edits were applied. Get the conflicting episodes again and review their changes, then update appliesToVersion in the file before retrying.\n");
     assert_eq!(server.finish().len(), 1);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn resuming_a_dataset_redownloads_unverified_episode_versions() {
+    let workspace = Workspace::new();
+    let mut replies = dataset_replies(&[dataset_episode("ep_one", false)]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+    for old_version in [None, Some(2)] {
+        let mut manifest = download_manifest(&workspace);
+        for episode in manifest["episodes"].as_array_mut().unwrap() {
+            if let Some(version) = old_version {
+                episode["version"] = serde_json::json!(version);
+            } else {
+                episode.as_object_mut().unwrap().remove("version");
+            }
+        }
+        fs::write(
+            workspace.0.join("Highway-merges-v4/manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let mut replies = dataset_replies(&[dataset_episode("ep_one", false)]);
+        replies.extend(export_replies(episode_mcap()));
+        let server = Server::new(replies);
+        assert_success(&download_dataset(&workspace, &server, &[]));
+        let requests = server.finish();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.starts_with("POST /v1/data/stream "))
+                .count(),
+            1
+        );
+        assert_eq!(download_manifest(&workspace)["episodes"][0]["version"], 1);
+    }
 }

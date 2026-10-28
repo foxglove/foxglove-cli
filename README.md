@@ -164,6 +164,9 @@ $ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-0
 
 # Export an episode to an MCAP file
 $ foxglove export --episode-id <episode-id> --output-file episode.mcap
+
+# Export version 2 of an episode to an MCAP file
+$ foxglove export --episode-id <episode-id> --episode-version 2 --output-file episode.mcap
 ```
 
 If you've output a file, inspect its contents:
@@ -389,7 +392,8 @@ but now use a different episode version. With `--force`, the discard summary inc
 pending episode version updates.
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
-episode plus a `manifest.json`:
+episode, at the episode version selected by the dataset version, plus a
+`manifest.json` that records each episode's version:
 
 ```
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
@@ -397,6 +401,9 @@ Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 ```
+
+If an earlier manifest does not record the same episode version, the CLI
+downloads that episode again.
 
 A version with recordings that are no longer available can't be downloaded.
 Select another version, or remove the affected episodes from the dataset and

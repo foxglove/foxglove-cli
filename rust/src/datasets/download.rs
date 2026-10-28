@@ -70,6 +70,8 @@ enum Status {
 struct ManifestEpisode {
     index: usize,
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    version: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<String>,
     start_time: String,
@@ -370,6 +372,7 @@ fn manifest_entry(
     let mut episode = ManifestEpisode {
         index,
         id: entry.episode.id.clone(),
+        version: Some(entry.episode.version),
         file: byte_size.map(|_| file.clone()),
         start_time: entry.episode.start_time.clone(),
         end_time: entry.episode.end_time.clone(),
@@ -433,7 +436,9 @@ async fn download_episodes(
         let name = episode_file_name(index, &entry.episode.id);
         let path = directory.join(&name);
         let on_disk = earlier.get(&name).filter(|episode| {
-            std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
+            // A file without the pinned version may hold another episode version's data.
+            episode.version == Some(entry.episode.version)
+                && std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
         });
         let result = if let Some(complete) = on_disk.filter(|episode| is_complete(episode)) {
             EpisodeResult::Reused(complete.byte_size.unwrap_or_default())
@@ -611,8 +616,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         selection: ManifestSelection {
             topics: topic_list(args.topics.as_deref()),
-            // The app always includes attachments and never writes this field, so a
-            // default download writes the same manifest as the app.
+            // The app always includes attachments and never writes this field.
+            // Omit it for the default selection.
             include_attachments: (!args.include_attachments).then_some(false),
             episode_count: episodes.len(),
         },
