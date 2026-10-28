@@ -2,7 +2,7 @@
 
 mod edit;
 
-pub(crate) use edit::edit_episode;
+pub(crate) use edit::{edit_episode, edit_episodes};
 
 use std::collections::BTreeMap;
 

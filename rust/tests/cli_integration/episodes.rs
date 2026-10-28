@@ -370,7 +370,7 @@ fn edit_failures_name_the_episode_or_report_the_api_error() {
         (
             409,
             r#"{"error":"One or more episode versions have changed","conflicts":[{"id":"ep_one","currentVersion":4}]}"#,
-            "Failed to edit episode: One or more episode versions have changed\n\
+            "Failed to edit episode: One or more episode versions have changed; ep_one: current version 4\n\
              Run foxglove episodes get ep_one to see its latest version.\n",
         ),
     ] {

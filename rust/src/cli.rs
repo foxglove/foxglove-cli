@@ -896,6 +896,8 @@ enum EpisodesCommand {
     Delete(EpisodeIdArgs),
     #[command(about = "Edit an episode (requires API access to episode properties)")]
     Edit(EpisodeEditArgs),
+    #[command(about = "Apply episode edits atomically from a JSON file")]
+    EditBulk(EpisodeBulkEditArgs),
     #[command(about = "Get an episode")]
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
@@ -935,6 +937,14 @@ pub(crate) struct EpisodeAddArgs {
     pub(crate) start: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeBulkEditArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with an episodes array of edits (1-2000 unique IDs)")]
+    pub(crate) file: std::path::PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1912,6 +1922,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Edit(args) => episodes::edit_episode(runtime, &args).await,
+        EpisodesCommand::EditBulk(args) => {
+            let format = args.format.format;
+            episodes::edit_episodes(runtime, &args, format).await
+        }
         EpisodesCommand::Get(args) => {
             let format = args.format.format;
             episodes::get_episode(runtime, &args, format).await

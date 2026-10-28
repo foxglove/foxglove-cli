@@ -322,6 +322,20 @@ that version. Existing datasets keep their pinned episode versions. `episodes ge
 historical version; dataset membership reads return the version pinned by the
 selected dataset version.
 
+Apply edits to many episodes atomically from a JSON file: the API applies all of
+them or none. Each entry requires `id` and can contain `appliesToVersion`,
+`startTime`, `endTime`, `recordings` with `add`/`remove` arrays, and `properties`.
+Property values merge by key; `null` removes a property. An ID-only entry changes
+nothing and returns the current version. Timestamps are sent unchanged and must
+use ISO 8601 at millisecond precision (for example `2026-04-19T13:22:44.123Z`).
+A version conflict names each conflicting episode's current version.
+
+```
+$ cat edits.json
+{"episodes":[{"id":"ep_BCUw2zxpBnToJbOS","appliesToVersion":3,"recordings":{"add":["rec_lwjzOMxryMmP3yXg"]}}]}
+$ foxglove episodes edit-bulk edits.json --format json
+```
+
 Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
 table/CSV output append Version, Latest Version, and Custom Properties columns.
 Comparison output also appends Previous Version and Previous Custom Properties;
