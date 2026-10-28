@@ -21,7 +21,7 @@ use crate::{
 const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
-const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
+const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -552,6 +552,16 @@ pub(crate) struct DatasetDownloadArgs {
         allow_hyphen_values = true
     )]
     pub(crate) version: Option<i64>,
+    #[arg(
+        long, help = "Include episode custom properties (requires API access to episode properties)",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -574,7 +584,7 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetVersionsCommand {
-    #[command(about = "List the episodes added and removed between two versions")]
+    #[command(about = "List the episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
     #[command(about = "Get a dataset version")]
     Get(DatasetVersionGetArgs),
@@ -652,6 +662,16 @@ pub(crate) struct DatasetVersionCompareArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(
+        long, help = "Include episode custom properties (requires API access to episode properties)",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
 }
 
 #[derive(Debug, Args)]
@@ -777,6 +797,22 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_dataset_version
     )]
     pub(crate) version: Option<DatasetVersionSelector>,
+    #[arg(
+        long, help = "Include episode custom properties (requires API access to episode properties)",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
+    #[arg(
+        long,
+        help = "Filter episode custom properties (requires API access to episode properties)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) properties_query: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -799,7 +835,7 @@ pub(crate) struct DeviceAddArgs {
     pub(crate) name: String,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, short = 'p', help = DEVICE_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
 }
 
@@ -809,7 +845,7 @@ pub(crate) struct DeviceUpdateArgs {
     pub(crate) name: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, short = 'p', help = DEVICE_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
 }
 
@@ -845,11 +881,13 @@ pub(crate) struct DeviceListArgs {
 #[derive(Debug, Subcommand)]
 enum EpisodesCommand {
     #[command(
-        about = "Create an episode, or get the existing one with the same window and recordings"
+        about = "Create an episode, or get the existing one with matching window, recordings, and properties"
     )]
     Add(EpisodeAddArgs),
     #[command(about = "Delete an episode")]
     Delete(EpisodeIdArgs),
+    #[command(about = "Edit an episode (requires API access to episode properties)")]
+    Edit(EpisodeEditArgs),
     #[command(about = "Get an episode")]
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
@@ -885,6 +923,28 @@ pub(crate) struct EpisodeAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeEditArgs {
+    #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
+    pub(crate) episode_id: String,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
+    #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) applies_to_version: Option<i32>,
+    #[arg(long, help = "New start of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "New end of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Add a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
+    pub(crate) add_recording_id: Vec<String>,
+    #[arg(long, help = "Remove a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
+    pub(crate) remove_recording_id: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -909,6 +969,18 @@ pub(crate) struct EpisodeGetArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
+    #[arg(
+        long, help = "Include episode custom properties (requires API access to episode properties)",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
+    #[arg(long, help = "Episode version to read (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
@@ -978,6 +1050,22 @@ pub(crate) struct EpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long, help = "Include episode custom properties (requires API access to episode properties)",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
+    #[arg(
+        long,
+        help = "Filter episode custom properties (requires API access to episode properties)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) properties_query: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1773,6 +1861,7 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
     match command {
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
+        EpisodesCommand::Edit(args) => episodes::edit_episode(runtime, &args).await,
         EpisodesCommand::Get(args) => {
             let format = args.format.format;
             episodes::get_episode(runtime, &args, format).await

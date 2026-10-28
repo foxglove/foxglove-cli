@@ -246,8 +246,8 @@ $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recor
 ```
 
 Create an episode from one or more recordings. The window defaults to the span
-of its recordings, and an existing episode with the same window and recordings
-is reused:
+of its recordings, and an existing episode whose latest version has the same
+window, recordings, and custom properties is reused:
 
 ```
 $ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
@@ -272,6 +272,51 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 ```
 
 Member recordings are omitted unless you pass `--include-recordings`.
+
+Episode custom properties are also omitted by default. Organizations with API
+access to episode properties can set them during creation, request them on reads,
+and filter by them:
+
+```sh
+foxglove episodes add --recording-id rec_example --property weather:rain
+foxglove episodes list --properties-query 'weather:rain' --include-properties
+foxglove episodes get ep_example --version 2 --include-properties --format json
+foxglove datasets episodes list ds_example --version 4 --properties-query 'weather:rain' --include-properties
+```
+
+`--property` (or `-p`) uses the same typed `key:value` syntax as device properties.
+The CLI reads the organization's episode property definitions to convert strings,
+numbers, booleans, enums, and multi-enums. Repeat a multi-enum key to set its full
+list of values. Setting values requires `properties.list` in addition to the
+operation's capability. This syntax does not assign an empty multi-enum array.
+Filtering does not require inclusion; without `--include-properties`, matching
+properties are still omitted from the response.
+
+Edit one episode's properties, time bounds, or recordings:
+
+```sh
+foxglove episodes edit ep_example --property weather:sun --remove-property reviewer --applies-to-version 2
+foxglove episodes edit ep_example --end 2026-04-19T13:24:00Z --add-recording-id rec_example
+```
+
+Edits require `episodes.update`. Omitted fields keep their values;
+`--remove-property` removes an assignment. Effective changes create an episode
+version, while unchanged values keep the current version. `--applies-to-version`
+rejects concurrent changes instead of overwriting them. Existing datasets keep
+their pinned episode versions. `episodes get --version` reads an episode's
+historical version; dataset membership reads return the version pinned by the
+selected dataset version.
+
+Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
+table/CSV output append Version, Latest Version, and Custom Properties columns.
+Comparison output also appends Previous Version and Previous Custom Properties;
+JSON preserves the previous episode snapshot, and summaries report changed
+members alongside additions and removals.
+
+Property assignment, filtering, inclusion, and all episode edits require access
+through the API's episode properties rollout. The CLI has no local feature flag;
+API enablement makes these options work without another CLI update. Existing
+commands without these options keep making requests without properties.
 
 Create a dataset and change its episodes. Changes stay pending in the dataset's
 draft until you commit them as a new version, or discard them with
@@ -309,6 +354,19 @@ Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
+
+Use `--include-properties` to add episode custom properties to each manifest
+entry, including empty `{}` values. This also works when resuming a download:
+
+```sh
+foxglove datasets download ds_example --version 4 --include-properties
+foxglove datasets versions compare ds_example 3 4 --include-properties --format json
+```
+
+Dataset downloads omit properties by default, including when explicitly passed
+`--include-properties=false`. Changing this option refreshes manifest metadata
+without downloading completed MCAP files again. If an opt-in property request is
+forbidden, the command fails and preserves existing download files and manifests.
 
 ### Extensions
 
