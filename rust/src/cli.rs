@@ -902,6 +902,8 @@ enum EpisodesCommand {
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+    #[command(about = "Inspect episode version history", subcommand)]
+    Versions(EpisodeVersionsCommand),
 }
 
 #[derive(Debug, Args)]
@@ -955,6 +957,24 @@ pub(crate) struct EpisodeEditArgs {
     pub(crate) add_recording_id: Vec<String>,
     #[arg(long, help = "Remove a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) remove_recording_id: Vec<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EpisodeVersionsCommand {
+    #[command(about = "List episode versions, newest first")]
+    List(EpisodeVersionListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(long, help = "Maximum number of items to return (1-2000, default: 50)", allow_hyphen_values = true, value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1886,6 +1906,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::List(args) => {
             let format = args.format.format;
             episodes::list_episodes(runtime, &args, format).await
+        }
+        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_versions(runtime, &args, format).await
         }
     }
 }

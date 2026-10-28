@@ -4663,3 +4663,63 @@ fn pending_imports_accept_backfill_job_filter() {
         "sbj_1"
     );
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn episode_version_history_is_paginated_and_preserves_authors() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        headers: vec![("fg-pagination-next-cursor", "next")],
+        ..Reply::json(
+            "GET",
+            "/v1/episodes/ep%231/versions",
+            r#"{"versions":[{"version":2,"createdAt":"2026-01-01T00:00:00Z","creatorOrgMemberId":"member_1","changedFields":["properties"]}]}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "versions",
+            "list",
+            "ep#1",
+            "--limit",
+            "1",
+            "--cursor",
+            "-previous",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("limit", "1"), ("cursor", "-previous")])
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["data"][0]["version"], 2);
+    assert_eq!(value["data"][0]["creatorOrgMemberId"], "member_1");
+    assert_eq!(value["data"][0]["changedFields"][0], "properties");
+    assert_eq!(value["nextCursor"], "next");
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "GET",
+            "/v1/episodes/ep_missing/versions",
+            r#"{"error":"Episode not found"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &["episodes", "versions", "list", "ep_missing"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode not found: ep_missing\n"
+    );
+    server.finish();
+}
