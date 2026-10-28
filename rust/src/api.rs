@@ -190,6 +190,8 @@ pub struct StreamRequest {
     pub recording_key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub episode_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode_version: Option<i32>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
