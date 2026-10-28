@@ -24,8 +24,7 @@ const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLO
 const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 const INCLUDE_PROPERTIES_HELP: &str =
     "Include episode custom properties (requires API access to episode properties)";
-const PROPERTIES_QUERY_HELP: &str =
-    "Filter episode custom properties (requires API access to episode properties)";
+const PROPERTIES_QUERY_HELP: &str = "Filter by episode custom properties, for example 'weather:rain note:\"night run\"' (requires API access to episode properties)";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.

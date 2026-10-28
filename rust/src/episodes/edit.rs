@@ -6,6 +6,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{episode_endpoint, Episode};
+use crate::api::ApiError;
 use crate::cli::EpisodeEditArgs;
 use crate::custom_properties::properties;
 use crate::records::parse_timestamp_millis;
@@ -112,6 +113,14 @@ pub(crate) async fn edit_episode(runtime: &Runtime, args: &EpisodeEditArgs) -> O
         // Updates report a missing episode as "Episodes not found", listing its ID.
         Err(error) if error.is_not_found_for("episodes") => {
             Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
+        // A 409 can also mean the episode cannot take another version, so only point
+        // at the latest version when the edit named one.
+        Err(error @ ApiError::Response { status: 409, .. }) if args.applies_to_version.is_some() => {
+            Outcome::failure(format!(
+                "Failed to edit episode: {error}\nRun foxglove episodes get {} to see its latest version.\n",
+                args.episode_id
+            ))
         }
         Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
     }

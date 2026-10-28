@@ -365,7 +365,8 @@ fn edit_failures_name_the_episode_or_report_the_api_error() {
         (
             409,
             r#"{"error":"Episode version conflict","conflicts":[{"id":"ep_one","currentVersion":4}]}"#,
-            "Failed to edit episode: Episode version conflict\n",
+            "Failed to edit episode: Episode version conflict\n\
+             Run foxglove episodes get ep_one to see its latest version.\n",
         ),
     ] {
         let workspace = Workspace::new();
