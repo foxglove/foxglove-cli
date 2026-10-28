@@ -229,9 +229,13 @@ struct RestoreResponse {
     #[serde(default)]
     removed: usize,
     #[serde(default)]
+    updated: usize,
+    #[serde(default)]
     discarded_adds: usize,
     #[serde(default)]
     discarded_removes: usize,
+    #[serde(default)]
+    discarded_updates: usize,
 }
 
 pub(crate) async fn list_versions(
@@ -428,23 +432,34 @@ pub(crate) async fn restore_version(
 
 fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs) -> String {
     let mut summary = String::new();
-    if response.discarded_adds > 0 || response.discarded_removes > 0 {
+    if response.discarded_adds > 0
+        || response.discarded_removes > 0
+        || response.discarded_updates > 0
+    {
         let _ = writeln!(
             summary,
             "Discarded {}",
-            pending_changes(response.discarded_adds, response.discarded_removes, 0)
+            pending_changes(
+                response.discarded_adds,
+                response.discarded_removes,
+                response.discarded_updates
+            )
         );
     }
-    if response.added == 0 && response.removed == 0 {
+    if response.added == 0 && response.removed == 0 && response.updated == 0 {
         let _ = writeln!(summary, "The draft matches version {}", args.version);
     } else {
-        let _ = writeln!(
+        let _ = write!(
             summary,
             "Restored version {} into the draft: {} added, {} removed",
             args.version,
             plural(response.added, "episode"),
             response.removed
         );
+        if response.updated > 0 {
+            let _ = write!(summary, ", {} changed", response.updated);
+        }
+        summary.push('\n');
         summary.push_str(&commit_hint(&args.dataset_id));
     }
     summary
