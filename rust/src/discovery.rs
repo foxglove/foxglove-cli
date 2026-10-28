@@ -449,7 +449,7 @@ fn value_type(arg: &Arg) -> ValueType {
     let id = arg.get_value_parser().type_id();
     if id == TypeId::of::<bool>() {
         ValueType::Boolean
-    } else if id == TypeId::of::<i64>() {
+    } else if id == TypeId::of::<i32>() || id == TypeId::of::<i64>() {
         ValueType::Integer
     } else if id == TypeId::of::<f64>() {
         ValueType::Number
@@ -786,14 +786,14 @@ mod tests {
         assert_eq!(description["command"], "foxglove episodes add");
         assert_eq!(
             description["usage"],
-            "foxglove episodes add [OPTIONS] --recording-id <RECORDING_ID>"
+            "foxglove episodes add [OPTIONS] <--event-id <EVENT_ID>|--recording-id <RECORDING_ID>>"
         );
         let options = description["options"].as_array().unwrap();
         let recording = options
             .iter()
             .find(|option| option["name"] == "--recording-id")
             .unwrap();
-        assert_eq!(recording["required"], true);
+        assert_eq!(recording["required"], false);
         assert_eq!(recording["multiple"], true);
         assert_eq!(recording["type"], "string");
         assert_eq!(recording["global"], false);
@@ -874,7 +874,7 @@ mod tests {
         assert!(outcome.stdout.is_empty());
         assert_eq!(
             String::from_utf8(outcome.stderr).unwrap(),
-            "unknown command \"remove\"; `foxglove episodes` has: add, delete, get, list\n\
+            "unknown command \"remove\"; `foxglove episodes` has: add, delete, edit, get, list\n\
              Use `foxglove cli search <QUERY>` to find a command\n"
         );
     }
@@ -928,7 +928,6 @@ mod tests {
                         TypeId::of::<usize>(),
                         TypeId::of::<i8>(),
                         TypeId::of::<i16>(),
-                        TypeId::of::<i32>(),
                         TypeId::of::<i128>(),
                         TypeId::of::<isize>(),
                         TypeId::of::<f32>(),
