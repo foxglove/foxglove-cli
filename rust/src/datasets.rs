@@ -19,7 +19,7 @@ use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
     DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
-use crate::episodes::{include_recordings, parse_time_range, Episode};
+use crate::episodes::{episode_include, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, null_to_default, plural,
@@ -97,6 +97,9 @@ impl Record for DatasetEpisode {
             "Added At",
             "Added In Version",
             "Created At",
+            "Version",
+            "Latest Version",
+            "Custom Properties",
         ]
     }
 
@@ -111,6 +114,9 @@ impl Record for DatasetEpisode {
             self.added_at.clone(),
             self.added_in_version.to_string(),
             self.episode.created_at.clone(),
+            self.episode.version.to_string(),
+            self.episode.latest_version.to_string(),
+            self.episode.property_cell(),
         ]
     }
 }
@@ -157,6 +163,8 @@ struct DatasetEpisodeListQuery<'a> {
     sort_order: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties_query: Option<&'a str>,
 }
 
 pub(crate) async fn list_datasets(
@@ -200,10 +208,11 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
+        properties_query: args.properties_query.as_deref(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
-        include: include_recordings(args.include_recordings),
+        include: episode_include(args.include_recordings, args.include_properties),
         limit,
         metadata_query: args.metadata_query.as_deref(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
@@ -516,6 +525,8 @@ mod tests {
             "addedInVersion": 3,
             "episode": {
                 "id": "ep_fixture",
+                "version": 1,
+                "latestVersion": 1,
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",
