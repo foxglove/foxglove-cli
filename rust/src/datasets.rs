@@ -316,6 +316,8 @@ struct EpisodesPatchResponse {
     #[serde(default)]
     removed: usize,
     #[serde(default)]
+    updated: usize,
+    #[serde(default)]
     already_present: usize,
 }
 
@@ -440,30 +442,76 @@ pub(crate) async fn delete_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
     }
 }
 
+const MAX_EPISODE_CHANGES: usize = 2000;
+
+#[derive(Clone, Copy)]
+pub(crate) enum EpisodeChange {
+    Add,
+    Update,
+    Remove,
+}
+
+impl EpisodeChange {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Add => "add",
+            Self::Update => "update",
+            Self::Remove => "remove",
+        }
+    }
+}
+
 #[derive(Serialize)]
-struct PatchDatasetEpisodesRequest {
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    add: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    remove: Vec<String>,
+#[serde(untagged)]
+enum EpisodeReference<'a> {
+    Latest(&'a str),
+    Version { id: &'a str, version: i32 },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+enum EpisodesPatchRequest<'a> {
+    Add(Vec<EpisodeReference<'a>>),
+    Update(Vec<EpisodeReference<'a>>),
+    Remove(Vec<EpisodeReference<'a>>),
+}
+
+fn updates(response: &EpisodesPatchResponse, requested: &[String]) -> String {
+    let mut summary = format!("Updated {}", plural(response.updated, "episode"));
+    let unchanged = requested
+        .iter()
+        .collect::<HashSet<_>>()
+        .len()
+        .saturating_sub(response.updated);
+    if unchanged > 0 {
+        let _ = write!(summary, " ({unchanged} unchanged)");
+    }
+    summary.push('\n');
+    summary
 }
 
 pub(crate) async fn patch_dataset_episodes(
     runtime: &Runtime,
     args: &DatasetEpisodeMutationArgs,
-    add: bool,
+    operation: EpisodeChange,
+    episode_version: Option<i32>,
 ) -> Outcome {
-    let episode_ids = args.episode_ids.clone();
-    let request = if add {
-        PatchDatasetEpisodesRequest {
-            add: episode_ids,
-            remove: Vec::new(),
-        }
-    } else {
-        PatchDatasetEpisodesRequest {
-            add: Vec::new(),
-            remove: episode_ids,
-        }
+    if args.episode_ids.len() > MAX_EPISODE_CHANGES {
+        return Outcome::failure(format!("At most {MAX_EPISODE_CHANGES} episode IDs can be changed at once (got {}). Split the IDs into more than one command.\n", args.episode_ids.len()));
+    }
+    let references = args
+        .episode_ids
+        .iter()
+        .map(|id| {
+            episode_version.map_or(EpisodeReference::Latest(id), |version| {
+                EpisodeReference::Version { id, version }
+            })
+        })
+        .collect();
+    let request = match operation {
+        EpisodeChange::Add => EpisodesPatchRequest::Add(references),
+        EpisodeChange::Update => EpisodesPatchRequest::Update(references),
+        EpisodeChange::Remove => EpisodesPatchRequest::Remove(references),
     };
     match runtime
         .client
@@ -475,21 +523,20 @@ pub(crate) async fn patch_dataset_episodes(
         .await
     {
         Ok(response) => {
-            let mut stderr = if add {
-                additions(&response)
-            } else {
-                removals(&response, &args.episode_ids)
+            let mut stderr = match operation {
+                EpisodeChange::Add => additions(&response),
+                EpisodeChange::Update => updates(&response, &args.episode_ids),
+                EpisodeChange::Remove => removals(&response, &args.episode_ids),
             };
-            if response.added > 0 || response.removed > 0 {
+            if response.added > 0 || response.removed > 0 || response.updated > 0 {
                 stderr.push_str(&commit_hint(&args.dataset_id));
             }
             Outcome::notice(stderr)
         }
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
-        Err(error) => Outcome::failure(format!(
-            "Failed to {} episodes: {error}\n",
-            if add { "add" } else { "remove" }
-        )),
+        Err(error) => {
+            Outcome::failure(format!("Failed to {} episodes: {error}\n", operation.key()))
+        }
     }
 }
 

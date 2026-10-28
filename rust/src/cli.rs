@@ -570,11 +570,21 @@ pub(crate) struct DatasetDownloadArgs {
 #[derive(Debug, Subcommand)]
 enum DatasetEpisodesCommand {
     #[command(about = "Add episodes to a dataset as pending changes")]
-    Add(DatasetEpisodeMutationArgs),
+    Add(DatasetEpisodePinArgs),
+    #[command(about = "Update episode versions selected in the dataset draft")]
+    Update(DatasetEpisodePinArgs),
     #[command(about = "List the episodes in a dataset")]
     List(DatasetEpisodeListArgs),
     #[command(about = "Remove episodes from a dataset as pending changes")]
     Remove(DatasetEpisodeMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodePinArgs {
+    #[command(flatten)]
+    pub(crate) episodes: DatasetEpisodeMutationArgs,
+    #[arg(long, help = "Episode version to select for each ID (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
@@ -1836,14 +1846,30 @@ async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsC
         DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
         DatasetsCommand::Edit(args) => datasets::edit_dataset(runtime, &args).await,
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Add(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, true).await
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Add,
+                args.episode_version,
+            )
+            .await
+        }
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Update(args)) => {
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Update,
+                args.episode_version,
+            )
+            .await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Remove(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, false).await
+            datasets::patch_dataset_episodes(runtime, &args, datasets::EpisodeChange::Remove, None)
+                .await
         }
         DatasetsCommand::Get(args) => {
             let format = args.format.format;
