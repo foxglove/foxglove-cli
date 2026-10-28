@@ -2510,6 +2510,56 @@ fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn a_rerun_reads_skipped_episodes_from_earlier_manifests() {
+    let workspace = Workspace::new();
+    let episodes = [
+        dataset_episode("ep_one", false),
+        dataset_episode("ep_two", false),
+    ];
+    let mut replies = dataset_replies(&episodes);
+    replies.extend(export_replies(episode_mcap()));
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    server.finish();
+    // Earlier releases wrote a skipped entry, without a file, for an episode with no data left.
+    let mut manifest = download_manifest(&workspace);
+    let skipped = manifest["episodes"][1].as_object_mut().unwrap();
+    skipped.insert("status".to_owned(), "skipped".into());
+    skipped.remove("file");
+    skipped.remove("byteSize");
+    fs::write(
+        workspace.0.join("Highway-merges-v4/manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let mut replies = dataset_replies(&episodes);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &[]);
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.starts_with("POST /v1/data/stream "))
+            .count(),
+        1
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Episode 1 of 2: ") && stderr.contains("bytes already downloaded"),
+        "{stderr}"
+    );
+    let manifest = download_manifest(&workspace);
+    for index in 0..2 {
+        assert_eq!(manifest["episodes"][index]["status"], "downloaded");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn a_failed_refresh_keeps_the_earlier_file_and_fails_the_run() {
     let workspace = Workspace::new();
     let mut replies = dataset_replies(&[dataset_episode("ep_one", false)]);

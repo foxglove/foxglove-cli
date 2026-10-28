@@ -60,6 +60,8 @@ struct ManifestSelection {
 #[serde(rename_all = "lowercase")]
 enum Status {
     Downloaded,
+    /// Earlier releases recorded episodes with no data left as `skipped`.
+    #[serde(alias = "skipped")]
     Failed,
 }
 
