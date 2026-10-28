@@ -4609,7 +4609,7 @@ fn episode_version_history_is_paginated_and_preserves_authors() {
         ..Reply::json(
             "GET",
             "/v1/episodes/ep%231/versions",
-            r#"{"versions":[{"version":2,"createdAt":"2026-01-01T00:00:00Z","creatorOrgMemberId":"member_1","changedFields":["labels"]}]}"#,
+            r#"{"versions":[{"version":2,"createdAt":"2026-01-01T00:00:00Z","creatorOrgMemberId":"member_1","changedFields":["properties"]}]}"#,
         )
     }]);
     let output = run(
@@ -4637,7 +4637,7 @@ fn episode_version_history_is_paginated_and_preserves_authors() {
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["data"][0]["version"], 2);
     assert_eq!(value["data"][0]["creatorOrgMemberId"], "member_1");
-    assert_eq!(value["data"][0]["changedFields"][0], "labels");
+    assert_eq!(value["data"][0]["changedFields"][0], "properties");
     assert_eq!(value["nextCursor"], "next");
     let server = Server::new(vec![Reply {
         status: 404,
