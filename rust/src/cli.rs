@@ -570,11 +570,21 @@ pub(crate) struct DatasetDownloadArgs {
 #[derive(Debug, Subcommand)]
 enum DatasetEpisodesCommand {
     #[command(about = "Add episodes to a dataset as pending changes")]
-    Add(DatasetEpisodeMutationArgs),
+    Add(DatasetEpisodePinArgs),
+    #[command(about = "Update episode versions selected in the dataset draft")]
+    Update(DatasetEpisodePinArgs),
     #[command(about = "List the episodes in a dataset")]
     List(DatasetEpisodeListArgs),
     #[command(about = "Remove episodes from a dataset as pending changes")]
     Remove(DatasetEpisodeMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodePinArgs {
+    #[command(flatten)]
+    pub(crate) episodes: DatasetEpisodeMutationArgs,
+    #[arg(long, help = "Episode version to select for each ID (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
@@ -895,6 +905,8 @@ enum EpisodesCommand {
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+    #[command(about = "Inspect episode version history", subcommand)]
+    Versions(EpisodeVersionsCommand),
 }
 
 #[derive(Debug, Args)]
@@ -950,6 +962,24 @@ pub(crate) struct EpisodeEditArgs {
     pub(crate) remove_recording_id: Vec<String>,
 }
 
+#[derive(Debug, Subcommand)]
+enum EpisodeVersionsCommand {
+    #[command(about = "List episode versions, newest first")]
+    List(EpisodeVersionListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(long, help = "Maximum number of items to return (1-2000, default: 50)", allow_hyphen_values = true, value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) cursor: Option<String>,
+}
+
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeIdArgs {
     #[arg(value_name = "EPISODE_ID")]
@@ -996,6 +1026,8 @@ pub(crate) struct EpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Filter to episodes whose recordings are exactly these display IDs; comma-separated (maximum 50)", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_id, num_args = 1)]
+    pub(crate) exact_recording_ids: Vec<String>,
     #[arg(
         long, help = "Filter to episodes with, or without, recordings that are no longer available",
         action = clap::ArgAction::Set,
@@ -1492,6 +1524,10 @@ pub(crate) struct TopicListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Episode ID", allow_hyphen_values = true, value_parser = parse_id, conflicts_with_all = ["device_id", "device_name", "recording_id", "recording_key", "session_id", "session_key"])]
+    pub(crate) episode_id: Option<String>,
+    #[arg(long, help = "Episode version to list topics for; requires --episode-id (default: the newest episode version)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
     #[arg(
         long, help = "Include full topic schemas",
         action = clap::ArgAction::Set,
@@ -1816,14 +1852,30 @@ async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsC
         DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
         DatasetsCommand::Edit(args) => datasets::edit_dataset(runtime, &args).await,
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Add(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, true).await
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Add,
+                args.episode_version,
+            )
+            .await
+        }
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Update(args)) => {
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Update,
+                args.episode_version,
+            )
+            .await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Remove(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, false).await
+            datasets::patch_dataset_episodes(runtime, &args, datasets::EpisodeChange::Remove, None)
+                .await
         }
         DatasetsCommand::Get(args) => {
             let format = args.format.format;
@@ -1872,6 +1924,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::List(args) => {
             let format = args.format.format;
             episodes::list_episodes(runtime, &args, format).await
+        }
+        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_versions(runtime, &args, format).await
         }
     }
 }
@@ -2105,7 +2161,7 @@ mod tests {
     use std::ffi::OsString;
     use std::io::Cursor;
 
-    use clap::{CommandFactory, Parser};
+    use clap::{error::ErrorKind, CommandFactory, Parser};
 
     use crate::output::Format;
     use crate::run;
@@ -2210,6 +2266,7 @@ mod tests {
         (
             &["topics", "list"],
             &[
+                "episode-id",
                 "device-id",
                 "device-name",
                 "recording-id",
@@ -2221,6 +2278,42 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn topic_episode_version_requires_an_exclusive_episode_selector() {
+        for (args, kind) in [
+            (
+                vec!["foxglove", "topics", "list", "--episode-version", "2"],
+                ErrorKind::MissingRequiredArgument,
+            ),
+            (
+                vec![
+                    "foxglove",
+                    "topics",
+                    "list",
+                    "--episode-id",
+                    "ep_1",
+                    "--recording-id",
+                    "rec_1",
+                ],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                vec![
+                    "foxglove",
+                    "topics",
+                    "list",
+                    "--episode-id",
+                    "ep_1",
+                    "--device-id",
+                    "dev_1",
+                ],
+                ErrorKind::ArgumentConflict,
+            ),
+        ] {
+            assert_eq!(super::Cli::try_parse_from(args).unwrap_err().kind(), kind);
+        }
+    }
+
     #[test]
     fn blank_selectors_are_rejected_on_every_affected_command() {
         for &(path, flags) in SELECTOR_CASES {

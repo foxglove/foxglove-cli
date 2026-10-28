@@ -82,7 +82,7 @@ $ foxglove devices list --format json
 ```
 
 When more results may exist, a hint on stderr says how to get the next page.
-Datasets, dataset episodes, dataset versions, episodes, and
+Datasets, dataset episodes, dataset versions, episodes, episode versions, and
 `datasets versions compare` page with cursors: their JSON output includes
 `nextCursor`, which you pass to `--cursor`. The other commands that accept
 `--limit` page with `--offset`.
@@ -245,6 +245,20 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
+Match an exact set of recording display IDs, with none missing or extra
+(maximum 50 IDs). The flag accepts comma-separated values and may be repeated:
+
+```
+$ foxglove episodes list --exact-recording-ids rec_lwjzOMxryMmP3yXg,rec_4lVQ9mTp7vRqJY2s
+```
+
+Inspect an episode's version history, newest first. Use `--cursor` with the
+returned `nextCursor` to request the next page:
+
+```
+$ foxglove episodes versions list ep_BCUw2zxpBnToJbOS --limit 20 --format json
+```
+
 Create an episode from one or more recordings. The window defaults to the span
 of its recordings, and an existing episode whose latest version has the same
 window, recordings, and custom properties is reused:
@@ -334,6 +348,17 @@ $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
 Committed version 1 with 2 episodes (2 added, 0 removed)
 ```
 
+Select an episode version when adding an episode or updating one in the draft.
+Omit `--episode-version` to select the latest version. An already selected version
+is reported as unchanged; the API rejects update IDs outside the draft.
+
+```
+$ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 2
+$ foxglove datasets episodes update ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 3
+Updated 1 episode
+Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
+```
+
 List a dataset's versions, see which episodes changed between two of them, or
 restore an earlier one into the draft. `datasets episodes list --version` lists
 any version by number:
@@ -343,6 +368,11 @@ $ foxglove datasets versions list ds_mHH1Cp4gPybCPR8y
 $ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
 $ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
 ```
+
+Restoring a dataset version also restores the selected version of each episode.
+In the restore summary, `changed` counts episodes that stay in the dataset
+but now use a different episode version. With `--force`, the discard summary includes
+pending episode version updates.
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode plus a `manifest.json`:
