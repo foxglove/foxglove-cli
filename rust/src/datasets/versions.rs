@@ -13,7 +13,7 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::include_recordings;
+use crate::episodes::{episode_include, Episode};
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
@@ -111,6 +111,18 @@ impl Record for DatasetVersionDetail {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct DatasetEpisodeChange {
     change: String,
+    #[serde(
+        rename = "previousVersion",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    previous_version: Option<i32>,
+    #[serde(
+        rename = "previousEpisode",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    previous_episode: Option<Episode>,
     #[serde(flatten)]
     entry: DatasetEpisode,
 }
@@ -128,12 +140,26 @@ impl Record for DatasetEpisodeChange {
             "Added At",
             "Added In Version",
             "Created At",
+            "Version",
+            "Latest Version",
+            "Custom Properties",
+            "Previous Version",
+            "Previous Custom Properties",
         ]
     }
 
     fn fields(&self) -> Vec<String> {
         let mut fields = vec![self.change.clone()];
         fields.extend(self.entry.fields());
+        fields.push(
+            self.previous_version
+                .map_or_else(String::new, |version| version.to_string()),
+        );
+        fields.push(
+            self.previous_episode
+                .as_ref()
+                .map_or_else(String::new, Episode::property_cell),
+        );
         fields
     }
 }
@@ -147,6 +173,8 @@ struct DatasetChangesetResponse {
     added_count: usize,
     #[serde(default)]
     removed_count: usize,
+    #[serde(default)]
+    changed_count: usize,
     #[serde(default)]
     next_cursor: Option<String>,
 }
@@ -311,7 +339,7 @@ pub(crate) async fn compare_versions(
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
-        include: include_recordings(args.include_recordings),
+        include: episode_include(args.include_recordings, args.include_properties),
     };
     let page = match runtime
         .client
@@ -346,9 +374,10 @@ pub(crate) async fn compare_versions(
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(
-                "{} added, {} removed\n",
+                "{} added, {} removed, {} changed\n",
                 plural(page.added_count, "episode"),
-                page.removed_count
+                page.removed_count,
+                page.changed_count
             )
             .as_bytes(),
         );
@@ -541,7 +570,7 @@ mod tests {
     #[test]
     fn a_change_leads_with_its_side_and_keeps_the_membership_columns() {
         assert_eq!(
-            DatasetEpisodeChange::headers()[1..],
+            DatasetEpisodeChange::headers()[1..=DatasetEpisode::headers().len()],
             *DatasetEpisode::headers()
         );
         let change: DatasetEpisodeChange = serde_json::from_value(serde_json::json!({
@@ -550,6 +579,8 @@ mod tests {
             "addedInVersion": 2,
             "episode": {
                 "id": "ep_fixture",
+                "version": 1,
+                "latestVersion": 1,
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",
