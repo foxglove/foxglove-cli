@@ -1,3 +1,6 @@
+#[path = "cli_integration/episodes.rs"]
+mod episodes;
+
 mod support;
 
 use std::collections::BTreeMap;
@@ -1038,6 +1041,42 @@ fn ctrl_c_interrupts_login_polling_and_preserves_credentials() {
     }
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn session_key_lookups_preserve_surrounding_whitespace() {
+    const KEY: &str = " batch ";
+    const PATH: &str = "/v1/sessions/%20batch%20";
+    const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
+    assert_each_request_reaches(&[
+        (&["sessions", "get", KEY], "GET", PATH, SESSION),
+        (&["sessions", "delete", KEY], "DELETE", PATH, "{}"),
+        (
+            &["sessions", "edit", KEY, "--key", "renamed"],
+            "PATCH",
+            PATH,
+            SESSION,
+        ),
+        (
+            &["sessions", "recordings", "list", KEY],
+            "GET",
+            PATH,
+            SESSION,
+        ),
+        (
+            &["sessions", "recordings", "add", KEY, "rec"],
+            "PATCH",
+            PATH,
+            "{}",
+        ),
+        (
+            &["sessions", "recordings", "remove", KEY, "rec"],
+            "PATCH",
+            PATH,
+            "{}",
+        ),
+    ]);
+}
+
 type RequestCase<'a> = (&'a [&'a str], &'static str, &'static str, &'static str);
 
 fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {
@@ -1189,7 +1228,7 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
             &["datasets", "versions", "compare", KEY, "1", "2"],
             "GET",
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2/compare",
-            r#"{"changes":[],"addedCount":0,"removedCount":0,"nextCursor":null}"#,
+            r#"{"changes":[],"addedCount":0,"removedCount":0,"changedCount":0,"nextCursor":null}"#,
         ),
         (
             &["datasets", "versions", "restore", KEY, "1"],
@@ -1201,11 +1240,60 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
             &["episodes", "get", KEY],
             "GET",
             EPISODE_PATH,
-            r#"{"id":"ep","projectId":"","startTime":"","endTime":"","createdAt":""}"#,
+            r#"{"id":"ep","version":1,"latestVersion":1,"projectId":"","startTime":"","endTime":"","createdAt":""}"#,
         ),
         (&["episodes", "delete", KEY], "DELETE", EPISODE_PATH, "{}"),
     ];
     assert_each_request_reaches(cases);
+}
+
+#[test]
+fn assigning_session_keys_rejects_surrounding_whitespace() {
+    let workspace = Workspace::new();
+    for command in [
+        &["sessions", "add", "--device-id", "dev_one"][..],
+        &["sessions", "edit", "old-key"],
+    ] {
+        for key in [" batch", "batch ", "batch\r", "\tbatch", "batch\u{a0}"] {
+            let output = Process::spawn(
+                workspace
+                    .command("http://127.0.0.1:1")
+                    .args(command)
+                    .args(["--key", key]),
+            )
+            .finish();
+            assert!(!output.status.success(), "{command:?}: {key:?}");
+            let error = String::from_utf8_lossy(&output.stderr);
+            assert!(error.contains("for '--key <KEY>'"), "{error}");
+            assert!(
+                error.contains("cannot start or end with whitespace"),
+                "{error}"
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_export_topics_fail_before_requesting_or_replacing_output() {
+    let workspace = Workspace::new();
+    let destination = workspace.0.join("existing.mcap");
+    fs::write(&destination, b"existing export").unwrap();
+    for topics in ["", ",", ",,"] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
+            "export",
+            "--recording-id",
+            "rec_one",
+            "--topics",
+            topics,
+            "--output-file",
+            "existing.mcap",
+        ]))
+        .finish();
+        assert!(!output.status.success(), "{topics:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr),
+            "Failed to build request: --topics must name at least one topic; omit --topics to export all topics\n");
+        assert_eq!(fs::read(&destination).unwrap(), b"existing export");
+    }
 }
 
 #[test]
@@ -1226,7 +1314,7 @@ fn session_add_sends_key() {
             "--device-id",
             "dev_one",
             "--key",
-            " drive-41\r",
+            "drive-41",
         ],
     );
     assert_success(&output);
@@ -1253,9 +1341,9 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
             "Session updated: ses_one\nSession key: new-key\n",
         ),
         (
-            vec!["--key", " new-key\r"],
-            serde_json::json!({"key": "new-key"}),
-            "Session updated: ses_one\nSession key: new-key\n",
+            vec!["--key", "new key"],
+            serde_json::json!({"key": "new key"}),
+            "Session updated: ses_one\nSession key: new key\n",
         ),
         (
             vec!["--remove-key"],
@@ -1451,7 +1539,11 @@ fn session_key_edit_reports_debug_project_scope() {
 #[test]
 fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
     let workspace = Workspace::new();
-    for key in ["", ".", ".."] {
+    for (key, error) in [
+        ("", "cannot be empty"),
+        (".", "IDs, keys and names must not be"),
+        ("..", "IDs, keys and names must not be"),
+    ] {
         let output = Process::spawn(
             workspace
                 .command("http://127.0.0.1:1")
@@ -1459,7 +1551,7 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
         )
         .finish();
         assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("IDs, keys and names must not be"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains(error));
     }
 }
 
@@ -1467,7 +1559,11 @@ fn ambiguous_session_keys_are_rejected_before_sending_a_request() {
 #[ignore = "requires loopback sockets"]
 fn empty_environment_overrides_use_saved_configuration() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json("GET", "/v1/recordings", "[]")]);
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+    ]);
     fs::write(
         workspace.0.join(".foxgloverc"),
         format!(
@@ -1476,19 +1572,29 @@ fn empty_environment_overrides_use_saved_configuration() {
         ),
     )
     .unwrap();
-    let output = Process::spawn(
-        workspace
-            .command("")
-            .env("FOXGLOVE_BEARER_TOKEN", "")
-            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "")
-            .args(["recordings", "list", "--format", "json"]),
-    )
-    .finish();
-    assert_success(&output);
+    for project in ["", " ", "\r\n\t"] {
+        let output = Process::spawn(
+            workspace
+                .command("")
+                .env("FOXGLOVE_BEARER_TOKEN", "")
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", project)
+                .args(["--debug", "recordings", "list", "--format", "json"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("Project scope: saved-project (source: default_project_id)"),
+            "{project:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     let requests = server.finish();
-    assert_eq!(requests.len(), 1);
-    assert!(requests[0].contains("projectId=saved-project"));
-    assert!(requests[0].contains("authorization: Bearer saved-token\r\n"));
+    assert_eq!(requests.len(), 3);
+    for request in requests {
+        assert_eq!(query_pairs(&request)["projectId"], "saved-project");
+        assert!(request.contains("authorization: Bearer saved-token\r\n"));
+    }
 }
 
 #[test]
@@ -1821,6 +1927,103 @@ fn list_limits_must_be_between_one_and_two_thousand() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn recordings_without_a_device_or_session_send_empty_filters() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings", "[]"),
+        Reply::json("GET", "/v1/recordings", "[]"),
+    ]);
+    for args in [
+        &["--without-device", "--session-key", " key\r"][..],
+        &["--without-session"],
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default\r")
+                .args(["recordings", "list"])
+                .args(args),
+        )
+        .finish();
+        assert_success(&output);
+    }
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[
+            ("deviceId", ""),
+            ("limit", "50"),
+            ("projectId", "prj_default"),
+            ("sessionKey", " key\r"),
+        ])
+    );
+    assert_eq!(
+        query_pairs(&requests[1]),
+        expected_pairs(&[
+            ("limit", "50"),
+            ("projectId", "prj_default"),
+            ("sessionId", ""),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_empty_cursor_requests_the_first_page() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/datasets", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "datasets",
+        "list",
+        "--project-id",
+        " prj_explicit\r",
+        "--cursor",
+        " ",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "50"), ("projectId", "prj_explicit")])
+    );
+}
+
+#[test]
+fn blank_and_conflicting_filters_are_rejected() {
+    let workspace = Workspace::new();
+    for args in [
+        &["episodes", "list", "--recording-id="][..],
+        &["recordings", "list", "--device-id="],
+        &["sessions", "list", "--device-id", " "],
+        &["events", "list", "--sort-by", "", "--sort-order", "desc"],
+        &["upload", "--key", "", "data.mcap"],
+        &["upload", "--session-key", " \r", "data.mcap"],
+        &["pending-imports", "list", "--key", ""],
+        &["sessions", "add", "--device-id", " "],
+        &[
+            "recordings",
+            "list",
+            "--without-device",
+            "--device-id",
+            "dev_1",
+        ],
+        &[
+            "recordings",
+            "list",
+            "--without-session",
+            "--session-key",
+            "key",
+        ],
+    ] {
+        let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        // Matches both "cannot be empty" and "cannot be used with".
+        assert!(String::from_utf8_lossy(&output.stderr).contains("cannot be"));
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn dataset_list_filters_reach_the_api() {
     const DATASETS: &str = r#"[{"id":"ds_one","projectId":"prj_explicit","name":"Highway","description":"Merges","episodeCount":2,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}]"#;
     let workspace = Workspace::new();
@@ -1897,7 +2100,7 @@ fn recordings_are_listed_with_their_session() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
-    const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","version":1,"latestVersion":1,"projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODES)]);
     let output = Process::spawn(workspace.command(&server.url).args([
@@ -1927,8 +2130,8 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At\n\
-         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z\n"
+        "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At,Version,Latest Version,Custom Properties\n\
+         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z,1,1,\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -1949,7 +2152,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn dataset_episode_membership_is_rendered_alongside_the_episode() {
-    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"episode":{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
+    const EPISODES: &str = r#"{"episodes":[{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":3,"episode":{"id":"ep_one","version":1,"latestVersion":1,"projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z"}}]}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "GET",
@@ -1970,8 +2173,8 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Episode ID,Project ID,Start Time,End Time,Recordings,Metadata,Added At,Added In Version,Created At\n\
-         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z\n"
+        "Episode ID,Project ID,Start Time,End Time,Recordings,Metadata,Added At,Added In Version,Created At,Version,Latest Version,Custom Properties\n\
+         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z,1,1,\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -1986,7 +2189,7 @@ fn a_full_page_reports_that_more_results_may_exist() {
         let episodes = (0..count)
             .map(|index| {
                 format!(
-                    r#"{{"id":"ep_{index}","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}"#
+                    r#"{{"id":"ep_{index}","version":1,"latestVersion":1,"projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}"#
                 )
             })
             .collect::<Vec<_>>()
@@ -2034,7 +2237,7 @@ const DOWNLOAD_DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name
 
 fn dataset_episode(id: &str, missing_recordings: bool) -> String {
     format!(
-        r#"{{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":{missing_recordings},"episode":{{"id":"{id}","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
+        r#"{{"addedAt":"2024-01-02T03:04:08Z","addedInVersion":4,"hasMissingRecordings":{missing_recordings},"episode":{{"id":"{id}","version":1,"latestVersion":1,"projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
     )
 }
 
@@ -3182,7 +3385,7 @@ fn a_missing_version_is_named_in_the_error() {
 fn the_episode_list_sends_the_missing_recordings_filter_and_passes_the_field_through() {
     fn episodes(missing_recordings: &str) -> String {
         format!(
-            r#"{{"episodes":[{{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},{missing_recordings}"createdAt":"2024-01-02T03:04:07Z"}}]}}"#
+            r#"{{"episodes":[{{"id":"ep_one","version":1,"latestVersion":1,"projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},{missing_recordings}"createdAt":"2024-01-02T03:04:07Z"}}]}}"#
         )
     }
     let workspace = Workspace::new();
@@ -3324,7 +3527,7 @@ fn a_version_reports_whether_its_recordings_are_missing() {
 
 fn change(side: &str, id: &str) -> String {
     format!(
-        r#"{{"change":"{side}","addedAt":"2024-01-02T03:04:08Z","addedInVersion":1,"episode":{{"id":"{id}","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
+        r#"{{"change":"{side}","addedAt":"2024-01-02T03:04:08Z","addedInVersion":1,"episode":{{"id":"{id}","version":1,"latestVersion":1,"projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{{}},"createdAt":"2024-01-02T03:04:07Z"}}}}"#
     )
 }
 
@@ -3336,7 +3539,7 @@ fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
         "GET",
         "/v1/datasets/ds_one/versions/3/compare",
         &format!(
-            r#"{{"changes":[{},{}],"addedCount":2,"removedCount":1,"nextCursor":"page2"}}"#,
+            r#"{{"changes":[{},{}],"addedCount":2,"removedCount":1,"changedCount":0,"nextCursor":"page2"}}"#,
             change("added", "ep_one"),
             change("removed", "ep_two")
         ),
@@ -3374,7 +3577,7 @@ fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "2 episodes added, 1 removed\n\
+        "2 episodes added, 1 removed, 0 changed\n\
          More changes exist; rerun with --cursor page2 to fetch the next page.\n"
     );
 }
@@ -3387,7 +3590,7 @@ fn comparing_versions_sends_the_given_cursor_and_limit() {
         "GET",
         "/v1/datasets/ds_one/versions/3/compare",
         &format!(
-            r#"{{"changes":[{}],"addedCount":2,"removedCount":1,"nextCursor":null}}"#,
+            r#"{{"changes":[{}],"addedCount":2,"removedCount":1,"changedCount":0,"nextCursor":null}}"#,
             change("added", "ep_three")
         ),
     )]);
@@ -3406,7 +3609,7 @@ fn comparing_versions_sends_the_given_cursor_and_limit() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "2 episodes added, 1 removed\n"
+        "2 episodes added, 1 removed, 0 changed\n"
     );
 }
 
@@ -3417,7 +3620,7 @@ fn an_empty_compare_page_offers_no_next_page() {
     let server = Server::new(vec![Reply::json(
         "GET",
         "/v1/datasets/ds_one/versions/2/compare",
-        r#"{"changes":[],"addedCount":0,"removedCount":0,"nextCursor":"again"}"#,
+        r#"{"changes":[],"addedCount":0,"removedCount":0,"changedCount":0,"nextCursor":"again"}"#,
     )]);
     let output = run(
         &workspace,
@@ -3428,7 +3631,7 @@ fn an_empty_compare_page_offers_no_next_page() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "0 episodes added, 0 removed\n"
+        "0 episodes added, 0 removed, 0 changed\n"
     );
 }
 
@@ -3615,12 +3818,132 @@ fn an_episode_window_left_out_is_inferred_by_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn an_event_episode_sends_only_the_event_id() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/episodes",
+        r#"{"episodes":[{"id":"ep_event","created":true}]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "add",
+            "--project-id",
+            "prj_explicit",
+            "--event-id",
+            "evt_one",
+            "--metadata",
+            r#"{"label":"merge"}"#,
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({
+            "projectId": "prj_explicit",
+            "episodes": [{"eventId": "evt_one", "metadata": {"label": "merge"}}],
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode created: ep_event\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_episode_errors_from_the_api_are_shown_in_full() {
+    let workspace = Workspace::new();
+    for (status, body) in [
+        (
+            404,
+            serde_json::json!({"error": "Events not found: evt_gone"}),
+        ),
+        (
+            400,
+            serde_json::json!({"error": "No completed recordings were found for event evt_gone"}),
+        ),
+        (
+            400,
+            serde_json::json!({
+                "error": "Event inputs may resolve at most 10,000 recording memberships per request. Split the events into smaller requests.",
+                "code": "EventRecordingMembershipLimitExceeded",
+            }),
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status,
+            ..Reply::json("POST", "/v1/episodes", &body.to_string())
+        }]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "episodes",
+                "add",
+                "--project-id",
+                "prj_explicit",
+                "--event-id",
+                "evt_gone",
+            ],
+        );
+        server.finish();
+        assert!(!output.status.success(), "{body}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            format!(
+                "Failed to create episode: {}\n",
+                body["error"].as_str().unwrap()
+            ),
+        );
+    }
+}
+
+#[test]
+fn an_episode_takes_either_an_event_or_recordings() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec![],
+            "error: the following required arguments were not provided:\n  <--event-id <EVENT_ID>|--recording-id <RECORDING_ID>>\n",
+        ),
+        (
+            vec!["--event-id", "evt_one", "--recording-id", "rec_one"],
+            "error: the argument '--event-id <EVENT_ID>' cannot be used with '--recording-id <RECORDING_ID>'\n",
+        ),
+        (
+            vec!["--event-id", "evt_one", "--start", "2024-01-02"],
+            "error: the argument '--event-id <EVENT_ID>' cannot be used with '--start <START>'\n",
+        ),
+        (
+            vec!["--event-id", "evt_one", "--end", "2024-01-03"],
+            "error: the argument '--event-id <EVENT_ID>' cannot be used with '--end <END>'\n",
+        ),
+    ] {
+        let output = Process::spawn(
+            workspace
+                .command("http://127.0.0.1:1")
+                .args(["episodes", "add", "--project-id", "prj"])
+                .args(&flags),
+        )
+        .finish();
+        assert!(!output.status.success(), "{flags:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.starts_with(expected), "{flags:?}: {stderr}");
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn getting_an_episode_can_include_its_recordings() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
         "GET",
         "/v1/episodes/ep_one",
-        r#"{"id":"ep_one","projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false},{"id":"rec_two","path":"two.mcap","location":{"bucket":"robot-logs","path":"fleet/two.mcap"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":true}],"hasMissingRecordings":true,"createdAt":"2024-01-02T03:04:07Z"}"#,
+        r#"{"id":"ep_one","version":1,"latestVersion":1,"projectId":"prj_default","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false},{"id":"rec_two","path":"two.mcap","location":{"bucket":"robot-logs","path":"fleet/two.mcap"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":true}],"hasMissingRecordings":true,"createdAt":"2024-01-02T03:04:07Z"}"#,
     )]);
     let output = run(
         &workspace,
@@ -4275,4 +4598,27 @@ fn table_ids_stay_on_one_line_and_piped_tables_do_not_wrap() {
             assert_eq!(lines.len(), 3, "{stdout}");
         }
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn pending_imports_accept_backfill_job_filter() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
+    assert_success(&run(
+        &workspace,
+        &server,
+        &[
+            "pending-imports",
+            "list",
+            "--site-backfill-job-id",
+            "sbj_1",
+            "--format",
+            "json",
+        ],
+    ));
+    assert_eq!(
+        query_pairs(&server.finish()[0])["siteBackfillJobId"],
+        "sbj_1"
+    );
 }

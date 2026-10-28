@@ -269,7 +269,17 @@ pub(crate) fn environment_name(key: &str) -> Option<&'static str> {
         .iter()
         .filter(|(config_key, _)| *config_key == key)
         .map(|(_, name)| *name)
-        .find(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
+        .find(|name| {
+            env::var_os(name).is_some_and(|value| {
+                if key == "default_project_id" {
+                    // Project IDs are trimmed before use, so a whitespace-only
+                    // override must fall back just like an empty override.
+                    value.to_str().is_some_and(|value| !value.trim().is_empty())
+                } else {
+                    !value.is_empty()
+                }
+            })
+        })
 }
 
 fn environment_value(key: &str) -> Option<String> {

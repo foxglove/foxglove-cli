@@ -6,6 +6,7 @@ mod auth;
 mod cli;
 pub mod config;
 mod coverage;
+mod custom_properties;
 mod datasets;
 mod devices;
 mod discovery;
