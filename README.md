@@ -379,9 +379,7 @@ pending episode version updates.
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode, at the episode version selected by the dataset version, plus a
-`manifest.json` that records each episode's version. When resuming, the CLI
-downloads an episode again if the earlier manifest does not record the same
-episode version:
+`manifest.json` that records each episode's version:
 
 ```
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
@@ -389,6 +387,9 @@ Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
+
+If an earlier manifest does not record the same episode version, the CLI
+downloads that episode again.
 
 Use `--include-properties` to add episode custom properties to each manifest
 entry, including empty `{}` values. This also works when resuming a download:

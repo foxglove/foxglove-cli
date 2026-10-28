@@ -628,8 +628,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         selection: ManifestSelection {
             topics: topic_list(args.topics.as_deref()),
-            // The app always includes attachments and never writes this field, so a
-            // default download writes the same manifest as the app.
+            // The app always includes attachments and never writes this field.
+            // Omit it for the default selection.
             include_attachments: (!args.include_attachments).then_some(false),
             episode_count: episodes.len(),
         },
