@@ -581,3 +581,19 @@ fn property_downloads_page_and_preserve_empty_absent_and_skipped_properties() {
     assert!(manifest["episodes"][2].get("properties").is_none());
     assert_eq!(manifest["episodes"][2]["status"], "failed");
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn downloads_stream_the_episode_version_the_dataset_pins() {
+    let workspace = Workspace::new();
+    let mut pinned: serde_json::Value = serde_json::from_str(&member("ep_one", None)).unwrap();
+    pinned["episode"]["version"] = 3.into();
+    pinned["episode"]["latestVersion"] = 4.into();
+    let mut replies = dataset_replies(&[pinned.to_string()]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    assert_success(&download_dataset(&workspace, &server, &[]));
+    let stream = json_body(&server.finish()[3]);
+    assert_eq!(stream["episodeId"], "ep_one");
+    assert_eq!(stream["episodeVersion"], 3);
+}

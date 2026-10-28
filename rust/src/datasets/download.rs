@@ -292,6 +292,8 @@ fn episode_request(
     };
     Ok(StreamRequest {
         episode_id: entry.episode.id.clone(),
+        // Stream the version this dataset version pins, not the episode's latest.
+        episode_version: Some(entry.episode.version),
         start: Some(bound(&entry.episode.start_time)?),
         end: Some(bound(&entry.episode.end_time)?),
         output_format: "mcap".to_owned(),
