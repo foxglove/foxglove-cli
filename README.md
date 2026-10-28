@@ -245,6 +245,13 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
+Match an exact set of recording display IDs, with none missing or extra
+(maximum 50 IDs). The flag accepts comma-separated values and may be repeated:
+
+```
+$ foxglove episodes list --exact-recording-ids rec_lwjzOMxryMmP3yXg,rec_4lVQ9mTp7vRqJY2s
+```
+
 Inspect an episode's version history, newest first. Use `--cursor` with the
 returned `nextCursor` to request the next page:
 
