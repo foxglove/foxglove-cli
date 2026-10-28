@@ -874,7 +874,7 @@ mod tests {
         assert!(outcome.stdout.is_empty());
         assert_eq!(
             String::from_utf8(outcome.stderr).unwrap(),
-            "unknown command \"remove\"; `foxglove episodes` has: add, delete, edit, get, list, versions\n\
+            "unknown command \"remove\"; `foxglove episodes` has: add, delete, edit, edit-bulk, get, list, versions\n\
              Use `foxglove cli search <QUERY>` to find a command\n"
         );
     }
