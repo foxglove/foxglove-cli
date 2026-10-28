@@ -2336,14 +2336,9 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
         "Highway-merges-v4/episode_0000_ep_one.mcap"
     );
     assert_eq!(manifest["episodes"][0]["byteSize"], episode_mcap().len());
-    assert_eq!(
-        manifest["episodes"][0]["episodeHasMissingRecordings"],
-        false
-    );
-    assert_eq!(
-        manifest["episodes"][1]["episodeHasMissingRecordings"],
-        false
-    );
+    assert!(manifest["episodes"][0]
+        .get("episodeHasMissingRecordings")
+        .is_none());
 
     let body = requests[3].split("\r\n\r\n").nth(1).unwrap();
     let stream: serde_json::Value = serde_json::from_str(body).unwrap();
@@ -2354,7 +2349,7 @@ fn downloading_a_dataset_version_writes_episodes_and_a_manifest() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.ends_with("Downloaded 2 of 2 episodes to Highway-merges-v4 (0 failed, 0 skipped)\n"),
+        stderr.ends_with("Downloaded 2 of 2 episodes to Highway-merges-v4 (0 failed)\n"),
         "{stderr}"
     );
 }
@@ -2457,10 +2452,14 @@ fn episodes_that_cannot_be_downloaded_are_recorded_in_the_manifest() {
         .iter()
         .map(|episode| episode["status"].as_str().unwrap())
         .collect();
-    assert_eq!(statuses, ["downloaded", "skipped", "failed"]);
+    assert_eq!(statuses, ["downloaded", "failed", "failed"]);
+    assert_eq!(
+        manifest["episodes"][1]["reason"],
+        "No Primary Site holds data for any recording in this episode. Import those recordings to include it."
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Downloaded 1 of 3 episodes to Highway-merges-v4 (1 failed, 1 skipped)"),
+        stderr.contains("Downloaded 1 of 3 episodes to Highway-merges-v4 (2 failed)"),
         "{stderr}"
     );
 }
@@ -2486,7 +2485,7 @@ fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
     replies.push(no_streamable_recordings());
     let server = Server::new(replies);
     let output = download_dataset(&workspace, &server, &[]);
-    assert_success(&output);
+    assert!(!output.status.success());
     server.finish();
     let size = episode_mcap().len();
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -2496,15 +2495,16 @@ fn a_rerun_reuses_the_episodes_an_earlier_run_downloaded() {
     );
     assert!(
         stderr.contains(&format!(
-            "Episode 2 of 2: {size} bytes kept from an earlier run (skipped: "
+            "Episode 2 of 2: {size} bytes kept from an earlier run (failed: No Primary Site holds data"
         )),
         "{stderr}"
     );
     let manifest = download_manifest(&workspace);
-    for (index, missing_recordings) in [(0, false), (1, true)] {
+    for (index, status) in [(0, "downloaded"), (1, "failed")] {
         let episode = &manifest["episodes"][index];
-        assert_eq!(episode["status"], "downloaded");
-        assert_eq!(episode["episodeHasMissingRecordings"], missing_recordings);
+        assert_eq!(episode["status"], status);
+        assert_eq!(episode["byteSize"], size);
+        assert!(episode.get("episodeHasMissingRecordings").is_none());
     }
 }
 
@@ -2533,7 +2533,7 @@ fn a_failed_refresh_keeps_the_earlier_file_and_fails_the_run() {
     assert!(
         stderr.contains(&format!(
             "Episode 1 of 1: {size} bytes kept from an earlier run (failed: "
-        )) && stderr.contains("(1 failed, 0 skipped)"),
+        )) && stderr.contains("(1 failed)"),
         "{stderr}"
     );
     let root = workspace.0.join("Highway-merges-v4");

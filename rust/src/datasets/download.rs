@@ -1,7 +1,6 @@
 //! Dataset version download.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -61,7 +60,6 @@ struct ManifestSelection {
 #[serde(rename_all = "lowercase")]
 enum Status {
     Downloaded,
-    Skipped,
     Failed,
 }
 
@@ -82,7 +80,9 @@ struct ManifestEpisode {
     status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Read from manifests that earlier releases wrote, so a rerun refreshes episodes
+    /// they downloaded with missing recordings.
+    #[serde(default, skip_serializing)]
     episode_has_missing_recordings: Option<bool>,
 }
 
@@ -331,7 +331,6 @@ fn is_complete(earlier: &ManifestEpisode) -> bool {
 enum EpisodeResult {
     Reused(u64),
     Downloaded(u64),
-    Skipped,
     Failed(String),
     NotAttempted(String),
 }
@@ -345,36 +344,24 @@ fn manifest_entry(
     kept: Option<u64>,
     file: String,
 ) -> (ManifestEpisode, Option<String>) {
-    let (status, byte_size, reason, missing, note) = match result {
+    let (status, byte_size, reason, note) = match result {
         EpisodeResult::Reused(size) => (
             Status::Downloaded,
             Some(*size),
             None,
-            Some(false),
             Some(format!("{size} bytes already downloaded")),
         ),
-        EpisodeResult::Downloaded(size) => {
-            (Status::Downloaded, Some(*size), None, Some(false), None)
-        }
-        EpisodeResult::Skipped => (
-            Status::Skipped,
-            None,
-            Some(NO_DATA_LEFT_REASON.to_owned()),
-            None,
-            Some(format!("skipped: {NO_DATA_LEFT_REASON}")),
-        ),
+        EpisodeResult::Downloaded(size) => (Status::Downloaded, Some(*size), None, None),
         EpisodeResult::Failed(reason) => (
             Status::Failed,
             None,
             Some(reason.clone()),
-            None,
             Some(format!("failed: {reason}")),
         ),
         EpisodeResult::NotAttempted(reason) => (
             Status::Failed,
             None,
             Some(format!("Not attempted: {reason}")),
-            None,
             Some(format!("not attempted: {reason}")),
         ),
     };
@@ -389,20 +376,14 @@ fn manifest_entry(
         byte_size,
         status,
         reason,
-        episode_has_missing_recordings: missing,
+        episode_has_missing_recordings: None,
     };
     let Some(size) = kept else {
         return (episode, note);
     };
-    // A skip means no data is left to download, so the earlier file is the download. A
-    // failure stays a failure, with the earlier file listed so the next run can find it.
-    if status == Status::Skipped {
-        episode.status = Status::Downloaded;
-        episode.reason = None;
-    }
+    // A failure stays a failure, with the earlier file listed so the next run can find it.
     episode.file = Some(file);
     episode.byte_size = Some(size);
-    episode.episode_has_missing_recordings = Some(true);
     let note = note.map(|note| format!("{size} bytes kept from an earlier run ({note})"));
     (episode, note)
 }
@@ -464,7 +445,7 @@ async fn download_episodes(
             match result {
                 Ok(written) => EpisodeResult::Downloaded(written),
                 Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => {
-                    EpisodeResult::Skipped
+                    EpisodeResult::Failed(NO_DATA_LEFT_REASON.to_owned())
                 }
                 Err(error) => {
                     let reason = error.to_string();
@@ -538,30 +519,13 @@ fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
             .filter(|episode| episode.status == status)
             .count()
     };
-    let mut summary = format!(
-        "Downloaded {} of {} episodes to {} ({} failed, {} skipped)\n",
+    format!(
+        "Downloaded {} of {} episodes to {} ({} failed)\n",
         count(Status::Downloaded),
         episodes.len(),
         directory.display(),
         count(Status::Failed),
-        count(Status::Skipped)
-    );
-    let partial = episodes
-        .iter()
-        .filter(|episode| {
-            episode.status == Status::Downloaded
-                && episode.episode_has_missing_recordings == Some(true)
-        })
-        .count();
-    if partial > 0 {
-        let noun = if partial == 1 {
-            "episode has"
-        } else {
-            "episodes have"
-        };
-        let _ = writeln!(summary, "{partial} downloaded {noun} missing recordings");
-    }
-    summary
+    )
 }
 
 /// Explains why a version with missing recordings cannot be downloaded and how to
