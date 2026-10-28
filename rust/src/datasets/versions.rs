@@ -223,12 +223,13 @@ struct CommitResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DiscardResponse {
-    #[serde(default)]
-    discarded_adds: usize,
-    #[serde(default)]
-    discarded_removes: usize,
+    #[serde(default, rename = "discardedAdds")]
+    adds: usize,
+    #[serde(default, rename = "discardedRemoves")]
+    removes: usize,
+    #[serde(default, rename = "discardedUpdates")]
+    updates: usize,
 }
 
 #[derive(Deserialize)]
@@ -442,7 +443,7 @@ fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs)
         let _ = writeln!(
             summary,
             "Discarded {}",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(response.discarded_adds, response.discarded_removes, 0)
         );
     }
     if response.added == 0 && response.removed == 0 {
@@ -460,15 +461,21 @@ fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs)
     summary
 }
 
-fn pending_changes(additions: usize, removals: usize) -> String {
-    match (additions, removals) {
-        (additions, 0) => plural(additions, "pending addition"),
-        (0, removals) => plural(removals, "pending removal"),
-        (additions, removals) => format!(
-            "{} and {}",
-            plural(additions, "pending addition"),
-            plural(removals, "pending removal")
-        ),
+fn pending_changes(additions: usize, removals: usize, updates: usize) -> String {
+    let mut parts: Vec<String> = [
+        (additions, "pending addition"),
+        (removals, "pending removal"),
+        (updates, "pending episode version update"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, noun)| plural(count, noun))
+    .collect();
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", parts.join(", "))
     }
 }
 
@@ -506,12 +513,12 @@ pub(crate) async fn discard_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> 
         )
         .await
     {
-        Ok(response) if response.discarded_adds == 0 && response.discarded_removes == 0 => {
+        Ok(response) if response.adds == 0 && response.removes == 0 && response.updates == 0 => {
             Outcome::notice("No pending changes to discard\n")
         }
         Ok(response) => Outcome::notice(format!(
             "Discarded {}\n",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(response.adds, response.removes, response.updates)
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to discard dataset changes: {error}\n")),

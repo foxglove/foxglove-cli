@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::encode_path_segment;
-use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
+use crate::cli::{
+    EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs, EpisodeVersionListArgs,
+};
 use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
@@ -373,6 +375,82 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
             Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
         }
         Err(error) => Outcome::failure(format!("Failed to delete episode: {error}\n")),
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EpisodeVersion {
+    version: i32,
+    created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    creator_org_member_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    creator_api_key_id: Option<String>,
+    changed_fields: Vec<String>,
+}
+
+impl Record for EpisodeVersion {
+    fn headers() -> &'static [&'static str] {
+        &[
+            "Version",
+            "Created At",
+            "Creator Member ID",
+            "Creator API Key ID",
+            "Changed Fields",
+        ]
+    }
+    fn fields(&self) -> Vec<String> {
+        vec![
+            self.version.to_string(),
+            self.created_at.clone(),
+            self.creator_org_member_id.clone().unwrap_or_default(),
+            self.creator_api_key_id.clone().unwrap_or_default(),
+            self.changed_fields.join(","),
+        ]
+    }
+}
+
+#[derive(Deserialize)]
+struct EpisodeVersionsResponse {
+    versions: Vec<EpisodeVersion>,
+}
+
+pub(crate) async fn list_versions(
+    runtime: &Runtime,
+    args: &EpisodeVersionListArgs,
+    format: Format,
+) -> Outcome {
+    #[derive(Serialize)]
+    struct Query<'a> {
+        limit: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cursor: Option<&'a str>,
+    }
+    let query = Query {
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
+    };
+    match runtime
+        .client
+        .get_page::<_, EpisodeVersionsResponse>(
+            &format!("{}/versions", episode_endpoint(&args.episode_id)),
+            &query,
+        )
+        .await
+    {
+        Ok(page) => warn_if_has_next_cursor(
+            format_list_output(
+                &page.data.versions,
+                format,
+                NextCursor::Page(page.next_cursor.as_deref()),
+            ),
+            page.next_cursor.as_deref(),
+        ),
+        Err(error) if error.is_not_found_for("episode") => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to list episode versions: {error}\n")),
     }
 }
 
