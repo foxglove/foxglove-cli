@@ -4796,3 +4796,20 @@ fn episode_version_history_is_paginated_and_preserves_authors() {
     );
     server.finish();
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn topic_queries_select_historical_episode_versions() {
+    let workspace = Workspace::new();
+    for version in [None, Some("2")] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/data/topics", "[]")]);
+        let mut args = vec!["topics", "list", "--episode-id", "ep_1", "--format", "json"];
+        if let Some(version) = version {
+            args.extend(["--episode-version", version]);
+        }
+        assert_success(&run(&workspace, &server, &args));
+        let query = query_pairs(&server.finish()[0]);
+        assert_eq!(query["episodeId"], "ep_1");
+        assert_eq!(query.get("episodeVersion").map(String::as_str), version);
+    }
+}
