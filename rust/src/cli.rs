@@ -572,7 +572,7 @@ enum DatasetEpisodesCommand {
     #[command(about = "Add episodes to a dataset as pending changes")]
     Add(DatasetEpisodeMutationArgs),
     #[command(about = "List the episodes in a dataset")]
-    List(DatasetEpisodeListArgs),
+    List(Box<DatasetEpisodeListArgs>),
     #[command(about = "Remove episodes from a dataset as pending changes")]
     Remove(DatasetEpisodeMutationArgs),
 }
