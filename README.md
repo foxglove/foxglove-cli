@@ -246,8 +246,8 @@ $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recor
 ```
 
 Create an episode from one or more recordings. The window defaults to the span
-of its recordings, and an existing episode with the same window and recordings
-is reused:
+of its recordings, and an existing episode whose latest version has the same
+window, recordings, and custom properties is reused:
 
 ```
 $ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
@@ -272,6 +272,50 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 ```
 
 Member recordings are omitted unless you pass `--include-recordings`.
+
+Episode custom properties are also omitted by default. Organizations with API
+access to episode properties can set them during creation, request them on reads,
+and filter by them:
+
+```
+$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg --property weather:rain
+Episode created: ep_BCUw2zxpBnToJbOS
+$ foxglove episodes list --properties-query 'weather:rain note:"night run"' --include-properties
+$ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-properties --format json
+$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --version 4 --properties-query 'weather:rain' --include-properties
+```
+
+`--property` (or `-p`) uses the same typed `key:value` syntax as device properties.
+The CLI reads the organization's episode property definitions to convert strings,
+numbers, booleans, enums, and multi-enums. Repeat a multi-enum key to set its full
+list of values; it cannot set an empty list. Separate filter terms with spaces and
+quote values that contain spaces. Filtering alone does not include properties in
+the output; add `--include-properties` to see them.
+
+Edit one episode's properties, time bounds, or recordings:
+
+```
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --property weather:sun --remove-property reviewer --applies-to-version 2
+Episode updated: ep_BCUw2zxpBnToJbOS (version 3)
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --end 2026-04-19T13:24:00Z --add-recording-id rec_lwjzOMxryMmP3yXg
+```
+
+Edits require `episodes.update`. Omitted fields keep their values, and
+`--remove-property` removes a property. An edit that changes something creates a
+new episode version; one that changes nothing keeps the current version. With
+`--applies-to-version`, the edit fails instead of overwriting changes made since
+that version. Existing datasets keep their pinned episode versions. `episodes get --version` reads an episode's
+historical version; dataset membership reads return the version pinned by the
+selected dataset version.
+
+Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
+table/CSV output append Version, Latest Version, and Custom Properties columns.
+Comparison output also appends Previous Version and Previous Custom Properties;
+JSON preserves the previous episode snapshot, and summaries report changed
+members alongside additions and removals.
+
+Property options and `episodes edit` return an error if your organization does
+not have access to episode properties.
 
 Create a dataset and change its episodes. Changes stay pending in the dataset's
 draft until you commit them as a new version, or discard them with
@@ -320,6 +364,19 @@ Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
+
+Use `--include-properties` to add episode custom properties to each manifest
+entry, including empty `{}` values. This also works when resuming a download:
+
+```
+$ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4 --include-properties
+$ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 4 --include-properties --format json
+```
+
+Changing `--include-properties` on a later run updates the manifest without
+downloading completed MCAP files again. If your organization does not have
+access to episode properties, the command fails and leaves earlier downloads
+as they were.
 
 ### Extensions
 
