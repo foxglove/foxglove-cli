@@ -1,10 +1,19 @@
 //! Episode commands.
 
+mod edit;
+
+pub(crate) use edit::edit_episode;
+
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::encode_path_segment;
-use crate::cli::{EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs};
+use crate::cli::{
+    EpisodeAddArgs, EpisodeGetArgs, EpisodeIdArgs, EpisodeListArgs, EpisodeVersionListArgs,
+};
+use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
     compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
@@ -42,13 +51,16 @@ pub(crate) struct EpisodeRecording {
     pub(crate) device_id: String,
     #[serde(default)]
     pub(crate) available: bool,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) resolvable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Episode {
     pub(crate) id: String,
+    pub(crate) version: i32,
+    #[serde(rename = "latestVersion")]
+    pub(crate) latest_version: i32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) properties: Option<BTreeMap<String, Value>>,
     #[serde(rename = "projectId")]
     pub(crate) project_id: String,
     #[serde(rename = "startTime")]
@@ -67,33 +79,31 @@ pub(crate) struct Episode {
     pub(crate) has_missing_recordings: Option<bool>,
     #[serde(rename = "createdAt")]
     pub(crate) created_at: String,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) version: Option<i32>,
-    #[serde(
-        rename = "latestVersion",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub(crate) latest_version: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) labels: Option<Value>,
     #[serde(
         rename = "creationContext",
         default,
-        deserialize_with = "included_creation_context",
+        deserialize_with = "present_creation_context",
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) creation_context: Option<Value>,
 }
 
-// Preserve an explicitly included null separately from an omitted expansion.
-fn included_creation_context<'de, D: serde::Deserializer<'de>>(
+/// Keeps an explicit `null` creation context distinct from an omitted one.
+fn present_creation_context<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Value>, D::Error> {
     Value::deserialize(deserializer).map(Some)
 }
 
 impl Episode {
+    pub(crate) fn property_cell(&self) -> String {
+        self.properties
+            .as_ref()
+            .map_or_else(String::new, |properties| {
+                serde_json::to_string(properties).expect("property values are JSON")
+            })
+    }
+
     pub(crate) fn recording_ids(&self) -> String {
         self.recordings
             .as_ref()
@@ -119,6 +129,7 @@ impl Record for Episode {
             "Created At",
             "Version",
             "Latest Version",
+            "Custom Properties",
         ]
     }
 
@@ -131,12 +142,9 @@ impl Record for Episode {
             self.recording_ids(),
             compact_json(&self.metadata),
             self.created_at.clone(),
-            self.version
-                .map(|version| version.to_string())
-                .unwrap_or_default(),
-            self.latest_version
-                .map(|version| version.to_string())
-                .unwrap_or_default(),
+            self.version.to_string(),
+            self.latest_version.to_string(),
+            self.property_cell(),
         ]
     }
 }
@@ -154,15 +162,17 @@ struct EpisodeListQuery<'a> {
     cursor: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    exact_recording_ids: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     has_missing_recordings: Option<bool>,
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    label_query: Option<&'a str>,
     limit: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties_query: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -173,18 +183,22 @@ struct EpisodeListQuery<'a> {
     start: String,
 }
 
-pub(crate) fn episode_includes(recordings: bool, labels: bool, creation_context: bool) -> String {
-    let mut include = Vec::new();
+pub(crate) fn episode_include(
+    recordings: bool,
+    properties: bool,
+    creation_context: bool,
+) -> String {
+    let mut includes = Vec::new();
     if recordings {
-        include.push("recordings");
+        includes.push("recordings");
     }
-    if labels {
-        include.push("labels");
+    if properties {
+        includes.push("properties");
     }
     if creation_context {
-        include.push("creationContext");
+        includes.push("creationContext");
     }
-    include.join(",")
+    includes.join(",")
 }
 
 pub(crate) fn parse_time_range(
@@ -199,6 +213,8 @@ pub(crate) fn parse_time_range(
     Ok((start, end))
 }
 
+const MAX_EXACT_RECORDING_IDS: usize = 50;
+
 pub(crate) async fn list_episodes(
     runtime: &Runtime,
     args: &EpisodeListArgs,
@@ -209,18 +225,24 @@ pub(crate) async fn list_episodes(
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
+    if args.exact_recording_ids.len() > MAX_EXACT_RECORDING_IDS {
+        return Outcome::failure(format!(
+            "--exact-recording-ids accepts at most {MAX_EXACT_RECORDING_IDS} IDs\n"
+        ));
+    }
     let query = EpisodeListQuery {
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
+        exact_recording_ids: args.exact_recording_ids.join(","),
         has_missing_recordings: args.has_missing_recordings,
-        include: episode_includes(
+        include: episode_include(
             args.include_recordings,
-            args.include_labels,
+            args.include_properties,
             args.include_creation_context,
         ),
-        label_query: args.label_query.as_deref(),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
+        properties_query: args.properties_query.as_deref(),
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
@@ -251,7 +273,6 @@ fn episode_endpoint(id: &str) -> String {
 struct EpisodeGetQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<i32>,
-
     #[serde(skip_serializing_if = "String::is_empty")]
     include: String,
 }
@@ -263,8 +284,8 @@ pub(crate) async fn get_episode(
 ) -> Outcome {
     let query = EpisodeGetQuery {
         version: args.version,
-        // The single-episode endpoint only accepts recordings and labels in include.
-        include: episode_includes(args.include_recordings, args.include_labels, false),
+        // Creation context is always present on a single episode, so get does not request it.
+        include: episode_include(args.include_recordings, args.include_properties, false),
     };
     match runtime
         .client
@@ -290,9 +311,6 @@ struct CreateEpisodesRequest {
 #[serde(rename_all = "camelCase")]
 struct EpisodeInput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    creation_context: Option<Value>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     event_id: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     recordings: Vec<String>,
@@ -302,6 +320,10 @@ struct EpisodeInput {
     end_time: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<BTreeMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creation_context: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -333,27 +355,26 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
     let creation_context = args
         .creation_context
         .as_deref()
-        .map(|raw| {
-            let value: Value = serde_json::from_str(raw)
-                .map_err(|error| format!("Invalid --creation-context JSON: {error}"))?;
-            if !value.is_object() && !value.is_null() {
-                return Err("--creation-context must be a JSON object or null".to_owned());
-            }
-            Ok(value)
+        .map(|raw| match serde_json::from_str::<Value>(raw) {
+            Ok(value @ (Value::Object(_) | Value::Null)) => Ok(value),
+            _ => Err(format!(
+                "--creation-context must be a JSON object or null: {raw}"
+            )),
         })
         .transpose()?;
     Ok(EpisodeInput {
-        creation_context,
         event_id: args.event_id.clone(),
         recordings: args.recording_id.clone(),
         start_time,
         end_time,
         metadata,
+        properties: None,
+        creation_context,
     })
 }
 
 pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Outcome {
-    let episode = match episode_input(args) {
+    let mut episode = match episode_input(args) {
         Ok(episode) => episode,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
@@ -361,6 +382,10 @@ pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Out
     if project_id.is_empty() {
         return Outcome::failure("--project-id is required when creating an episode\n");
     }
+    episode.properties = match properties(runtime, "episode", &args.property).await {
+        Ok(properties) => properties,
+        Err(error) => return Outcome::failure(format!("Failed to create episode: {error}\n")),
+    };
     let request = CreateEpisodesRequest {
         project_id,
         episodes: vec![episode],
@@ -402,16 +427,92 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
     }
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EpisodeVersion {
+    version: i32,
+    created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    creator_org_member_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    creator_api_key_id: Option<String>,
+    changed_fields: Vec<String>,
+}
+
+impl Record for EpisodeVersion {
+    fn headers() -> &'static [&'static str] {
+        &[
+            "Version",
+            "Created At",
+            "Creator Member ID",
+            "Creator API Key ID",
+            "Changed Fields",
+        ]
+    }
+    fn fields(&self) -> Vec<String> {
+        vec![
+            self.version.to_string(),
+            self.created_at.clone(),
+            self.creator_org_member_id.clone().unwrap_or_default(),
+            self.creator_api_key_id.clone().unwrap_or_default(),
+            self.changed_fields.join(","),
+        ]
+    }
+}
+
+#[derive(Deserialize)]
+struct EpisodeVersionsResponse {
+    versions: Vec<EpisodeVersion>,
+}
+
+pub(crate) async fn list_versions(
+    runtime: &Runtime,
+    args: &EpisodeVersionListArgs,
+    format: Format,
+) -> Outcome {
+    #[derive(Serialize)]
+    struct Query<'a> {
+        limit: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cursor: Option<&'a str>,
+    }
+    let query = Query {
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
+    };
+    match runtime
+        .client
+        .get_page::<_, EpisodeVersionsResponse>(
+            &format!("{}/versions", episode_endpoint(&args.episode_id)),
+            &query,
+        )
+        .await
+    {
+        Ok(page) => warn_if_has_next_cursor(
+            format_list_output(
+                &page.data.versions,
+                format,
+                NextCursor::Page(page.next_cursor.as_deref()),
+            ),
+            page.next_cursor.as_deref(),
+        ),
+        Err(error) if error.is_not_found_for("episode") => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to list episode versions: {error}\n")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_time_range, Episode};
-    use serde_json::Value;
+    use super::{episode_include, parse_time_range, Episode};
 
     #[test]
-    fn optional_episode_expansions_preserve_omission_and_explicit_context_null() {
+    fn an_absent_recordings_list_is_omitted_from_json_output() {
         let record: Episode = serde_json::from_value(serde_json::json!({
-            "creationContext": {"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_one"]}},
             "id": "ep_fixture",
+            "version": 1,
+            "latestVersion": 1,
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
@@ -421,54 +522,35 @@ mod tests {
         .unwrap();
         let output = serde_json::to_value(&record).unwrap();
         assert!(output.get("recordings").is_none());
-        assert_eq!(
-            output["creationContext"]["basis"]["recordingIds"][0],
-            "rec_one"
-        );
         assert_eq!(record.recording_ids(), "");
-        let mut response = output;
-        response["creationContext"] = Value::Null;
-        let explicit_null: Episode = serde_json::from_value(response.clone()).unwrap();
-        assert_eq!(
-            serde_json::to_value(explicit_null)
-                .unwrap()
-                .get("creationContext"),
-            Some(&Value::Null)
-        );
-        response.as_object_mut().unwrap().remove("creationContext");
-        let omitted: Episode = serde_json::from_value(response).unwrap();
-        assert!(serde_json::to_value(omitted)
-            .unwrap()
-            .get("creationContext")
-            .is_none());
     }
 
     #[test]
     fn included_recordings_render_as_a_comma_separated_cell() {
         let record: Episode = serde_json::from_value(serde_json::json!({
             "id": "ep_fixture",
+            "version": 1,
+            "latestVersion": 1,
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
             "metadata": {},
             "createdAt": "2024-01-02T03:04:07Z",
             "recordings": [
-                {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true, "resolvable": true},
+                {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true},
                 {"id": "rec_two", "path": "two.mcap", "start": "", "end": "", "available": false},
             ],
         }))
         .unwrap();
         assert_eq!(record.recording_ids(), "rec_one,rec_two");
-        assert_eq!(
-            record.recordings.as_ref().unwrap()[0].resolvable,
-            Some(true)
-        );
     }
 
     #[test]
     fn a_recording_location_is_kept_in_json_output() {
         let record: Episode = serde_json::from_value(serde_json::json!({
             "id": "ep_fixture",
+            "version": 1,
+            "latestVersion": 1,
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
@@ -539,5 +621,51 @@ mod tests {
             parse_time_range(None, None).unwrap(),
             (String::new(), String::new())
         );
+    }
+
+    #[test]
+    fn creation_context_keeps_an_explicit_null_apart_from_omission() {
+        let mut response = serde_json::json!({
+            "id": "ep_fixture",
+            "version": 1,
+            "latestVersion": 1,
+            "projectId": "prj_default",
+            "startTime": "2024-01-02T03:04:05Z",
+            "endTime": "2024-01-02T03:04:06Z",
+            "metadata": {},
+            "createdAt": "2024-01-02T03:04:07Z",
+            "creationContext": {"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_one"]}},
+        });
+        let output = |response: &serde_json::Value| {
+            let episode: Episode = serde_json::from_value(response.clone()).unwrap();
+            serde_json::to_value(episode).unwrap()
+        };
+        assert_eq!(
+            output(&response)["creationContext"]["basis"]["recordingIds"][0],
+            "rec_one"
+        );
+        response["creationContext"] = serde_json::Value::Null;
+        assert_eq!(
+            output(&response).get("creationContext"),
+            Some(&serde_json::Value::Null)
+        );
+        response.as_object_mut().unwrap().remove("creationContext");
+        assert!(output(&response).get("creationContext").is_none());
+    }
+
+    #[test]
+    fn included_episode_data_is_a_comma_separated_list() {
+        for (recordings, properties, creation_context, expected) in [
+            (false, false, false, ""),
+            (true, false, false, "recordings"),
+            (false, true, false, "properties"),
+            (false, false, true, "creationContext"),
+            (true, true, true, "recordings,properties,creationContext"),
+        ] {
+            assert_eq!(
+                episode_include(recordings, properties, creation_context),
+                expected
+            );
+        }
     }
 }

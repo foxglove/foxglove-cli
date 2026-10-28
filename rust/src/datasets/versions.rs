@@ -13,7 +13,7 @@ use crate::cli::{
     DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::episode_includes;
+use crate::episodes::{episode_include, Episode};
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
@@ -111,6 +111,18 @@ impl Record for DatasetVersionDetail {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct DatasetEpisodeChange {
     change: String,
+    #[serde(
+        rename = "previousVersion",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    previous_version: Option<i32>,
+    #[serde(
+        rename = "previousEpisode",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    previous_episode: Option<Episode>,
     #[serde(flatten)]
     entry: DatasetEpisode,
 }
@@ -128,12 +140,26 @@ impl Record for DatasetEpisodeChange {
             "Added At",
             "Added In Version",
             "Created At",
+            "Version",
+            "Latest Version",
+            "Custom Properties",
+            "Previous Version",
+            "Previous Custom Properties",
         ]
     }
 
     fn fields(&self) -> Vec<String> {
         let mut fields = vec![self.change.clone()];
         fields.extend(self.entry.fields());
+        fields.push(
+            self.previous_version
+                .map_or_else(String::new, |version| version.to_string()),
+        );
+        fields.push(
+            self.previous_episode
+                .as_ref()
+                .map_or_else(String::new, Episode::property_cell),
+        );
         fields
     }
 }
@@ -147,6 +173,8 @@ struct DatasetChangesetResponse {
     added_count: usize,
     #[serde(default)]
     removed_count: usize,
+    #[serde(default)]
+    changed_count: usize,
     #[serde(default)]
     next_cursor: Option<String>,
 }
@@ -184,12 +212,13 @@ struct CommitResponse {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct DiscardResponse {
-    #[serde(default)]
-    discarded_adds: usize,
-    #[serde(default)]
-    discarded_removes: usize,
+    #[serde(default, rename = "discardedAdds")]
+    adds: usize,
+    #[serde(default, rename = "discardedRemoves")]
+    removes: usize,
+    #[serde(default, rename = "discardedUpdates")]
+    updates: usize,
 }
 
 #[derive(Deserialize)]
@@ -200,9 +229,13 @@ struct RestoreResponse {
     #[serde(default)]
     removed: usize,
     #[serde(default)]
+    updated: usize,
+    #[serde(default)]
     discarded_adds: usize,
     #[serde(default)]
     discarded_removes: usize,
+    #[serde(default)]
+    discarded_updates: usize,
 }
 
 pub(crate) async fn list_versions(
@@ -307,9 +340,9 @@ pub(crate) async fn compare_versions(
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
-        include: episode_includes(
+        include: episode_include(
             args.include_recordings,
-            args.include_labels,
+            args.include_properties,
             args.include_creation_context,
         ),
     };
@@ -346,9 +379,10 @@ pub(crate) async fn compare_versions(
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(
-                "{} added, {} removed\n",
+                "{} added, {} removed, {} changed\n",
                 plural(page.added_count, "episode"),
-                page.removed_count
+                page.removed_count,
+                page.changed_count
             )
             .as_bytes(),
         );
@@ -402,37 +436,54 @@ pub(crate) async fn restore_version(
 
 fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs) -> String {
     let mut summary = String::new();
-    if response.discarded_adds > 0 || response.discarded_removes > 0 {
+    if response.discarded_adds > 0
+        || response.discarded_removes > 0
+        || response.discarded_updates > 0
+    {
         let _ = writeln!(
             summary,
             "Discarded {}",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(
+                response.discarded_adds,
+                response.discarded_removes,
+                response.discarded_updates
+            )
         );
     }
-    if response.added == 0 && response.removed == 0 {
+    if response.added == 0 && response.removed == 0 && response.updated == 0 {
         let _ = writeln!(summary, "The draft matches version {}", args.version);
     } else {
-        let _ = writeln!(
+        let _ = write!(
             summary,
             "Restored version {} into the draft: {} added, {} removed",
             args.version,
             plural(response.added, "episode"),
             response.removed
         );
+        if response.updated > 0 {
+            let _ = write!(summary, ", {} changed", response.updated);
+        }
+        summary.push('\n');
         summary.push_str(&commit_hint(&args.dataset_id));
     }
     summary
 }
 
-fn pending_changes(additions: usize, removals: usize) -> String {
-    match (additions, removals) {
-        (additions, 0) => plural(additions, "pending addition"),
-        (0, removals) => plural(removals, "pending removal"),
-        (additions, removals) => format!(
-            "{} and {}",
-            plural(additions, "pending addition"),
-            plural(removals, "pending removal")
-        ),
+fn pending_changes(additions: usize, removals: usize, updates: usize) -> String {
+    let mut parts: Vec<String> = [
+        (additions, "pending addition"),
+        (removals, "pending removal"),
+        (updates, "pending episode version update"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, noun)| plural(count, noun))
+    .collect();
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", parts.join(", "))
     }
 }
 
@@ -466,12 +517,12 @@ pub(crate) async fn discard_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> 
         )
         .await
     {
-        Ok(response) if response.discarded_adds == 0 && response.discarded_removes == 0 => {
+        Ok(response) if response.adds == 0 && response.removes == 0 && response.updates == 0 => {
             Outcome::notice("No pending changes to discard\n")
         }
         Ok(response) => Outcome::notice(format!(
             "Discarded {}\n",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(response.adds, response.removes, response.updates)
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to discard dataset changes: {error}\n")),
@@ -524,7 +575,7 @@ mod tests {
     #[test]
     fn a_change_leads_with_its_side_and_keeps_the_membership_columns() {
         assert_eq!(
-            DatasetEpisodeChange::headers()[1..],
+            DatasetEpisodeChange::headers()[1..=DatasetEpisode::headers().len()],
             *DatasetEpisode::headers()
         );
         let change: DatasetEpisodeChange = serde_json::from_value(serde_json::json!({
@@ -533,6 +584,8 @@ mod tests {
             "addedInVersion": 2,
             "episode": {
                 "id": "ep_fixture",
+                "version": 1,
+                "latestVersion": 1,
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",

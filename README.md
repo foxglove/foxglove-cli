@@ -82,7 +82,7 @@ $ foxglove devices list --format json
 ```
 
 When more results may exist, a hint on stderr says how to get the next page.
-Datasets, dataset episodes, dataset versions, episodes, and
+Datasets, dataset episodes, dataset versions, episodes, episode versions, and
 `datasets versions compare` page with cursors: their JSON output includes
 `nextCursor`, which you pass to `--cursor`. The other commands that accept
 `--limit` page with `--offset`.
@@ -245,19 +245,25 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
-Read a historical episode version or filter by text labels. Labels are included
-in JSON output when requested. Every space-separated query term must match;
-URI labels are not searched.
+Match an exact set of recording display IDs, with none missing or extra
+(maximum 50 IDs). The flag accepts comma-separated values and may be repeated:
 
 ```
-$ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-labels --format json
-$ foxglove episodes list --label-query 'task:"fold towel"' --include-labels --format json
+$ foxglove episodes list --exact-recording-ids rec_lwjzOMxryMmP3yXg,rec_4lVQ9mTp7vRqJY2s
+```
+
+Inspect an episode's version history, newest first. Use `--cursor` with the
+returned `nextCursor` to request the next page:
+
+```
+$ foxglove episodes versions list ep_BCUw2zxpBnToJbOS --limit 20 --format json
 ```
 
 Include creation context in JSON episode lists, dataset episode lists, or
-dataset version comparisons with `--include-creation-context`. Supply context
-when creating an episode with `--creation-context`; omitted or null context uses
-the server default derived from the source recordings.
+dataset version comparisons with `--include-creation-context`; `episodes get`
+always returns it. Supply context when creating an episode with
+`--creation-context`; omitted or null context uses the server default derived
+from the episode's source:
 
 ```
 $ foxglove episodes list --include-creation-context --format json
@@ -265,8 +271,8 @@ $ foxglove episodes add --project-id prj_WEJUVEOVApoIpe1M --recording-id rec_lwj
 ```
 
 Create an episode from one or more recordings. The window defaults to the span
-of its recordings, and an existing episode with the same window and recordings
-is reused:
+of its recordings, and an existing episode whose latest version has the same
+window, recordings, and custom properties is reused:
 
 ```
 $ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
@@ -292,6 +298,50 @@ $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-o
 
 Member recordings are omitted unless you pass `--include-recordings`.
 
+Episode custom properties are also omitted by default. Organizations with API
+access to episode properties can set them during creation, request them on reads,
+and filter by them:
+
+```
+$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg --property weather:rain
+Episode created: ep_BCUw2zxpBnToJbOS
+$ foxglove episodes list --properties-query 'weather:rain note:"night run"' --include-properties
+$ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-properties --format json
+$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --version 4 --properties-query 'weather:rain' --include-properties
+```
+
+`--property` (or `-p`) uses the same typed `key:value` syntax as device properties.
+The CLI reads the organization's episode property definitions to convert strings,
+numbers, booleans, enums, and multi-enums. Repeat a multi-enum key to set its full
+list of values; it cannot set an empty list. Separate filter terms with spaces and
+quote values that contain spaces. Filtering alone does not include properties in
+the output; add `--include-properties` to see them.
+
+Edit one episode's properties, time bounds, or recordings:
+
+```
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --property weather:sun --remove-property reviewer --applies-to-version 2
+Episode updated: ep_BCUw2zxpBnToJbOS (version 3)
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --end 2026-04-19T13:24:00Z --add-recording-id rec_lwjzOMxryMmP3yXg
+```
+
+Edits require `episodes.update`. Omitted fields keep their values, and
+`--remove-property` removes a property. An edit that changes something creates a
+new episode version; one that changes nothing keeps the current version. With
+`--applies-to-version`, the edit fails instead of overwriting changes made since
+that version. Existing datasets keep their pinned episode versions. `episodes get --version` reads an episode's
+historical version; dataset membership reads return the version pinned by the
+selected dataset version.
+
+Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
+table/CSV output append Version, Latest Version, and Custom Properties columns.
+Comparison output also appends Previous Version and Previous Custom Properties;
+JSON preserves the previous episode snapshot, and summaries report changed
+members alongside additions and removals.
+
+Property options and `episodes edit` return an error if your organization does
+not have access to episode properties.
+
 Create a dataset and change its episodes. Changes stay pending in the dataset's
 draft until you commit them as a new version, or discard them with
 `foxglove datasets discard`. `datasets episodes list --version draft` lists the
@@ -309,12 +359,15 @@ $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
 Committed version 1 with 2 episodes (2 added, 0 removed)
 ```
 
-Pass `--include-labels` with `--format json` to include episode labels in
-`datasets episodes list` or `datasets versions compare`. Dataset episode lists
-also accept `--label-query`, including when a dataset version is selected:
+Select an episode version when adding an episode or updating one in the draft.
+Omit `--episode-version` to select the latest version. An already selected version
+is reported as unchanged; the API rejects update IDs outside the draft.
 
 ```
-$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --label-query 'task:"fold towel"' --include-labels --format json
+$ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 2
+$ foxglove datasets episodes update ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 3
+Updated 1 episode
+Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
 ```
 
 List a dataset's versions, see which episodes changed between two of them, or
@@ -327,6 +380,11 @@ $ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
 $ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
 ```
 
+Restoring a dataset version also restores the selected version of each episode.
+In the restore summary, `changed` counts episodes that stay in the dataset
+but now use a different episode version. With `--force`, the discard summary includes
+pending episode version updates.
+
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode plus a `manifest.json`:
 
@@ -336,6 +394,19 @@ Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
 ```
+
+Use `--include-properties` to add episode custom properties to each manifest
+entry, including empty `{}` values. This also works when resuming a download:
+
+```
+$ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4 --include-properties
+$ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 4 --include-properties --format json
+```
+
+Changing `--include-properties` on a later run updates the manifest without
+downloading completed MCAP files again. If your organization does not have
+access to episode properties, the command fails and leaves earlier downloads
+as they were.
 
 ### Extensions
 
