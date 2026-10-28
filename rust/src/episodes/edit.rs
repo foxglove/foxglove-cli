@@ -1,4 +1,4 @@
-//! Single episode updates with optional version preconditions.
+//! Episode updates, one at a time or atomically from a JSON file, with optional version preconditions.
 
 use std::collections::{BTreeMap, HashMap};
 
