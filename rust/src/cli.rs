@@ -21,7 +21,10 @@ use crate::{
 const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
-const DEVICE_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
+const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
+const INCLUDE_PROPERTIES_HELP: &str =
+    "Include episode custom properties (requires API access to episode properties)";
+const PROPERTIES_QUERY_HELP: &str = "Filter by episode custom properties, for example 'weather:rain note:\"night run\"' (requires API access to episode properties)";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -552,16 +555,36 @@ pub(crate) struct DatasetDownloadArgs {
         allow_hyphen_values = true
     )]
     pub(crate) version: Option<i64>,
+    #[arg(
+        long, help = INCLUDE_PROPERTIES_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
 }
 
 #[derive(Debug, Subcommand)]
 enum DatasetEpisodesCommand {
     #[command(about = "Add episodes to a dataset as pending changes")]
-    Add(DatasetEpisodeMutationArgs),
+    Add(DatasetEpisodePinArgs),
+    #[command(about = "Update episode versions selected in the dataset draft")]
+    Update(DatasetEpisodePinArgs),
     #[command(about = "List the episodes in a dataset")]
     List(DatasetEpisodeListArgs),
     #[command(about = "Remove episodes from a dataset as pending changes")]
     Remove(DatasetEpisodeMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetEpisodePinArgs {
+    #[command(flatten)]
+    pub(crate) episodes: DatasetEpisodeMutationArgs,
+    #[arg(long, help = "Episode version to select for each ID (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
 }
 
 #[derive(Debug, Args)]
@@ -574,7 +597,7 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetVersionsCommand {
-    #[command(about = "List the episodes added and removed between two versions")]
+    #[command(about = "List the episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
     #[command(about = "Get a dataset version")]
     Get(DatasetVersionGetArgs),
@@ -652,6 +675,16 @@ pub(crate) struct DatasetVersionCompareArgs {
         value_parser = parse_list_limit
     )]
     pub(crate) limit: Option<i64>,
+    #[arg(
+        long, help = INCLUDE_PROPERTIES_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
 }
 
 #[derive(Debug, Args)]
@@ -777,6 +810,22 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_dataset_version
     )]
     pub(crate) version: Option<DatasetVersionSelector>,
+    #[arg(
+        long, help = INCLUDE_PROPERTIES_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
+    #[arg(
+        long,
+        help = PROPERTIES_QUERY_HELP,
+        allow_hyphen_values = true
+    )]
+    pub(crate) properties_query: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -799,7 +848,7 @@ pub(crate) struct DeviceAddArgs {
     pub(crate) name: String,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, short = 'p', help = DEVICE_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
 }
 
@@ -809,7 +858,7 @@ pub(crate) struct DeviceUpdateArgs {
     pub(crate) name: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, short = 'p', help = DEVICE_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
 }
 
@@ -845,19 +894,21 @@ pub(crate) struct DeviceListArgs {
 #[derive(Debug, Subcommand)]
 enum EpisodesCommand {
     #[command(
-        about = "Create an episode, or get the existing one with the same window and recordings"
+        about = "Create an episode, or get the existing one with matching window, recordings, and properties"
     )]
     Add(EpisodeAddArgs),
     #[command(about = "Delete an episode")]
     Delete(EpisodeIdArgs),
-    #[command(about = "Edit an episode and create a version when its contents change")]
+    #[command(about = "Edit an episode (requires API access to episode properties)")]
     Edit(EpisodeEditArgs),
-    #[command(about = "Apply episode patches atomically from a JSON file")]
+    #[command(about = "Apply episode edits atomically from a JSON file")]
     EditBulk(EpisodeBulkEditArgs),
     #[command(about = "Get an episode")]
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
     List(EpisodeListArgs),
+    #[command(about = "Inspect episode version history", subcommand)]
+    Versions(EpisodeVersionsCommand),
 }
 
 #[derive(Debug, Args)]
@@ -889,46 +940,54 @@ pub(crate) struct EpisodeAddArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct EpisodeEditArgs {
-    #[command(flatten)]
-    format: FormatArgs,
-    #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
-    pub(crate) episode_id: String,
-    #[arg(long, allow_hyphen_values = true, help = "Fail unless the latest episode version matches this value", value_parser = clap::value_parser!(i32).range(1..))]
-    pub(crate) applies_to_version: Option<i32>,
-    #[arg(
-        long,
-        allow_hyphen_values = true,
-        help = "New start of the episode window (ISO 8601)"
-    )]
-    pub(crate) start: Option<String>,
-    #[arg(
-        long,
-        allow_hyphen_values = true,
-        help = "New end of the episode window (ISO 8601)"
-    )]
-    pub(crate) end: Option<String>,
-    #[arg(long, allow_hyphen_values = true, help = "Recording ID to add; repeat for more", value_parser = parse_id)]
-    pub(crate) add_recording: Vec<String>,
-    #[arg(long, allow_hyphen_values = true, help = "Recording ID to remove; repeat for more", value_parser = parse_id)]
-    pub(crate) remove_recording: Vec<String>,
-    #[arg(
-        long,
-        allow_hyphen_values = true,
-        help = "Merge labels by key, e.g. '{\"task\":{\"type\":\"TEXT\",\"content\":\"fold\"}}'; a null value removes that key"
-    )]
-    pub(crate) labels: Option<String>,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct EpisodeBulkEditArgs {
     #[command(flatten)]
     format: FormatArgs,
-    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with an episodes array of patches (1-2000 unique IDs)")]
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with an episodes array of edits (1-2000 unique IDs)")]
     pub(crate) file: std::path::PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeEditArgs {
+    #[arg(value_name = "EPISODE_ID", value_parser = parse_id)]
+    pub(crate) episode_id: String,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
+    #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) applies_to_version: Option<i32>,
+    #[arg(long, help = "New start of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "New end of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Add a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
+    pub(crate) add_recording_id: Vec<String>,
+    #[arg(long, help = "Remove a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
+    pub(crate) remove_recording_id: Vec<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum EpisodeVersionsCommand {
+    #[command(about = "List episode versions, newest first")]
+    List(EpisodeVersionListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeVersionListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EPISODE_ID")]
+    pub(crate) episode_id: String,
+    #[arg(long, help = "Maximum number of items to return (1-2000, default: 50)", allow_hyphen_values = true, value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -954,7 +1013,7 @@ pub(crate) struct EpisodeGetArgs {
     )]
     pub(crate) include_recordings: bool,
     #[arg(
-        long, help = "Include episode labels in JSON output",
+        long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -962,8 +1021,8 @@ pub(crate) struct EpisodeGetArgs {
         default_value = "false",
         value_parser = parse_bool
     )]
-    pub(crate) include_labels: bool,
-    #[arg(long, help = "Episode version (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) include_properties: bool,
+    #[arg(long, help = "Episode version to read (default: latest)", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) version: Option<i32>,
 }
 
@@ -977,6 +1036,8 @@ pub(crate) struct EpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Filter to episodes whose recordings are exactly these display IDs; comma-separated (maximum 50)", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_id, num_args = 1)]
+    pub(crate) exact_recording_ids: Vec<String>,
     #[arg(
         long, help = "Filter to episodes with, or without, recordings that are no longer available",
         action = clap::ArgAction::Set,
@@ -996,18 +1057,6 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) include_recordings: bool,
-    #[arg(
-        long, help = "Include episode labels in JSON output",
-        action = clap::ArgAction::Set,
-        num_args = 0..=1,
-        require_equals = true,
-        default_missing_value = "true",
-        default_value = "false",
-        value_parser = parse_bool
-    )]
-    pub(crate) include_labels: bool,
-    #[arg(long, help = "Filter text labels, e.g. 'task:\"fold towel\"'; space-separated terms must all match", allow_hyphen_values = true, value_parser = parse_non_blank)]
-    pub(crate) label_query: Option<String>,
     #[arg(
         long,
         help = "Maximum number of items to return (1-2000, default: 50)",
@@ -1046,6 +1095,22 @@ pub(crate) struct EpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long, help = INCLUDE_PROPERTIES_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_properties: bool,
+    #[arg(
+        long,
+        help = PROPERTIES_QUERY_HELP,
+        allow_hyphen_values = true
+    )]
+    pub(crate) properties_query: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1219,6 +1284,8 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) show_quarantined: bool,
     #[arg(long, help = "Site ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) site_id: Option<String>,
+    #[arg(long, help = "Only imports enqueued by this site backfill job", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_backfill_job_id: Option<String>,
     #[arg(
         long,
         help = "Only imports updated since this time",
@@ -1467,6 +1534,10 @@ pub(crate) struct TopicListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Episode ID", allow_hyphen_values = true, value_parser = parse_id, conflicts_with_all = ["device_id", "device_name", "recording_id", "recording_key", "session_id", "session_key"])]
+    pub(crate) episode_id: Option<String>,
+    #[arg(long, help = "Episode version to list topics for; requires --episode-id (default: the newest episode version)", requires = "episode_id", value_parser = clap::value_parser!(i32).range(1..))]
+    pub(crate) episode_version: Option<i32>,
     #[arg(
         long, help = "Include full topic schemas",
         action = clap::ArgAction::Set,
@@ -1791,14 +1862,30 @@ async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsC
         DatasetsCommand::Download(args) => datasets::download_dataset(runtime, &args).await,
         DatasetsCommand::Edit(args) => datasets::edit_dataset(runtime, &args).await,
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Add(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, true).await
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Add,
+                args.episode_version,
+            )
+            .await
+        }
+        DatasetsCommand::Episodes(DatasetEpisodesCommand::Update(args)) => {
+            datasets::patch_dataset_episodes(
+                runtime,
+                &args.episodes,
+                datasets::EpisodeChange::Update,
+                args.episode_version,
+            )
+            .await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::List(args)) => {
             let format = args.format.format;
             datasets::list_dataset_episodes(runtime, &args, format).await
         }
         DatasetsCommand::Episodes(DatasetEpisodesCommand::Remove(args)) => {
-            datasets::patch_dataset_episodes(runtime, &args, false).await
+            datasets::patch_dataset_episodes(runtime, &args, datasets::EpisodeChange::Remove, None)
+                .await
         }
         DatasetsCommand::Get(args) => {
             let format = args.format.format;
@@ -1839,10 +1926,7 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
     match command {
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
-        EpisodesCommand::Edit(args) => {
-            let format = args.format.format;
-            episodes::edit_episode(runtime, &args, format).await
-        }
+        EpisodesCommand::Edit(args) => episodes::edit_episode(runtime, &args).await,
         EpisodesCommand::EditBulk(args) => {
             let format = args.format.format;
             episodes::edit_episodes(runtime, &args, format).await
@@ -1854,6 +1938,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::List(args) => {
             let format = args.format.format;
             episodes::list_episodes(runtime, &args, format).await
+        }
+        EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
+            let format = args.format.format;
+            episodes::list_versions(runtime, &args, format).await
         }
     }
 }
@@ -2087,7 +2175,7 @@ mod tests {
     use std::ffi::OsString;
     use std::io::Cursor;
 
-    use clap::{CommandFactory, Parser};
+    use clap::{error::ErrorKind, CommandFactory, Parser};
 
     use crate::output::Format;
     use crate::run;
@@ -2192,6 +2280,7 @@ mod tests {
         (
             &["topics", "list"],
             &[
+                "episode-id",
                 "device-id",
                 "device-name",
                 "recording-id",
@@ -2203,6 +2292,42 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn topic_episode_version_requires_an_exclusive_episode_selector() {
+        for (args, kind) in [
+            (
+                vec!["foxglove", "topics", "list", "--episode-version", "2"],
+                ErrorKind::MissingRequiredArgument,
+            ),
+            (
+                vec![
+                    "foxglove",
+                    "topics",
+                    "list",
+                    "--episode-id",
+                    "ep_1",
+                    "--recording-id",
+                    "rec_1",
+                ],
+                ErrorKind::ArgumentConflict,
+            ),
+            (
+                vec![
+                    "foxglove",
+                    "topics",
+                    "list",
+                    "--episode-id",
+                    "ep_1",
+                    "--device-id",
+                    "dev_1",
+                ],
+                ErrorKind::ArgumentConflict,
+            ),
+        ] {
+            assert_eq!(super::Cli::try_parse_from(args).unwrap_err().kind(), kind);
+        }
+    }
+
     #[test]
     fn blank_selectors_are_rejected_on_every_affected_command() {
         for &(path, flags) in SELECTOR_CASES {

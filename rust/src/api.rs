@@ -190,6 +190,8 @@ pub struct StreamRequest {
     pub recording_key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub episode_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode_version: Option<i32>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -1402,6 +1404,8 @@ fn response_code(body: &str) -> Option<String> {
 }
 
 fn response_message(body: &str) -> String {
+    use std::fmt::Write as _;
+
     #[derive(Deserialize)]
     struct ErrorResponse {
         error: Option<String>,
@@ -1416,14 +1420,14 @@ fn response_message(body: &str) -> String {
     }
     if let Ok(response) = serde_json::from_str::<ErrorResponse>(body) {
         let mut message = response.error.unwrap_or_default();
+        // Episode version conflicts name each episode's current version.
         for conflict in response
             .conflicts
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|value| serde_json::from_value::<EpisodeConflict>(value.clone()).ok())
+            .filter_map(|value| EpisodeConflict::deserialize(value).ok())
         {
-            use std::fmt::Write as _;
             let _ = write!(
                 message,
                 "; {}: current version {}",
@@ -1731,11 +1735,13 @@ mod tests {
     fn error_payload_uses_error_then_raw_body() {
         assert_eq!(response_message(r#"{"error":"bad"}"#), "bad");
         assert_eq!(
-            response_message(r#"{"error":"bad","conflicts":null}"#),
-            "bad"
+            response_message(
+                r#"{"error":"conflict","conflicts":[{"id":"ep_one","currentVersion":4},{"id":"ep_two"}]}"#
+            ),
+            "conflict; ep_one: current version 4"
         );
         assert_eq!(
-            response_message(r#"{"error":"bad","conflicts":[{"id":"ep_one"}]}"#),
+            response_message(r#"{"error":"bad","conflicts":null}"#),
             "bad"
         );
         assert_eq!(response_message(r#"{"message":"bad"}"#), "");
