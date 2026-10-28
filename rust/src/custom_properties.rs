@@ -30,6 +30,14 @@ pub(crate) async fn properties(
         .get::<_, Vec<CustomPropertyDefinition>>("/v1/custom-properties", &query)
         .await
         .map_err(|error| format!("failed to load custom properties: {error}"))?;
+    typed_properties(definitions, pairs).map(Some)
+}
+
+/// Converts `key:value` pairs to the JSON types their definitions declare.
+fn typed_properties(
+    definitions: Vec<CustomPropertyDefinition>,
+    pairs: &[String],
+) -> Result<BTreeMap<String, Value>, String> {
     let definitions = definitions
         .into_iter()
         .map(|definition| (definition.key.clone(), definition))
@@ -88,5 +96,62 @@ pub(crate) async fn properties(
         };
         properties.insert(key.to_owned(), value);
     }
-    Ok(Some(properties))
+    Ok(properties)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::typed_properties;
+
+    fn convert(pairs: &[&str]) -> Result<serde_json::Value, String> {
+        let definitions = serde_json::from_value(serde_json::json!([
+            {"key": "note", "valueType": "string"},
+            {"key": "speed", "valueType": "number"},
+            {"key": "accepted", "valueType": "boolean"},
+            {"key": "weather", "valueType": "enum", "enumValues": ["rain", "sun"]},
+            {"key": "tags", "valueType": "multi-enum", "enumValues": ["outdoor", "night"]},
+            {"key": "location", "valueType": "geo"},
+        ]))
+        .unwrap();
+        let pairs: Vec<String> = pairs.iter().map(|&pair| pair.to_owned()).collect();
+        typed_properties(definitions, &pairs).map(|properties| serde_json::json!(properties))
+    }
+
+    #[test]
+    fn values_take_the_type_of_their_definition() {
+        assert_eq!(
+            convert(&[
+                "note:night: run",
+                "speed:3.5",
+                "accepted:F",
+                "weather:rain",
+                "tags:night",
+                "tags:outdoor",
+                "tags:night",
+            ]),
+            Ok(serde_json::json!({
+                "note": "night: run",
+                "speed": 3.5,
+                "accepted": false,
+                "weather": "rain",
+                "tags": ["night", "outdoor"],
+            }))
+        );
+    }
+
+    #[test]
+    fn values_that_do_not_fit_their_definition_are_rejected() {
+        for (pair, error) in [
+            ("weather", "invalid key/value pair: weather"),
+            (":rain", "invalid key/value pair: :rain"),
+            ("unknown:value", "unknown key: unknown"),
+            ("speed:NaN", "invalid value for number: NaN"),
+            ("accepted:maybe", "invalid value for boolean: maybe"),
+            ("weather:snow", "invalid enum value: snow"),
+            ("tags:day", "invalid enum value: day"),
+            ("location:here", "unsupported type: geo"),
+        ] {
+            assert_eq!(convert(&[pair]), Err(error.to_owned()), "{pair}");
+        }
+    }
 }

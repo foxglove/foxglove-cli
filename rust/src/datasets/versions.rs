@@ -173,6 +173,7 @@ struct DatasetChangesetResponse {
     added_count: usize,
     #[serde(default)]
     removed_count: usize,
+    #[serde(default)]
     changed_count: usize,
     #[serde(default)]
     next_cursor: Option<String>,

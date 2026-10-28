@@ -109,6 +109,10 @@ pub(crate) async fn edit_episode(runtime: &Runtime, args: &EpisodeEditArgs) -> O
             "Episode updated: {} (version {})\n",
             episode.id, episode.version
         )),
+        // Updates report a missing episode as "Episodes not found", listing its ID.
+        Err(error) if error.is_not_found_for("episodes") => {
+            Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
+        }
         Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
     }
 }

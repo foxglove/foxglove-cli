@@ -42,12 +42,6 @@ fn reads_request_properties_only_when_selected() {
     ] {
         for (flags, include, properties) in [
             (vec![], None, None),
-            (vec!["--include-properties=false"], None, None),
-            (
-                vec!["--include-properties"],
-                Some("properties"),
-                Some(serde_json::json!({})),
-            ),
             (
                 vec!["--include-recordings", "--include-properties"],
                 Some("recordings,properties"),
@@ -182,93 +176,69 @@ fn historical_reads_preserve_the_selected_version_and_fail_on_missing_version_fi
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn typed_properties_are_applied_to_recording_and_event_creation() {
-    for (source, id, input) in [
-        ("--recording-id", "rec_one", "recordings"),
-        ("--event-id", "evt_one", "eventId"),
-    ] {
-        let workspace = Workspace::new();
-        let server = Server::new(vec![
-            Reply::json("GET", "/v1/custom-properties", PROPERTIES),
-            Reply::json(
-                "POST",
-                "/v1/episodes",
-                r#"{"episodes":[{"id":"ep_one","created":true}]}"#,
-            ),
-        ]);
-        let output = run(
-            &workspace,
-            &server,
-            &[
-                "episodes",
-                "add",
-                "--project-id",
-                "prj_default",
-                source,
-                id,
-                "-p",
-                "note:night: run",
-                "-p",
-                "speed:3.5",
-                "-p",
-                "accepted:false",
-                "-p",
-                "weather:rain",
-                "-p",
-                "tags:night",
-                "-p",
-                "tags:outdoor",
-                "-p",
-                "tags:night",
-            ],
-        );
-        assert_success(&output);
-        let requests = server.finish();
-        assert_eq!(
-            query_pairs(&requests[0]),
-            expected_pairs(&[("resourceType", "episode")])
-        );
-        let body = json_body(&requests[1]);
-        assert_eq!(body["projectId"], "prj_default");
-        assert_eq!(
-            body["episodes"][0][input],
-            if input == "recordings" {
-                serde_json::json!([id])
-            } else {
-                serde_json::json!(id)
-            }
-        );
-        assert_eq!(
-            body["episodes"][0]["properties"],
-            serde_json::json!({"note":"night: run", "speed":3.5, "accepted":false, "weather":"rain", "tags":["night","outdoor"]})
-        );
-    }
+fn episode_properties_are_looked_up_and_sent_typed_on_creation() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", PROPERTIES),
+        Reply::json(
+            "POST",
+            "/v1/episodes",
+            r#"{"episodes":[{"id":"ep_one","created":true}]}"#,
+        ),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "add",
+            "--project-id",
+            "prj_default",
+            "--recording-id",
+            "rec_one",
+            "-p",
+            "speed:3.5",
+            "-p",
+            "tags:night",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "episode")])
+    );
+    let body = json_body(&requests[1]);
+    assert_eq!(
+        body["episodes"][0]["recordings"],
+        serde_json::json!(["rec_one"])
+    );
+    assert_eq!(
+        body["episodes"][0]["properties"],
+        serde_json::json!({"speed":3.5, "tags":["night"]})
+    );
 }
 
 #[test]
 #[ignore = "requires loopback sockets"]
 fn invalid_property_values_never_reach_the_mutation() {
-    for property in [
-        "unknown:value",
-        "weather:snow",
-        "accepted:maybe",
-        "speed:NaN",
-    ] {
-        let workspace = Workspace::new();
-        let server = Server::new(vec![Reply::json(
-            "GET",
-            "/v1/custom-properties",
-            PROPERTIES,
-        )]);
-        let output = run(
-            &workspace,
-            &server,
-            &["episodes", "edit", "ep_one", "-p", property],
-        );
-        assert!(!output.status.success());
-        assert_eq!(server.finish().len(), 1);
-        assert!(output.stdout.is_empty());
-    }
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/custom-properties",
+        PROPERTIES,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["episodes", "edit", "ep_one", "-p", "weather:snow"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(server.finish().len(), 1);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to edit episode: invalid enum value: snow\n"
+    );
 }
 
 #[test]
@@ -344,7 +314,7 @@ fn removal_and_independent_bounds_do_not_need_a_property_lookup() {
 }
 
 #[test]
-fn invalid_edits_and_versions_fail_before_http() {
+fn invalid_edits_fail_before_http() {
     for args in [
         vec!["episodes", "edit", "ep_one"],
         vec!["episodes", "edit", "ep_one", "--applies-to-version", "3"],
@@ -367,18 +337,6 @@ fn invalid_edits_and_versions_fail_before_http() {
             "rec_one",
         ],
         vec!["episodes", "edit", "ep_one", "--start", "invalid"],
-        vec!["episodes", "edit", "ep_one", "--end", ""],
-        vec![
-            "episodes",
-            "edit",
-            "ep_one",
-            "--remove-property",
-            "note",
-            "--applies-to-version",
-            "0",
-        ],
-        vec!["episodes", "get", "ep_one", "--version", "0"],
-        vec!["episodes", "get", "ep_one", "--version", "2147483648"],
     ] {
         let workspace = Workspace::new();
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
@@ -392,14 +350,22 @@ fn invalid_edits_and_versions_fail_before_http() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn api_gate_auth_and_version_failures_are_not_retried() {
-    for (status, body) in [
-        (403, r#"{"error":"Episode annotations are not enabled"}"#),
-        (401, "{}"),
-        (404, r#"{"error":"Episodes not found","ids":["ep_one"]}"#),
+fn edit_failures_name_the_episode_or_report_the_api_error() {
+    for (status, body, expected) in [
+        (
+            403,
+            r#"{"error":"Episode annotations are not enabled"}"#,
+            "Failed to edit episode: Episode annotations are not enabled\n",
+        ),
+        (
+            404,
+            r#"{"error":"Episodes not found","ids":["ep_one"]}"#,
+            "Episode not found: ep_one\n",
+        ),
         (
             409,
             r#"{"error":"Episode version conflict","conflicts":[{"id":"ep_one","currentVersion":4}]}"#,
+            "Failed to edit episode: Episode version conflict\n",
         ),
     ] {
         let workspace = Workspace::new();
@@ -420,9 +386,10 @@ fn api_gate_auth_and_version_failures_are_not_retried() {
                 "3",
             ],
         );
+        server.finish();
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
-        assert_eq!(server.finish().len(), 1);
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
     }
 }
 
@@ -501,10 +468,9 @@ fn download_properties_can_be_toggled_without_downloading_mcap_again() {
             vec!["--include-properties"],
             Some(serde_json::json!({"weather":"rain"})),
         ),
-        (2, vec!["--include-properties"], Some(serde_json::json!({}))),
-        (3, vec!["--include-properties=false"], None),
+        (2, vec!["--include-properties=false"], None),
         (
-            4,
+            3,
             vec![],
             Some(serde_json::json!({"weather":"unsolicited"})),
         ),

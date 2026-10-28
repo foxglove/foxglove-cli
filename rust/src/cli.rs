@@ -22,6 +22,10 @@ const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
+const INCLUDE_PROPERTIES_HELP: &str =
+    "Include episode custom properties (requires API access to episode properties)";
+const PROPERTIES_QUERY_HELP: &str =
+    "Filter episode custom properties (requires API access to episode properties)";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
 /// so a bare boolean flag never consumes the next positional argument.
@@ -553,7 +557,7 @@ pub(crate) struct DatasetDownloadArgs {
     )]
     pub(crate) version: Option<i64>,
     #[arg(
-        long, help = "Include episode custom properties (requires API access to episode properties)",
+        long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -663,7 +667,7 @@ pub(crate) struct DatasetVersionCompareArgs {
     )]
     pub(crate) limit: Option<i64>,
     #[arg(
-        long, help = "Include episode custom properties (requires API access to episode properties)",
+        long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -798,7 +802,7 @@ pub(crate) struct DatasetEpisodeListArgs {
     )]
     pub(crate) version: Option<DatasetVersionSelector>,
     #[arg(
-        long, help = "Include episode custom properties (requires API access to episode properties)",
+        long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -809,7 +813,7 @@ pub(crate) struct DatasetEpisodeListArgs {
     pub(crate) include_properties: bool,
     #[arg(
         long,
-        help = "Filter episode custom properties (requires API access to episode properties)",
+        help = PROPERTIES_QUERY_HELP,
         allow_hyphen_values = true
     )]
     pub(crate) properties_query: Option<String>,
@@ -970,7 +974,7 @@ pub(crate) struct EpisodeGetArgs {
     )]
     pub(crate) include_recordings: bool,
     #[arg(
-        long, help = "Include episode custom properties (requires API access to episode properties)",
+        long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -1051,7 +1055,7 @@ pub(crate) struct EpisodeListArgs {
     )]
     pub(crate) start: Option<String>,
     #[arg(
-        long, help = "Include episode custom properties (requires API access to episode properties)",
+        long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -1062,7 +1066,7 @@ pub(crate) struct EpisodeListArgs {
     pub(crate) include_properties: bool,
     #[arg(
         long,
-        help = "Filter episode custom properties (requires API access to episode properties)",
+        help = PROPERTIES_QUERY_HELP,
         allow_hyphen_values = true
     )]
     pub(crate) properties_query: Option<String>,

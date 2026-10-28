@@ -378,7 +378,7 @@ pub(crate) async fn delete_episode(runtime: &Runtime, args: &EpisodeIdArgs) -> O
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_time_range, Episode};
+    use super::{episode_include, parse_time_range, Episode};
 
     #[test]
     fn an_absent_recordings_list_is_omitted_from_json_output() {
@@ -494,5 +494,17 @@ mod tests {
             parse_time_range(None, None).unwrap(),
             (String::new(), String::new())
         );
+    }
+
+    #[test]
+    fn included_episode_data_is_a_comma_separated_list() {
+        for (recordings, properties, expected) in [
+            (false, false, ""),
+            (true, false, "recordings"),
+            (false, true, "properties"),
+            (true, true, "recordings,properties"),
+        ] {
+            assert_eq!(episode_include(recordings, properties), expected);
+        }
     }
 }
