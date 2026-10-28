@@ -359,13 +359,18 @@ fn edit_failures_name_the_episode_or_report_the_api_error() {
         ),
         (
             404,
-            r#"{"error":"Episodes not found","ids":["ep_one"]}"#,
+            r#"{"error":"One or more episodes were not found","ids":["ep_one"]}"#,
             "Episode not found: ep_one\n",
         ),
         (
+            404,
+            r#"{"error":"One or more recordings not found"}"#,
+            "Failed to edit episode: One or more recordings not found\n",
+        ),
+        (
             409,
-            r#"{"error":"Episode version conflict","conflicts":[{"id":"ep_one","currentVersion":4}]}"#,
-            "Failed to edit episode: Episode version conflict\n\
+            r#"{"error":"One or more episode versions have changed","conflicts":[{"id":"ep_one","currentVersion":4}]}"#,
+            "Failed to edit episode: One or more episode versions have changed\n\
              Run foxglove episodes get ep_one to see its latest version.\n",
         ),
     ] {

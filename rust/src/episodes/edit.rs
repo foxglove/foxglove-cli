@@ -110,8 +110,13 @@ pub(crate) async fn edit_episode(runtime: &Runtime, args: &EpisodeEditArgs) -> O
             "Episode updated: {} (version {})\n",
             episode.id, episode.version
         )),
-        // Updates report a missing episode as "Episodes not found", listing its ID.
-        Err(error) if error.is_not_found_for("episodes") => {
+        // A 404 can also name missing recordings, so match the episode message exactly.
+        Err(error)
+            if error.is_bare_not_found()
+                || error
+                    .to_string()
+                    .eq_ignore_ascii_case("One or more episodes were not found") =>
+        {
             Outcome::failure(format!("Episode not found: {}\n", args.episode_id))
         }
         // A 409 can also mean the episode cannot take another version, so only point
