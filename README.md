@@ -322,6 +322,20 @@ that version. Existing datasets keep their pinned episode versions. `episodes ge
 historical version; dataset membership reads return the version pinned by the
 selected dataset version.
 
+Apply edits to many episodes atomically from a JSON file: the API applies all of
+them or none. Each entry requires `id` and can contain `appliesToVersion`,
+`startTime`, `endTime`, `recordings` with `add`/`remove` arrays, and `properties`.
+Property values merge by key; `null` removes a property. An ID-only entry changes
+nothing and returns the current version. Timestamps are sent unchanged and must
+use ISO 8601 at millisecond precision (for example `2026-04-19T13:22:44.123Z`).
+A version conflict names each conflicting episode's current version.
+
+```
+$ cat edits.json
+{"episodes":[{"id":"ep_BCUw2zxpBnToJbOS","appliesToVersion":3,"recordings":{"add":["rec_lwjzOMxryMmP3yXg"]}}]}
+$ foxglove episodes edit-bulk edits.json --format json
+```
+
 Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
 table/CSV output append Version, Latest Version, and Custom Properties columns.
 Comparison output also appends Previous Version and Previous Custom Properties;
@@ -345,7 +359,7 @@ $ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7s
 $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
 $ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
 $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
-Committed version 1 with 2 episodes (2 added, 0 removed)
+Committed version 1 with 2 episodes (2 added, 0 removed, 0 changed)
 ```
 
 Select an episode version when adding an episode or updating one in the draft.
@@ -381,8 +395,13 @@ episode plus a `manifest.json`:
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
 Episode 1 of 128: 41231 bytes
 ...
-Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
+Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 ```
+
+A version with recordings that are no longer available can't be downloaded.
+Select another version, or remove the affected episodes from the dataset and
+commit a new version. List them with
+`foxglove datasets episodes list DATASET_ID --version N --has-missing-recordings`.
 
 Use `--include-properties` to add episode custom properties to each manifest
 entry, including empty `{}` values. This also works when resuming a download:

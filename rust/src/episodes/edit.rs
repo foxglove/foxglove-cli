@@ -1,17 +1,21 @@
-//! Single episode updates with optional version preconditions.
+//! Episode updates, one at a time or atomically from a JSON file, with optional version preconditions.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{episode_endpoint, Episode};
 use crate::api::ApiError;
-use crate::cli::EpisodeEditArgs;
+use crate::cli::{EpisodeBulkEditArgs, EpisodeEditArgs};
 use crate::custom_properties::properties;
-use crate::records::parse_timestamp_millis;
+use crate::output::Format;
+use crate::records::{format_list_output, parse_timestamp_millis, NextCursor, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
+
+/// Most episodes one bulk edit request may change.
+const MAX_BULK_EDITS: usize = 2000;
 
 #[derive(Serialize)]
 struct RecordingChanges<'a> {
@@ -128,5 +132,115 @@ pub(crate) async fn edit_episode(runtime: &Runtime, args: &EpisodeEditArgs) -> O
             ))
         }
         Err(error) => Outcome::failure(format!("Failed to edit episode: {error}\n")),
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct EpisodeEditResult {
+    id: String,
+    version: i32,
+}
+
+impl Record for EpisodeEditResult {
+    fn headers() -> &'static [&'static str] {
+        &["ID", "Version"]
+    }
+
+    fn fields(&self) -> Vec<String> {
+        vec![self.id.clone(), self.version.to_string()]
+    }
+}
+
+#[derive(Deserialize)]
+struct EpisodeEditsResponse {
+    episodes: Vec<EpisodeEditResult>,
+}
+
+/// Checks the edit count and IDs locally and returns the file's JSON unchanged, so
+/// omitted fields and explicit property removals reach the API as written.
+fn bulk_edits(raw: &[u8]) -> Result<Value, String> {
+    let request: Value =
+        serde_json::from_slice(raw).map_err(|error| format!("Invalid edit JSON: {error}"))?;
+    let episodes = request
+        .get("episodes")
+        .and_then(Value::as_array)
+        .ok_or("The file must contain an episodes array")?;
+    if !(1..=MAX_BULK_EDITS).contains(&episodes.len()) {
+        return Err(format!(
+            "The file contains {} edits; it must contain 1-{MAX_BULK_EDITS}",
+            episodes.len()
+        ));
+    }
+    let mut ids = HashMap::new();
+    for (index, episode) in episodes.iter().enumerate() {
+        let id = episode
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.trim().is_empty())
+            .ok_or_else(|| format!("Edit {} needs a nonempty episode id", index + 1))?;
+        if let Some(first) = ids.insert(id, index + 1) {
+            return Err(format!(
+                "Edits {first} and {} have the same episode ID: {id}",
+                index + 1
+            ));
+        }
+    }
+    Ok(request)
+}
+
+pub(crate) async fn edit_episodes(
+    runtime: &Runtime,
+    args: &EpisodeBulkEditArgs,
+    format: Format,
+) -> Outcome {
+    let raw = match tokio::fs::read(&args.file).await {
+        Ok(raw) => raw,
+        Err(error) => {
+            return Outcome::failure(format!("Failed to read {}: {error}\n", args.file.display()))
+        }
+    };
+    let request = match bulk_edits(&raw) {
+        Ok(request) => request,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    match runtime
+        .client
+        .patch::<_, _, EpisodeEditsResponse>("/v1/episodes", &(), &request)
+        .await
+    {
+        Ok(response) => format_list_output(&response.episodes, format, NextCursor::NotPaginated),
+        Err(error @ ApiError::Response { status: 409, .. }) => Outcome::failure(format!(
+            "Failed to edit episodes: {error}\nNo edits were applied. Get the conflicting episodes again and review their changes, then update appliesToVersion in the file before retrying.\n"
+        )),
+        Err(error) => Outcome::failure(format!("Failed to edit episodes: {error}\n")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bulk_edits;
+
+    #[test]
+    fn invalid_bulk_edits_are_rejected_before_sending() {
+        for (raw, expected) in [
+            (r#"{"episodes":[]}"#, "it must contain 1-2000"),
+            (
+                r#"{"episodes":[{"id":"ep_one"},{"id":"ep_one"}]}"#,
+                "Edits 1 and 2 have the same episode ID: ep_one",
+            ),
+            (r#"{"episodes":[{}]}"#, "Edit 1 needs a nonempty episode id"),
+            (
+                r#"{"episodes":[{"id":"  "}]}"#,
+                "Edit 1 needs a nonempty episode id",
+            ),
+            (r#"{"episodes":{}}"#, "episodes array"),
+            ("[", "Invalid edit JSON"),
+        ] {
+            assert!(
+                bulk_edits(raw.as_bytes()).unwrap_err().contains(expected),
+                "{raw}"
+            );
+        }
+        assert!(bulk_edits(br#"{"episodes":[{"id":"ep_one"}]}"#).is_ok());
     }
 }

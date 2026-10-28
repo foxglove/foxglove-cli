@@ -1,7 +1,6 @@
 //! Dataset version download.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write as _;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -61,7 +60,8 @@ struct ManifestSelection {
 #[serde(rename_all = "lowercase")]
 enum Status {
     Downloaded,
-    Skipped,
+    /// Earlier releases recorded episodes with no data left as `skipped`.
+    #[serde(alias = "skipped")]
     Failed,
 }
 
@@ -82,7 +82,9 @@ struct ManifestEpisode {
     status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Read from manifests that earlier releases wrote, so a rerun refreshes episodes
+    /// they downloaded with missing recordings.
+    #[serde(default, skip_serializing)]
     episode_has_missing_recordings: Option<bool>,
 }
 
@@ -331,7 +333,6 @@ fn is_complete(earlier: &ManifestEpisode) -> bool {
 enum EpisodeResult {
     Reused(u64),
     Downloaded(u64),
-    Skipped,
     Failed(String),
     NotAttempted(String),
 }
@@ -345,41 +346,24 @@ fn manifest_entry(
     kept: Option<u64>,
     file: String,
 ) -> (ManifestEpisode, Option<String>) {
-    let missing_recordings = entry.has_missing_recordings == Some(true);
-    let (status, byte_size, reason, missing, note) = match result {
+    let (status, byte_size, reason, note) = match result {
         EpisodeResult::Reused(size) => (
             Status::Downloaded,
             Some(*size),
             None,
-            Some(false),
             Some(format!("{size} bytes already downloaded")),
         ),
-        EpisodeResult::Downloaded(size) => (
-            Status::Downloaded,
-            Some(*size),
-            None,
-            Some(missing_recordings),
-            missing_recordings.then(|| "some of its recordings are no longer available".to_owned()),
-        ),
-        EpisodeResult::Skipped => (
-            Status::Skipped,
-            None,
-            Some(NO_DATA_LEFT_REASON.to_owned()),
-            None,
-            Some(format!("skipped: {NO_DATA_LEFT_REASON}")),
-        ),
+        EpisodeResult::Downloaded(size) => (Status::Downloaded, Some(*size), None, None),
         EpisodeResult::Failed(reason) => (
             Status::Failed,
             None,
             Some(reason.clone()),
-            None,
             Some(format!("failed: {reason}")),
         ),
         EpisodeResult::NotAttempted(reason) => (
             Status::Failed,
             None,
             Some(format!("Not attempted: {reason}")),
-            None,
             Some(format!("not attempted: {reason}")),
         ),
     };
@@ -394,20 +378,14 @@ fn manifest_entry(
         byte_size,
         status,
         reason,
-        episode_has_missing_recordings: missing,
+        episode_has_missing_recordings: None,
     };
     let Some(size) = kept else {
         return (episode, note);
     };
-    // A skip means no data is left to download, so the earlier file is the download. A
-    // failure stays a failure, with the earlier file listed so the next run can find it.
-    if status == Status::Skipped {
-        episode.status = Status::Downloaded;
-        episode.reason = None;
-    }
+    // A failure stays a failure, with the earlier file listed so the next run can find it.
     episode.file = Some(file);
     episode.byte_size = Some(size);
-    episode.episode_has_missing_recordings = Some(true);
     let note = note.map(|note| format!("{size} bytes kept from an earlier run ({note})"));
     (episode, note)
 }
@@ -469,7 +447,7 @@ async fn download_episodes(
             match result {
                 Ok(written) => EpisodeResult::Downloaded(written),
                 Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => {
-                    EpisodeResult::Skipped
+                    EpisodeResult::Failed(NO_DATA_LEFT_REASON.to_owned())
                 }
                 Err(error) => {
                     let reason = error.to_string();
@@ -543,30 +521,28 @@ fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
             .filter(|episode| episode.status == status)
             .count()
     };
-    let mut summary = format!(
-        "Downloaded {} of {} episodes to {} ({} failed, {} skipped)\n",
+    format!(
+        "Downloaded {} of {} episodes to {} ({} failed)\n",
         count(Status::Downloaded),
         episodes.len(),
         directory.display(),
         count(Status::Failed),
-        count(Status::Skipped)
-    );
-    let partial = episodes
-        .iter()
-        .filter(|episode| {
-            episode.status == Status::Downloaded
-                && episode.episode_has_missing_recordings == Some(true)
-        })
-        .count();
-    if partial > 0 {
-        let noun = if partial == 1 {
-            "episode has"
-        } else {
-            "episodes have"
-        };
-        let _ = writeln!(summary, "{partial} downloaded {noun} missing recordings");
-    }
-    summary
+    )
+}
+
+/// Explains why a version with missing recordings cannot be downloaded and how to
+/// find the episodes that hold them.
+fn incomplete_version_message(dataset_id: &str, version_number: i64, episodes: usize) -> String {
+    let noun = if episodes == 1 {
+        "episode has"
+    } else {
+        "episodes have"
+    };
+    format!(
+        "Version {version_number} can't be downloaded: {episodes} {noun} recordings that are no longer available.\n\
+         Select another version with --version, or remove the affected episodes from the dataset and commit a new version.\n\
+         List them with: foxglove datasets episodes list {dataset_id} --version {version_number} --has-missing-recordings\n"
+    )
 }
 
 pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
@@ -594,6 +570,18 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
             return Outcome::failure(format!("Failed to list dataset episodes: {error}\n"))
         }
     };
+
+    let incomplete = episodes
+        .iter()
+        .filter(|entry| entry.has_missing_recordings == Some(true))
+        .count();
+    if incomplete > 0 {
+        return Outcome::failure(incomplete_version_message(
+            &args.dataset_id,
+            version.version_number,
+            incomplete,
+        ));
+    }
 
     let root = default_directory_name(&dataset.name, version.version_number);
     let directory = args
@@ -648,12 +636,10 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         ));
     }
 
-    let failed = manifest.episodes.iter().any(|episode| {
-        episode.status == Status::Failed
-            || args.strict
-                && (episode.status == Status::Skipped
-                    || episode.episode_has_missing_recordings == Some(true))
-    });
+    let failed = manifest
+        .episodes
+        .iter()
+        .any(|episode| episode.status == Status::Failed);
     Outcome {
         stderr: summary(&manifest.episodes, &directory).into_bytes(),
         exit_code: if cancelled { 130 } else { u8::from(failed) },
