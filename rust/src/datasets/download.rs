@@ -569,6 +569,21 @@ fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
     summary
 }
 
+/// Explains why a version with missing recordings cannot be downloaded and how to
+/// find the episodes that hold them.
+fn incomplete_version_message(dataset_id: &str, version_number: i64, episodes: usize) -> String {
+    let noun = if episodes == 1 {
+        "episode has"
+    } else {
+        "episodes have"
+    };
+    format!(
+        "Version {version_number} can't be downloaded: {episodes} {noun} recordings that are no longer available.\n\
+         Select another version with --version, or remove the affected episodes from the dataset and commit a new version.\n\
+         List them with: foxglove datasets episodes list {dataset_id} --version {version_number} --has-missing-recordings\n"
+    )
+}
+
 pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
     let dataset = match fetch_dataset(runtime, &args.dataset_id).await {
         Ok(dataset) => dataset,
@@ -594,6 +609,18 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
             return Outcome::failure(format!("Failed to list dataset episodes: {error}\n"))
         }
     };
+
+    let incomplete = episodes
+        .iter()
+        .filter(|entry| entry.has_missing_recordings == Some(true))
+        .count();
+    if incomplete > 0 {
+        return Outcome::failure(incomplete_version_message(
+            &args.dataset_id,
+            version.version_number,
+            incomplete,
+        ));
+    }
 
     let root = default_directory_name(&dataset.name, version.version_number);
     let directory = args
@@ -648,12 +675,10 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         ));
     }
 
-    let failed = manifest.episodes.iter().any(|episode| {
-        episode.status == Status::Failed
-            || args.strict
-                && (episode.status == Status::Skipped
-                    || episode.episode_has_missing_recordings == Some(true))
-    });
+    let failed = manifest
+        .episodes
+        .iter()
+        .any(|episode| episode.status == Status::Failed);
     Outcome {
         stderr: summary(&manifest.episodes, &directory).into_bytes(),
         exit_code: if cancelled { 130 } else { u8::from(failed) },
