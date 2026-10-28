@@ -348,6 +348,17 @@ $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
 Committed version 1 with 2 episodes (2 added, 0 removed)
 ```
 
+Select an episode version when adding an episode or updating one in the draft.
+Omit `--episode-version` to select the latest version. An already selected version
+is reported as unchanged; the API rejects update IDs outside the draft.
+
+```
+$ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 2
+$ foxglove datasets episodes update ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 3
+Updated 1 episode
+Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
+```
+
 List a dataset's versions, see which episodes changed between two of them, or
 restore an earlier one into the draft. `datasets episodes list --version` lists
 any version by number:
