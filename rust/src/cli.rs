@@ -452,7 +452,10 @@ pub(crate) struct UploadArgs {
 enum DatasetsCommand {
     #[command(about = "Create a dataset")]
     Add(DatasetAddArgs),
-    #[command(about = "Commit a dataset's pending changes as a new version")]
+    #[command(
+        about = "Commit a dataset's pending changes as a new version",
+        long_about = "Commit a dataset's pending changes as a new version. The summary reports added, removed, and changed episodes. A changed episode is present in the new dataset version and the previous committed dataset version, but uses a different episode version."
+    )]
     Commit(DatasetIdArgs),
     #[command(about = "Delete a dataset")]
     Delete(DatasetIdArgs),
@@ -542,11 +545,6 @@ pub(crate) struct DatasetDownloadArgs {
     pub(crate) output: Option<String>,
     #[arg(
         long,
-        help = "Fail if any episode is skipped or downloaded with missing recordings"
-    )]
-    pub(crate) strict: bool,
-    #[arg(
-        long,
         help = "Comma-separated topic list (default: all topics)",
         allow_hyphen_values = true
     )]
@@ -601,9 +599,15 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 enum DatasetVersionsCommand {
     #[command(about = "List the episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
-    #[command(about = "Get a dataset version")]
+    #[command(
+        about = "Get a dataset version",
+        long_about = "Get a dataset version. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version."
+    )]
     Get(DatasetVersionGetArgs),
-    #[command(about = "List a dataset's versions")]
+    #[command(
+        about = "List a dataset's versions",
+        long_about = "List a dataset's versions. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version."
+    )]
     List(DatasetVersionListArgs),
     #[command(about = "Restore a committed version's episodes as pending changes")]
     Restore(DatasetVersionRestoreArgs),
@@ -903,6 +907,8 @@ enum EpisodesCommand {
     Delete(EpisodeIdArgs),
     #[command(about = "Edit an episode (requires API access to episode properties)")]
     Edit(EpisodeEditArgs),
+    #[command(about = "Apply episode edits atomically from a JSON file")]
+    EditBulk(EpisodeBulkEditArgs),
     #[command(about = "Get an episode")]
     Get(EpisodeGetArgs),
     #[command(about = "List episodes")]
@@ -942,6 +948,14 @@ pub(crate) struct EpisodeAddArgs {
     pub(crate) start: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EpisodeBulkEditArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with an episodes array of edits (1-2000 unique IDs)")]
+    pub(crate) file: std::path::PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -1919,6 +1933,10 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::Add(args) => episodes::add_episode(runtime, &args).await,
         EpisodesCommand::Delete(args) => episodes::delete_episode(runtime, &args).await,
         EpisodesCommand::Edit(args) => episodes::edit_episode(runtime, &args).await,
+        EpisodesCommand::EditBulk(args) => {
+            let format = args.format.format;
+            episodes::edit_episodes(runtime, &args, format).await
+        }
         EpisodesCommand::Get(args) => {
             let format = args.format.format;
             episodes::get_episode(runtime, &args, format).await

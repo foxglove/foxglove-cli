@@ -370,7 +370,7 @@ fn edit_failures_name_the_episode_or_report_the_api_error() {
         (
             409,
             r#"{"error":"One or more episode versions have changed","conflicts":[{"id":"ep_one","currentVersion":4}]}"#,
-            "Failed to edit episode: One or more episode versions have changed\n\
+            "Failed to edit episode: One or more episode versions have changed; ep_one: current version 4\n\
              Run foxglove episodes get ep_one to see its latest version.\n",
         ),
     ] {
@@ -577,7 +577,7 @@ fn property_downloads_page_and_preserve_empty_absent_and_skipped_properties() {
         serde_json::json!({"weather":"rain"})
     );
     assert_eq!(manifest["episodes"][1]["properties"], serde_json::json!({}));
-    assert_eq!(manifest["episodes"][1]["status"], "skipped");
+    assert_eq!(manifest["episodes"][1]["status"], "failed");
     assert!(manifest["episodes"][2].get("properties").is_none());
     assert_eq!(manifest["episodes"][2]["status"], "failed");
 }
