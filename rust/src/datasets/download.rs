@@ -345,7 +345,6 @@ fn manifest_entry(
     kept: Option<u64>,
     file: String,
 ) -> (ManifestEpisode, Option<String>) {
-    let missing_recordings = entry.has_missing_recordings == Some(true);
     let (status, byte_size, reason, missing, note) = match result {
         EpisodeResult::Reused(size) => (
             Status::Downloaded,
@@ -354,13 +353,9 @@ fn manifest_entry(
             Some(false),
             Some(format!("{size} bytes already downloaded")),
         ),
-        EpisodeResult::Downloaded(size) => (
-            Status::Downloaded,
-            Some(*size),
-            None,
-            Some(missing_recordings),
-            missing_recordings.then(|| "some of its recordings are no longer available".to_owned()),
-        ),
+        EpisodeResult::Downloaded(size) => {
+            (Status::Downloaded, Some(*size), None, Some(false), None)
+        }
         EpisodeResult::Skipped => (
             Status::Skipped,
             None,
