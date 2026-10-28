@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use crate::api::encode_path_segment;
 use crate::cli::{DeviceAddArgs, DeviceEditArgs, DeviceListArgs};
+use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
@@ -93,15 +94,6 @@ pub(crate) async fn list_devices(
     .await
 }
 
-#[derive(Deserialize)]
-struct CustomPropertyDefinition {
-    key: String,
-    #[serde(rename = "valueType")]
-    value_type: String,
-    #[serde(rename = "enumValues", default)]
-    enum_values: Vec<String>,
-}
-
 #[derive(Serialize)]
 struct DeviceRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -118,85 +110,11 @@ struct DeviceResponse {
     name: String,
 }
 
-async fn device_properties(
-    runtime: &Runtime,
-    pairs: &[String],
-) -> Result<Option<BTreeMap<String, Value>>, String> {
-    if pairs.is_empty() {
-        return Ok(None);
-    }
-    let query = [("resourceType", "device")];
-    let definitions = runtime
-        .client
-        .get::<_, Vec<CustomPropertyDefinition>>("/v1/custom-properties", &query)
-        .await
-        .map_err(|error| format!("failed to load custom properties: {error}"))?;
-    let definitions = definitions
-        .into_iter()
-        .map(|definition| (definition.key.clone(), definition))
-        .collect::<BTreeMap<_, _>>();
-    let mut properties = BTreeMap::new();
-    for pair in pairs {
-        let Some((key, raw_value)) = pair.split_once(':') else {
-            return Err(format!("invalid key/value pair: {pair}"));
-        };
-        if key.is_empty() {
-            return Err(format!("invalid key/value pair: {pair}"));
-        }
-        let Some(definition) = definitions.get(key) else {
-            return Err(format!("unknown key: {key}"));
-        };
-        let value = match definition.value_type.as_str() {
-            "string" | "multiline-string" => Value::String(raw_value.to_owned()),
-            "number" => {
-                let number = raw_value
-                    .parse::<f64>()
-                    .map_err(|_| format!("invalid value for number: {raw_value}"))?;
-                serde_json::from_str(&number.to_string())
-                    .map_err(|_| format!("invalid value for number: {raw_value}"))?
-            }
-            "boolean" => match raw_value {
-                "1" | "t" | "T" | "TRUE" | "true" | "True" => Value::Bool(true),
-                "0" | "f" | "F" | "FALSE" | "false" | "False" => Value::Bool(false),
-                _ => return Err(format!("invalid value for boolean: {raw_value}")),
-            },
-            "enum"
-                if definition
-                    .enum_values
-                    .iter()
-                    .any(|value| value == raw_value) =>
-            {
-                Value::String(raw_value.to_owned())
-            }
-            "multi-enum"
-                if definition
-                    .enum_values
-                    .iter()
-                    .any(|value| value == raw_value) =>
-            {
-                let mut values = match properties.remove(key) {
-                    Some(Value::Array(values)) => values,
-                    _ => Vec::new(),
-                };
-                let value = Value::String(raw_value.to_owned());
-                if !values.contains(&value) {
-                    values.push(value);
-                }
-                Value::Array(values)
-            }
-            "enum" | "multi-enum" => return Err(format!("invalid enum value: {raw_value}")),
-            other => return Err(format!("unsupported type: {other}")),
-        };
-        properties.insert(key.to_owned(), value);
-    }
-    Ok(Some(properties))
-}
-
 pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceAddArgs) -> Outcome {
     if args.name.trim().is_empty() {
         return Outcome::failure("--name cannot be empty\n");
     }
-    let properties = match device_properties(runtime, &args.property).await {
+    let properties = match properties(runtime, "device", &args.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to create device: {error}\n")),
     };
@@ -224,7 +142,7 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
     {
         return Outcome::failure("--name cannot be empty\n");
     }
-    let properties = match device_properties(runtime, &args.update.property).await {
+    let properties = match properties(runtime, "device", &args.update.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
     };

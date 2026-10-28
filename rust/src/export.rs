@@ -151,8 +151,8 @@ fn stream_request(args: &ExportArgs, default_project: &str) -> Result<StreamRequ
         output_format_value
     };
     let request = StreamRequest {
-        episode_version: args.episode_version,
         episode_id: args.episode_id.clone().unwrap_or_default(),
+        episode_version: args.episode_version,
         recording_id: args.recording_id.clone().unwrap_or_default(),
         recording_key: args.key.clone().unwrap_or_default(),
         project_id: args.project_id.clone().or_project(default_project),
