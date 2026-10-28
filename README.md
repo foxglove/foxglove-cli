@@ -82,7 +82,7 @@ $ foxglove devices list --format json
 ```
 
 When more results may exist, a hint on stderr says how to get the next page.
-Datasets, dataset episodes, dataset versions, episodes, and
+Datasets, dataset episodes, dataset versions, episodes, episode versions, and
 `datasets versions compare` page with cursors: their JSON output includes
 `nextCursor`, which you pass to `--cursor`. The other commands that accept
 `--limit` page with `--offset`.
@@ -243,6 +243,13 @@ episodes whose recordings are no longer all available:
 ```
 $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recordings
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
+```
+
+Inspect an episode's version history, newest first. Use `--cursor` with the
+returned `nextCursor` to request the next page:
+
+```
+$ foxglove episodes versions list ep_BCUw2zxpBnToJbOS --limit 20 --format json
 ```
 
 Create an episode from one or more recordings. The window defaults to the span
