@@ -503,6 +503,12 @@ $ foxglove extensions list
     ]
 ```
 
+Show one extension, including a signed link to download its `.foxe` file:
+
+```
+$ foxglove extensions get ext_BsGXKGsZ9c4WQF1 --format json
+```
+
 Unpublish an extension by its ID to **delete** its files and uninstall it for
 all Foxglove organization members:
 
