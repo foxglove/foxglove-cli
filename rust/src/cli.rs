@@ -1153,7 +1153,7 @@ enum EventsCommand {
     #[command(about = "Add an event")]
     Add(EventAddArgs),
     #[command(about = "List events")]
-    List(EventListArgs),
+    List(Box<EventListArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -1184,6 +1184,12 @@ pub(crate) struct EventAddArgs {
 pub(crate) struct EventListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Only events created after this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) created_after: Option<String>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
@@ -1194,6 +1200,8 @@ pub(crate) struct EventListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Only the event with this ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) event_id: Option<String>,
     #[arg(long, help = "Event type ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) event_type_id: Option<String>,
     #[arg(
@@ -1232,6 +1240,12 @@ pub(crate) struct EventListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long,
+        help = "Only events updated after this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) updated_after: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]

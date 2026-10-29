@@ -225,6 +225,13 @@ $ foxglove events list
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
+Narrow the list to one event with `--event-id`, or to events created or updated
+since a given time with `--created-after` and `--updated-after`:
+
+```
+$ foxglove events list --updated-after 2023-04-19T13:25:00Z
+```
+
 ### Datasets and episodes
 
 An episode is a time window over one or more recordings; a dataset is a named,
