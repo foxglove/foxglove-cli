@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use crate::api::{encode_path_segment, ApiError};
 use crate::cli::{RecordingDeleteArgs, RecordingGetArgs, RecordingListArgs, RecordingTransferArgs};
+use crate::episodes::RecordingObjectLocation;
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, format_record, is_zero, null_to_default, parse_timestamp,
@@ -55,6 +56,8 @@ struct Recording {
     session_id: String,
     #[serde(rename = "projectId")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    location: Option<RecordingObjectLocation>,
 }
 
 impl Record for Recording {
@@ -120,6 +123,8 @@ struct RecordingListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     import_status: String,
     limit: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    metadata_query: String,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -173,6 +178,7 @@ pub(crate) async fn list_recordings(
         end,
         import_status: args.import_status.clone().unwrap_or_default(),
         limit,
+        metadata_query: args.metadata_query.clone().unwrap_or_default(),
         offset,
         path: args.path.clone().unwrap_or_default(),
         project_id,
@@ -338,5 +344,22 @@ mod tests {
                 assert_eq!(output[field], expected, "{field}");
             }
         }
+    }
+
+    #[test]
+    fn a_recording_location_is_kept_in_json_output() {
+        let mut response = serde_json::json!({"id":"rec_fixture","path":"fixture.mcap","size":128,"createdAt":"2024-01-02T03:04:05Z","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","importStatus":"complete","projectId":"prj_default"});
+        let record: Recording = serde_json::from_value(response.clone()).unwrap();
+        assert!(serde_json::to_value(record)
+            .unwrap()
+            .get("location")
+            .is_none());
+        response["location"] =
+            serde_json::json!({"scheme": "s3", "bucket": "robot-logs", "path": "fleet/one.mcap"});
+        let record: Recording = serde_json::from_value(response).unwrap();
+        assert_eq!(
+            serde_json::to_value(record).unwrap()["location"],
+            serde_json::json!({"scheme": "s3", "bucket": "robot-logs", "path": "fleet/one.mcap"})
+        );
     }
 }

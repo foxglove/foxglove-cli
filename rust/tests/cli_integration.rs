@@ -2302,7 +2302,13 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
     ]);
     for args in [
         &["--without-device", "--session-key", " key\r"][..],
-        &["--without-session", "--topic", "/camera/image"],
+        &[
+            "--without-session",
+            "--topic",
+            "/camera/image",
+            "--metadata-query",
+            "robot:alpha",
+        ],
     ] {
         let output = Process::spawn(
             workspace
@@ -2328,6 +2334,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
         query_pairs(&requests[1]),
         expected_pairs(&[
             ("limit", "50"),
+            ("metadataQuery", "robot:alpha"),
             ("projectId", "prj_default"),
             ("sessionId", ""),
             ("topic", "/camera/image"),
