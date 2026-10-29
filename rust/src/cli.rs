@@ -454,7 +454,7 @@ pub(crate) struct LakeFileListArgs {
     pub(crate) device_name: Option<String>,
     #[arg(
         long,
-        help = "End of an imported recording's time range (ISO 8601); give with --start",
+        help = "End of an imported recording's time range (ISO 8601); give with --start (required for a device query without a recording or session)",
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
@@ -470,7 +470,7 @@ pub(crate) struct LakeFileListArgs {
     pub(crate) site_id: String,
     #[arg(
         long,
-        help = "Start of an imported recording's time range (ISO 8601); give with --end",
+        help = "Start of an imported recording's time range (ISO 8601); give with --end (required for a device query without a recording or session)",
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,

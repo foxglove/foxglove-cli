@@ -5055,7 +5055,7 @@ fn coverage_is_filtered_by_recording_key_and_shows_pending_coverage_updates() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn lake_files_are_listed_by_device_and_time_range_or_by_recording() {
+fn lake_files_are_listed_by_device_and_time_range_or_by_recording_or_session() {
     let workspace = Workspace::new();
     for (args, expected) in [
         (
@@ -5083,6 +5083,14 @@ fn lake_files_are_listed_by_device_and_time_range_or_by_recording() {
         (
             vec!["--recording-id", "rec_one"],
             expected_pairs(&[("siteId", "site_one"), ("recordingId", "rec_one")]),
+        ),
+        (
+            vec!["--device-id", "dev_one", "--session-id", "ses_one"],
+            expected_pairs(&[
+                ("siteId", "site_one"),
+                ("deviceId", "dev_one"),
+                ("sessionId", "ses_one"),
+            ]),
         ),
     ] {
         let server = Server::new(vec![Reply::json(
@@ -5131,7 +5139,7 @@ fn lake_file_queries_are_limited_before_sending_a_request() {
     for (args, expected) in [
         (
             vec!["--device-id", "dev_one"],
-            "--start and --end are required when listing by device\n",
+            "--start and --end are required when listing by device without a recording or session\n",
         ),
         (
             vec!["--recording-id", "rec_one", "--start", "2024-01-02"],

@@ -275,7 +275,7 @@ Request transfer of an existing edge recording to its configured Primary Site:
 foxglove recordings transfer rec_123
 ```
 
-List the per-topic MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Query by recording, or by device with a time range of at most 24 hours:
+List the per-topic MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Query by recording, by device and session, or by device with a time range of at most 24 hours:
 
 ```
 $ foxglove lake-files list --site-id site_123 --recording-id rec_123

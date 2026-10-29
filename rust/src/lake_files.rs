@@ -54,14 +54,21 @@ struct LakeFileListQuery {
 }
 
 pub(crate) async fn list(runtime: &Runtime, args: &LakeFileListArgs, format: Format) -> Outcome {
-    let has_recording = args.recording_id.is_some() || args.recording_key.is_some();
+    // A recording or session selector bounds the query on its own; only a device-wide query needs
+    // a time range.
+    let has_recording_or_session = args.recording_id.is_some()
+        || args.recording_key.is_some()
+        || args.session_id.is_some()
+        || args.session_key.is_some();
     let (start, end) = match parse_time_range(args.start.as_deref(), args.end.as_deref()) {
         Ok(range) => range,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
     if start.is_empty() {
-        if !has_recording {
-            return Outcome::failure("--start and --end are required when listing by device\n");
+        if !has_recording_or_session {
+            return Outcome::failure(
+                "--start and --end are required when listing by device without a recording or session\n",
+            );
         }
     } else if exceeds_max_range(args) {
         return Outcome::failure("--start and --end must be at most 24 hours apart\n");
