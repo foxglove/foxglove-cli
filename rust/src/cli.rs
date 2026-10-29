@@ -2507,6 +2507,12 @@ enum SitesCommand {
     IngestPathPolicy(SitePolicyCommand),
     #[command(about = "List sites")]
     List(FormatArgs),
+    #[command(
+        name = "notify-bucket",
+        about = "Notify a Primary Site that an object in its bucket was created or removed",
+        long_about = "Notify a Primary Site that an object in its bucket was created or removed. Most users should set up bucket notifications instead. This request authenticates with a Site Bucket Notification Token (fox_snt_...), not your login: pass it with --token or FOXGLOVE_SITE_NOTIFICATION_TOKEN."
+    )]
+    NotifyBucket(SiteBucketNotificationArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -2541,6 +2547,42 @@ pub(crate) struct SiteAddArgs {
         value_parser = clap::value_parser!(u64)
     )]
     pub(crate) retain_recordings_seconds: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteBucketNotificationArgs {
+    #[arg(long, help = "Unique message ID; object-created notifications are deduplicated on it", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) message_id: String,
+    #[arg(long, help = "Name of the object in the bucket", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) file_name: String,
+    #[arg(long, help = "Bucket name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) bucket_name: String,
+    #[arg(
+        long,
+        help = "Storage provider of the bucket; must match the site's inbox or indexed bucket",
+        value_parser = ["google_cloud", "aws", "azure", "s3_compatible"]
+    )]
+    pub(crate) storage_provider: String,
+    #[arg(long, help = "Azure storage account that contains the container; only valid with --storage-provider azure, and required there for bring-your-own-storage sites", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) azure_storage_account_name: Option<String>,
+    #[arg(
+        long,
+        help = "Kind of object event (default: object_created)",
+        value_parser = ["object_created", "object_removed"]
+    )]
+    pub(crate) notification_type: Option<String>,
+    #[arg(long, help = "Device to associate with the recording (object_created only)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Name of the device to associate with the recording; created if it does not exist (object_created only)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
+    #[arg(long, help = "Project to associate with the recording (object_created only)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Existing session to associate with the recording (object_created only)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Key of a session to associate with the recording; ignored with --session-id (object_created only)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, value_name = "TOKEN", help = "Site Bucket Notification Token (default: FOXGLOVE_SITE_NOTIFICATION_TOKEN)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) token: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -3230,6 +3272,7 @@ async fn dispatch_site_command(runtime: &runtime::Runtime, command: SitesCommand
             sites::set_policy(runtime, &args).await
         }
         SitesCommand::List(args) => sites::list_sites(runtime, args.format).await,
+        SitesCommand::NotifyBucket(args) => sites::notify_bucket(runtime, &args).await,
     }
 }
 

@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
 use crate::api::encode_path_segment;
-use crate::cli::{SiteAddArgs, SiteEditArgs, SiteGetArgs, SiteIdArgs, SitePolicySetArgs};
+use crate::cli::{
+    SiteAddArgs, SiteBucketNotificationArgs, SiteEditArgs, SiteGetArgs, SiteIdArgs,
+    SitePolicySetArgs,
+};
 use crate::output::{self, Format};
 use crate::records::{fetch_list, format_record, Record};
 use crate::runtime::Runtime;
@@ -135,6 +138,86 @@ pub(crate) async fn delete_site(runtime: &Runtime, args: &SiteIdArgs) -> Outcome
         Ok(()) => Outcome::notice(format!("Site deleted: {}\n", args.site_id)),
         Err(error) if error.is_not_found_for("site") => site_not_found(&args.site_id),
         Err(error) => Outcome::failure(format!("Failed to delete site: {error}\n")),
+    }
+}
+
+const SITE_NOTIFICATION_TOKEN_ENV: &str = "FOXGLOVE_SITE_NOTIFICATION_TOKEN";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BucketNotificationRequest<'a> {
+    message_id: &'a str,
+    file_name: &'a str,
+    bucket_name: &'a str,
+    storage_provider: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    azure_storage_account_name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notification_type: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_key: Option<&'a str>,
+}
+
+/// Sends a bucket notification authenticated with a Site Bucket Notification Token, which
+/// replaces the client's bearer token for this one request and is never saved.
+pub(crate) async fn notify_bucket(runtime: &Runtime, args: &SiteBucketNotificationArgs) -> Outcome {
+    if args.azure_storage_account_name.is_some() && args.storage_provider != "azure" {
+        return Outcome::failure(
+            "--azure-storage-account-name requires --storage-provider azure\n",
+        );
+    }
+    let recording_flags = [
+        ("--device-id", args.device_id.is_some()),
+        ("--device-name", args.device_name.is_some()),
+        ("--project-id", args.project_id.is_some()),
+        ("--session-id", args.session_id.is_some()),
+        ("--session-key", args.session_key.is_some()),
+    ];
+    if args.notification_type.as_deref() == Some("object_removed") {
+        if let Some((flag, _)) = recording_flags.iter().find(|(_, set)| *set) {
+            return Outcome::failure(format!(
+                "{flag} only applies to object_created notifications\n"
+            ));
+        }
+    }
+    let Some(token) = args.token.clone().or_else(|| {
+        std::env::var(SITE_NOTIFICATION_TOKEN_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+    }) else {
+        return Outcome::failure(format!(
+            "Provide a Site Bucket Notification Token with --token or {SITE_NOTIFICATION_TOKEN_ENV}\n"
+        ));
+    };
+    let request = BucketNotificationRequest {
+        message_id: &args.message_id,
+        file_name: &args.file_name,
+        bucket_name: &args.bucket_name,
+        storage_provider: &args.storage_provider,
+        azure_storage_account_name: args.azure_storage_account_name.as_deref(),
+        notification_type: args.notification_type.as_deref(),
+        device_id: args.device_id.as_deref(),
+        device_name: args.device_name.as_deref(),
+        project_id: args.project_id.as_deref(),
+        session_id: args.session_id.as_deref(),
+        session_key: args.session_key.as_deref(),
+    };
+    runtime.client.set_token(token);
+    match runtime
+        .client
+        .post::<_, Value>("/v1/site-bucket-notifications", &request)
+        .await
+    {
+        Ok(_) => Outcome::notice(format!("Bucket notification sent: {}\n", args.file_name)),
+        Err(error) => Outcome::failure(format!("Failed to send bucket notification: {error}\n")),
     }
 }
 

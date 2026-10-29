@@ -234,3 +234,141 @@ fn missing_sites_are_named_in_the_error() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn bucket_notifications_use_the_site_notification_token() {
+    let workspace = Workspace::new();
+    let base = [
+        "sites",
+        "notify-bucket",
+        "--message-id",
+        "msg-1",
+        "--file-name",
+        "robot/run.mcap",
+        "--bucket-name",
+        "inbox",
+    ];
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/site-bucket-notifications",
+        r#"{"success":true}"#,
+    )]);
+    let mut args = base.to_vec();
+    args.extend([
+        "--storage-provider",
+        "azure",
+        "--azure-storage-account-name",
+        "account",
+        "--device-name",
+        "rover",
+        "--token",
+        "fox_snt_fake",
+    ]);
+    let output = run(&workspace, &server, &args);
+    assert_success(&output);
+    let request = &server.finish()[0];
+    assert!(request.contains("authorization: Bearer fox_snt_fake\r\n"));
+    assert_eq!(
+        json_body(request),
+        serde_json::json!({
+            "messageId": "msg-1",
+            "fileName": "robot/run.mcap",
+            "bucketName": "inbox",
+            "storageProvider": "azure",
+            "azureStorageAccountName": "account",
+            "deviceName": "rover",
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Bucket notification sent: robot/run.mcap\n"
+    );
+
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/site-bucket-notifications",
+        r#"{"success":true}"#,
+    )]);
+    let mut args = base.to_vec();
+    args.extend([
+        "--storage-provider",
+        "aws",
+        "--notification-type",
+        "object_removed",
+    ]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("FOXGLOVE_SITE_NOTIFICATION_TOKEN", "fox_snt_from_env")
+            .args(&args),
+    )
+    .finish();
+    assert_success(&output);
+    let request = &server.finish()[0];
+    assert!(request.contains("authorization: Bearer fox_snt_from_env\r\n"));
+    assert_eq!(
+        json_body(request),
+        serde_json::json!({
+            "messageId": "msg-1",
+            "fileName": "robot/run.mcap",
+            "bucketName": "inbox",
+            "storageProvider": "aws",
+            "notificationType": "object_removed",
+        })
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn invalid_bucket_notifications_are_rejected_before_sending() {
+    let workspace = Workspace::new();
+    let base = [
+        "sites",
+        "notify-bucket",
+        "--message-id",
+        "msg-1",
+        "--file-name",
+        "run.mcap",
+        "--bucket-name",
+        "inbox",
+    ];
+    for (flags, expected) in [
+        (
+            vec![
+                "--storage-provider",
+                "aws",
+                "--azure-storage-account-name",
+                "account",
+                "--token",
+                "fox_snt_fake",
+            ],
+            "--azure-storage-account-name requires --storage-provider azure\n",
+        ),
+        (
+            vec![
+                "--storage-provider",
+                "aws",
+                "--notification-type",
+                "object_removed",
+                "--session-key",
+                "run-1",
+                "--token",
+                "fox_snt_fake",
+            ],
+            "--session-key only applies to object_created notifications\n",
+        ),
+        (
+            vec!["--storage-provider", "aws"],
+            "Provide a Site Bucket Notification Token with --token or FOXGLOVE_SITE_NOTIFICATION_TOKEN\n",
+        ),
+    ] {
+        let server = Server::new(vec![]);
+        let mut args = base.to_vec();
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert!(!output.status.success(), "{flags:?}");
+        assert!(server.finish().is_empty(), "{flags:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
+    }
+}
