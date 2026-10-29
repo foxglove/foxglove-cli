@@ -1184,18 +1184,6 @@ fn other_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
     let cases: &[(&[&str], &str, &str, &str)] = &[
         (
-            &["recordings", "delete", KEY],
-            "DELETE",
-            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
-            "{}",
-        ),
-        (
-            &["recordings", "transfer", KEY],
-            "POST",
-            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
-            r#"{"id":"recording","importStatus":"pending"}"#,
-        ),
-        (
             &["extensions", "get", KEY],
             "GET",
             "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
@@ -1245,12 +1233,26 @@ fn other_identifier_paths_are_escaped() {
 #[ignore = "requires loopback sockets"]
 fn recording_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
-    let cases: &[(&[&str], &str, &str, &str)] = &[(
-        &["recordings", "get", KEY],
-        "GET",
-        "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
-        r#"{"id":"recording","projectId":"","path":"","size":0,"start":"","end":"","createdAt":"","importStatus":"none"}"#,
-    )];
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (
+            &["recordings", "get", KEY],
+            "GET",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"recording","projectId":"","path":"","size":0,"start":"","end":"","createdAt":"","importStatus":"none"}"#,
+        ),
+        (
+            &["recordings", "delete", KEY],
+            "DELETE",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            "{}",
+        ),
+        (
+            &["recordings", "transfer", KEY],
+            "POST",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
+            r#"{"id":"recording","importStatus":"pending"}"#,
+        ),
+    ];
     assert_each_request_reaches(cases);
 }
 
