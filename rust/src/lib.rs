@@ -25,6 +25,7 @@ mod recordings;
 mod records;
 mod runtime;
 mod sessions;
+mod site_notification_tokens;
 mod site_tokens;
 mod sites;
 mod topics;

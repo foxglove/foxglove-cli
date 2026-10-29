@@ -671,6 +671,23 @@ $ foxglove site-tokens list --site-id site_example
 $ foxglove site-tokens delete stkn_example
 ```
 
+### Site notification tokens
+
+Site notification tokens authenticate bucket notifications for a self-managed or
+Bring Your Own Storage Primary Site. Create one for a site; the token value is
+printed only once:
+
+```
+$ foxglove site-notification-tokens add --site-id site_example
+```
+
+List tokens, optionally for one site, and delete a token by its ID:
+
+```
+$ foxglove site-notification-tokens list --site-id site_example
+$ foxglove site-notification-tokens delete sint_example
+```
+
 ### Layouts
 
 List the layouts shared with your organization:

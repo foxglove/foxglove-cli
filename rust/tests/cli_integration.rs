@@ -4,6 +4,8 @@ mod custom_properties;
 mod episodes;
 #[path = "cli_integration/layouts.rs"]
 mod layouts;
+#[path = "cli_integration/site_notification_tokens.rs"]
+mod site_notification_tokens;
 #[path = "cli_integration/sites.rs"]
 mod sites;
 
