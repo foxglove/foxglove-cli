@@ -387,9 +387,21 @@ Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new ve
 $ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7sWd1ZrNc4YbEe
 $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
 $ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
-$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
+$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W --description "Merges after the lane change"
 Committed version 1 with 2 episodes (2 added, 0 removed, 0 changed)
 ```
+
+Without `--description`, the new version keeps the draft's description. Edit a
+version's description later with `datasets versions edit`; pass an empty
+`--description` to clear it:
+
+```
+$ foxglove datasets versions edit ds_Qp4sT7vKx2NbLm9W 1 --description "Merges at night"
+Version 1 of dataset ds_Qp4sT7vKx2NbLm9W updated
+```
+
+Version output includes the description and who committed the version: an org
+member ID, or an API key ID when an API key committed it.
 
 Select an episode version when adding an episode or updating one in the draft.
 Omit `--episode-version` to select the latest version. An already selected version

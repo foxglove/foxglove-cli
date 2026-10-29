@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::{
     commit_hint, dataset_endpoint, dataset_not_found, dataset_or_version_not_found,
@@ -10,8 +11,8 @@ use super::{
 };
 use crate::api::ApiError;
 use crate::cli::{
-    DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
-    DatasetVersionRestoreArgs,
+    DatasetCommitArgs, DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionEditArgs,
+    DatasetVersionGetArgs, DatasetVersionListArgs, DatasetVersionRestoreArgs,
 };
 use crate::episodes::{episode_include, Episode};
 use crate::output::Format;
@@ -46,6 +47,20 @@ pub(super) struct DatasetVersion {
         default
     )]
     changed_episode_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    description: Option<String>,
+    #[serde(
+        rename = "committedByOrgMemberId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    committed_by_org_member_id: Option<String>,
+    #[serde(
+        rename = "committedByApiKeyId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    committed_by_api_key_id: Option<String>,
 }
 
 impl Record for DatasetVersion {
@@ -59,6 +74,9 @@ impl Record for DatasetVersion {
             "Removed",
             "Changed",
             "Created At",
+            "Description",
+            "Committed By Member",
+            "Committed By API Key",
         ]
     }
 
@@ -79,6 +97,9 @@ impl Record for DatasetVersion {
                 .map(|count| count.to_string())
                 .unwrap_or_default(),
             self.created_at.clone(),
+            self.description.clone().unwrap_or_default(),
+            self.committed_by_org_member_id.clone().unwrap_or_default(),
+            self.committed_by_api_key_id.clone().unwrap_or_default(),
         ]
     }
 }
@@ -108,6 +129,9 @@ impl Record for DatasetVersionDetail {
             "Removed",
             "Changed",
             "Created At",
+            "Description",
+            "Committed By Member",
+            "Committed By API Key",
             "Missing Recordings",
         ]
     }
@@ -215,6 +239,17 @@ struct CompareQuery<'a> {
 struct RestoreQuery {
     #[serde(skip_serializing_if = "is_false")]
     force: bool,
+}
+
+#[derive(Serialize)]
+struct CommitRequest<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct EditVersionRequest<'a> {
+    description: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -494,12 +529,46 @@ fn pending_changes(additions: usize, removals: usize, updates: usize) -> String 
     }
 }
 
-pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> Outcome {
+pub(crate) async fn edit_version(runtime: &Runtime, args: &DatasetVersionEditArgs) -> Outcome {
+    let request = EditVersionRequest {
+        description: Some(args.description.as_str()).filter(|description| !description.is_empty()),
+    };
+    match runtime
+        .client
+        .patch::<_, _, Value>(
+            &format!(
+                "{}/versions/{}",
+                dataset_endpoint(&args.dataset_id),
+                args.version
+            ),
+            &(),
+            &request,
+        )
+        .await
+    {
+        Ok(_) => Outcome::notice(format!(
+            "Version {} of dataset {} updated\n",
+            args.version, args.dataset_id
+        )),
+        Err(error) if error.is_bare_not_found() => {
+            dataset_or_version_not_found(&args.dataset_id, args.version)
+        }
+        Err(error) if error.is_not_found_for("version") => {
+            version_not_found(&args.dataset_id, args.version)
+        }
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
+        Err(error) => Outcome::failure(format!("Failed to edit dataset version: {error}\n")),
+    }
+}
+
+pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetCommitArgs) -> Outcome {
     match runtime
         .client
         .post::<_, CommitResponse>(
             &format!("{}/commit", dataset_endpoint(&args.dataset_id)),
-            &EmptyRequest {},
+            &CommitRequest {
+                description: args.description.as_deref(),
+            },
         )
         .await
     {
@@ -549,19 +618,42 @@ mod tests {
     fn the_uncommitted_version_is_listed_as_the_draft() {
         let versions: Vec<DatasetVersion> = serde_json::from_value(serde_json::json!([
             {"versionNumber": 5, "createdAt": "2024-01-03T00:00:00Z", "episodeCount": 12, "addedEpisodeCount": 3, "removedEpisodeCount": 1},
-            {"versionNumber": 4, "committedAt": "2024-01-02T00:00:00Z", "createdAt": "2024-01-01T00:00:00Z", "episodeCount": 10, "addedEpisodeCount": 10, "removedEpisodeCount": 0},
+            {"versionNumber": 4, "committedAt": "2024-01-02T00:00:00Z", "createdAt": "2024-01-01T00:00:00Z", "episodeCount": 10, "addedEpisodeCount": 10, "removedEpisodeCount": 0, "description": "Night drives", "committedByApiKeyId": "key_one"},
         ]))
         .unwrap();
         assert_eq!(
             versions[0].fields(),
-            ["5", "draft", "", "12", "3", "1", "", "2024-01-03T00:00:00Z"]
+            [
+                "5",
+                "draft",
+                "",
+                "12",
+                "3",
+                "1",
+                "",
+                "2024-01-03T00:00:00Z",
+                "",
+                "",
+                ""
+            ]
         );
         assert_eq!(
             versions[1].fields()[1..3],
             ["committed", "2024-01-02T00:00:00Z"]
         );
+        assert_eq!(versions[1].fields()[8..], ["Night drives", "", "key_one"]);
         let output = serde_json::to_value(&versions[0]).unwrap();
-        assert!(output.get("committedAt").is_none());
+        for omitted in [
+            "committedAt",
+            "description",
+            "committedByOrgMemberId",
+            "committedByApiKeyId",
+        ] {
+            assert!(output.get(omitted).is_none(), "{omitted}");
+        }
+        let output = serde_json::to_value(&versions[1]).unwrap();
+        assert_eq!(output["description"], "Night drives");
+        assert_eq!(output["committedByApiKeyId"], "key_one");
     }
 
     #[test]
@@ -575,6 +667,7 @@ mod tests {
             "removedEpisodeCount": 0,
             "hasMissingRecordings": true,
             "changedEpisodeCount": 3,
+            "committedByOrgMemberId": "mem_one",
         }))
         .unwrap();
         assert_eq!(DatasetVersionDetail::headers().len(), detail.fields().len());
@@ -583,7 +676,9 @@ mod tests {
         assert_eq!(output["versionNumber"], 4);
         assert_eq!(output["hasMissingRecordings"], true);
         assert_eq!(output["changedEpisodeCount"], 3);
+        assert_eq!(output["committedByOrgMemberId"], "mem_one");
         assert_eq!(detail.fields()[6], "3");
+        assert_eq!(detail.fields()[9], "mem_one");
     }
 
     #[test]

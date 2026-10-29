@@ -5,7 +5,8 @@ mod versions;
 
 pub(crate) use download::download_dataset;
 pub(crate) use versions::{
-    commit_dataset, compare_versions, discard_dataset, get_version, list_versions, restore_version,
+    commit_dataset, compare_versions, discard_dataset, edit_version, get_version, list_versions,
+    restore_version,
 };
 
 use std::collections::HashSet;

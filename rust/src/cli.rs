@@ -479,7 +479,7 @@ enum DatasetsCommand {
         about = "Commit a dataset's pending changes as a new version",
         long_about = "Commit a dataset's pending changes as a new version. The summary reports added, removed, and changed episodes. A changed episode is present in the new dataset version and the previous committed dataset version, but uses a different episode version."
     )]
-    Commit(DatasetIdArgs),
+    Commit(DatasetCommitArgs),
     #[command(about = "Delete a dataset")]
     Delete(DatasetIdArgs),
     #[command(about = "Discard a dataset's pending changes")]
@@ -494,7 +494,10 @@ enum DatasetsCommand {
     Get(DatasetGetArgs),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
-    #[command(about = "List, compare, and restore dataset versions", subcommand)]
+    #[command(
+        about = "List, compare, edit, and restore dataset versions",
+        subcommand
+    )]
     Versions(DatasetVersionsCommand),
 }
 
@@ -522,6 +525,19 @@ pub(crate) struct DatasetAddArgs {
 pub(crate) struct DatasetIdArgs {
     #[arg(value_name = "DATASET_ID")]
     pub(crate) dataset_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetCommitArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "Description of the new version (default: the draft's description)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) description: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -622,6 +638,8 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 enum DatasetVersionsCommand {
     #[command(about = "List the episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
+    #[command(about = "Edit a dataset version's description")]
+    Edit(DatasetVersionEditArgs),
     #[command(
         about = "Get a dataset version",
         long_about = "Get a dataset version. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version."
@@ -668,6 +686,21 @@ pub(crate) struct DatasetVersionGetArgs {
     pub(crate) dataset_id: String,
     #[arg(value_name = "VERSION")]
     pub(crate) version: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionEditArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+    #[arg(
+        long,
+        help = "New description; pass an empty value to clear it",
+        allow_hyphen_values = true,
+        required = true
+    )]
+    pub(crate) description: String,
 }
 
 #[derive(Debug, Args)]
@@ -2024,6 +2057,7 @@ async fn dispatch_dataset_version_command(
             let format = args.format.format;
             datasets::compare_versions(runtime, &args, format).await
         }
+        DatasetVersionsCommand::Edit(args) => datasets::edit_version(runtime, &args).await,
         DatasetVersionsCommand::Get(args) => {
             let format = args.format.format;
             datasets::get_version(runtime, &args, format).await

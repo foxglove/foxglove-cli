@@ -1257,6 +1257,20 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
             r#"{"versionNumber":2}"#,
         ),
         (
+            &[
+                "datasets",
+                "versions",
+                "edit",
+                KEY,
+                "2",
+                "--description",
+                "Night",
+            ],
+            "PATCH",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2",
+            r#"{"versionNumber":2}"#,
+        ),
+        (
             &["datasets", "versions", "compare", KEY, "1", "2"],
             "GET",
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2/compare",
@@ -3016,6 +3030,44 @@ fn editing_a_dataset_sends_only_the_fields_given_and_an_empty_description_clears
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn editing_a_dataset_version_sets_its_description_and_an_empty_one_clears_it() {
+    let workspace = Workspace::new();
+    for (description, expected) in [
+        (
+            "Night drives",
+            serde_json::json!({"description": "Night drives"}),
+        ),
+        ("", serde_json::json!({"description": null})),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/datasets/ds_one/versions/3",
+            r#"{"versionNumber":3}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "datasets",
+                "versions",
+                "edit",
+                "ds_one",
+                "3",
+                "--description",
+                description,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{description:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Version 3 of dataset ds_one updated\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn getting_a_dataset_renders_one_record() {
     const DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway","description":"Merges","episodeCount":2,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}"#;
     let workspace = Workspace::new();
@@ -3603,9 +3655,9 @@ fn versions_are_listed_with_the_draft_marked() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z\n\
-         2,draft,,3,1,0,,2024-01-02T00:00:00Z\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Description,Committed By Member,Committed By API Key\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,,,\n\
+         2,draft,,3,1,0,,2024-01-02T00:00:00Z,,,\n"
     );
 }
 
@@ -3637,7 +3689,7 @@ fn a_version_reports_whether_its_recordings_are_missing() {
     let server = Server::new(vec![Reply::json(
         "GET",
         "/v1/datasets/ds_one/versions/1",
-        r#"{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":2,"addedEpisodeCount":2,"removedEpisodeCount":0,"hasMissingRecordings":true}"#,
+        r#"{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":2,"addedEpisodeCount":2,"removedEpisodeCount":0,"description":"Night drives","committedByOrgMemberId":"mem_one","hasMissingRecordings":true}"#,
     )]);
     let output = run(
         &workspace,
@@ -3650,8 +3702,8 @@ fn a_version_reports_whether_its_recordings_are_missing() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Missing Recordings\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,true\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Description,Committed By Member,Committed By API Key,Missing Recordings\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,Night drives,mem_one,,true\n"
     );
 }
 
@@ -3896,6 +3948,33 @@ fn committing_and_discarding_report_the_counts() {
         assert_eq!(json_body(&server.finish()[0]), serde_json::json!({}));
         assert_eq!(String::from_utf8_lossy(&output.stderr), stderr, "{command}");
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn committing_with_a_description_sends_it() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets/ds_one/commit",
+        r#"{"committed":{"versionNumber":4,"episodeCount":12,"addedEpisodeCount":3,"removedEpisodeCount":1},"editableVersionNumber":5}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "commit",
+            "ds_one",
+            "--description",
+            "Night drives",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"description": "Night drives"})
+    );
 }
 
 #[test]
