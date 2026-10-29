@@ -143,7 +143,11 @@ enum CliCommand {
     Devices(DevicesCommand),
     #[command(about = "List and manage episodes", subcommand)]
     Episodes(EpisodesCommand),
-    #[command(name = "event-types", about = "List event types", subcommand)]
+    #[command(
+        name = "event-types",
+        about = "List and manage event types",
+        subcommand
+    )]
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
@@ -1231,8 +1235,79 @@ pub(crate) struct EpisodeListArgs {
 
 #[derive(Debug, Subcommand)]
 enum EventTypesCommand {
+    #[command(about = "Create an event type")]
+    Add(EventTypeAddArgs),
+    #[command(about = "Delete an event type that has no events")]
+    Delete(EventTypeIdArgs),
+    #[command(about = "Edit an event type's name, color, or custom properties")]
+    Edit(EventTypeEditArgs),
+    #[command(about = "Get an event type")]
+    Get(EventTypeGetArgs),
     #[command(about = "List event types")]
     List(FormatArgs),
+}
+
+const EVENT_TYPE_CUSTOM_PROPERTY_HELP: &str = "Custom property ID to attach, with a :required suffix if events must set it; repeat in display order";
+
+/// A custom property attached to an event type, written as `ID` or
+/// `ID:required`.
+#[derive(Clone, Debug)]
+pub(crate) struct EventTypeCustomPropertyArg {
+    pub(crate) id: String,
+    pub(crate) required: bool,
+}
+
+fn parse_event_type_custom_property(value: &str) -> Result<EventTypeCustomPropertyArg, String> {
+    let (id, required) = match value.strip_suffix(":required") {
+        Some(id) => (id, true),
+        None => (value, false),
+    };
+    Ok(EventTypeCustomPropertyArg {
+        id: parse_id(id)?,
+        required,
+    })
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeAddArgs {
+    #[arg(long, help = "Color name, such as red", value_parser = parse_non_blank)]
+    pub(crate) color: Option<String>,
+    #[arg(long, help = EVENT_TYPE_CUSTOM_PROPERTY_HELP, value_name = "ID[:required]", action = clap::ArgAction::Append, value_parser = parse_event_type_custom_property)]
+    pub(crate) custom_property: Vec<EventTypeCustomPropertyArg>,
+    #[arg(long, help = "Event type name, unique within your organization", value_parser = parse_non_blank)]
+    pub(crate) name: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeIdArgs {
+    #[arg(value_name = "EVENT_TYPE_ID", value_parser = parse_id)]
+    pub(crate) event_type_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EVENT_TYPE_ID", value_parser = parse_id)]
+    pub(crate) event_type_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeEditArgs {
+    #[arg(value_name = "EVENT_TYPE_ID", value_parser = parse_id)]
+    pub(crate) event_type_id: String,
+    #[arg(
+        long,
+        help = "Remove every custom property from the event type",
+        conflicts_with = "custom_property"
+    )]
+    pub(crate) clear_custom_properties: bool,
+    #[arg(long, help = "New color name, such as red", value_parser = parse_non_blank)]
+    pub(crate) color: Option<String>,
+    #[arg(long, help = "Custom property ID, with a :required suffix if events must set it; replaces the existing list, so repeat for each property in display order", value_name = "ID[:required]", action = clap::ArgAction::Append, value_parser = parse_event_type_custom_property)]
+    pub(crate) custom_property: Vec<EventTypeCustomPropertyArg>,
+    #[arg(long, help = "New name, unique within your organization", value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1997,9 +2072,7 @@ async fn dispatch_api_command(
             devices::list_devices(&runtime, &args, format).await
         }
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
-        CliCommand::EventTypes(EventTypesCommand::List(args)) => {
-            event_types::list_event_types(&runtime, args.format).await
-        }
+        CliCommand::EventTypes(command) => dispatch_event_type_command(&runtime, command).await,
         CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
         CliCommand::Events(EventsCommand::List(args)) => {
             let format = args.format.format;
@@ -2107,6 +2180,21 @@ async fn dispatch_dataset_version_command(
             datasets::list_versions(runtime, &args, format).await
         }
         DatasetVersionsCommand::Restore(args) => datasets::restore_version(runtime, &args).await,
+    }
+}
+
+async fn dispatch_event_type_command(
+    runtime: &runtime::Runtime,
+    command: EventTypesCommand,
+) -> Outcome {
+    match command {
+        EventTypesCommand::Add(args) => event_types::add_event_type(runtime, &args).await,
+        EventTypesCommand::Delete(args) => event_types::delete_event_type(runtime, &args).await,
+        EventTypesCommand::Edit(args) => event_types::edit_event_type(runtime, &args).await,
+        EventTypesCommand::Get(args) => {
+            event_types::get_event_type(runtime, &args, args.format.format).await
+        }
+        EventTypesCommand::List(args) => event_types::list_event_types(runtime, args.format).await,
     }
 }
 
