@@ -14,9 +14,9 @@ use crate::config::Config;
 use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
-    attachments, auth, coverage, datasets, device_tokens, devices, episodes, event_types, events,
-    export, extensions, lake_files, layouts, pending_imports, projects, recordings, runtime,
-    sessions, site_tokens, sites, topics, upload,
+    attachments, auth, coverage, custom_properties, datasets, device_tokens, devices, episodes,
+    event_types, events, export, extensions, lake_files, layouts, pending_imports, projects,
+    recordings, runtime, sessions, site_tokens, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -138,6 +138,12 @@ enum CliCommand {
     Config(ConfigCommand),
     #[command(about = "Inspect data coverage", subcommand)]
     Coverage(CoverageCommand),
+    #[command(
+        name = "custom-properties",
+        about = "List and manage custom properties",
+        subcommand
+    )]
+    CustomProperties(CustomPropertiesCommand),
     #[command(about = "List and manage datasets", subcommand)]
     Datasets(DatasetsCommand),
     #[command(
@@ -562,6 +568,111 @@ pub(crate) struct UploadArgs {
     pub(crate) session_key: Option<String>,
     #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub(crate) file: String,
+}
+
+#[derive(Debug, Subcommand)]
+enum CustomPropertiesCommand {
+    #[command(about = "Create a custom property")]
+    Add(CustomPropertyAddArgs),
+    #[command(
+        about = "Delete a custom property",
+        long_about = "Delete a custom property. Deleting a device custom property removes all of its values. An event custom property can only be deleted when no event has a value for it."
+    )]
+    Delete(CustomPropertyIdArgs),
+    #[command(about = "Edit a custom property's label or enum values")]
+    Edit(CustomPropertyEditArgs),
+    #[command(about = "Get a custom property")]
+    Get(CustomPropertyGetArgs),
+    #[command(about = "List custom properties")]
+    List(CustomPropertyListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CustomPropertyAddArgs {
+    #[arg(
+        long,
+        help = "Allowed value for an enum or multi-enum property; repeat to add more, in display order",
+        allow_hyphen_values = true,
+        action = clap::ArgAction::Append,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) enum_value: Vec<String>,
+    #[arg(
+        long,
+        help = "Key used to set and query the property, such as partNumber (letters, digits, - and _; cannot be changed later)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) key: String,
+    #[arg(
+        long,
+        help = "Display label",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) label: String,
+    #[arg(
+        long,
+        help = "Resource type the property applies to: device, event, session, or episode",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) resource_type: String,
+    #[arg(
+        long,
+        help = "Value type: string, multiline-string, number, boolean, enum, or multi-enum",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) value_type: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CustomPropertyIdArgs {
+    #[arg(value_name = "CUSTOM_PROPERTY_ID")]
+    pub(crate) custom_property_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CustomPropertyEditArgs {
+    #[arg(value_name = "CUSTOM_PROPERTY_ID")]
+    pub(crate) custom_property_id: String,
+    #[arg(
+        long,
+        help = "Complete list of allowed enum values, in display order; repeat for each value. It must include every existing value, so it can only reorder or add values",
+        allow_hyphen_values = true,
+        action = clap::ArgAction::Append,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) enum_value: Vec<String>,
+    #[arg(
+        long,
+        help = "New display label",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) label: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CustomPropertyGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "CUSTOM_PROPERTY_ID")]
+    pub(crate) custom_property_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct CustomPropertyListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Only properties for this resource type: device, event, session, or episode",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) resource_type: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2780,6 +2891,7 @@ async fn dispatch_api_command(
             export::export_data(&runtime, &args, writer).await
         }
         CliCommand::Upload(args) => upload::upload_file(&runtime, &args).await,
+        CliCommand::CustomProperties(command) => dispatch_property_command(&runtime, command).await,
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
         CliCommand::DeviceTokens(command) => dispatch_device_token_command(&runtime, command).await,
         CliCommand::Devices(command) => dispatch_device_command(&runtime, command).await,
@@ -2811,6 +2923,31 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_property_command(
+    runtime: &runtime::Runtime,
+    command: CustomPropertiesCommand,
+) -> Outcome {
+    match command {
+        CustomPropertiesCommand::Add(args) => {
+            custom_properties::add_custom_property(runtime, &args).await
+        }
+        CustomPropertiesCommand::Delete(args) => {
+            custom_properties::delete_custom_property(runtime, &args).await
+        }
+        CustomPropertiesCommand::Edit(args) => {
+            custom_properties::edit_custom_property(runtime, &args).await
+        }
+        CustomPropertiesCommand::Get(args) => {
+            let format = args.format.format;
+            custom_properties::get_custom_property(runtime, &args, format).await
+        }
+        CustomPropertiesCommand::List(args) => {
+            let format = args.format.format;
+            custom_properties::list_custom_properties(runtime, &args, format).await
+        }
     }
 }
 

@@ -1,3 +1,5 @@
+#[path = "cli_integration/custom_properties.rs"]
+mod custom_properties;
 #[path = "cli_integration/episodes.rs"]
 mod episodes;
 #[path = "cli_integration/layouts.rs"]
