@@ -121,6 +121,19 @@ $ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings
     Device updated: RobotA
 ```
 
+Get one device by name or ID:
+
+```
+$ foxglove devices get RobotA --format json
+```
+
+Delete a device. The API refuses while the device still has associated data, so delete that data first:
+
+```
+$ foxglove devices delete RobotA
+    Device deleted: RobotA
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
@@ -134,6 +147,28 @@ $ foxglove projects list
     |----------------------|--------------------|--------------|----------------------------|-------------|
     | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       | false       |
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
+```
+
+### Sites
+
+List your organization's sites, and create, edit, or delete them:
+
+```
+$ foxglove sites list
+$ foxglove sites add --name Garage --type edge --retain-recordings-seconds 604800
+    Site created: site_drpLqjBZYUzus3gv
+$ foxglove sites edit site_drpLqjBZYUzus3gv --name "Garage 2"
+```
+
+Save a Bring Your Own Storage site's ingest path policy, edit the copy, and save it back. `set`
+sends the saved revision's `policy` and refuses to overwrite a newer save, because the file
+records the revision it was edited from. A file holding only `schemaVersion` and `rules` works
+too; pass `--previous-revision` with it to get the same check:
+
+```
+$ foxglove sites ingest-path-policy get site_drpLqjBZYUzus3gv > policy.json
+$ foxglove sites ingest-path-policy set site_drpLqjBZYUzus3gv policy.json
+    Ingest path policy for site site_drpLqjBZYUzus3gv is at revision 5
 ```
 
 ### Custom properties
@@ -282,6 +317,20 @@ since a given time with `--created-after` and `--updated-after`:
 ```
 $ foxglove events list --updated-after 2023-04-19T13:25:00Z
 ```
+
+Event types define the custom properties an event carries. Create one with its
+custom properties in display order, marking those every event must set with
+`:required`:
+
+```
+$ foxglove event-types add --name Stop --color red \
+    --custom-property cprop_reason:required --custom-property cprop_operator
+Event type created: evtt_5Ch2ztVt8M9w9fsu
+```
+
+`event-types edit` changes the name or color; `--custom-property` replaces the
+whole list, and `--clear-custom-properties` removes it. Use `event-types get` to
+show one event type, and `event-types delete` to remove one that no events use.
 
 ### Datasets and episodes
 
@@ -527,6 +576,12 @@ $ foxglove extensions list
             "sha256Sum": "395c3af8745ab104cd902d937366719a402bda4677ed3671cb38522c1ba13cbe"
         }
     ]
+```
+
+Show one extension, including a signed link to download its `.foxe` file:
+
+```
+$ foxglove extensions get ext_BsGXKGsZ9c4WQF1 --format json
 ```
 
 Unpublish an extension by its ID to **delete** its files and uninstall it for

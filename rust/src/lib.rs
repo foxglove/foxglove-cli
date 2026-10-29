@@ -22,6 +22,7 @@ mod recordings;
 mod records;
 mod runtime;
 mod sessions;
+mod sites;
 mod topics;
 mod upload;
 
