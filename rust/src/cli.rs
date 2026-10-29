@@ -14,9 +14,9 @@ use crate::config::Config;
 use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
-    attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, layouts, pending_imports, projects, recordings, runtime, sessions, site_tokens,
-    sites, topics, upload,
+    attachments, auth, coverage, datasets, device_tokens, devices, episodes, event_types, events,
+    export, extensions, layouts, pending_imports, projects, recordings, runtime, sessions,
+    site_tokens, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -140,6 +140,12 @@ enum CliCommand {
     Coverage(CoverageCommand),
     #[command(about = "List and manage datasets", subcommand)]
     Datasets(DatasetsCommand),
+    #[command(
+        name = "device-tokens",
+        about = "List and manage device tokens",
+        subcommand
+    )]
+    DeviceTokens(DeviceTokensCommand),
     #[command(about = "List and manage devices", subcommand)]
     Devices(DevicesCommand),
     #[command(about = "List and manage episodes", subcommand)]
@@ -908,6 +914,104 @@ pub(crate) struct DatasetEpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) properties_query: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum DeviceTokensCommand {
+    #[command(
+        about = "Create a device token",
+        long_about = "Create a device token. The token's secret is printed in the output and is not shown again."
+    )]
+    Add(DeviceTokenAddArgs),
+    #[command(about = "Delete a device token")]
+    Delete(DeviceTokenIdArgs),
+    #[command(about = "Enable or disable a device token")]
+    Edit(DeviceTokenEditArgs),
+    #[command(about = "Get a device token")]
+    Get(DeviceTokenGetArgs),
+    #[command(about = "List device tokens")]
+    List(DeviceTokenListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenAddArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Device the token is for; without it, the token can be used to create a device",
+        allow_hyphen_values = true,
+        value_parser = parse_id
+    )]
+    pub(crate) device_id: Option<String>,
+    #[arg(
+        long, help = "Create the token enabled or disabled",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: Option<bool>,
+    #[arg(
+        long, help = "Whether devices created with the token are preapproved",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) preapproved: Option<bool>,
+    #[arg(
+        long,
+        help = "Project ID; with --device-id it must be the device's project and defaults to it, otherwise it defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id",
+        allow_hyphen_values = true,
+        value_parser = parse_trimmed
+    )]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenEditArgs {
+    #[arg(value_name = "DEVICE_TOKEN_ID", value_parser = parse_id)]
+    pub(crate) id: String,
+    #[arg(
+        long, help = "Enable the token, or disable it with --enabled=false",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        required = true,
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DEVICE_TOKEN_ID", value_parser = parse_id)]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenIdArgs {
+    #[arg(value_name = "DEVICE_TOKEN_ID", value_parser = parse_id)]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Only list tokens for this device",
+        allow_hyphen_values = true,
+        value_parser = parse_id
+    )]
+    pub(crate) device_id: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2509,6 +2613,12 @@ fn command_project_scope(
         CliCommand::Upload(args) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::Add(args)) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
+        CliCommand::DeviceTokens(DeviceTokensCommand::Add(args)) => {
+            if args.device_id.is_some() && args.project_id.is_none() {
+                return None;
+            }
+            &args.project_id
+        }
         CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Delete(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
@@ -2605,6 +2715,7 @@ async fn dispatch_api_command(
         }
         CliCommand::Upload(args) => upload::upload_file(&runtime, &args).await,
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
+        CliCommand::DeviceTokens(command) => dispatch_device_token_command(&runtime, command).await,
         CliCommand::Devices(command) => dispatch_device_command(&runtime, command).await,
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(command) => dispatch_event_type_command(&runtime, command).await,
@@ -2634,6 +2745,27 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_device_token_command(
+    runtime: &runtime::Runtime,
+    command: DeviceTokensCommand,
+) -> Outcome {
+    match command {
+        DeviceTokensCommand::Add(args) => {
+            device_tokens::add_device_token(runtime, &args, args.format.format).await
+        }
+        DeviceTokensCommand::Delete(args) => {
+            device_tokens::delete_device_token(runtime, &args).await
+        }
+        DeviceTokensCommand::Edit(args) => device_tokens::edit_device_token(runtime, &args).await,
+        DeviceTokensCommand::Get(args) => {
+            device_tokens::get_device_token(runtime, &args, args.format.format).await
+        }
+        DeviceTokensCommand::List(args) => {
+            device_tokens::list_device_tokens(runtime, &args, args.format.format).await
+        }
     }
 }
 
@@ -3175,6 +3307,8 @@ mod tests {
             &["datasets", "episodes", "list", "ds_1"],
             &["recording-id", "sort-by", "sort-order"],
         ),
+        (&["device-tokens", "add"], &["device-id"]),
+        (&["device-tokens", "list"], &["device-id"]),
         (&["episodes", "add"], &["recording-id"]),
         (
             &["episodes", "list"],
