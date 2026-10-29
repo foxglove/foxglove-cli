@@ -9,6 +9,7 @@ mod coverage;
 mod custom_properties;
 mod datasets;
 mod devices;
+mod discovery;
 mod episodes;
 mod event_types;
 mod events;
