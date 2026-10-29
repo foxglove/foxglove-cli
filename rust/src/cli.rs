@@ -188,6 +188,10 @@ pub(crate) struct AttachmentDownloadArgs {
 pub(crate) struct AttachmentListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
     #[arg(
         long,
         help = "Maximum number of items to return (1-2000, default: 50)",
@@ -205,6 +209,23 @@ pub(crate) struct AttachmentListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Primary site ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort attachments by: logTime",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -338,6 +359,8 @@ pub(crate) struct CoverageListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) recording_key: Option<String>,
     #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true, value_parser = parse_non_blank)]
@@ -456,7 +479,7 @@ enum DatasetsCommand {
         about = "Commit a dataset's pending changes as a new version",
         long_about = "Commit a dataset's pending changes as a new version. The summary reports added, removed, and changed episodes. A changed episode is present in the new dataset version and the previous committed dataset version, but uses a different episode version."
     )]
-    Commit(DatasetIdArgs),
+    Commit(DatasetCommitArgs),
     #[command(about = "Delete a dataset")]
     Delete(DatasetIdArgs),
     #[command(about = "Discard a dataset's pending changes")]
@@ -471,7 +494,10 @@ enum DatasetsCommand {
     Get(DatasetGetArgs),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
-    #[command(about = "List, compare, and restore dataset versions", subcommand)]
+    #[command(
+        about = "List, compare, edit, and restore dataset versions",
+        subcommand
+    )]
     Versions(DatasetVersionsCommand),
 }
 
@@ -499,6 +525,19 @@ pub(crate) struct DatasetAddArgs {
 pub(crate) struct DatasetIdArgs {
     #[arg(value_name = "DATASET_ID")]
     pub(crate) dataset_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetCommitArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(
+        long,
+        help = "Description of the new version (default: the draft's description)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) description: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -599,6 +638,8 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 enum DatasetVersionsCommand {
     #[command(about = "List the episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
+    #[command(about = "Edit a dataset version's description")]
+    Edit(DatasetVersionEditArgs),
     #[command(
         about = "Get a dataset version",
         long_about = "Get a dataset version. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version."
@@ -645,6 +686,21 @@ pub(crate) struct DatasetVersionGetArgs {
     pub(crate) dataset_id: String,
     #[arg(value_name = "VERSION")]
     pub(crate) version: i64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionEditArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+    #[arg(
+        long,
+        help = "New description; pass an empty value to clear it",
+        allow_hyphen_values = true,
+        required = true
+    )]
+    pub(crate) description: String,
 }
 
 #[derive(Debug, Args)]
@@ -866,6 +922,40 @@ pub(crate) struct DeviceUpdateArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+    #[arg(
+        long, help = "Enable or disable the device; a disabled device can't upload recordings",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: Option<bool>,
+    #[arg(
+        long, help = "Allow or block new remote access sessions to the device",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) remote_access_enabled: Option<bool>,
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "How long Foxlet on the device keeps the recordings it creates, in seconds; 0 keeps them indefinitely",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) retain_recordings_seconds: Option<u64>,
+    #[arg(
+        long, help = "Have Foxlet on the device delete recordings once they are uploaded and accepted for import",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) auto_delete_after_import: Option<bool>,
 }
 
 #[derive(Debug, Args)]
@@ -895,6 +985,26 @@ pub(crate) struct DeviceListArgs {
     pub(crate) offset: Option<i64>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by device custom properties, for example 'properties.location:sf properties.model:*'",
+        allow_hyphen_values = true
+    )]
+    pub(crate) query: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort devices by: id, name, or a custom property key prefixed with properties.",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1130,7 +1240,7 @@ enum EventsCommand {
     #[command(about = "Add an event")]
     Add(EventAddArgs),
     #[command(about = "List events")]
-    List(EventListArgs),
+    List(Box<EventListArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -1161,6 +1271,12 @@ pub(crate) struct EventAddArgs {
 pub(crate) struct EventListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(
+        long,
+        help = "Only events created after this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) created_after: Option<String>,
     #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
@@ -1171,6 +1287,8 @@ pub(crate) struct EventListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
+    #[arg(long, help = "Only the event with this ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) event_id: Option<String>,
     #[arg(long, help = "Event type ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) event_type_id: Option<String>,
     #[arg(
@@ -1209,6 +1327,12 @@ pub(crate) struct EventListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(
+        long,
+        help = "Only events updated after this time",
+        allow_hyphen_values = true
+    )]
+    pub(crate) updated_after: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1292,6 +1416,21 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) site_id: Option<String>,
     #[arg(long, help = "Only imports enqueued by this site backfill job", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) site_backfill_job_id: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort imports by: createdAt, updatedAt, deviceId, deviceName, importId, requestId, or error",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc (default: asc)",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
     #[arg(
         long,
         help = "Only imports updated since this time",
@@ -1394,6 +1533,8 @@ pub(crate) struct RecordingListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(long, help = "Only recordings containing this topic", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) topic: Option<String>,
     #[arg(
         long, help = "Only recordings without a device",
         action = clap::ArgAction::Set,
@@ -1956,6 +2097,7 @@ async fn dispatch_dataset_version_command(
             let format = args.format.format;
             datasets::compare_versions(runtime, &args, format).await
         }
+        DatasetVersionsCommand::Edit(args) => datasets::edit_version(runtime, &args).await,
         DatasetVersionsCommand::Get(args) => {
             let format = args.format.format;
             datasets::get_version(runtime, &args, format).await
@@ -2232,13 +2374,23 @@ mod tests {
     }
 
     const SELECTOR_CASES: &[(&[&str], &[&str])] = &[
-        (&["attachments", "list"], &["recording-id"]),
+        (
+            &["attachments", "list"],
+            &[
+                "device-id",
+                "device-name",
+                "recording-id",
+                "site-id",
+                "sort-by",
+            ],
+        ),
         (
             &["coverage", "list"],
             &[
                 "device-id",
                 "device-name",
                 "recording-id",
+                "recording-key",
                 "session-id",
                 "session-key",
             ],
@@ -2303,6 +2455,8 @@ mod tests {
                 "filename",
                 "request-id",
                 "site-id",
+                "sort-by",
+                "sort-order",
             ],
         ),
         (
@@ -2318,6 +2472,7 @@ mod tests {
                 "import-status",
                 "sort-by",
                 "sort-order",
+                "topic",
             ],
         ),
         (&["sessions", "add"], &["device-id", "key"]),
@@ -2429,7 +2584,10 @@ mod tests {
     #[test]
     fn keys_and_device_names_keep_their_exact_contents() {
         let cases: &[(&[&str], &[&str])] = &[
-            (&["coverage", "list"], &["device-name", "session-key"]),
+            (
+                &["coverage", "list"],
+                &["device-name", "recording-key", "session-key"],
+            ),
             (&["export"], &["device-name", "key", "session-key"]),
             (
                 &["upload", "file.mcap"],

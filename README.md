@@ -108,6 +108,19 @@ $ foxglove devices list
     | dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
+Filter devices by custom property, and sort them with `--sort-by` and `--sort-order`:
+
+```
+$ foxglove devices list --query 'properties.location:sf' --sort-by name --sort-order asc
+```
+
+Change a device's settings. Boolean flags take an optional `=true` or `=false`:
+
+```
+$ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings-seconds 604800 --auto-delete-after-import
+    Device updated: RobotA
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
@@ -117,10 +130,10 @@ List all projects:
 
 ```
 $ foxglove projects list
-    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT |
-    |----------------------|--------------------|--------------|----------------------------|
-    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       |
-    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       |
+    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT | INVITE ONLY |
+    |----------------------|--------------------|--------------|----------------------------|-------------|
+    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       | false       |
+    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
 ### Uploads and recordings
@@ -135,6 +148,12 @@ List recordings:
 
 ```
 $ foxglove recordings list
+```
+
+List only recordings that contain a topic:
+
+```
+$ foxglove recordings list --topic /camera/image
 ```
 
 List sessions whose recordings overlap a time range, with each session's recording count and data range:
@@ -229,6 +248,13 @@ $ foxglove events list
 |----------------------|----------------------|-----------------------------|-----------------------------|--------------------------|--------------------------|------------------------------|
 | evt_N6doUtPYh8i7iZxf | dev_jCuXYeFwCkZowpHs | 2023-04-19T13:22:44.194041Z | 2023-04-19T13:22:44.194041Z | 2023-04-19T13:22:44.263Z | 2023-04-19T13:22:44.263Z | {}                           |
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
+```
+
+Narrow the list to one event with `--event-id`, or to events created or updated
+since a given time with `--created-after` and `--updated-after`:
+
+```
+$ foxglove events list --updated-after 2023-04-19T13:25:00Z
 ```
 
 ### Datasets and episodes
@@ -367,9 +393,21 @@ Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new ve
 $ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7sWd1ZrNc4YbEe
 $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
 $ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
-$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
+$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W --description "Merges after the lane change"
 Committed version 1 with 2 episodes (2 added, 0 removed, 0 changed)
 ```
+
+Without `--description`, the new version keeps the draft's description. Edit a
+version's description later with `datasets versions edit`; pass an empty
+`--description` to clear it:
+
+```
+$ foxglove datasets versions edit ds_Qp4sT7vKx2NbLm9W 1 --description "Merges at night"
+Version 1 of dataset ds_Qp4sT7vKx2NbLm9W updated
+```
+
+Version output includes the description and who committed the version: an org
+member ID, or an API key ID when an API key committed it.
 
 Select an episode version when adding an episode or updating one in the draft.
 Omit `--episode-version` to select the latest version. An already selected version

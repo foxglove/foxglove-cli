@@ -359,6 +359,34 @@ fn event_sort_order_is_sent_with_its_sort_field() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn event_id_and_change_time_filters_are_sent() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/events", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "events",
+        "list",
+        "--event-id",
+        "evt_one",
+        "--created-after",
+        "2024-01-02T03:04:05Z",
+        "--updated-after",
+        "2024-01-03T03:04:05Z",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("createdAfter", "2024-01-02T03:04:05Z"),
+            ("eventId", "evt_one"),
+            ("limit", "50"),
+            ("updatedAfter", "2024-01-03T03:04:05Z"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn events_without_properties_render_an_empty_cell() {
     const EVENTS: &str = r#"[{"id":"evt_one","device":{"id":"dev_one","name":"robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z","updatedAt":"2024-01-02T03:04:08Z"}]"#;
     let workspace = Workspace::new();
@@ -1229,6 +1257,20 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
             r#"{"versionNumber":2}"#,
         ),
         (
+            &[
+                "datasets",
+                "versions",
+                "edit",
+                KEY,
+                "2",
+                "--description",
+                "Night",
+            ],
+            "PATCH",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2",
+            r#"{"versionNumber":2}"#,
+        ),
+        (
             &["datasets", "versions", "compare", KEY, "1", "2"],
             "GET",
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/2/compare",
@@ -1988,7 +2030,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
     ]);
     for args in [
         &["--without-device", "--session-key", " key\r"][..],
-        &["--without-session"],
+        &["--without-session", "--topic", "/camera/image"],
     ] {
         let output = Process::spawn(
             workspace
@@ -2016,6 +2058,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
             ("limit", "50"),
             ("projectId", "prj_default"),
             ("sessionId", ""),
+            ("topic", "/camera/image"),
         ])
     );
 }
@@ -2113,6 +2156,43 @@ fn dataset_list_filters_reach_the_api() {
             ("projectId", "prj_explicit"),
             ("sortBy", "name"),
             ("sortOrder", "desc"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn attachment_list_filters_reach_the_api() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recording-attachments", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "attachments",
+        "list",
+        "--project-id",
+        "prj_explicit",
+        "--device-id",
+        "dev_one",
+        "--device-name",
+        "robot one",
+        "--site-id",
+        "site_one",
+        "--sort-by",
+        "logTime",
+        "--sort-order",
+        "asc",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("deviceId", "dev_one"),
+            ("deviceName", "robot one"),
+            ("limit", "50"),
+            ("projectId", "prj_explicit"),
+            ("siteId", "site_one"),
+            ("sortBy", "logTime"),
+            ("sortOrder", "asc"),
         ])
     );
 }
@@ -3007,6 +3087,44 @@ fn editing_a_dataset_sends_only_the_fields_given_and_an_empty_description_clears
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn editing_a_dataset_version_sets_its_description_and_an_empty_one_clears_it() {
+    let workspace = Workspace::new();
+    for (description, expected) in [
+        (
+            "Night drives",
+            serde_json::json!({"description": "Night drives"}),
+        ),
+        ("", serde_json::json!({"description": null})),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/datasets/ds_one/versions/3",
+            r#"{"versionNumber":3}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "datasets",
+                "versions",
+                "edit",
+                "ds_one",
+                "3",
+                "--description",
+                description,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{description:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Version 3 of dataset ds_one updated\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn getting_a_dataset_renders_one_record() {
     const DATASET: &str = r#"{"id":"ds_one","projectId":"prj_default","name":"Highway","description":"Merges","episodeCount":2,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}"#;
     let workspace = Workspace::new();
@@ -3594,9 +3712,9 @@ fn versions_are_listed_with_the_draft_marked() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z\n\
-         2,draft,,3,1,0,,2024-01-02T00:00:00Z\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Description,Committed By Member,Committed By API Key\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,,,\n\
+         2,draft,,3,1,0,,2024-01-02T00:00:00Z,,,\n"
     );
 }
 
@@ -3628,7 +3746,7 @@ fn a_version_reports_whether_its_recordings_are_missing() {
     let server = Server::new(vec![Reply::json(
         "GET",
         "/v1/datasets/ds_one/versions/1",
-        r#"{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":2,"addedEpisodeCount":2,"removedEpisodeCount":0,"hasMissingRecordings":true}"#,
+        r#"{"versionNumber":1,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":2,"addedEpisodeCount":2,"removedEpisodeCount":0,"description":"Night drives","committedByOrgMemberId":"mem_one","hasMissingRecordings":true}"#,
     )]);
     let output = run(
         &workspace,
@@ -3641,8 +3759,8 @@ fn a_version_reports_whether_its_recordings_are_missing() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Missing Recordings\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,true\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Description,Committed By Member,Committed By API Key,Missing Recordings\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,Night drives,mem_one,,true\n"
     );
 }
 
@@ -3887,6 +4005,33 @@ fn committing_and_discarding_report_the_counts() {
         assert_eq!(json_body(&server.finish()[0]), serde_json::json!({}));
         assert_eq!(String::from_utf8_lossy(&output.stderr), stderr, "{command}");
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn committing_with_a_description_sends_it() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/datasets/ds_one/commit",
+        r#"{"committed":{"versionNumber":4,"episodeCount":12,"addedEpisodeCount":3,"removedEpisodeCount":1},"editableVersionNumber":5}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "datasets",
+            "commit",
+            "ds_one",
+            "--description",
+            "Night drives",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"description": "Night drives"})
+    );
 }
 
 #[test]
@@ -4140,8 +4285,43 @@ fn coverage_without_a_device_summary_shows_its_device_id() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Device ID,Device Name,Start,End,Status\n\
-         dev_one,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported\n"
+        "Device ID,Device Name,Start,End,Status,Coverage Update Requested At\n\
+         dev_one,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported,\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn coverage_is_filtered_by_recording_key_and_shows_pending_coverage_updates() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/data/coverage",
+        r#"[{"deviceId":"dev_one","device":{"id":"dev_one","name":"Robot A","pendingCoverageUpdate":{"nextInvalidationRequestedAt":"2024-01-02T03:04:07Z"}},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"}]"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "coverage",
+            "list",
+            "--recording-key",
+            " drive-1\r",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0])
+            .get("recordingKey")
+            .map(String::as_str),
+        Some(" drive-1\r")
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Device ID,Device Name,Start,End,Status,Coverage Update Requested At\n\
+         dev_one,Robot A,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported,2024-01-02T03:04:07Z\n"
     );
 }
 
@@ -4298,6 +4478,21 @@ fn editing_a_device_sends_only_the_fields_given() {
             vec!["--name", "renamed"],
             serde_json::json!({"name": "renamed"}),
         ),
+        (
+            vec![
+                "--enabled=false",
+                "--remote-access-enabled",
+                "--retain-recordings-seconds",
+                "0",
+                "--auto-delete-after-import=true",
+            ],
+            serde_json::json!({
+                "enabled": false,
+                "remoteAccessEnabled": true,
+                "retainRecordingsSeconds": 0,
+                "autoDeleteAfterImport": true,
+            }),
+        ),
     ] {
         let mut replies = Vec::new();
         if flags[0] == "-p" {
@@ -4357,17 +4552,42 @@ fn device_multi_enum_values_must_be_allowed() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn devices_without_properties_render_an_empty_cell() {
-    const DEVICES: &str = r#"[{"id":"dev_one","name":"robot","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one"}]"#;
+fn devices_list_sends_filters_and_renders_device_settings() {
+    const DEVICES: &str = r#"[{"id":"dev_one","name":"robot","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one"},{"id":"dev_two","name":"rover","properties":{"model":"x1"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one","enabled":false,"remoteAccessEnabled":true,"retainRecordingsSeconds":3600,"autoDeleteAfterImport":false}]"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/devices", DEVICES)]);
-    let output = run(&workspace, &server, &["devices", "list", "--format", "csv"]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "list",
+            "--format",
+            "csv",
+            "--query",
+            "properties.model:x1",
+            "--sort-by",
+            "properties.model",
+            "--sort-order",
+            "desc",
+        ],
+    );
     assert_success(&output);
-    server.finish();
+    let query = query_pairs(&server.finish()[0]);
+    assert_eq!(
+        query.get("query").map(String::as_str),
+        Some("properties.model:x1")
+    );
+    assert_eq!(
+        query.get("sortBy").map(String::as_str),
+        Some("properties.model")
+    );
+    assert_eq!(query.get("sortOrder").map(String::as_str), Some("desc"));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Name,Custom Properties,Created At,Updated At,Project ID\n\
-         dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one\n"
+        "ID,Name,Custom Properties,Created At,Updated At,Project ID,Enabled,Remote Access Enabled,Retain Recordings Seconds,Auto Delete After Import\n\
+         dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,,,,\n\
+         dev_two,rover,\"{\"\"model\"\":\"\"x1\"\"}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,false,true,3600,false\n"
     );
 }
 
@@ -4852,7 +5072,7 @@ fn dataset_episode_pins_can_be_added_or_updated() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn pending_imports_accept_backfill_job_filter() {
+fn pending_imports_accept_backfill_job_filter_and_sort() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
     assert_success(&run(
@@ -4863,14 +5083,18 @@ fn pending_imports_accept_backfill_job_filter() {
             "list",
             "--site-backfill-job-id",
             "sbj_1",
+            "--sort-by",
+            "updatedAt",
+            "--sort-order",
+            "desc",
             "--format",
             "json",
         ],
     ));
-    assert_eq!(
-        query_pairs(&server.finish()[0])["siteBackfillJobId"],
-        "sbj_1"
-    );
+    let query = query_pairs(&server.finish()[0]);
+    assert_eq!(query["siteBackfillJobId"], "sbj_1");
+    assert_eq!(query["sortBy"], "updatedAt");
+    assert_eq!(query["sortOrder"], "desc");
 }
 
 #[test]

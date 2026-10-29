@@ -42,6 +42,9 @@ struct PendingImport {
     status: String,
     #[serde(default, deserialize_with = "null_to_default")]
     error: String,
+    #[serde(rename = "quarantinedAt")]
+    #[serde(default, deserialize_with = "null_to_default")]
+    quarantined_at: String,
 }
 
 impl Record for PendingImport {
@@ -60,6 +63,7 @@ impl Record for PendingImport {
             "Project ID",
             "Status",
             "Error",
+            "Quarantined at",
         ]
     }
 
@@ -78,6 +82,7 @@ impl Record for PendingImport {
             self.project_id.clone(),
             self.status.clone(),
             self.error.clone(),
+            self.quarantined_at.clone(),
         ]
     }
 }
@@ -106,6 +111,10 @@ struct PendingImportListQuery {
     site_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     site_backfill_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_order: Option<String>,
     #[serde(skip_serializing_if = "is_false")]
     show_completed: bool,
     #[serde(skip_serializing_if = "is_false")]
@@ -152,6 +161,8 @@ pub(crate) async fn list_pending_imports(
         request_id: args.request_id.clone().unwrap_or_default(),
         site_id: args.site_id.clone().unwrap_or_default(),
         site_backfill_job_id: args.site_backfill_job_id.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: args.sort_order.clone(),
         show_completed: args.show_completed,
         show_quarantined: args.show_quarantined,
         updated_since,
@@ -181,6 +192,7 @@ mod tests {
             ("projectId", serde_json::json!("")),
             ("status", serde_json::json!("")),
             ("error", serde_json::json!("")),
+            ("quarantinedAt", serde_json::json!("")),
         ] {
             let mut with_null = original.clone();
             with_null[field] = serde_json::Value::Null;
@@ -190,5 +202,12 @@ mod tests {
                 assert_eq!(output[field], expected, "{field}");
             }
         }
+        let mut quarantined = original;
+        quarantined["quarantinedAt"] = serde_json::json!("2024-01-02T03:04:07Z");
+        let record: PendingImport = serde_json::from_value(quarantined).unwrap();
+        assert_eq!(
+            serde_json::to_value(record).unwrap()["quarantinedAt"],
+            "2024-01-02T03:04:07Z"
+        );
     }
 }

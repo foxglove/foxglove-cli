@@ -84,9 +84,14 @@ pub(crate) async fn list_events(
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query: Vec<(String, String)> = [
+        (
+            "createdAfter",
+            args.created_after.clone().unwrap_or_default(),
+        ),
         ("deviceId", args.device_id.clone().unwrap_or_default()),
         ("deviceName", args.device_name.clone().unwrap_or_default()),
         ("end", args.end.clone().unwrap_or_default()),
+        ("eventId", args.event_id.clone().unwrap_or_default()),
         (
             "eventTypeId",
             args.event_type_id.clone().unwrap_or_default(),
@@ -109,6 +114,10 @@ pub(crate) async fn list_events(
         ("sortBy", args.sort_by.clone().unwrap_or_default()),
         ("sortOrder", args.sort_order.clone().unwrap_or_default()),
         ("start", args.start.clone().unwrap_or_default()),
+        (
+            "updatedAfter",
+            args.updated_after.clone().unwrap_or_default(),
+        ),
     ]
     .into_iter()
     .filter(|(_, value)| !value.is_empty())

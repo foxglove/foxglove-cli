@@ -1,7 +1,7 @@
 //! Device commands.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Number, Value};
 use std::collections::BTreeMap;
 
 use crate::api::encode_path_segment;
@@ -26,6 +26,30 @@ struct Device {
     updated_at: String,
     #[serde(rename = "projectId")]
     project_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    #[serde(
+        rename = "remoteAccessEnabled",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    remote_access_enabled: Option<bool>,
+    #[serde(
+        rename = "retainRecordingsSeconds",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    retain_recordings_seconds: Option<Number>,
+    #[serde(
+        rename = "autoDeleteAfterImport",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    auto_delete_after_import: Option<bool>,
+}
+
+fn optional_cell(value: Option<impl ToString>) -> String {
+    value.map(|value| value.to_string()).unwrap_or_default()
 }
 
 impl Record for Device {
@@ -37,6 +61,10 @@ impl Record for Device {
             "Created At",
             "Updated At",
             "Project ID",
+            "Enabled",
+            "Remote Access Enabled",
+            "Retain Recordings Seconds",
+            "Auto Delete After Import",
         ]
     }
 
@@ -52,6 +80,10 @@ impl Record for Device {
             self.created_at.clone(),
             self.updated_at.clone(),
             self.project_id.clone(),
+            optional_cell(self.enabled),
+            optional_cell(self.remote_access_enabled),
+            optional_cell(self.retain_recordings_seconds.as_ref()),
+            optional_cell(self.auto_delete_after_import),
         ]
     }
 }
@@ -64,6 +96,12 @@ struct DeviceListQuery {
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_order: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -82,6 +120,9 @@ pub(crate) async fn list_devices(
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
+        query: args.query.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: args.sort_order.clone(),
     };
     fetch_list::<Device, _>(
         runtime,
@@ -94,14 +135,23 @@ pub(crate) async fn list_devices(
     .await
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DeviceRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
     name: String,
-    #[serde(rename = "projectId", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     properties: Option<BTreeMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote_access_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retain_recordings_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_delete_after_import: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -122,6 +172,7 @@ pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceAddArgs) -> Outco
         name: args.name.clone(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         properties,
+        ..DeviceRequest::default()
     };
     match runtime
         .client
@@ -146,8 +197,23 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
     };
-    let name = args.update.name.clone().unwrap_or_default();
-    if name.is_empty() && properties.is_none() {
+    let update = &args.update;
+    let request = DeviceRequest {
+        name: update.name.clone().unwrap_or_default(),
+        project_id: String::new(),
+        properties,
+        enabled: update.enabled,
+        remote_access_enabled: update.remote_access_enabled,
+        retain_recordings_seconds: update.retain_recordings_seconds,
+        auto_delete_after_import: update.auto_delete_after_import,
+    };
+    if request.name.is_empty()
+        && request.properties.is_none()
+        && request.enabled.is_none()
+        && request.remote_access_enabled.is_none()
+        && request.retain_recordings_seconds.is_none()
+        && request.auto_delete_after_import.is_none()
+    {
         return Outcome::failure("Nothing to update\n");
     }
     let query = ProjectQuery {
@@ -156,11 +222,6 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
             .project_id
             .clone()
             .or_project(&runtime.project_id),
-    };
-    let request = DeviceRequest {
-        name,
-        project_id: String::new(),
-        properties,
     };
     match runtime
         .client
