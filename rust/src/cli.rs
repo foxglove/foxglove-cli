@@ -153,7 +153,7 @@ enum CliCommand {
     Events(EventsCommand),
     #[command(about = "Export data by recording, session, episode, or device and time range")]
     Export(ExportArgs),
-    #[command(about = "List and publish Studio extensions", subcommand)]
+    #[command(about = "List, inspect, and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
@@ -1437,6 +1437,8 @@ pub(crate) struct EventListArgs {
 
 #[derive(Debug, Subcommand)]
 enum ExtensionsCommand {
+    #[command(about = "Show a Studio extension and a signed link to download it")]
+    Get(ExtensionGetArgs),
     #[command(about = "List Studio extensions created for your organization")]
     List(FormatArgs),
     #[command(about = "Publish a Studio extension (.foxe) to your organization")]
@@ -1449,6 +1451,14 @@ enum ExtensionsCommand {
 pub(crate) struct FileArgs {
     #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub(crate) file: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ExtensionGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EXTENSION_ID")]
+    pub(crate) extension_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -2096,15 +2106,7 @@ async fn dispatch_api_command(
             let format = args.format.format;
             events::list_events(&runtime, &args, format).await
         }
-        CliCommand::Extensions(ExtensionsCommand::List(args)) => {
-            extensions::list_extensions(&runtime, args.format).await
-        }
-        CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
-            extensions::publish_extension(&runtime, &args).await
-        }
-        CliCommand::Extensions(ExtensionsCommand::Unpublish(args)) => {
-            extensions::unpublish_extension(&runtime, &args).await
-        }
+        CliCommand::Extensions(command) => dispatch_extension_command(&runtime, command).await,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
             pending_imports::list_pending_imports(&runtime, &args, format).await
@@ -2128,6 +2130,21 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_extension_command(
+    runtime: &runtime::Runtime,
+    command: ExtensionsCommand,
+) -> Outcome {
+    match command {
+        ExtensionsCommand::Get(args) => {
+            let format = args.format.format;
+            extensions::get_extension(runtime, &args, format).await
+        }
+        ExtensionsCommand::List(args) => extensions::list_extensions(runtime, args.format).await,
+        ExtensionsCommand::Publish(args) => extensions::publish_extension(runtime, &args).await,
+        ExtensionsCommand::Unpublish(args) => extensions::unpublish_extension(runtime, &args).await,
     }
 }
 

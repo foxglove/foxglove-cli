@@ -1185,6 +1185,12 @@ fn identifier_paths_are_escaped_for_every_command() {
             r#"{"id":"recording","importStatus":"pending"}"#,
         ),
         (
+            &["extensions", "get", KEY],
+            "GET",
+            "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"ext","name":"n","publisher":"p","displayName":"d","description":null,"activeVersion":null,"sha256Sum":null,"foxe":"https://example.invalid/ext.foxe"}"#,
+        ),
+        (
             &["extensions", "unpublish", KEY],
             "DELETE",
             "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
@@ -3300,6 +3306,46 @@ fn getting_a_dataset_renders_one_record() {
         server.finish();
         assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_an_extension_renders_one_record_with_its_download_link() {
+    const EXTENSION: &str = r#"{"id":"ext_one","name":"my_panel","publisher":"acme","displayName":"My Panel","description":null,"activeVersion":"1.0.0","sha256Sum":"abc123","foxe":"https://example.invalid/ext_one.foxe?sig=1"}"#;
+    let workspace = Workspace::new();
+    for (format, expected) in [
+        (
+            "json",
+            "{\"id\":\"ext_one\",\"name\":\"my_panel\",\"publisher\":\"acme\",\"displayName\":\"My Panel\",\"description\":null,\"activeVersion\":\"1.0.0\",\"sha256Sum\":\"abc123\",\"foxe\":\"https://example.invalid/ext_one.foxe?sig=1\"}\n",
+        ),
+        (
+            "csv",
+            "ID,Name,Publisher,Display Name,Description,Active Version,SHA-256 Sum,Download Link\n\
+             ext_one,my_panel,acme,My Panel,,1.0.0,abc123,https://example.invalid/ext_one.foxe?sig=1\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/extensions/ext_one", EXTENSION)]);
+        let output = run(
+            &workspace,
+            &server,
+            &["extensions", "get", "ext_one", "--format", format],
+        );
+        assert_success(&output);
+        server.finish();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
+    }
+
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json("GET", "/v1/extensions/ext_gone", r#"{"error":"Not Found"}"#)
+    }]);
+    let output = run(&workspace, &server, &["extensions", "get", "ext_gone"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Extension not found: ext_gone\n"
+    );
 }
 
 #[test]
