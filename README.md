@@ -150,6 +150,30 @@ $ foxglove devices property-intervals update RobotA --key location --value sf --
 $ foxglove devices property-intervals update RobotA --key location --unset --start 2026-02-01 --end 2026-03-01
 ```
 
+### Device tokens
+
+Device tokens authenticate a device to Foxglove. Create a token for a device; the token
+itself is printed once, so store it when you create it:
+
+```
+$ foxglove device-tokens add --device-id dev_drpLqjBZYUzus3gv --format json
+    Device token created: dt_2Zg4kXJmTvSE1F5a
+    Store the token now; it is not shown again.
+{"id":"dt_2Zg4kXJmTvSE1F5a","deviceId":"dev_drpLqjBZYUzus3gv","projectId":"prj_3x9Zm2Hq","enabled":true,"preapproved":true,"createdAt":"2024-05-01T12:00:00.000Z","token":"..."}
+```
+
+Without `--device-id`, the token can be used to create a new device in the project. List,
+inspect, disable, and delete tokens:
+
+```
+$ foxglove device-tokens list --device-id dev_drpLqjBZYUzus3gv
+$ foxglove device-tokens get dt_2Zg4kXJmTvSE1F5a
+$ foxglove device-tokens edit dt_2Zg4kXJmTvSE1F5a --enabled=false
+    Device token disabled: dt_2Zg4kXJmTvSE1F5a
+$ foxglove device-tokens delete dt_2Zg4kXJmTvSE1F5a
+    Device token deleted: dt_2Zg4kXJmTvSE1F5a
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
@@ -207,6 +231,12 @@ List only recordings that contain a topic:
 $ foxglove recordings list --topic /camera/image
 ```
 
+Get a single recording by ID or key:
+
+```
+$ foxglove recordings get rec_123 --format json
+```
+
 List sessions whose recordings overlap a time range, with each session's recording count and data range:
 
 ```
@@ -217,6 +247,13 @@ Request transfer of an existing edge recording to its configured Primary Site:
 
 ```sh
 foxglove recordings transfer rec_123
+```
+
+List the per-topic MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Query by recording, or by device with a time range of at most 24 hours:
+
+```
+$ foxglove lake-files list --site-id site_123 --recording-id rec_123
+$ foxglove lake-files list --site-id site_123 --device-name RobotA --start 2026-04-19 --end 2026-04-20 --topic /gps
 ```
 
 ### Exports
