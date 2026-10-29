@@ -1346,18 +1346,6 @@ fn other_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
     let cases: &[(&[&str], &str, &str, &str)] = &[
         (
-            &["recordings", "delete", KEY],
-            "DELETE",
-            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
-            "{}",
-        ),
-        (
-            &["recordings", "transfer", KEY],
-            "POST",
-            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
-            r#"{"id":"recording","importStatus":"pending"}"#,
-        ),
-        (
             &["extensions", "get", KEY],
             "GET",
             "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
@@ -1398,6 +1386,33 @@ fn other_identifier_paths_are_escaped() {
             "GET",
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
             r#"{"episodes":[]}"#,
+        ),
+    ];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn recording_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (
+            &["recordings", "get", KEY],
+            "GET",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"recording","projectId":"","path":"","size":0,"start":"","end":"","createdAt":"","importStatus":"none"}"#,
+        ),
+        (
+            &["recordings", "delete", KEY],
+            "DELETE",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            "{}",
+        ),
+        (
+            &["recordings", "transfer", KEY],
+            "POST",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
+            r#"{"id":"recording","importStatus":"pending"}"#,
         ),
     ];
     assert_each_request_reaches(cases);
@@ -2101,6 +2116,7 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         ("/v1/devices", "[]", &["devices", "list"]),
         ("/v1/episodes", r#"{"episodes":[]}"#, &["episodes", "list"]),
         ("/v1/events", "[]", &["events", "list"]),
+        ("/v1/data/import-errors", "[]", &["import-errors", "list"]),
         (
             "/v1/data/pending-imports",
             "[]",
@@ -2194,6 +2210,7 @@ fn offset_list_requests_send_the_offset_only_when_given() {
     let cases: &[(&str, &[&str])] = &[
         ("/v1/recording-attachments", &["attachments", "list"]),
         ("/v1/devices", &["devices", "list"]),
+        ("/v1/data/import-errors", &["import-errors", "list"]),
         ("/v1/data/pending-imports", &["pending-imports", "list"]),
         ("/v1/sessions", &["sessions", "list"]),
     ];
@@ -3427,6 +3444,37 @@ fn creating_in_an_unknown_project_names_the_project() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn a_device_token_names_the_project_only_when_no_device_is_given() {
+    let workspace = Workspace::new();
+    for (args, expected) in [
+        (
+            vec!["--project-id", "prj_gone"],
+            "Project not found: prj_gone\n",
+        ),
+        (
+            vec!["--device-id", "dev_missing"],
+            "Failed to create device token: Not Found\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json("POST", "/v1/device-tokens", r#"{"error":"Not Found"}"#)
+        }]);
+        let mut command = vec!["device-tokens", "add"];
+        command.extend(&args);
+        let output = run(&workspace, &server, &command);
+        server.finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn editing_a_dataset_sends_only_the_fields_given_and_an_empty_description_clears_it() {
     let workspace = Workspace::new();
     for (flags, expected) in [
@@ -3515,6 +3563,154 @@ fn getting_a_dataset_renders_one_record() {
         assert_success(&output);
         server.finish();
         assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
+    }
+}
+
+const DEVICE_TOKEN: &str = r#"{"id":"dt_one","deviceId":"dev_one","projectId":"prj_one","enabled":true,"preapproved":true,"createdAt":"2024-01-02T03:04:05Z"}"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_a_device_token_prints_its_secret_once() {
+    let workspace = Workspace::new();
+    for (flags, expected_body, created) in [
+        (
+            vec!["--device-id", "dev_one", "--enabled=false"],
+            serde_json::json!({"deviceId": "dev_one", "enabled": false}),
+            r#"{"id":"dt_new","deviceId":"dev_one","projectId":"prj_one","enabled":false,"preapproved":true,"createdAt":"2024-01-02T03:04:05Z","token":"fake-device-token"}"#,
+        ),
+        (
+            vec!["--preapproved=false"],
+            serde_json::json!({"projectId": "prj_default", "preapproved": false}),
+            r#"{"id":"dt_new","deviceId":null,"projectId":"prj_default","enabled":true,"preapproved":false,"createdAt":"2024-01-02T03:04:05Z","token":"fake-device-token"}"#,
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("POST", "/v1/device-tokens", created)]);
+        let mut args = vec!["device-tokens", "add", "--format", "json"];
+        args.extend(&flags);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
+                .args(&args),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected_body, "{flags:?}");
+        let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(stdout["token"], "fake-device-token", "{flags:?}");
+        assert_eq!(stdout["id"], "dt_new", "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Device token created: dt_new\nStore the token now; it is not shown again.\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn device_tokens_are_listed_fetched_edited_and_deleted() {
+    const ID: &str = "dt#1/one";
+    const PATH: &str = "/v1/device-tokens/dt%231%2Fone";
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/device-tokens",
+        &format!("[{DEVICE_TOKEN}]"),
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "device-tokens",
+            "list",
+            "--device-id",
+            "dev_one",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("deviceId", "dev_one")])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Device ID,Project ID,Enabled,Preapproved,Created At\n\
+         dt_one,dev_one,prj_one,true,true,2024-01-02T03:04:05Z\n"
+    );
+
+    let server = Server::new(vec![Reply::json("GET", PATH, DEVICE_TOKEN)]);
+    let output = run(
+        &workspace,
+        &server,
+        &["device-tokens", "get", ID, "--format", "json"],
+    );
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::from_str::<serde_json::Value>(DEVICE_TOKEN).unwrap()
+    );
+
+    let server = Server::new(vec![Reply::json(
+        "PATCH",
+        PATH,
+        &DEVICE_TOKEN.replace(r#""enabled":true"#, r#""enabled":false"#),
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["device-tokens", "edit", ID, "--enabled=false"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"enabled": false})
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token disabled: dt_one\n"
+    );
+
+    let server = Server::new(vec![Reply::json("DELETE", PATH, r#"{"id":"dt_one"}"#)]);
+    let output = run(&workspace, &server, &["device-tokens", "delete", ID]);
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token deleted: dt#1/one\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn missing_device_tokens_are_named_in_the_error() {
+    let workspace = Workspace::new();
+    for (args, method) in [
+        (vec!["device-tokens", "get", "dt_gone"], "GET"),
+        (
+            vec!["device-tokens", "edit", "dt_gone", "--enabled"],
+            "PATCH",
+        ),
+        (vec!["device-tokens", "delete", "dt_gone"], "DELETE"),
+    ] {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json(
+                method,
+                "/v1/device-tokens/dt_gone",
+                r#"{"error":"Not Found"}"#,
+            )
+        }]);
+        let output = run(&workspace, &server, &args);
+        server.finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Device token not found: dt_gone\n",
+            "{args:?}"
+        );
     }
 }
 
@@ -3652,6 +3848,50 @@ fn deleting_what_is_not_found_fails() {
             expected,
             "{args:?}"
         );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_a_recording_by_key_renders_it_or_names_it_when_missing() {
+    const RECORDING: &str = r#"{"id":"rec_one","projectId":"prj_default","path":"one.mcap","size":128,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"complete","key":"drive-1","sessionId":"ses_one"}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings/drive-1", RECORDING),
+        Reply::json("GET", "/v1/recordings/drive-1", RECORDING),
+        Reply {
+            status: 404,
+            ..Reply::json("GET", "/v1/recordings/gone", r#"{"error":"Not Found"}"#)
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "get", "drive-1", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Recording ID,Path,Size,Created At,Imported At,Start,End,Import Status,Site ID,Site Name,Edge Site ID,Edge Site Name,Device ID,Device Name,Metadata,Key,Session ID,Project ID\n\
+         rec_one,one.mcap,128 B,2024-01-02T03:04:07Z,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,complete,,,,,,,null,drive-1,ses_one,prj_default\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "get", "drive-1", "--format", "json"],
+    );
+    assert_success(&output);
+    let recording: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(recording["id"], "rec_one");
+    assert_eq!(recording["key"], "drive-1");
+    let output = run(&workspace, &server, &["recordings", "get", "gone"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Recording not found: gone\n"
+    );
+    for request in server.finish() {
+        assert!(query_pairs(&request).is_empty(), "{request}");
     }
 }
 
@@ -5458,6 +5698,12 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
         ),
         (vec!["events", "list"], "GET", "/v1/events", false),
         (
+            vec!["import-errors", "list"],
+            "GET",
+            "/v1/data/import-errors",
+            false,
+        ),
+        (
             vec!["devices", "get", "dev_one"],
             "GET",
             "/v1/devices/dev_one",
@@ -6039,6 +6285,60 @@ fn pending_imports_accept_backfill_job_filter_and_sort() {
     assert_eq!(query["siteBackfillJobId"], "sbj_1");
     assert_eq!(query["sortBy"], "updatedAt");
     assert_eq!(query["sortOrder"], "desc");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn import_errors_send_filters_and_render_failed_imports() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/data/import-errors",
+        r#"[{"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","orgId":"org_1","filename":"drive.mcap","pipelineStage":"parse","requestId":"req_1","deviceId":null,"deviceName":"Robot A","siteId":"site_1","projectId":"prj_1","status":"error","error":"invalid chunk"}]"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "import-errors",
+            "list",
+            "--device-name",
+            "Robot A",
+            "--filename-matches",
+            "drive*",
+            "--error",
+            "chunk",
+            "--project-id",
+            "prj_1",
+            "--site-backfill-job-id",
+            "sbj_1",
+            "--sort-by",
+            "updatedAt",
+            "--sort-order",
+            "desc",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("deviceName", "Robot A"),
+            ("error", "chunk"),
+            ("filenameMatches", "drive*"),
+            ("limit", "50"),
+            ("projectId", "prj_1"),
+            ("siteBackfillJobId", "sbj_1"),
+            ("sortBy", "updatedAt"),
+            ("sortOrder", "desc"),
+        ])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Created at,Updated at,Org ID,Filename,Pipeline stage,Request ID,Device ID,Device name,Import ID,Site ID,Project ID,Status,Error,Quarantined at\n\
+         2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,org_1,drive.mcap,parse,req_1,,Robot A,,site_1,prj_1,error,invalid chunk,\n"
+    );
 }
 
 #[test]
