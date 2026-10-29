@@ -4688,7 +4688,7 @@ fn committing_and_discarding_report_the_counts() {
             "commit",
             "/v1/datasets/ds_one/commit",
             r#"{"committed":{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z","createdAt":"2024-01-01T00:00:00Z","episodeCount":12,"addedEpisodeCount":3,"removedEpisodeCount":1},"editableVersionNumber":5}"#,
-            "Committed version 4 with 12 episodes (3 added, 1 removed)\n",
+            "Committed version 4 with 12 episodes (3 added, 1 removed); version 5 is now the draft\n",
         ),
         (
             "discard",

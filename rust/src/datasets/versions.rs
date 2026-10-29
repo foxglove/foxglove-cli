@@ -255,6 +255,8 @@ struct EditVersionRequest<'a> {
 #[derive(Deserialize)]
 struct CommitResponse {
     committed: DatasetVersion,
+    #[serde(default, rename = "editableVersionNumber")]
+    editable_version_number: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -572,8 +574,11 @@ pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetCommitArgs) 
         )
         .await
     {
-        Ok(CommitResponse { committed }) => Outcome::notice(format!(
-            "Committed version {} with {} ({} added, {} removed{})\n",
+        Ok(CommitResponse {
+            committed,
+            editable_version_number,
+        }) => Outcome::notice(format!(
+            "Committed version {} with {} ({} added, {} removed{}){}\n",
             committed.version_number,
             plural(committed.episode_count, "episode"),
             committed.added_episode_count,
@@ -581,6 +586,9 @@ pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetCommitArgs) 
             committed
                 .changed_episode_count
                 .map(|count| format!(", {count} changed"))
+                .unwrap_or_default(),
+            editable_version_number
+                .map(|number| format!("; version {number} is now the draft"))
                 .unwrap_or_default()
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
