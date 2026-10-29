@@ -256,7 +256,7 @@ struct EditVersionRequest<'a> {
 struct CommitResponse {
     committed: DatasetVersion,
     #[serde(default, rename = "editableVersionNumber")]
-    editable_version_number: Option<u64>,
+    editable_version_number: Option<i64>,
 }
 
 #[derive(Deserialize)]
