@@ -14,9 +14,9 @@ use crate::config::Config;
 use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
-    attachments, auth, coverage, custom_properties, datasets, devices, episodes, event_types,
-    events, export, extensions, layouts, pending_imports, projects, recordings, runtime, sessions,
-    site_tokens, sites, topics, upload,
+    attachments, auth, coverage, custom_properties, datasets, device_tokens, devices, episodes,
+    event_types, events, export, extensions, lake_files, layouts, pending_imports, projects,
+    recordings, runtime, sessions, site_tokens, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -146,6 +146,12 @@ enum CliCommand {
     CustomProperties(CustomPropertiesCommand),
     #[command(about = "List and manage datasets", subcommand)]
     Datasets(DatasetsCommand),
+    #[command(
+        name = "device-tokens",
+        about = "List and manage device tokens",
+        subcommand
+    )]
+    DeviceTokens(DeviceTokensCommand),
     #[command(about = "List and manage devices", subcommand)]
     Devices(DevicesCommand),
     #[command(about = "List and manage episodes", subcommand)]
@@ -162,6 +168,14 @@ enum CliCommand {
     Export(ExportArgs),
     #[command(about = "List, inspect, and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
+    #[command(name = "import-errors", about = "List import errors", subcommand)]
+    ImportErrors(ImportErrorsCommand),
+    #[command(
+        name = "lake-files",
+        about = "List files in a self-managed Primary Site's lake bucket",
+        subcommand
+    )]
+    LakeFiles(LakeFilesCommand),
     #[command(
         about = "List and manage layouts shared with your organization",
         subcommand
@@ -198,12 +212,22 @@ enum CliCommand {
 enum AttachmentsCommand {
     #[command(about = "Download an MCAP attachment by ID to stdout")]
     Download(AttachmentDownloadArgs),
+    #[command(about = "Get an MCAP attachment's details by ID")]
+    Get(AttachmentGetArgs),
     #[command(about = "List MCAP attachments")]
     List(AttachmentListArgs),
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct AttachmentDownloadArgs {
+    #[arg(value_name = "ATTACHMENT_ID")]
+    pub(crate) attachment_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AttachmentGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
     #[arg(value_name = "ATTACHMENT_ID")]
     pub(crate) attachment_id: String,
 }
@@ -401,6 +425,57 @@ pub(crate) struct CoverageListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) tolerance: Option<i64>,
+}
+
+#[derive(Debug, Subcommand)]
+enum LakeFilesCommand {
+    #[command(
+        about = "List MCAP files in a self-managed Primary Site's lake bucket",
+        long_about = "List the MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Each imported recording produces one file per topic. Limit the query with --device-id, --device-name, --recording-id, or --recording-key; device queries also need --start and --end, at most 24 hours apart. Only self-managed sites are supported."
+    )]
+    List(LakeFileListArgs),
+}
+
+// The lake files endpoint is scoped by `--site-id` and takes no project parameter, so this
+// command has no `--project-id` and no entry in `command_project_scope`.
+#[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("selector")
+        .args(["device_id", "device_name", "recording_id", "recording_key"])
+        .multiple(true)
+        .required(true)
+))]
+pub(crate) struct LakeFileListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "End of an imported recording's time range (ISO 8601); give with --start",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Recording ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) recording_key: Option<String>,
+    #[arg(long, help = "Only files for recordings in the session with this ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Only files for recordings in the session with this key", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, help = "Self-managed Primary Site ID (required)", required = true, allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: String,
+    #[arg(
+        long,
+        help = "Start of an imported recording's time range (ISO 8601); give with --end",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "Only files for this topic", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) topic: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1017,6 +1092,104 @@ pub(crate) struct DatasetEpisodeListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) properties_query: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum DeviceTokensCommand {
+    #[command(
+        about = "Create a device token",
+        long_about = "Create a device token. The token's secret is printed in the output and is not shown again."
+    )]
+    Add(DeviceTokenAddArgs),
+    #[command(about = "Delete a device token")]
+    Delete(DeviceTokenIdArgs),
+    #[command(about = "Enable or disable a device token")]
+    Edit(DeviceTokenEditArgs),
+    #[command(about = "Get a device token")]
+    Get(DeviceTokenGetArgs),
+    #[command(about = "List device tokens")]
+    List(DeviceTokenListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenAddArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Device the token is for; without it, the token can be used to create a device",
+        allow_hyphen_values = true,
+        value_parser = parse_id
+    )]
+    pub(crate) device_id: Option<String>,
+    #[arg(
+        long, help = "Create the token enabled or disabled",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: Option<bool>,
+    #[arg(
+        long, help = "Whether devices created with the token are preapproved",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) preapproved: Option<bool>,
+    #[arg(
+        long,
+        help = "Project ID; with --device-id it must be the device's project and defaults to it, otherwise it defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id",
+        allow_hyphen_values = true,
+        value_parser = parse_trimmed
+    )]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenEditArgs {
+    #[arg(value_name = "DEVICE_TOKEN_ID", value_parser = parse_id)]
+    pub(crate) id: String,
+    #[arg(
+        long, help = "Enable the token, or disable it with --enabled=false",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        required = true,
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DEVICE_TOKEN_ID", value_parser = parse_id)]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenIdArgs {
+    #[arg(value_name = "DEVICE_TOKEN_ID", value_parser = parse_id)]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceTokenListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Only list tokens for this device",
+        allow_hyphen_values = true,
+        value_parser = parse_id
+    )]
+    pub(crate) device_id: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1762,6 +1935,66 @@ pub(crate) struct ExtensionIdArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum ImportErrorsCommand {
+    #[command(about = "List uploaded recordings whose import failed during processing")]
+    List(ImportErrorListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ImportErrorListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "Pattern to match against the filename",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) filename_matches: Option<String>,
+    #[arg(
+        long,
+        help = "Only import errors whose error message matches this text",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) error: Option<String>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Only import errors from imports enqueued by this site backfill job", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_backfill_job_id: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort import errors by: createdAt, deviceName, error, requestId, or updatedAt",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc (default: asc)",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum SiteTokensCommand {
     #[command(about = "Create a token for a site controller and print it once")]
     Add(SiteTokenAddArgs),
@@ -2004,6 +2237,8 @@ enum RecordingsCommand {
         long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain. Use `recordings transfer RECORDING_ID` to restore its data."
     )]
     Delete(RecordingDeleteArgs),
+    #[command(about = "Get a recording by ID or key")]
+    Get(RecordingGetArgs),
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
     #[command(
@@ -2021,6 +2256,14 @@ pub(crate) struct RecordingTransferArgs {
 #[derive(Debug, Args)]
 pub(crate) struct RecordingDeleteArgs {
     #[arg(value_name = "RECORDING_ID")]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RecordingGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "RECORDING_ID_OR_KEY", value_parser = parse_non_blank)]
     pub(crate) id: String,
 }
 
@@ -2548,6 +2791,12 @@ fn command_project_scope(
         CliCommand::Upload(args) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::Add(args)) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
+        CliCommand::DeviceTokens(DeviceTokensCommand::Add(args)) => {
+            if args.device_id.is_some() && args.project_id.is_none() {
+                return None;
+            }
+            &args.project_id
+        }
         CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Delete(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
@@ -2562,6 +2811,7 @@ fn command_project_scope(
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
+        CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => &args.project_id,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             if args.without_project {
                 return Some(runtime::ProjectScope {
@@ -2619,18 +2869,17 @@ async fn dispatch_api_command(
         log_project_scope(&command, &runtime);
     }
     match command {
-        CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
-            let stdout_is_terminal = std::io::stdout().is_terminal();
-            attachments::download_attachment(&runtime, &args, writer, stdout_is_terminal).await
-        }
-        CliCommand::Attachments(AttachmentsCommand::List(args)) => {
-            let format = args.format.format;
-            attachments::list_attachments(&runtime, &args, format).await
+        CliCommand::Attachments(command) => {
+            dispatch_attachment_command(&runtime, command, writer).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
         CliCommand::Coverage(CoverageCommand::List(args)) => {
             let format = args.format.format;
             coverage::list(&runtime, &args, format).await
+        }
+        CliCommand::LakeFiles(LakeFilesCommand::List(args)) => {
+            let format = args.format.format;
+            lake_files::list(&runtime, &args, format).await
         }
         CliCommand::Export(args) => {
             let diagnostic = debug
@@ -2642,16 +2891,18 @@ async fn dispatch_api_command(
             export::export_data(&runtime, &args, writer).await
         }
         CliCommand::Upload(args) => upload::upload_file(&runtime, &args).await,
-        CliCommand::Recordings(RecordingsCommand::Transfer(args)) => {
-            recordings::transfer_recording(&runtime, &args).await
-        }
         CliCommand::CustomProperties(command) => dispatch_property_command(&runtime, command).await,
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
+        CliCommand::DeviceTokens(command) => dispatch_device_token_command(&runtime, command).await,
         CliCommand::Devices(command) => dispatch_device_command(&runtime, command).await,
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(command) => dispatch_event_type_command(&runtime, command).await,
         CliCommand::Events(command) => dispatch_event_command(&runtime, command).await,
         CliCommand::Extensions(command) => dispatch_extension_command(&runtime, command).await,
+        CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => {
+            let format = args.format.format;
+            pending_imports::list_import_errors(&runtime, &args, format).await
+        }
         CliCommand::Layouts(command) => dispatch_layout_command(&runtime, command).await,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
@@ -2660,13 +2911,7 @@ async fn dispatch_api_command(
         CliCommand::Projects(ProjectsCommand::List(args)) => {
             projects::list_projects(&runtime, args.format).await
         }
-        CliCommand::Recordings(RecordingsCommand::Delete(args)) => {
-            recordings::delete_recording(&runtime, &args).await
-        }
-        CliCommand::Recordings(RecordingsCommand::List(args)) => {
-            let format = args.format.format;
-            recordings::list_recordings(&runtime, &args, format).await
-        }
+        CliCommand::Recordings(command) => dispatch_recording_command(&runtime, command).await,
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
         CliCommand::SiteTokens(command) => dispatch_site_token_command(&runtime, command).await,
         CliCommand::Sites(command) => dispatch_site_command(&runtime, command).await,
@@ -2702,6 +2947,48 @@ async fn dispatch_property_command(
         CustomPropertiesCommand::List(args) => {
             let format = args.format.format;
             custom_properties::list_custom_properties(runtime, &args, format).await
+        }
+    }
+}
+
+async fn dispatch_attachment_command(
+    runtime: &runtime::Runtime,
+    command: AttachmentsCommand,
+    writer: &mut dyn Write,
+) -> Outcome {
+    match command {
+        AttachmentsCommand::Download(args) => {
+            let stdout_is_terminal = std::io::stdout().is_terminal();
+            attachments::download_attachment(runtime, &args, writer, stdout_is_terminal).await
+        }
+        AttachmentsCommand::Get(args) => {
+            let format = args.format.format;
+            attachments::get_attachment(runtime, &args, format).await
+        }
+        AttachmentsCommand::List(args) => {
+            let format = args.format.format;
+            attachments::list_attachments(runtime, &args, format).await
+        }
+    }
+}
+
+async fn dispatch_device_token_command(
+    runtime: &runtime::Runtime,
+    command: DeviceTokensCommand,
+) -> Outcome {
+    match command {
+        DeviceTokensCommand::Add(args) => {
+            device_tokens::add_device_token(runtime, &args, args.format.format).await
+        }
+        DeviceTokensCommand::Delete(args) => {
+            device_tokens::delete_device_token(runtime, &args).await
+        }
+        DeviceTokensCommand::Edit(args) => device_tokens::edit_device_token(runtime, &args).await,
+        DeviceTokensCommand::Get(args) => {
+            device_tokens::get_device_token(runtime, &args, args.format.format).await
+        }
+        DeviceTokensCommand::List(args) => {
+            device_tokens::list_device_tokens(runtime, &args, args.format.format).await
         }
     }
 }
@@ -2889,6 +3176,24 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
             let format = args.format.format;
             episodes::list_versions(runtime, &args, format).await
         }
+    }
+}
+
+async fn dispatch_recording_command(
+    runtime: &runtime::Runtime,
+    command: RecordingsCommand,
+) -> Outcome {
+    match command {
+        RecordingsCommand::Delete(args) => recordings::delete_recording(runtime, &args).await,
+        RecordingsCommand::Get(args) => {
+            let format = args.format.format;
+            recordings::get_recording(runtime, &args, format).await
+        }
+        RecordingsCommand::List(args) => {
+            let format = args.format.format;
+            recordings::list_recordings(runtime, &args, format).await
+        }
+        RecordingsCommand::Transfer(args) => recordings::transfer_recording(runtime, &args).await,
     }
 }
 
@@ -3226,11 +3531,26 @@ mod tests {
             &["datasets", "episodes", "list", "ds_1"],
             &["recording-id", "sort-by", "sort-order"],
         ),
+        (&["device-tokens", "add"], &["device-id"]),
+        (&["device-tokens", "list"], &["device-id"]),
         (&["episodes", "add"], &["recording-id"]),
         (
             &["episodes", "list"],
             &["recording-id", "sort-by", "sort-order"],
         ),
+        (
+            &["lake-files", "list", "--site-id", "site_1"],
+            &[
+                "device-id",
+                "device-name",
+                "recording-id",
+                "recording-key",
+                "session-id",
+                "session-key",
+                "topic",
+            ],
+        ),
+        (&["lake-files", "list"], &["site-id"]),
         (
             &[
                 "events",
@@ -3247,6 +3567,17 @@ mod tests {
         (
             &["events", "list"],
             &["device-id", "device-name", "event-type-id", "sort-by"],
+        ),
+        (
+            &["import-errors", "list"],
+            &[
+                "device-name",
+                "filename-matches",
+                "error",
+                "site-backfill-job-id",
+                "sort-by",
+                "sort-order",
+            ],
         ),
         (
             &["pending-imports", "list"],
@@ -3423,6 +3754,21 @@ mod tests {
                 &["device-name", "key", "session-key"],
             ),
             (&["events", "list"], &["device-name"]),
+            (
+                &["import-errors", "list"],
+                &["device-name", "filename-matches", "error"],
+            ),
+            (
+                &[
+                    "lake-files",
+                    "list",
+                    "--site-id",
+                    "site_1",
+                    "--recording-id",
+                    "rec_1",
+                ],
+                &["device-name", "recording-key", "session-key"],
+            ),
             (
                 &["pending-imports", "list"],
                 &["device-name", "key", "filename"],
