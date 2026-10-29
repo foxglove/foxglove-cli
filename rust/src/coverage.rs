@@ -20,6 +20,13 @@ struct Coverage {
     start: String,
     end: String,
     status: String,
+    #[serde(
+        rename = "importStatus",
+        skip_serializing_if = "String::is_empty",
+        default,
+        deserialize_with = "null_to_default"
+    )]
+    import_status: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -46,6 +53,7 @@ impl Record for Coverage {
             "End",
             "Status",
             "Coverage Update Requested At",
+            "Import Status",
         ]
     }
 
@@ -61,6 +69,7 @@ impl Record for Coverage {
                 .as_ref()
                 .map(|update| update.next_invalidation_requested_at.clone())
                 .unwrap_or_default(),
+            self.import_status.clone(),
         ]
     }
 }
@@ -134,6 +143,7 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
 #[cfg(test)]
 mod tests {
     use super::Coverage;
+    use crate::records::Record;
 
     #[test]
     fn missing_and_null_fields_render_explicit_defaults() {
@@ -176,6 +186,34 @@ mod tests {
             let record: Coverage = serde_json::from_value(response).unwrap();
             let output = serde_json::to_value(record).unwrap();
             assert_eq!(output["device"]["pendingCoverageUpdate"], expected);
+        }
+    }
+
+    #[test]
+    fn import_status_is_kept_and_omitted_when_absent_or_null() {
+        let base = serde_json::json!({
+            "start": "2024-01-02T03:04:05Z",
+            "end": "2024-01-02T03:04:06Z",
+            "status": "imported",
+        });
+        let mut with_status = base.clone();
+        with_status["importStatus"] = serde_json::json!("complete");
+        let record: Coverage = serde_json::from_value(with_status).unwrap();
+        assert_eq!(record.fields().last().unwrap(), "complete");
+        assert_eq!(
+            serde_json::to_value(record).unwrap()["importStatus"],
+            "complete"
+        );
+
+        let mut with_null = base.clone();
+        with_null["importStatus"] = serde_json::Value::Null;
+        for response in [base, with_null] {
+            let record: Coverage = serde_json::from_value(response).unwrap();
+            assert_eq!(record.fields().last().unwrap(), "");
+            assert!(serde_json::to_value(record)
+                .unwrap()
+                .get("importStatus")
+                .is_none());
         }
     }
 }
