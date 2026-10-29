@@ -308,6 +308,17 @@ since a given time with `--created-after` and `--updated-after`:
 $ foxglove events list --updated-after 2023-04-19T13:25:00Z
 ```
 
+Show one event, change it, or delete it. `--metadata` replaces all of the
+event's metadata; `--clear-metadata`, `--remove-event-type`, and
+`--remove-property` remove those values:
+
+```
+$ foxglove events get evt_idMGJImlICYP4dcy
+$ foxglove events edit evt_idMGJImlICYP4dcy --end 2023-04-19T13:27:00Z \
+    --metadata requires-labeling:false
+$ foxglove events delete evt_idMGJImlICYP4dcy
+```
+
 Event types define the custom properties an event carries. Create one with its
 custom properties in display order, marking those every event must set with
 `:required`:
