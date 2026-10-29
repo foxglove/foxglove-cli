@@ -1496,8 +1496,48 @@ pub(crate) struct SessionListArgs {
     pub(crate) device_id: Option<String>,
     #[arg(long, help = "Filter by device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "End of a time range the session's recordings must overlap (ISO 8601); give with --start",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by a case-insensitive partial match on the session key",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) key_matches: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by session custom properties, for example 'vehicle:car note:\"night run\"'",
+        allow_hyphen_values = true
+    )]
+    pub(crate) query: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort sessions by: id, createdAt, or updatedAt (default: createdAt, newest first)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc (default: desc)",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Start of a time range the session's recordings must overlap (ISO 8601); give with --end",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2282,7 +2322,16 @@ mod tests {
         ),
         (&["sessions", "add"], &["device-id", "key"]),
         (&["sessions", "edit", "session"], &["key"]),
-        (&["sessions", "list"], &["device-id", "device-name"]),
+        (
+            &["sessions", "list"],
+            &[
+                "device-id",
+                "device-name",
+                "key-matches",
+                "sort-by",
+                "sort-order",
+            ],
+        ),
         (
             &["topics", "list"],
             &[
@@ -2298,6 +2347,14 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn session_sort_order_requires_its_sort_field() {
+        let error =
+            super::Cli::try_parse_from(["foxglove", "sessions", "list", "--sort-order", "asc"])
+                .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
     #[test]
     fn topic_episode_version_requires_an_exclusive_episode_selector() {
         for (args, kind) in [
@@ -2387,7 +2444,7 @@ mod tests {
                 &["recordings", "list"],
                 &["device-name", "session-key", "path"],
             ),
-            (&["sessions", "list"], &["device-name"]),
+            (&["sessions", "list"], &["device-name", "key-matches"]),
             (
                 &["topics", "list"],
                 &["device-name", "recording-key", "session-key"],

@@ -8,6 +8,7 @@ use crate::cli::{
     SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
     SessionRecordingMutationArgs,
 };
+use crate::episodes::parse_time_range;
 use crate::output::{escape_terminal_text, Format};
 use crate::records::{
     fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
@@ -45,6 +46,24 @@ struct Session {
     updated_at: String,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     recordings: Vec<SessionRecording>,
+    #[serde(
+        rename = "recordingCount",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    recording_count: Option<u64>,
+    #[serde(
+        rename = "recordingStart",
+        skip_serializing_if = "String::is_empty",
+        default
+    )]
+    recording_start: String,
+    #[serde(
+        rename = "recordingEnd",
+        skip_serializing_if = "String::is_empty",
+        default
+    )]
+    recording_end: String,
 }
 
 impl Record for SessionRecording {
@@ -71,6 +90,9 @@ impl Record for Session {
             "Device",
             "Created At",
             "Updated At",
+            "Recordings",
+            "Recording Start",
+            "Recording End",
         ]
     }
 
@@ -92,6 +114,11 @@ impl Record for Session {
             device,
             self.created_at.clone(),
             self.updated_at.clone(),
+            self.recording_count
+                .map(|count| count.to_string())
+                .unwrap_or_default(),
+            self.recording_start.clone(),
+            self.recording_end.clone(),
         ]
     }
 }
@@ -103,11 +130,23 @@ struct SessionListQuery {
     device_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    end: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    key_matches: String,
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_order: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    start: String,
 }
 
 #[derive(Serialize)]
@@ -122,12 +161,22 @@ pub(crate) async fn list_sessions(
     args: &SessionListArgs,
     format: Format,
 ) -> Outcome {
+    let (start, end) = match parse_time_range(args.start.as_deref(), args.end.as_deref()) {
+        Ok(range) => range,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
     let query = SessionListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
+        end,
+        key_matches: args.key_matches.clone().unwrap_or_default(),
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
+        query: args.query.clone(),
+        sort_by: args.sort_by.clone().unwrap_or_default(),
+        sort_order: args.sort_order.clone().unwrap_or_default(),
+        start,
     };
     fetch_list::<Session, _>(
         runtime,
@@ -371,6 +420,31 @@ pub(crate) async fn patch_session_recordings(
 #[cfg(test)]
 mod tests {
     use super::{session_outcome, Session};
+    use crate::records::Record;
+
+    #[test]
+    fn session_list_fields_tolerate_responses_without_recording_ranges() {
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+        }))
+        .unwrap();
+        assert_eq!(session.fields()[6..], ["", "", ""]);
+        let json = serde_json::to_value(&session).unwrap();
+        assert!(json.get("recordingCount").is_none(), "{json}");
+        assert!(json.get("recordingStart").is_none(), "{json}");
+
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+            "recordingCount": 0,
+        }))
+        .unwrap();
+        assert_eq!(session.fields()[6..], ["0", "", ""]);
+        assert_eq!(serde_json::to_value(&session).unwrap()["recordingCount"], 0);
+    }
 
     #[test]
     fn session_details_escape_key_and_device_name() {
