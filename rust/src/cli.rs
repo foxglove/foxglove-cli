@@ -16,7 +16,7 @@ use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, custom_properties, datasets, device_tokens, devices, episodes,
     event_types, events, export, extensions, lake_files, layouts, pending_imports, projects,
-    recordings, runtime, sessions, site_tokens, sites, topics, upload,
+    recordings, runtime, sessions, site_notification_tokens, site_tokens, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -189,6 +189,12 @@ enum CliCommand {
     Recordings(RecordingsCommand),
     #[command(about = "List and manage sessions", subcommand)]
     Sessions(SessionsCommand),
+    #[command(
+        name = "site-notification-tokens",
+        about = "List and manage tokens that authenticate a Primary Site's bucket notifications",
+        subcommand
+    )]
+    SiteNotificationTokens(SiteNotificationTokensCommand),
     #[command(
         name = "site-tokens",
         about = "List and manage site tokens",
@@ -1995,6 +2001,38 @@ pub(crate) struct ImportErrorListArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum SiteNotificationTokensCommand {
+    #[command(about = "Create a bucket notification token for a Primary Site and print it once")]
+    Add(SiteNotificationTokenAddArgs),
+    #[command(about = "Delete a site notification token")]
+    Delete(SiteNotificationTokenIdArgs),
+    #[command(about = "List site notification tokens")]
+    List(SiteNotificationTokenListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteNotificationTokenAddArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Primary Site ID (required)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteNotificationTokenIdArgs {
+    #[arg(value_name = "TOKEN_ID")]
+    pub(crate) token_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteNotificationTokenListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Only tokens for this site ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum SiteTokensCommand {
     #[command(about = "Create a token for a site controller and print it once")]
     Add(SiteTokenAddArgs),
@@ -2913,6 +2951,9 @@ async fn dispatch_api_command(
         }
         CliCommand::Recordings(command) => dispatch_recording_command(&runtime, command).await,
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
+        CliCommand::SiteNotificationTokens(command) => {
+            dispatch_site_notification_token_command(&runtime, command).await
+        }
         CliCommand::SiteTokens(command) => dispatch_site_token_command(&runtime, command).await,
         CliCommand::Sites(command) => dispatch_site_command(&runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
@@ -3194,6 +3235,25 @@ async fn dispatch_recording_command(
             recordings::list_recordings(runtime, &args, format).await
         }
         RecordingsCommand::Transfer(args) => recordings::transfer_recording(runtime, &args).await,
+    }
+}
+
+async fn dispatch_site_notification_token_command(
+    runtime: &runtime::Runtime,
+    command: SiteNotificationTokensCommand,
+) -> Outcome {
+    match command {
+        SiteNotificationTokensCommand::Add(args) => {
+            let format = args.format.format;
+            site_notification_tokens::add_site_notification_token(runtime, &args, format).await
+        }
+        SiteNotificationTokensCommand::Delete(args) => {
+            site_notification_tokens::delete_site_notification_token(runtime, &args).await
+        }
+        SiteNotificationTokensCommand::List(args) => {
+            let format = args.format.format;
+            site_notification_tokens::list_site_notification_tokens(runtime, &args, format).await
+        }
     }
 }
 
