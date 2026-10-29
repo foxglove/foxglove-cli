@@ -1967,7 +1967,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
     ]);
     for args in [
         &["--without-device", "--session-key", " key\r"][..],
-        &["--without-session"],
+        &["--without-session", "--topic", "/camera/image"],
     ] {
         let output = Process::spawn(
             workspace
@@ -1995,6 +1995,7 @@ fn recordings_without_a_device_or_session_send_empty_filters() {
             ("limit", "50"),
             ("projectId", "prj_default"),
             ("sessionId", ""),
+            ("topic", "/camera/image"),
         ])
     );
 }

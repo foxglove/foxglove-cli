@@ -137,6 +137,12 @@ List recordings:
 $ foxglove recordings list
 ```
 
+List only recordings that contain a topic:
+
+```
+$ foxglove recordings list --topic /camera/image
+```
+
 Request transfer of an existing edge recording to its configured Primary Site:
 
 ```sh
