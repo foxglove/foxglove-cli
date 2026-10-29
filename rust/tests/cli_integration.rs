@@ -4342,6 +4342,21 @@ fn editing_a_device_sends_only_the_fields_given() {
             vec!["--name", "renamed"],
             serde_json::json!({"name": "renamed"}),
         ),
+        (
+            vec![
+                "--enabled=false",
+                "--remote-access-enabled",
+                "--retain-recordings-seconds",
+                "0",
+                "--auto-delete-after-import=true",
+            ],
+            serde_json::json!({
+                "enabled": false,
+                "remoteAccessEnabled": true,
+                "retainRecordingsSeconds": 0,
+                "autoDeleteAfterImport": true,
+            }),
+        ),
     ] {
         let mut replies = Vec::new();
         if flags[0] == "-p" {
@@ -4401,17 +4416,42 @@ fn device_multi_enum_values_must_be_allowed() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn devices_without_properties_render_an_empty_cell() {
-    const DEVICES: &str = r#"[{"id":"dev_one","name":"robot","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one"}]"#;
+fn devices_list_sends_filters_and_renders_device_settings() {
+    const DEVICES: &str = r#"[{"id":"dev_one","name":"robot","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one"},{"id":"dev_two","name":"rover","properties":{"model":"x1"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one","enabled":false,"remoteAccessEnabled":true,"retainRecordingsSeconds":3600,"autoDeleteAfterImport":false}]"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/devices", DEVICES)]);
-    let output = run(&workspace, &server, &["devices", "list", "--format", "csv"]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "list",
+            "--format",
+            "csv",
+            "--query",
+            "properties.model:x1",
+            "--sort-by",
+            "properties.model",
+            "--sort-order",
+            "desc",
+        ],
+    );
     assert_success(&output);
-    server.finish();
+    let query = query_pairs(&server.finish()[0]);
+    assert_eq!(
+        query.get("query").map(String::as_str),
+        Some("properties.model:x1")
+    );
+    assert_eq!(
+        query.get("sortBy").map(String::as_str),
+        Some("properties.model")
+    );
+    assert_eq!(query.get("sortOrder").map(String::as_str), Some("desc"));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Name,Custom Properties,Created At,Updated At,Project ID\n\
-         dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one\n"
+        "ID,Name,Custom Properties,Created At,Updated At,Project ID,Enabled,Remote Access Enabled,Retain Recordings Seconds,Auto Delete After Import\n\
+         dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,,,,\n\
+         dev_two,rover,\"{\"\"model\"\":\"\"x1\"\"}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,false,true,3600,false\n"
     );
 }
 

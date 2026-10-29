@@ -108,6 +108,19 @@ $ foxglove devices list
     | dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
+Filter devices by custom property, and sort them with `--sort-by` and `--sort-order`:
+
+```
+$ foxglove devices list --query 'properties.location:sf' --sort-by name --sort-order asc
+```
+
+Change a device's settings. Boolean flags take an optional `=true` or `=false`:
+
+```
+$ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings-seconds 604800 --auto-delete-after-import
+    Device updated: RobotA
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
