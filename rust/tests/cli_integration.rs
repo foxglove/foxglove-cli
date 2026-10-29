@@ -1185,6 +1185,12 @@ fn identifier_paths_are_escaped_for_every_command() {
             "attachment",
         ),
         (
+            &["attachments", "get", KEY],
+            "GET",
+            "/v1/recording-attachments/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"att","recordingId":"","siteId":"","name":"","mediaType":"","logTime":"","createTime":"","crc":0,"size":0,"fingerprint":""}"#,
+        ),
+        (
             &["datasets", "episodes", "list", KEY],
             "GET",
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
@@ -2194,6 +2200,54 @@ fn attachment_list_filters_reach_the_api() {
             ("sortBy", "logTime"),
             ("sortOrder", "asc"),
         ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_an_attachment_renders_one_record() {
+    const ATTACHMENT: &str = r#"{"id":"att_one","recordingId":"rec_one","siteId":"site_one","name":"calibration.yaml","mediaType":"application/yaml","logTime":"2024-01-02T03:04:05Z","createTime":"2024-01-02T03:04:06Z","crc":1234,"size":56,"fingerprint":"abc"}"#;
+    let workspace = Workspace::new();
+    for (format, expected) in [
+        (
+            "json",
+            "{\"id\":\"att_one\",\"recordingId\":\"rec_one\",\"siteId\":\"site_one\",\"name\":\"calibration.yaml\",\"mediaType\":\"application/yaml\",\"logTime\":\"2024-01-02T03:04:05Z\",\"createTime\":\"2024-01-02T03:04:06Z\",\"crc\":1234,\"size\":56,\"fingerprint\":\"abc\"}\n",
+        ),
+        (
+            "csv",
+            "ID,Recording ID,Site ID,Name,Media Type,Log Time,Create Time,CRC,Size,Fingerprint\n\
+             att_one,rec_one,site_one,calibration.yaml,application/yaml,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,1234,56,abc\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "GET",
+            "/v1/recording-attachments/att_one",
+            ATTACHMENT,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &["attachments", "get", "att_one", "--format", format],
+        );
+        assert_success(&output);
+        server.finish();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
+    }
+
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "GET",
+            "/v1/recording-attachments/att_gone",
+            r#"{"error":"Not Found"}"#,
+        )
+    }]);
+    let output = run(&workspace, &server, &["attachments", "get", "att_gone"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Attachment not found: att_gone\n"
     );
 }
 

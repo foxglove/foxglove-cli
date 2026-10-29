@@ -4,10 +4,13 @@ use std::io::Write;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cli::{AttachmentDownloadArgs, AttachmentListArgs};
+use crate::api::encode_path_segment;
+use crate::cli::{AttachmentDownloadArgs, AttachmentGetArgs, AttachmentListArgs};
 use crate::export::BINARY_OUTPUT_TERMINAL_ERROR;
 use crate::output::Format;
-use crate::records::{fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT};
+use crate::records::{
+    fetch_list, format_record, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -109,6 +112,24 @@ pub(crate) async fn list_attachments(
         Some(query.limit),
     )
     .await
+}
+
+pub(crate) async fn get_attachment(
+    runtime: &Runtime,
+    args: &AttachmentGetArgs,
+    format: Format,
+) -> Outcome {
+    let endpoint = format!(
+        "/v1/recording-attachments/{}",
+        encode_path_segment(&args.attachment_id)
+    );
+    match runtime.client.get::<_, Attachment>(&endpoint, &()).await {
+        Ok(attachment) => format_record(&attachment, format),
+        Err(error) if error.is_not_found_for("attachment") => {
+            Outcome::failure(format!("Attachment not found: {}\n", args.attachment_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get attachment: {error}\n")),
+    }
 }
 
 pub(crate) async fn download_attachment(
