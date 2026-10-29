@@ -121,6 +121,30 @@ $ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings
     Device updated: RobotA
 ```
 
+### Device tokens
+
+Device tokens authenticate a device to Foxglove. Create a token for a device; the token
+itself is printed once, so store it when you create it:
+
+```
+$ foxglove device-tokens add --device-id dev_drpLqjBZYUzus3gv --format json
+    Device token created: dt_2Zg4kXJmTvSE1F5a
+    Store the token now; it is not shown again.
+{"id":"dt_2Zg4kXJmTvSE1F5a","deviceId":"dev_drpLqjBZYUzus3gv","projectId":"prj_3x9Zm2Hq","enabled":true,"preapproved":true,"createdAt":"2024-05-01T12:00:00.000Z","token":"..."}
+```
+
+Without `--device-id`, the token can be used to create a new device in the project. List,
+inspect, disable, and delete tokens:
+
+```
+$ foxglove device-tokens list --device-id dev_drpLqjBZYUzus3gv
+$ foxglove device-tokens get dt_2Zg4kXJmTvSE1F5a
+$ foxglove device-tokens edit dt_2Zg4kXJmTvSE1F5a --enabled=false
+    Device token disabled: dt_2Zg4kXJmTvSE1F5a
+$ foxglove device-tokens delete dt_2Zg4kXJmTvSE1F5a
+    Device token deleted: dt_2Zg4kXJmTvSE1F5a
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's

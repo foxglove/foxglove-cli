@@ -3151,6 +3151,154 @@ fn getting_a_dataset_renders_one_record() {
     }
 }
 
+const DEVICE_TOKEN: &str = r#"{"id":"dt_one","deviceId":"dev_one","projectId":"prj_one","enabled":true,"preapproved":true,"createdAt":"2024-01-02T03:04:05Z"}"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_a_device_token_prints_its_secret_once() {
+    let workspace = Workspace::new();
+    for (flags, expected_body, created) in [
+        (
+            vec!["--device-id", "dev_one", "--enabled=false"],
+            serde_json::json!({"deviceId": "dev_one", "enabled": false}),
+            r#"{"id":"dt_new","deviceId":"dev_one","projectId":"prj_one","enabled":false,"preapproved":true,"createdAt":"2024-01-02T03:04:05Z","token":"fake-device-token"}"#,
+        ),
+        (
+            vec!["--preapproved=false"],
+            serde_json::json!({"projectId": "prj_default", "preapproved": false}),
+            r#"{"id":"dt_new","deviceId":null,"projectId":"prj_default","enabled":true,"preapproved":false,"createdAt":"2024-01-02T03:04:05Z","token":"fake-device-token"}"#,
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("POST", "/v1/device-tokens", created)]);
+        let mut args = vec!["device-tokens", "add", "--format", "json"];
+        args.extend(&flags);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
+                .args(&args),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected_body, "{flags:?}");
+        let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(stdout["token"], "fake-device-token", "{flags:?}");
+        assert_eq!(stdout["id"], "dt_new", "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Device token created: dt_new\nStore the token now; it is not shown again.\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn device_tokens_are_listed_fetched_edited_and_deleted() {
+    const ID: &str = "dt#1/one";
+    const PATH: &str = "/v1/device-tokens/dt%231%2Fone";
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/device-tokens",
+        &format!("[{DEVICE_TOKEN}]"),
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "device-tokens",
+            "list",
+            "--device-id",
+            "dev_one",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("deviceId", "dev_one")])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Device ID,Project ID,Enabled,Preapproved,Created At\n\
+         dt_one,dev_one,prj_one,true,true,2024-01-02T03:04:05Z\n"
+    );
+
+    let server = Server::new(vec![Reply::json("GET", PATH, DEVICE_TOKEN)]);
+    let output = run(
+        &workspace,
+        &server,
+        &["device-tokens", "get", ID, "--format", "json"],
+    );
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::from_str::<serde_json::Value>(DEVICE_TOKEN).unwrap()
+    );
+
+    let server = Server::new(vec![Reply::json(
+        "PATCH",
+        PATH,
+        &DEVICE_TOKEN.replace(r#""enabled":true"#, r#""enabled":false"#),
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &["device-tokens", "edit", ID, "--enabled=false"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"enabled": false})
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token disabled: dt_one\n"
+    );
+
+    let server = Server::new(vec![Reply::json("DELETE", PATH, r#"{"id":"dt_one"}"#)]);
+    let output = run(&workspace, &server, &["device-tokens", "delete", ID]);
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token deleted: dt#1/one\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn missing_device_tokens_are_named_in_the_error() {
+    let workspace = Workspace::new();
+    for (args, method) in [
+        (vec!["device-tokens", "get", "dt_gone"], "GET"),
+        (
+            vec!["device-tokens", "edit", "dt_gone", "--enabled"],
+            "PATCH",
+        ),
+        (vec!["device-tokens", "delete", "dt_gone"], "DELETE"),
+    ] {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json(
+                method,
+                "/v1/device-tokens/dt_gone",
+                r#"{"error":"Not Found"}"#,
+            )
+        }]);
+        let output = run(&workspace, &server, &args);
+        server.finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Device token not found: dt_gone\n",
+            "{args:?}"
+        );
+    }
+}
+
 #[test]
 #[ignore = "requires loopback sockets"]
 fn session_recordings_report_a_missing_session() {

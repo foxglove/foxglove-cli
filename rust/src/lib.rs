@@ -8,6 +8,7 @@ pub mod config;
 mod coverage;
 mod custom_properties;
 mod datasets;
+mod device_tokens;
 mod devices;
 mod episodes;
 mod event_types;
