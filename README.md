@@ -147,13 +147,14 @@ $ foxglove sites add --name Garage --type edge --retain-recordings-seconds 60480
 $ foxglove sites edit site_drpLqjBZYUzus3gv --name "Garage 2"
 ```
 
-Print a Bring Your Own Storage site's ingest path policy, then save an edited copy. The file
-holds the policy's `schemaVersion` and `rules`; pass the revision you edited so a newer save is
-not overwritten:
+Save a Bring Your Own Storage site's ingest path policy, edit the copy, and save it back. `set`
+sends the saved revision's `policy` and refuses to overwrite a newer save, because the file
+records the revision it was edited from. A file holding only `schemaVersion` and `rules` works
+too; pass `--previous-revision` with it to get the same check:
 
 ```
-$ foxglove sites ingest-path-policy get site_drpLqjBZYUzus3gv
-$ foxglove sites ingest-path-policy set site_drpLqjBZYUzus3gv policy.json --previous-revision 4
+$ foxglove sites ingest-path-policy get site_drpLqjBZYUzus3gv > policy.json
+$ foxglove sites ingest-path-policy set site_drpLqjBZYUzus3gv policy.json
     Ingest path policy for site site_drpLqjBZYUzus3gv is at revision 5
 ```
 

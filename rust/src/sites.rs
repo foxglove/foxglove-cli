@@ -178,12 +178,27 @@ pub(crate) async fn get_policy(runtime: &Runtime, args: &SiteIdArgs) -> Outcome 
 
 /// Read a policy document, `{"schemaVersion": 1, "rules": [...]}`, and attach
 /// the optional previous revision.
+///
+/// The revision that `ingest-path-policy get` prints, `{"revision": N, "policy": {...}}`, is also
+/// accepted: its `policy` is sent, and `N` becomes the previous revision unless one is given.
 fn policy_request(
     raw: &[u8],
-    previous_revision: Option<u64>,
+    mut previous_revision: Option<u64>,
 ) -> Result<Map<String, Value>, String> {
     let mut policy = match serde_json::from_slice::<Value>(raw) {
-        Ok(Value::Object(policy)) => policy,
+        Ok(Value::Object(mut document)) => match document.remove("policy") {
+            Some(Value::Object(policy)) => {
+                if previous_revision.is_none() && !policy.contains_key("previousRevision") {
+                    previous_revision = document.get("revision").and_then(Value::as_u64);
+                }
+                policy
+            }
+            Some(other) => {
+                document.insert("policy".to_owned(), other);
+                document
+            }
+            None => document,
+        },
         Ok(_) => {
             return Err(
                 "Invalid policy JSON: expected an object with schemaVersion and a rules array"
@@ -284,5 +299,17 @@ mod tests {
             ),
             serde_json::json!({"schemaVersion": 1, "rules": [], "previousRevision": 0})
         );
+    }
+
+    #[test]
+    fn a_saved_policy_revision_is_sent_with_its_revision_as_the_previous_one() {
+        let saved = br#"{"revision":4,"createdAt":"2024-01-02T03:04:05Z","policy":{"schemaVersion":1,"rules":[]}}"#;
+        for (previous, expected) in [(None, 4), (Some(7), 7)] {
+            assert_eq!(
+                serde_json::Value::Object(policy_request(saved, previous).unwrap()),
+                serde_json::json!({"schemaVersion": 1, "rules": [], "previousRevision": expected}),
+                "{previous:?}"
+            );
+        }
     }
 }

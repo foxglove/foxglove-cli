@@ -1799,12 +1799,12 @@ pub(crate) struct SiteEditArgs {
 pub(crate) struct SitePolicySetArgs {
     #[arg(value_name = "SITE_ID", value_parser = parse_id)]
     pub(crate) site_id: String,
-    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with the policy's schemaVersion and rules")]
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with the policy's schemaVersion and rules, or the output of `ingest-path-policy get`")]
     pub(crate) file: std::path::PathBuf,
     #[arg(
         long,
         value_name = "REVISION",
-        help = "Revision the policy was edited from; the save fails if another revision has replaced it (0 when the site has no saved policy)",
+        help = "Revision the policy was edited from (default: the revision in a saved `get` output); the save fails if another revision has replaced it (0 when the site has no saved policy)",
         value_parser = clap::value_parser!(u64)
     )]
     pub(crate) previous_revision: Option<u64>,
