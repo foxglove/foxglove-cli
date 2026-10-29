@@ -8,7 +8,9 @@ use serde_json::Value;
 use crate::api::encode_path_segment;
 use crate::cli::{LayoutAddArgs, LayoutEditArgs, LayoutGetArgs, LayoutIdArgs, LayoutListArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, format_record, parse_timestamp, EmptyRequest, Record};
+use crate::records::{
+    fetch_list, format_record, null_to_default, parse_timestamp, EmptyRequest, Record,
+};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -20,12 +22,18 @@ struct Layout {
     created_at: String,
     #[serde(rename = "updatedAt")]
     updated_at: String,
-    #[serde(rename = "savedAt", skip_serializing_if = "String::is_empty", default)]
+    #[serde(
+        rename = "savedAt",
+        skip_serializing_if = "String::is_empty",
+        default,
+        deserialize_with = "null_to_default"
+    )]
     saved_at: String,
     #[serde(
         rename = "folderName",
         skip_serializing_if = "String::is_empty",
-        default
+        default,
+        deserialize_with = "null_to_default"
     )]
     folder_name: String,
     permission: String,
@@ -304,5 +312,18 @@ mod tests {
         for key in ["savedAt", "folderName", "data"] {
             assert!(json.get(key).is_none(), "{key}: {json}");
         }
+
+        let layout: Layout = serde_json::from_value(serde_json::json!({
+            "id": "lay_1",
+            "name": "Overview",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+            "savedAt": null,
+            "folderName": null,
+            "permission": "ORG_READ",
+        }))
+        .unwrap();
+        assert_eq!(layout.fields()[2], "");
+        assert_eq!(layout.fields()[6], "");
     }
 }
