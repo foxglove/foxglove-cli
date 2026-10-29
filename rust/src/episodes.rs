@@ -332,6 +332,11 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
 }
 
 pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Outcome {
+    if args.metadata.is_some() {
+        return Outcome::failure(
+            "--metadata is no longer supported; set episode custom properties with --property\n",
+        );
+    }
     let mut episode = match episode_input(args) {
         Ok(episode) => episode,
         Err(error) => return Outcome::failure(format!("{error}\n")),

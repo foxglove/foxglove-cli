@@ -4936,6 +4936,10 @@ fn an_episode_takes_either_an_event_or_recordings() {
             vec!["--event-id", "evt_one", "--end", "2024-01-03"],
             "error: the argument '--event-id <EVENT_ID>' cannot be used with '--end <END>'\n",
         ),
+        (
+            vec!["--recording-id", "rec_one", "--metadata", "{}"],
+            "--metadata is no longer supported; set episode custom properties with --property\n",
+        ),
     ] {
         let output = Process::spawn(
             workspace

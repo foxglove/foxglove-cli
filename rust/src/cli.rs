@@ -1510,6 +1510,9 @@ pub(crate) struct EpisodeAddArgs {
     pub(crate) start: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+    /// Accepted only to point scripts that still pass the removed flag at `--property`.
+    #[arg(long, hide = true, allow_hyphen_values = true)]
+    pub(crate) metadata: Option<String>,
 }
 
 #[derive(Debug, Args)]
