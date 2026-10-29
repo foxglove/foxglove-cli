@@ -5,9 +5,9 @@ use std::fs;
 use std::path::Path;
 
 use crate::api::encode_path_segment;
-use crate::cli::{ExtensionIdArgs, FileArgs};
+use crate::cli::{ExtensionGetArgs, ExtensionIdArgs, FileArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, Record};
+use crate::records::{fetch_list, format_record, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -48,6 +48,57 @@ impl Record for Extension {
             self.active_version.clone().unwrap_or_default(),
             self.sha256_sum.clone().unwrap_or_default(),
         ]
+    }
+}
+
+/// An extension as returned by `GET /v1/extensions/{id}`, with a signed link to its `.foxe` file.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct ExtensionDetails {
+    #[serde(flatten)]
+    extension: Extension,
+    #[serde(default, deserialize_with = "null_to_default")]
+    foxe: String,
+}
+
+impl Record for ExtensionDetails {
+    fn headers() -> &'static [&'static str] {
+        &[
+            "ID",
+            "Name",
+            "Publisher",
+            "Display Name",
+            "Description",
+            "Active Version",
+            "SHA-256 Sum",
+            "Download Link",
+        ]
+    }
+
+    fn fields(&self) -> Vec<String> {
+        let mut fields = self.extension.fields();
+        fields.push(self.foxe.clone());
+        fields
+    }
+}
+
+pub(crate) async fn get_extension(
+    runtime: &Runtime,
+    args: &ExtensionGetArgs,
+    format: Format,
+) -> Outcome {
+    match runtime
+        .client
+        .get::<_, ExtensionDetails>(
+            &format!("/v1/extensions/{}", encode_path_segment(&args.extension_id)),
+            &(),
+        )
+        .await
+    {
+        Ok(extension) => format_record(&extension, format),
+        Err(error) if error.is_not_found_for("extension") => {
+            Outcome::failure(format!("Extension not found: {}\n", args.extension_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get extension: {error}\n")),
     }
 }
 
@@ -121,5 +172,26 @@ pub(crate) async fn publish_extension(runtime: &Runtime, args: &FileArgs) -> Out
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Extension upload failed: {error}\n")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExtensionDetails;
+
+    #[test]
+    fn a_null_download_link_reads_as_empty() {
+        let details: ExtensionDetails = serde_json::from_value(serde_json::json!({
+            "id": "ext_1",
+            "name": "viz",
+            "publisher": "acme",
+            "displayName": "Viz",
+            "description": null,
+            "activeVersion": "1.0.0",
+            "sha256Sum": null,
+            "foxe": null,
+        }))
+        .unwrap();
+        assert_eq!(details.foxe, "");
     }
 }
