@@ -1,5 +1,7 @@
 #[path = "cli_integration/episodes.rs"]
 mod episodes;
+#[path = "cli_integration/sites.rs"]
+mod sites;
 
 mod support;
 
