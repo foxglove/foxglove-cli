@@ -2332,6 +2332,13 @@ pub(crate) struct RecordingListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(
         long,
+        help = "Only recordings whose metadata matches this query, e.g. key:value",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) metadata_query: Option<String>,
+    #[arg(
+        long,
         help = "Number of recordings to skip",
         allow_hyphen_values = true
     )]
@@ -3663,6 +3670,7 @@ mod tests {
                 "site-id",
                 "path",
                 "import-status",
+                "metadata-query",
                 "sort-by",
                 "sort-order",
                 "topic",
@@ -3835,7 +3843,7 @@ mod tests {
             ),
             (
                 &["recordings", "list"],
-                &["device-name", "session-key", "path"],
+                &["device-name", "session-key", "path", "metadata-query"],
             ),
             (&["sessions", "list"], &["device-name", "key-matches"]),
             (

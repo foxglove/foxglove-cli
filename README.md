@@ -257,6 +257,12 @@ List only recordings that contain a topic:
 $ foxglove recordings list --topic /camera/image
 ```
 
+List recordings whose metadata matches a query:
+
+```
+$ foxglove recordings list --metadata-query robot:alpha
+```
+
 Get a single recording by ID or key:
 
 ```
