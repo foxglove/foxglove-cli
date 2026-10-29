@@ -359,6 +359,34 @@ fn event_sort_order_is_sent_with_its_sort_field() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn event_id_and_change_time_filters_are_sent() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/events", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "events",
+        "list",
+        "--event-id",
+        "evt_one",
+        "--created-after",
+        "2024-01-02T03:04:05Z",
+        "--updated-after",
+        "2024-01-03T03:04:05Z",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("createdAfter", "2024-01-02T03:04:05Z"),
+            ("eventId", "evt_one"),
+            ("limit", "50"),
+            ("updatedAfter", "2024-01-03T03:04:05Z"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn events_without_properties_render_an_empty_cell() {
     const EVENTS: &str = r#"[{"id":"evt_one","device":{"id":"dev_one","name":"robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","metadata":{},"createdAt":"2024-01-02T03:04:07Z","updatedAt":"2024-01-02T03:04:08Z"}]"#;
     let workspace = Workspace::new();
