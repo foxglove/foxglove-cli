@@ -917,6 +917,133 @@ enum DevicesCommand {
     Get(DeviceGetArgs),
     #[command(about = "List devices registered to your organization")]
     List(DeviceListArgs),
+    #[command(
+        about = "List, get, or update the values a device's custom properties held over time",
+        subcommand
+    )]
+    PropertyIntervals(DevicePropertyIntervalsCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum DevicePropertyIntervalsCommand {
+    #[command(about = "Get one property time interval")]
+    Get(DevicePropertyIntervalGetArgs),
+    #[command(about = "List the values a device's custom properties held and when")]
+    List(DevicePropertyIntervalListArgs),
+    #[command(
+        about = "Record the value a custom property held over a past time range",
+        long_about = "Record the value a device custom property held over a past time range, or that it had no value.\n\nExisting intervals that overlap the range are split, trimmed, or removed. To change a property's current value, use `devices edit --property`."
+    )]
+    Update(DevicePropertyIntervalUpdateArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicePropertyIntervalListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DEVICE", help = "Device name or ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+    #[arg(
+        long,
+        help = "Include intervals active before this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by property key and value, for example 'location:sf model:*'",
+        allow_hyphen_values = true
+    )]
+    pub(crate) query: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort intervals by: id, key, start, or end",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Include intervals active on or after this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicePropertyIntervalGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DEVICE", help = "Device name or ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+    #[arg(value_name = "INTERVAL_ID", help = "Property time interval ID", value_parser = parse_id)]
+    pub(crate) id: String,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicePropertyIntervalUpdateArgs {
+    #[arg(value_name = "DEVICE", help = "Device name or ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+    #[arg(
+        long,
+        help = "Exclusive end of the time range (ISO 8601, must be in the past)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: String,
+    #[arg(
+        long,
+        help = "Device custom property key",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) key: String,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Inclusive start of the time range (ISO 8601, must be in the past)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: String,
+    #[arg(
+        long,
+        help = "Record that the property had no value over the range",
+        conflicts_with = "value",
+        required_unless_present = "value"
+    )]
+    pub(crate) unset: bool,
+    #[arg(
+        long,
+        help = "Value the property held over the range; repeat for each value of a multi-enum property",
+        allow_hyphen_values = true,
+        action = clap::ArgAction::Append
+    )]
+    pub(crate) value: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -2235,6 +2362,11 @@ fn command_project_scope(
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
         CliCommand::Devices(DevicesCommand::Get(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::PropertyIntervals(command)) => match command {
+            DevicePropertyIntervalsCommand::Get(args) => &args.project_id,
+            DevicePropertyIntervalsCommand::List(args) => &args.project_id,
+            DevicePropertyIntervalsCommand::Update(args) => &args.project_id,
+        },
         CliCommand::Episodes(EpisodesCommand::Add(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
@@ -2453,6 +2585,19 @@ async fn dispatch_device_command(runtime: &runtime::Runtime, command: DevicesCom
             let format = args.format.format;
             devices::list_devices(runtime, &args, format).await
         }
+        DevicesCommand::PropertyIntervals(command) => match command {
+            DevicePropertyIntervalsCommand::Get(args) => {
+                let format = args.format.format;
+                devices::get_property_interval(runtime, &args, format).await
+            }
+            DevicePropertyIntervalsCommand::List(args) => {
+                let format = args.format.format;
+                devices::list_property_intervals(runtime, &args, format).await
+            }
+            DevicePropertyIntervalsCommand::Update(args) => {
+                devices::update_property_interval(runtime, &args).await
+            }
+        },
     }
 }
 
@@ -2787,6 +2932,14 @@ mod tests {
             ],
         ),
         (
+            &["devices", "property-intervals", "list", "dev_1"],
+            &["sort-by"],
+        ),
+        (
+            &["devices", "property-intervals", "update", "dev_1"],
+            &["key"],
+        ),
+        (
             &["coverage", "list"],
             &[
                 "device-id",
@@ -2904,6 +3057,33 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn property_interval_updates_take_a_value_or_unset() {
+        let update = [
+            "foxglove",
+            "devices",
+            "property-intervals",
+            "update",
+            "dev_1",
+            "--key",
+            "mode",
+            "--start",
+            "2026-01-01",
+            "--end",
+            "2026-01-02",
+        ];
+        for (extra, kind) in [
+            (&[][..], ErrorKind::MissingRequiredArgument),
+            (
+                &["--unset", "--value", "auto"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+        ] {
+            let error = super::Cli::try_parse_from(update.iter().chain(extra)).unwrap_err();
+            assert_eq!(error.kind(), kind, "{extra:?}");
+        }
+    }
+
     #[test]
     fn session_sort_order_requires_its_sort_field() {
         let error =

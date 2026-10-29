@@ -134,6 +134,22 @@ $ foxglove devices delete RobotA
     Device deleted: RobotA
 ```
 
+List the values a device's custom properties held over time, by device name or ID:
+
+```
+$ foxglove devices property-intervals list RobotA --query 'location:*' --start 2026-01-01
+```
+
+Record the value a property held over a past time range, or that it had none. Overlapping
+intervals are split, trimmed, or removed; repeat `--value` for each value of a multi-enum
+property:
+
+```
+$ foxglove devices property-intervals update RobotA --key location --value sf --start 2026-01-01 --end 2026-02-01
+    Property time interval updated: location from 2026-01-01T00:00:00Z to 2026-02-01T00:00:00Z
+$ foxglove devices property-intervals update RobotA --key location --unset --start 2026-02-01 --end 2026-03-01
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
