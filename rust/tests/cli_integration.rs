@@ -1346,18 +1346,6 @@ fn other_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
     let cases: &[(&[&str], &str, &str, &str)] = &[
         (
-            &["recordings", "delete", KEY],
-            "DELETE",
-            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
-            "{}",
-        ),
-        (
-            &["recordings", "transfer", KEY],
-            "POST",
-            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
-            r#"{"id":"recording","importStatus":"pending"}"#,
-        ),
-        (
             &["extensions", "get", KEY],
             "GET",
             "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
@@ -1398,6 +1386,33 @@ fn other_identifier_paths_are_escaped() {
             "GET",
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
             r#"{"episodes":[]}"#,
+        ),
+    ];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn recording_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (
+            &["recordings", "get", KEY],
+            "GET",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"recording","projectId":"","path":"","size":0,"start":"","end":"","createdAt":"","importStatus":"none"}"#,
+        ),
+        (
+            &["recordings", "delete", KEY],
+            "DELETE",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            "{}",
+        ),
+        (
+            &["recordings", "transfer", KEY],
+            "POST",
+            "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83/import",
+            r#"{"id":"recording","importStatus":"pending"}"#,
         ),
     ];
     assert_each_request_reaches(cases);
@@ -3654,6 +3669,50 @@ fn deleting_what_is_not_found_fails() {
             expected,
             "{args:?}"
         );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_a_recording_by_key_renders_it_or_names_it_when_missing() {
+    const RECORDING: &str = r#"{"id":"rec_one","projectId":"prj_default","path":"one.mcap","size":128,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"complete","key":"drive-1","sessionId":"ses_one"}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/recordings/drive-1", RECORDING),
+        Reply::json("GET", "/v1/recordings/drive-1", RECORDING),
+        Reply {
+            status: 404,
+            ..Reply::json("GET", "/v1/recordings/gone", r#"{"error":"Not Found"}"#)
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "get", "drive-1", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Recording ID,Path,Size,Created At,Imported At,Start,End,Import Status,Site ID,Site Name,Edge Site ID,Edge Site Name,Device ID,Device Name,Metadata,Key,Session ID,Project ID\n\
+         rec_one,one.mcap,128 B,2024-01-02T03:04:07Z,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,complete,,,,,,,null,drive-1,ses_one,prj_default\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["recordings", "get", "drive-1", "--format", "json"],
+    );
+    assert_success(&output);
+    let recording: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(recording["id"], "rec_one");
+    assert_eq!(recording["key"], "drive-1");
+    let output = run(&workspace, &server, &["recordings", "get", "gone"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Recording not found: gone\n"
+    );
+    for request in server.finish() {
+        assert!(query_pairs(&request).is_empty(), "{request}");
     }
 }
 

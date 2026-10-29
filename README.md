@@ -207,6 +207,12 @@ List only recordings that contain a topic:
 $ foxglove recordings list --topic /camera/image
 ```
 
+Get a single recording by ID or key:
+
+```
+$ foxglove recordings get rec_123 --format json
+```
+
 List sessions whose recordings overlap a time range, with each session's recording count and data range:
 
 ```

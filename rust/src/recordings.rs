@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::{encode_path_segment, ApiError};
-use crate::cli::{RecordingDeleteArgs, RecordingListArgs, RecordingTransferArgs};
+use crate::cli::{RecordingDeleteArgs, RecordingGetArgs, RecordingListArgs, RecordingTransferArgs};
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, is_zero, null_to_default, parse_timestamp, DeviceSummary,
-    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, is_zero, null_to_default, parse_timestamp,
+    DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -197,6 +197,27 @@ pub(crate) async fn list_recordings(
         Some(limit),
     )
     .await
+}
+
+pub(crate) async fn get_recording(
+    runtime: &Runtime,
+    args: &RecordingGetArgs,
+    format: Format,
+) -> Outcome {
+    match runtime
+        .client
+        .get::<_, Recording>(
+            &format!("/v1/recordings/{}", encode_path_segment(&args.id)),
+            &(),
+        )
+        .await
+    {
+        Ok(recording) => format_record(&recording, format),
+        Err(error) if error.is_not_found_for("recording") => {
+            Outcome::failure(format!("Recording not found: {}\n", args.id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get recording: {error}\n")),
+    }
 }
 
 pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteArgs) -> Outcome {
