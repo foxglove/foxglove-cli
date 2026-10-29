@@ -136,6 +136,27 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
+### Sites
+
+List your organization's sites, and create, edit, or delete them:
+
+```
+$ foxglove sites list
+$ foxglove sites add --name Garage --type edge --retain-recordings-seconds 604800
+    Site created: site_drpLqjBZYUzus3gv
+$ foxglove sites edit site_drpLqjBZYUzus3gv --name "Garage 2"
+```
+
+Print a Bring Your Own Storage site's ingest path policy, then save an edited copy. The file
+holds the policy's `schemaVersion` and `rules`; pass the revision you edited so a newer save is
+not overwritten:
+
+```
+$ foxglove sites ingest-path-policy get site_drpLqjBZYUzus3gv
+$ foxglove sites ingest-path-policy set site_drpLqjBZYUzus3gv policy.json --previous-revision 4
+    Ingest path policy for site site_drpLqjBZYUzus3gv is at revision 5
+```
+
 ### Uploads and recordings
 
 Upload ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:

@@ -15,7 +15,7 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
+    extensions, pending_imports, projects, recordings, runtime, sessions, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -159,6 +159,8 @@ enum CliCommand {
     Recordings(RecordingsCommand),
     #[command(about = "List and manage sessions", subcommand)]
     Sessions(SessionsCommand),
+    #[command(about = "List and manage sites", subcommand)]
+    Sites(SitesCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
     #[command(
@@ -1702,6 +1704,113 @@ pub(crate) struct SessionRecordingMutationArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum SitesCommand {
+    #[command(about = "Create a site")]
+    Add(SiteAddArgs),
+    #[command(
+        about = "Delete a site",
+        long_about = "Delete a site. Deletion is permanent: recordings stored at the site are no longer available through Foxglove. Shut down the site's deployment before deleting it. Files in the site's own storage are not removed."
+    )]
+    Delete(SiteIdArgs),
+    #[command(about = "Edit a site's name, retention period, or URL")]
+    Edit(SiteEditArgs),
+    #[command(about = "Get a site")]
+    Get(SiteGetArgs),
+    #[command(
+        name = "ingest-path-policy",
+        about = "Get or save a site's ingest path policy",
+        subcommand
+    )]
+    IngestPathPolicy(SitePolicyCommand),
+    #[command(about = "List sites")]
+    List(FormatArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum SitePolicyCommand {
+    #[command(
+        about = "Print a site's latest ingest path policy revision as JSON",
+        long_about = "Print a site's latest ingest path policy revision as JSON. A saved policy with an empty rules list ignores every path; a site with no saved policy prints nothing on stdout."
+    )]
+    Get(SiteIdArgs),
+    #[command(
+        about = "Save a site's ingest path policy from a JSON file",
+        long_about = "Save a site's ingest path policy from a JSON file holding schemaVersion and a rules array; the first matching rule wins, and an empty rules list ignores every path. A new revision is recorded only when the policy changes. Only Bring Your Own Storage sites accept a policy."
+    )]
+    Set(SitePolicySetArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteAddArgs {
+    #[arg(long, help = "Name of the site", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: String,
+    #[arg(
+        long = "type",
+        value_name = "TYPE",
+        help = "Type of site to create",
+        value_parser = ["self-hosted", "edge"]
+    )]
+    pub(crate) site_type: String,
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "How long an Edge Site keeps the recordings it creates, in seconds; 0 keeps them indefinitely",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) retain_recordings_seconds: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteIdArgs {
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteEditArgs {
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+    #[arg(long, help = "New name of the site", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "How long an Edge Site keeps the recordings it creates, in seconds; 0 keeps them indefinitely",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) retain_recordings_seconds: Option<u64>,
+    #[arg(
+        long,
+        help = "URL a self-hosted Primary Site exposes for accessing its data",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) url: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SitePolicySetArgs {
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with the policy's schemaVersion and rules")]
+    pub(crate) file: std::path::PathBuf,
+    #[arg(
+        long,
+        value_name = "REVISION",
+        help = "Revision the policy was edited from; the save fails if another revision has replaced it (0 when the site has no saved policy)",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) previous_revision: Option<u64>,
+}
+
+#[derive(Debug, Subcommand)]
 enum TopicsCommand {
     #[command(about = "List topics")]
     List(TopicListArgs),
@@ -1933,6 +2042,21 @@ fn command_project_scope(
     Some(runtime.project_scope(flag.as_deref()))
 }
 
+fn log_project_scope(command: &CliCommand, runtime: &runtime::Runtime) {
+    if let Some(scope) = command_project_scope(command, runtime) {
+        let id = if scope.id.is_empty() {
+            "unscoped"
+        } else {
+            &scope.id
+        };
+        let _ = writeln!(
+            std::io::stderr(),
+            "[DEBUG] Project scope: {id} (source: {})",
+            scope.source
+        );
+    }
+}
+
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
@@ -1945,18 +2069,7 @@ async fn dispatch_api_command(
         Err(error) => return Outcome::failure(error),
     };
     if debug {
-        if let Some(scope) = command_project_scope(&command, &runtime) {
-            let id = if scope.id.is_empty() {
-                "unscoped"
-            } else {
-                &scope.id
-            };
-            let _ = writeln!(
-                std::io::stderr(),
-                "[DEBUG] Project scope: {id} (source: {})",
-                scope.source
-            );
-        }
+        log_project_scope(&command, &runtime);
     }
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
@@ -2029,6 +2142,7 @@ async fn dispatch_api_command(
             recordings::list_recordings(&runtime, &args, format).await
         }
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
+        CliCommand::Sites(command) => dispatch_site_command(&runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
             let format = args.format.format;
             topics::list_topics(&runtime, &args, format).await
@@ -2131,6 +2245,25 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
             let format = args.format.format;
             episodes::list_versions(runtime, &args, format).await
         }
+    }
+}
+
+async fn dispatch_site_command(runtime: &runtime::Runtime, command: SitesCommand) -> Outcome {
+    match command {
+        SitesCommand::Add(args) => sites::add_site(runtime, &args).await,
+        SitesCommand::Delete(args) => sites::delete_site(runtime, &args).await,
+        SitesCommand::Edit(args) => sites::edit_site(runtime, &args).await,
+        SitesCommand::Get(args) => {
+            let format = args.format.format;
+            sites::get_site(runtime, &args, format).await
+        }
+        SitesCommand::IngestPathPolicy(SitePolicyCommand::Get(args)) => {
+            sites::get_policy(runtime, &args).await
+        }
+        SitesCommand::IngestPathPolicy(SitePolicyCommand::Set(args)) => {
+            sites::set_policy(runtime, &args).await
+        }
+        SitesCommand::List(args) => sites::list_sites(runtime, args.format).await,
     }
 }
 
