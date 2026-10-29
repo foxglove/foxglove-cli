@@ -894,10 +894,35 @@ pub(crate) struct DatasetEpisodeListArgs {
 enum DevicesCommand {
     #[command(about = "Add a device for your organization")]
     Add(DeviceAddArgs),
+    #[command(
+        about = "Delete a device",
+        long_about = "Delete a device. The API refuses to delete a device that still has associated data; delete that data first."
+    )]
+    Delete(DeviceDeleteArgs),
     #[command(about = "Edit a device")]
     Edit(DeviceEditArgs),
+    #[command(about = "Get a device by name or ID")]
+    Get(DeviceGetArgs),
     #[command(about = "List devices registered to your organization")]
     List(DeviceListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "DEVICE_NAME_OR_ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceDeleteArgs {
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "DEVICE_NAME_OR_ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
 }
 
 #[derive(Debug, Args)]
@@ -1900,7 +1925,9 @@ fn command_project_scope(
         CliCommand::Datasets(DatasetsCommand::Add(args)) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Delete(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
+        CliCommand::Devices(DevicesCommand::Get(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::Add(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
@@ -1986,16 +2013,7 @@ async fn dispatch_api_command(
             recordings::transfer_recording(&runtime, &args).await
         }
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
-        CliCommand::Devices(DevicesCommand::Add(args)) => {
-            devices::add_device(&runtime, &args).await
-        }
-        CliCommand::Devices(DevicesCommand::Edit(args)) => {
-            devices::edit_device(&runtime, &args).await
-        }
-        CliCommand::Devices(DevicesCommand::List(args)) => {
-            let format = args.format.format;
-            devices::list_devices(&runtime, &args, format).await
-        }
+        CliCommand::Devices(command) => dispatch_device_command(&runtime, command).await,
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
             event_types::list_event_types(&runtime, args.format).await
@@ -2084,6 +2102,22 @@ async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsC
         }
         DatasetsCommand::Versions(command) => {
             dispatch_dataset_version_command(runtime, command).await
+        }
+    }
+}
+
+async fn dispatch_device_command(runtime: &runtime::Runtime, command: DevicesCommand) -> Outcome {
+    match command {
+        DevicesCommand::Add(args) => devices::add_device(runtime, &args).await,
+        DevicesCommand::Delete(args) => devices::delete_device(runtime, &args).await,
+        DevicesCommand::Edit(args) => devices::edit_device(runtime, &args).await,
+        DevicesCommand::Get(args) => {
+            let format = args.format.format;
+            devices::get_device(runtime, &args, format).await
+        }
+        DevicesCommand::List(args) => {
+            let format = args.format.format;
+            devices::list_devices(runtime, &args, format).await
         }
     }
 }
