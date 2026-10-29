@@ -51,8 +51,6 @@ pub(crate) struct EpisodeRecording {
     pub(crate) device_id: String,
     #[serde(default)]
     pub(crate) available: bool,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) resolvable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -294,6 +292,8 @@ struct CreateEpisodesRequest {
 struct EpisodeInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     event_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    derived_from: Option<DerivedFrom>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     recordings: Vec<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -302,6 +302,15 @@ struct EpisodeInput {
     end_time: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     properties: Option<BTreeMap<String, Value>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DerivedFrom {
+    episode_id: String,
+    version: u32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    remove_recordings: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -322,8 +331,17 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
     if start_time.is_empty() != end_time.is_empty() {
         return Err("both --start and --end must be specified, or neither".to_owned());
     }
+    let derived_from = match (&args.from_episode, args.from_version) {
+        (Some(episode_id), Some(version)) => Some(DerivedFrom {
+            episode_id: episode_id.clone(),
+            version,
+            remove_recordings: args.remove_recording.clone(),
+        }),
+        _ => None,
+    };
     Ok(EpisodeInput {
         event_id: args.event_id.clone(),
+        derived_from,
         recordings: args.recording_id.clone(),
         start_time,
         end_time,
@@ -367,6 +385,9 @@ pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Out
         },
         Err(error) if error.is_not_found_for("project") => {
             Outcome::failure(format!("Project not found: {}\n", request.project_id))
+        }
+        Err(error) if args.from_episode.is_some() && error.is_not_found_for("episode") => {
+            Outcome::failure(format!("{error}\n"))
         }
         Err(error) => Outcome::failure(format!("Failed to create episode: {error}\n")),
     }
@@ -525,7 +546,6 @@ mod tests {
                     "start": "",
                     "end": "",
                     "available": false,
-                    "resolvable": true,
                 },
                 {
                     "id": "rec_azure",
@@ -560,8 +580,6 @@ mod tests {
             })
         );
         assert!(recordings[2].get("location").is_none());
-        assert_eq!(recordings[0]["resolvable"], true);
-        assert!(recordings[2].get("resolvable").is_none());
         assert_eq!(
             output["creationContext"],
             serde_json::json!({"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_s3"]}})

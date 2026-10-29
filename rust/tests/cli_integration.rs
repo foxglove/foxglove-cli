@@ -4926,12 +4926,97 @@ fn event_episode_errors_from_the_api_are_shown_in_full() {
 }
 
 #[test]
-fn an_episode_takes_either_an_event_or_recordings() {
+#[ignore = "requires loopback sockets"]
+fn a_derived_episode_sends_its_source_version() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "POST",
+        "/v1/episodes",
+        r#"{"episodes":[{"id":"ep_derived","created":true}]}"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "add",
+            "--project-id",
+            "prj_explicit",
+            "--from-episode",
+            "ep_source",
+            "--from-version",
+            "3",
+            "--remove-recording",
+            "rec_gone",
+            "--start",
+            "2024-01-02T03:04:05Z",
+            "--end",
+            "2024-01-02T03:04:06Z",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({
+            "projectId": "prj_explicit",
+            "episodes": [{
+                "derivedFrom": {
+                    "episodeId": "ep_source",
+                    "version": 3,
+                    "removeRecordings": ["rec_gone"],
+                },
+                "startTime": "2024-01-02T03:04:05Z",
+                "endTime": "2024-01-02T03:04:06Z",
+            }],
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode created: ep_derived\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn a_missing_source_episode_is_named() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json(
+            "POST",
+            "/v1/episodes",
+            r#"{"error":"Episode not found: ep_gone version 2"}"#,
+        )
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "episodes",
+            "add",
+            "--project-id",
+            "prj",
+            "--from-episode",
+            "ep_gone",
+            "--from-version",
+            "2",
+        ],
+    );
+    server.finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Episode not found: ep_gone version 2\n"
+    );
+}
+
+#[test]
+fn an_episode_takes_an_event_recordings_or_a_source_episode() {
     let workspace = Workspace::new();
     for (flags, expected) in [
         (
             vec![],
-            "error: the following required arguments were not provided:\n  <--event-id <EVENT_ID>|--recording-id <RECORDING_ID>>\n",
+            "error: the following required arguments were not provided:\n  <--event-id <EVENT_ID>|--recording-id <RECORDING_ID>|--from-episode <FROM_EPISODE>>\n",
         ),
         (
             vec!["--event-id", "evt_one", "--recording-id", "rec_one"],
@@ -4944,6 +5029,22 @@ fn an_episode_takes_either_an_event_or_recordings() {
         (
             vec!["--event-id", "evt_one", "--end", "2024-01-03"],
             "error: the argument '--event-id <EVENT_ID>' cannot be used with '--end <END>'\n",
+        ),
+        (
+            vec!["--from-episode", "ep_one"],
+            "error: the following required arguments were not provided:\n  --from-version <FROM_VERSION>\n",
+        ),
+        (
+            vec!["--from-episode", "ep_one", "--from-version", "1", "--recording-id", "rec_one"],
+            "error: the argument '--from-episode <FROM_EPISODE>' cannot be used with '--recording-id <RECORDING_ID>'\n",
+        ),
+        (
+            vec!["--recording-id", "rec_one", "--remove-recording", "rec_two"],
+            "error: the following required arguments were not provided:\n  --from-version <FROM_VERSION>\n  --from-episode <FROM_EPISODE>\n",
+        ),
+        (
+            vec!["--from-episode", "ep_one", "--from-version", "0"],
+            "error: invalid value '0' for '--from-version <FROM_VERSION>'",
         ),
         (
             vec!["--recording-id", "rec_one", "--metadata", "{}"],
