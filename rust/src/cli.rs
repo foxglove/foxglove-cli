@@ -206,12 +206,22 @@ enum CliCommand {
 enum AttachmentsCommand {
     #[command(about = "Download an MCAP attachment by ID to stdout")]
     Download(AttachmentDownloadArgs),
+    #[command(about = "Get an MCAP attachment's details by ID")]
+    Get(AttachmentGetArgs),
     #[command(about = "List MCAP attachments")]
     List(AttachmentListArgs),
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct AttachmentDownloadArgs {
+    #[arg(value_name = "ATTACHMENT_ID")]
+    pub(crate) attachment_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AttachmentGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
     #[arg(value_name = "ATTACHMENT_ID")]
     pub(crate) attachment_id: String,
 }
@@ -2748,13 +2758,8 @@ async fn dispatch_api_command(
         log_project_scope(&command, &runtime);
     }
     match command {
-        CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
-            let stdout_is_terminal = std::io::stdout().is_terminal();
-            attachments::download_attachment(&runtime, &args, writer, stdout_is_terminal).await
-        }
-        CliCommand::Attachments(AttachmentsCommand::List(args)) => {
-            let format = args.format.format;
-            attachments::list_attachments(&runtime, &args, format).await
+        CliCommand::Attachments(command) => {
+            dispatch_attachment_command(&runtime, command, writer).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
         CliCommand::Coverage(CoverageCommand::List(args)) => {
@@ -2806,6 +2811,27 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_attachment_command(
+    runtime: &runtime::Runtime,
+    command: AttachmentsCommand,
+    writer: &mut dyn Write,
+) -> Outcome {
+    match command {
+        AttachmentsCommand::Download(args) => {
+            let stdout_is_terminal = std::io::stdout().is_terminal();
+            attachments::download_attachment(runtime, &args, writer, stdout_is_terminal).await
+        }
+        AttachmentsCommand::Get(args) => {
+            let format = args.format.format;
+            attachments::get_attachment(runtime, &args, format).await
+        }
+        AttachmentsCommand::List(args) => {
+            let format = args.format.format;
+            attachments::list_attachments(runtime, &args, format).await
+        }
     }
 }
 
