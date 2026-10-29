@@ -866,6 +866,40 @@ pub(crate) struct DeviceUpdateArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+    #[arg(
+        long, help = "Enable or disable the device; a disabled device can't upload recordings",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: Option<bool>,
+    #[arg(
+        long, help = "Allow or block new remote access sessions to the device",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) remote_access_enabled: Option<bool>,
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "How long Foxlet on the device keeps the recordings it creates, in seconds; 0 keeps them indefinitely",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) retain_recordings_seconds: Option<u64>,
+    #[arg(
+        long, help = "Have Foxlet on the device delete recordings once they are uploaded and accepted for import",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) auto_delete_after_import: Option<bool>,
 }
 
 #[derive(Debug, Args)]
@@ -895,6 +929,26 @@ pub(crate) struct DeviceListArgs {
     pub(crate) offset: Option<i64>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by device custom properties, for example 'properties.location:sf properties.model:*'",
+        allow_hyphen_values = true
+    )]
+    pub(crate) query: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort devices by: id, name, or a custom property key prefixed with properties.",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
