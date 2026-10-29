@@ -1,13 +1,17 @@
 //! Event commands.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::cli::{EventAddArgs, EventListArgs};
+use crate::api::encode_path_segment;
+use crate::cli::{EventAddArgs, EventEditArgs, EventGetArgs, EventIdArgs, EventListArgs};
+use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, null_to_default, DeviceSummary, ProjectFallback, Record,
-    DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, null_to_default, DeviceSummary, ProjectFallback,
+    Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -143,7 +147,7 @@ struct CreateEventRequest {
     end: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     event_type_id: String,
-    metadata: std::collections::BTreeMap<String, String>,
+    metadata: BTreeMap<String, String>,
     start: String,
 }
 
@@ -152,17 +156,25 @@ struct CreateEventResponse {
     id: String,
 }
 
-pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome {
-    let mut metadata = std::collections::BTreeMap::new();
-    for pair in &args.metadata {
-        let Some((key, value)) = pair.split_once(':') else {
-            return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
-        };
-        if key.is_empty() {
-            return Outcome::failure(format!("Invalid metadata key/value pair: {pair}\n"));
+/// Parses `key:value` metadata pairs; the value may itself contain colons.
+fn metadata(pairs: &[String]) -> Result<BTreeMap<String, String>, String> {
+    let mut metadata = BTreeMap::new();
+    for pair in pairs {
+        match pair.split_once(':') {
+            Some((key, value)) if !key.is_empty() => {
+                metadata.insert(key.to_owned(), value.to_owned());
+            }
+            _ => return Err(format!("Invalid metadata key/value pair: {pair}")),
         }
-        metadata.insert(key.to_owned(), value.to_owned());
     }
+    Ok(metadata)
+}
+
+pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome {
+    let metadata = match metadata(&args.metadata) {
+        Ok(metadata) => metadata,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
     let request = CreateEventRequest {
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         device_id: args.device_id.clone(),
@@ -178,6 +190,122 @@ pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome
     {
         Ok(response) => Outcome::notice(format!("Created event: {}\n", response.id)),
         Err(error) => Outcome::failure(format!("Failed to add event: {error}\n")),
+    }
+}
+
+fn event_endpoint(id: &str) -> String {
+    format!("/v1/events/{}", encode_path_segment(id))
+}
+
+pub(crate) async fn get_event(runtime: &Runtime, args: &EventGetArgs, format: Format) -> Outcome {
+    match runtime
+        .client
+        .get::<_, Event>(&event_endpoint(&args.event_id), &())
+        .await
+    {
+        Ok(event) => format_record(&event, format),
+        Err(error) if error.is_not_found_for("event") => {
+            Outcome::failure(format!("Event not found: {}\n", args.event_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get event: {error}\n")),
+    }
+}
+
+pub(crate) async fn delete_event(runtime: &Runtime, args: &EventIdArgs) -> Outcome {
+    match runtime.client.delete(&event_endpoint(&args.event_id)).await {
+        Ok(()) => Outcome::notice(format!("Event deleted: {}\n", args.event_id)),
+        Err(error) if error.is_not_found_for("event") => {
+            Outcome::failure(format!("Event not found: {}\n", args.event_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to delete event: {error}\n")),
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EventPatch {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end: Option<String>,
+    /// An empty string removes the event type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_type_id: Option<String>,
+    /// Replaces all of the event's metadata; an empty map removes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<BTreeMap<String, String>>,
+    /// Changes only the listed keys; a `null` value removes that property.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<BTreeMap<String, Value>>,
+}
+
+fn event_patch(args: &EventEditArgs) -> Result<EventPatch, String> {
+    if args.start.is_none()
+        && args.end.is_none()
+        && args.event_type_id.is_none()
+        && !args.remove_event_type
+        && args.metadata.is_empty()
+        && !args.clear_metadata
+        && args.property.is_empty()
+        && args.remove_property.is_empty()
+    {
+        return Err("Nothing to update".to_owned());
+    }
+    for property in &args.property {
+        let Some((key, _)) = property.split_once(':') else {
+            return Err(format!("invalid key/value pair: {property}"));
+        };
+        if args.remove_property.iter().any(|removed| removed == key) {
+            return Err(format!(
+                "cannot set and remove property {key} in the same edit"
+            ));
+        }
+    }
+    let metadata = if args.clear_metadata {
+        Some(BTreeMap::new())
+    } else if args.metadata.is_empty() {
+        None
+    } else {
+        Some(metadata(&args.metadata)?)
+    };
+    Ok(EventPatch {
+        start: args.start.clone(),
+        end: args.end.clone(),
+        event_type_id: if args.remove_event_type {
+            Some(String::new())
+        } else {
+            args.event_type_id.clone()
+        },
+        metadata,
+        properties: None,
+    })
+}
+
+pub(crate) async fn edit_event(runtime: &Runtime, args: &EventEditArgs) -> Outcome {
+    let mut patch = match event_patch(args) {
+        Ok(patch) => patch,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    patch.properties = match properties(runtime, "event", &args.property).await {
+        Ok(properties) => properties,
+        Err(error) => return Outcome::failure(format!("Failed to edit event: {error}\n")),
+    };
+    if !args.remove_property.is_empty() {
+        let properties = patch.properties.get_or_insert_with(BTreeMap::new);
+        for key in &args.remove_property {
+            properties.insert(key.clone(), Value::Null);
+        }
+    }
+    match runtime
+        .client
+        .patch::<_, _, Event>(&event_endpoint(&args.event_id), &(), &patch)
+        .await
+    {
+        Ok(event) => Outcome::notice(format!("Event updated: {}\n", event.id)),
+        Err(error) if error.is_not_found_for("event") => {
+            Outcome::failure(format!("Event not found: {}\n", args.event_id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to edit event: {error}\n")),
     }
 }
 

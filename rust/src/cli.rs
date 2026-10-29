@@ -1239,8 +1239,50 @@ enum EventTypesCommand {
 enum EventsCommand {
     #[command(about = "Add an event")]
     Add(EventAddArgs),
+    #[command(about = "Delete an event")]
+    Delete(EventIdArgs),
+    #[command(about = "Edit an event's time range, event type, metadata, or properties")]
+    Edit(EventEditArgs),
+    #[command(about = "Get an event")]
+    Get(EventGetArgs),
     #[command(about = "List events")]
     List(Box<EventListArgs>),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventIdArgs {
+    #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
+    pub(crate) event_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
+    pub(crate) event_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventEditArgs {
+    #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
+    pub(crate) event_id: String,
+    #[arg(long, help = "New start of the event (inclusive), RFC 3339", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "New end of the event (inclusive), RFC 3339", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Event type ID; the event must conform to the event type's schema", allow_hyphen_values = true, value_parser = parse_id, conflicts_with = "remove_event_type")]
+    pub(crate) event_type_id: Option<String>,
+    #[arg(long, help = "Remove the event's event type")]
+    pub(crate) remove_event_type: bool,
+    #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair; replaces all of the event's metadata, repeat for more pairs", allow_hyphen_values = true, action = clap::ArgAction::Append, conflicts_with = "clear_metadata")]
+    pub(crate) metadata: Vec<String>,
+    #[arg(long, help = "Remove all of the event's metadata")]
+    pub(crate) clear_metadata: bool,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -2000,11 +2042,7 @@ async fn dispatch_api_command(
         CliCommand::EventTypes(EventTypesCommand::List(args)) => {
             event_types::list_event_types(&runtime, args.format).await
         }
-        CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
-        CliCommand::Events(EventsCommand::List(args)) => {
-            let format = args.format.format;
-            events::list_events(&runtime, &args, format).await
-        }
+        CliCommand::Events(command) => dispatch_event_command(&runtime, command).await,
         CliCommand::Extensions(ExtensionsCommand::List(args)) => {
             extensions::list_extensions(&runtime, args.format).await
         }
@@ -2107,6 +2145,22 @@ async fn dispatch_dataset_version_command(
             datasets::list_versions(runtime, &args, format).await
         }
         DatasetVersionsCommand::Restore(args) => datasets::restore_version(runtime, &args).await,
+    }
+}
+
+async fn dispatch_event_command(runtime: &runtime::Runtime, command: EventsCommand) -> Outcome {
+    match command {
+        EventsCommand::Add(args) => events::add_event(runtime, &args).await,
+        EventsCommand::Delete(args) => events::delete_event(runtime, &args).await,
+        EventsCommand::Edit(args) => events::edit_event(runtime, &args).await,
+        EventsCommand::Get(args) => {
+            let format = args.format.format;
+            events::get_event(runtime, &args, format).await
+        }
+        EventsCommand::List(args) => {
+            let format = args.format.format;
+            events::list_events(runtime, &args, format).await
+        }
     }
 }
 

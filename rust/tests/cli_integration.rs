@@ -406,6 +406,152 @@ fn events_without_properties_render_an_empty_cell() {
     );
 }
 
+const EVENT: &str = r#"{"id":"evt_one","device":{"id":"dev_one","name":"robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","eventTypeId":"evt_type","metadata":{},"properties":{"note":"slow"},"createdAt":"2024-01-02T03:04:07Z","updatedAt":"2024-01-02T03:04:08Z"}"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_event_is_printed_and_a_missing_one_is_named() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/events/evt_one", EVENT),
+        Reply {
+            status: 404,
+            ..Reply::json("GET", "/v1/events/evt_missing", r#"{"error":"Not Found"}"#)
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["events", "get", "evt_one", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Device ID,Device Name,Start,End,Event Type ID,Created At,Updated At,Metadata,Properties\n\
+         evt_one,dev_one,robot,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,evt_type,2024-01-02T03:04:07Z,2024-01-02T03:04:08Z,{},\"{\"\"note\"\":\"\"slow\"\"}\"\n"
+    );
+    let output = run(&workspace, &server, &["events", "get", "evt_missing"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Event not found: evt_missing\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_edits_send_only_the_fields_given() {
+    const EVENT_PROPERTIES: &str = r#"[{"id":"cp_speed","key":"speed","label":"Speed","resourceType":"event","valueType":"number","hasAssociatedData":false}]"#;
+    let workspace = Workspace::new();
+    for (flags, expected_body) in [
+        (
+            vec![
+                "--start",
+                "2024-01-02T03:04:05Z",
+                "--end",
+                "2024-01-02T03:04:06Z",
+                "--event-type-id",
+                "evt_type",
+            ],
+            serde_json::json!({
+                "start": "2024-01-02T03:04:05Z",
+                "end": "2024-01-02T03:04:06Z",
+                "eventTypeId": "evt_type",
+            }),
+        ),
+        (
+            vec!["-m", "weather:rain", "-m", "note:at 10:30"],
+            serde_json::json!({"metadata": {"weather": "rain", "note": "at 10:30"}}),
+        ),
+        (
+            vec![
+                "--remove-event-type",
+                "--clear-metadata",
+                "--remove-property",
+                "note",
+            ],
+            serde_json::json!({"eventTypeId": "", "metadata": {}, "properties": {"note": null}}),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("PATCH", "/v1/events/evt_one", EVENT)]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["events", "edit", "evt_one"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Event updated: evt_one\n",
+            "{flags:?}"
+        );
+        let requests = server.finish();
+        assert_eq!(requests.len(), 1, "{flags:?}");
+        assert_eq!(json_body(&requests[0]), expected_body, "{flags:?}");
+    }
+
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", EVENT_PROPERTIES),
+        Reply::json("PATCH", "/v1/events/evt_one", EVENT),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "events",
+            "edit",
+            "evt_one",
+            "-p",
+            "speed:3.5",
+            "--remove-property",
+            "note",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "event")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"properties": {"speed": 3.5, "note": null}})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn deleting_an_event_reports_it_or_names_a_missing_one() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("DELETE", "/v1/events/evt_one", r#"{"id":"evt_one"}"#),
+        Reply {
+            status: 404,
+            ..Reply::json(
+                "DELETE",
+                "/v1/events/evt_missing",
+                r#"{"error":"Not Found"}"#,
+            )
+        },
+    ]);
+    let output = run(&workspace, &server, &["events", "delete", "evt_one"]);
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Event deleted: evt_one\n"
+    );
+    let output = run(&workspace, &server, &["events", "delete", "evt_missing"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Event not found: evt_missing\n"
+    );
+}
+
 #[test]
 #[ignore = "requires loopback sockets"]
 fn large_mcap_export_preserves_server_bytes() {
@@ -1127,6 +1273,7 @@ fn identifier_paths_are_escaped_for_every_command() {
     const KEY: &str = "drive#1?/\\% snow☃";
     const SESSION_PATH: &str = "/v1/sessions/drive%231%3F%2F%5C%25%20snow%E2%98%83";
     const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
+    const EVENT_PATH: &str = "/v1/events/drive%231%3F%2F%5C%25%20snow%E2%98%83";
     let cases: &[(&[&str], &str, &str, &str)] = &[
         (&["sessions", "get", KEY], "GET", SESSION_PATH, SESSION),
         (
@@ -1190,6 +1337,14 @@ fn identifier_paths_are_escaped_for_every_command() {
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
             r#"{"episodes":[]}"#,
         ),
+        (&["events", "get", KEY], "GET", EVENT_PATH, EVENT),
+        (
+            &["events", "edit", KEY, "--start", "2024-01-02T03:04:05Z"],
+            "PATCH",
+            EVENT_PATH,
+            EVENT,
+        ),
+        (&["events", "delete", KEY], "DELETE", EVENT_PATH, "{}"),
     ];
     assert_each_request_reaches(cases);
 }
@@ -4375,6 +4530,15 @@ fn command_arguments_are_validated_before_sending_a_request() {
             "--name cannot be empty\n",
         ),
         (vec!["datasets", "edit", "ds_one"], "Nothing to update\n"),
+        (vec!["events", "edit", "evt_one"], "Nothing to update\n"),
+        (
+            vec!["events", "edit", "evt_one", "-p", "note:x", "--remove-property", "note"],
+            "cannot set and remove property note in the same edit\n",
+        ),
+        (
+            vec!["events", "edit", "evt_one", "--metadata", "no-colon"],
+            "Invalid metadata key/value pair: no-colon\n",
+        ),
         (
             vec!["datasets", "edit", "ds_one", "--name", ""],
             "--name cannot be empty\n",
