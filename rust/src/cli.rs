@@ -1294,6 +1294,21 @@ pub(crate) struct PendingImportListArgs {
     pub(crate) site_backfill_job_id: Option<String>,
     #[arg(
         long,
+        help = "Field to sort imports by: createdAt, updatedAt, deviceId, deviceName, importId, requestId, or error",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc (default: asc)",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
         help = "Only imports updated since this time",
         allow_hyphen_values = true
     )]
@@ -2263,6 +2278,8 @@ mod tests {
                 "filename",
                 "request-id",
                 "site-id",
+                "sort-by",
+                "sort-order",
             ],
         ),
         (
