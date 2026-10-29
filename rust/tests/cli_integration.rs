@@ -1125,7 +1125,7 @@ fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn identifier_paths_are_escaped_for_every_command() {
+fn session_and_device_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
     const SESSION_PATH: &str = "/v1/sessions/drive%231%3F%2F%5C%25%20snow%E2%98%83";
     const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
@@ -1174,6 +1174,15 @@ fn identifier_paths_are_escaped_for_every_command() {
             "/v1/devices/drive%231%3F%2F%5C%25%20snow%E2%98%83",
             r#"{"id":"device"}"#,
         ),
+    ];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn other_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    let cases: &[(&[&str], &str, &str, &str)] = &[
         (
             &["recordings", "delete", KEY],
             "DELETE",
