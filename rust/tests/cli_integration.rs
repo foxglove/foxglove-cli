@@ -3589,9 +3589,9 @@ fn versions_are_listed_with_the_draft_marked() {
     assert_eq!(String::from_utf8_lossy(&output.stderr), "");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At\n\
-         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z\n\
-         2,draft,,3,1,0,,2024-01-02T00:00:00Z\n"
+        "Version,Status,Committed At,Episode Count,Added,Removed,Changed,Created At,Description,Committed By Member,Committed By API Key\n\
+         1,committed,2024-01-02T00:00:00Z,2,2,0,,2024-01-01T00:00:00Z,,,\n\
+         2,draft,,3,1,0,,2024-01-02T00:00:00Z,,,\n"
     );
 }
 

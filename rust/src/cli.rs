@@ -471,7 +471,10 @@ enum DatasetsCommand {
     Get(DatasetGetArgs),
     #[command(about = "List datasets")]
     List(DatasetListArgs),
-    #[command(about = "List, compare, and restore dataset versions", subcommand)]
+    #[command(
+        about = "List, compare, edit, and restore dataset versions",
+        subcommand
+    )]
     Versions(DatasetVersionsCommand),
 }
 
