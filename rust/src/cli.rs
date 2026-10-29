@@ -15,7 +15,7 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
+    extensions, layouts, pending_imports, projects, recordings, runtime, sessions, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -151,6 +151,11 @@ enum CliCommand {
     Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
+    #[command(
+        about = "List and manage layouts shared with your organization",
+        subcommand
+    )]
+    Layouts(LayoutsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
     #[command(about = "List and manage projects", subcommand)]
@@ -1358,6 +1363,112 @@ pub(crate) struct ExtensionIdArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum LayoutsCommand {
+    #[command(about = "Create a layout from a JSON file of layout data")]
+    Add(LayoutAddArgs),
+    #[command(about = "Delete a layout; restore brings it back")]
+    Delete(LayoutIdArgs),
+    #[command(about = "Update a layout's name, folder, permission, or data")]
+    Edit(LayoutEditArgs),
+    #[command(about = "Get a layout")]
+    Get(LayoutGetArgs),
+    #[command(about = "List layouts shared with your organization")]
+    List(LayoutListArgs),
+    #[command(about = "Restore a deleted layout")]
+    Restore(LayoutIdArgs),
+}
+
+const LAYOUT_PERMISSION_HELP: &str =
+    "Who can view and edit the layout: ORG_READ, ORG_WRITE, or CREATOR_WRITE (API keys can only use ORG_READ or ORG_WRITE)";
+const LAYOUT_FOLDER_HELP: &str =
+    "Folder that organizes the layout in the app; cannot contain a forward slash";
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long, help = "Include each layout's data in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_data: bool,
+    #[arg(
+        long,
+        help = "Only layouts updated since this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) updated_since: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "LAYOUT_ID", value_parser = parse_id)]
+    pub(crate) layout_id: String,
+    #[arg(
+        long, help = "Include the layout data in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_data: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutIdArgs {
+    #[arg(value_name = "LAYOUT_ID", value_parser = parse_id)]
+    pub(crate) layout_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutAddArgs {
+    #[arg(long, value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file containing the layout data object")]
+    pub(crate) data: PathBuf,
+    #[arg(long, help = LAYOUT_FOLDER_HELP, allow_hyphen_values = true)]
+    pub(crate) folder_name: Option<String>,
+    #[arg(long, help = "ID for the new layout (at most 36 characters; defaults to a server-generated ID)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) id: Option<String>,
+    #[arg(long, help = "Display name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: String,
+    #[arg(long, help = LAYOUT_PERMISSION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) permission: String,
+    #[arg(
+        long,
+        help = "When the layout was last saved locally (ISO 8601)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) saved_at: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutEditArgs {
+    #[arg(value_name = "LAYOUT_ID", value_parser = parse_id)]
+    pub(crate) layout_id: String,
+    #[arg(long, value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file containing the new layout data object")]
+    pub(crate) data: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "New folder for the layout; pass an empty value to remove it from its folder",
+        allow_hyphen_values = true
+    )]
+    pub(crate) folder_name: Option<String>,
+    #[arg(long, help = "New display name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
+    #[arg(long, help = LAYOUT_PERMISSION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) permission: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum PendingImportsCommand {
     #[command(about = "List pending and errored import jobs for uploaded recordings")]
     List(PendingImportListArgs),
@@ -2005,15 +2116,8 @@ async fn dispatch_api_command(
             let format = args.format.format;
             events::list_events(&runtime, &args, format).await
         }
-        CliCommand::Extensions(ExtensionsCommand::List(args)) => {
-            extensions::list_extensions(&runtime, args.format).await
-        }
-        CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
-            extensions::publish_extension(&runtime, &args).await
-        }
-        CliCommand::Extensions(ExtensionsCommand::Unpublish(args)) => {
-            extensions::unpublish_extension(&runtime, &args).await
-        }
+        CliCommand::Extensions(command) => dispatch_extension_command(&runtime, command).await,
+        CliCommand::Layouts(command) => dispatch_layout_command(&runtime, command).await,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
             pending_imports::list_pending_imports(&runtime, &args, format).await
@@ -2037,6 +2141,34 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_extension_command(
+    runtime: &runtime::Runtime,
+    command: ExtensionsCommand,
+) -> Outcome {
+    match command {
+        ExtensionsCommand::List(args) => extensions::list_extensions(runtime, args.format).await,
+        ExtensionsCommand::Publish(args) => extensions::publish_extension(runtime, &args).await,
+        ExtensionsCommand::Unpublish(args) => extensions::unpublish_extension(runtime, &args).await,
+    }
+}
+
+async fn dispatch_layout_command(runtime: &runtime::Runtime, command: LayoutsCommand) -> Outcome {
+    match command {
+        LayoutsCommand::Add(args) => layouts::add_layout(runtime, &args).await,
+        LayoutsCommand::Delete(args) => layouts::delete_layout(runtime, &args).await,
+        LayoutsCommand::Edit(args) => layouts::edit_layout(runtime, &args).await,
+        LayoutsCommand::Get(args) => {
+            let format = args.format.format;
+            layouts::get_layout(runtime, &args, format).await
+        }
+        LayoutsCommand::List(args) => {
+            let format = args.format.format;
+            layouts::list_layouts(runtime, &args, format).await
+        }
+        LayoutsCommand::Restore(args) => layouts::restore_layout(runtime, &args).await,
     }
 }
 

@@ -1,5 +1,7 @@
 #[path = "cli_integration/episodes.rs"]
 mod episodes;
+#[path = "cli_integration/layouts.rs"]
+mod layouts;
 
 mod support;
 
@@ -2872,6 +2874,12 @@ fn fractional_timestamp_query_parameters_are_preserved() {
         (
             vec!["pending-imports", "list"],
             "/v1/data/pending-imports",
+            "[]",
+            vec![("--updated-since", "updatedSince")],
+        ),
+        (
+            vec!["layouts", "list"],
+            "/v1/layouts",
             "[]",
             vec![("--updated-since", "updatedSince")],
         ),
