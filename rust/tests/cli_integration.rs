@@ -1,5 +1,7 @@
 #[path = "cli_integration/episodes.rs"]
 mod episodes;
+#[path = "cli_integration/sites.rs"]
+mod sites;
 
 mod support;
 
@@ -1137,7 +1139,7 @@ fn assert_each_request_reaches(cases: &[RequestCase<'_>]) {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn identifier_paths_are_escaped_for_every_command() {
+fn session_and_device_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
     const SESSION_PATH: &str = "/v1/sessions/drive%231%3F%2F%5C%25%20snow%E2%98%83";
     const SESSION: &str = r#"{"id":"session","createdAt":"","updatedAt":""}"#;
@@ -1175,6 +1177,27 @@ fn identifier_paths_are_escaped_for_every_command() {
             r#"{"id":"device","name":"renamed"}"#,
         ),
         (
+            &["devices", "get", KEY],
+            "GET",
+            "/v1/devices/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"device","name":"renamed","createdAt":"","updatedAt":"","projectId":""}"#,
+        ),
+        (
+            &["devices", "delete", KEY],
+            "DELETE",
+            "/v1/devices/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"device"}"#,
+        ),
+    ];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn other_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (
             &["recordings", "delete", KEY],
             "DELETE",
             "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
@@ -1187,16 +1210,34 @@ fn identifier_paths_are_escaped_for_every_command() {
             r#"{"id":"recording","importStatus":"pending"}"#,
         ),
         (
+            &["extensions", "get", KEY],
+            "GET",
+            "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"ext","name":"n","publisher":"p","displayName":"d","description":null,"activeVersion":null,"sha256Sum":null,"foxe":"https://example.invalid/ext.foxe"}"#,
+        ),
+        (
             &["extensions", "unpublish", KEY],
             "DELETE",
             "/v1/extensions/drive%231%3F%2F%5C%25%20snow%E2%98%83",
             "{}",
         ),
         (
-            &["site-tokens", "delete", KEY],
+            &["event-types", "get", KEY, "--format", "json"],
+            "GET",
+            "/v1/event-types/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"evtt","name":"Stop","createdAt":"","updatedAt":""}"#,
+        ),
+        (
+            &["event-types", "edit", KEY, "--name", "renamed"],
+            "PATCH",
+            "/v1/event-types/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"evtt"}"#,
+        ),
+        (
+            &["event-types", "delete", KEY],
             "DELETE",
-            "/v1/site-tokens/drive%231%3F%2F%5C%25%20snow%E2%98%83",
-            "{}",
+            "/v1/event-types/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"evtt"}"#,
         ),
         (
             &["attachments", "download", KEY],
@@ -1211,6 +1252,19 @@ fn identifier_paths_are_escaped_for_every_command() {
             r#"{"episodes":[]}"#,
         ),
     ];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn site_token_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    let cases: &[(&[&str], &str, &str, &str)] = &[(
+        &["site-tokens", "delete", KEY],
+        "DELETE",
+        "/v1/site-tokens/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+        "{}",
+    )];
     assert_each_request_reaches(cases);
 }
 
@@ -2971,6 +3025,127 @@ fn event_types_are_listed_with_their_custom_properties() {
     );
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_an_event_type_sends_its_custom_properties_in_order() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec!["--name", "Stop"],
+            serde_json::json!({"name": "Stop", "customProperties": []}),
+        ),
+        (
+            vec![
+                "--name",
+                "Stop",
+                "--color",
+                "red",
+                "--custom-property",
+                "cp_two:required",
+                "--custom-property",
+                "cp_one",
+            ],
+            serde_json::json!({
+                "name": "Stop",
+                "colorName": "red",
+                "customProperties": [
+                    {"id": "cp_two", "required": true},
+                    {"id": "cp_one", "required": false},
+                ],
+            }),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/event-types",
+            r#"{"id":"evtt_new","name":"Stop","createdAt":"","updatedAt":""}"#,
+        )]);
+        let mut args = vec!["event-types", "add"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Event type created: evtt_new\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn editing_an_event_type_sends_only_the_fields_given() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec!["--name", "Halt", "--color", "blue"],
+            serde_json::json!({"name": "Halt", "colorName": "blue"}),
+        ),
+        (
+            vec!["--custom-property", "cp_one:required"],
+            serde_json::json!({"customProperties": [{"id": "cp_one", "required": true}]}),
+        ),
+        (
+            vec!["--clear-custom-properties"],
+            serde_json::json!({"customProperties": []}),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/event-types/evtt_one",
+            r#"{"id":"evtt_one","name":"Halt","createdAt":"","updatedAt":""}"#,
+        )]);
+        let mut args = vec!["event-types", "edit", "evtt_one"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Event type updated: evtt_one\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_an_event_type_renders_one_record_with_custom_property_keys() {
+    const EVENT_TYPE: &str = r#"{"id":"evtt_one","name":"Stop","colorName":"red","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","customProperties":[{"id":"cp_one","required":true}]}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/event-types/evtt_one", EVENT_TYPE),
+        Reply::json(
+            "GET",
+            "/v1/custom-properties",
+            r#"[{"id":"cp_one","key":"stop_reason"}]"#,
+        ),
+        Reply::json("GET", "/v1/event-types/evtt_one", EVENT_TYPE),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "get", "evtt_one", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Name,Color,Custom Properties,Created At,Updated At\n\
+         evtt_one,Stop,red,stop_reason (required),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "get", "evtt_one", "--format", "json"],
+    );
+    assert_success(&output);
+    server.finish();
+    let event_type: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        event_type["customProperties"],
+        serde_json::json!([{"id": "cp_one", "required": true}])
+    );
+}
+
 fn json_body(request: &str) -> serde_json::Value {
     serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }
@@ -3173,6 +3348,46 @@ fn getting_a_dataset_renders_one_record() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn getting_an_extension_renders_one_record_with_its_download_link() {
+    const EXTENSION: &str = r#"{"id":"ext_one","name":"my_panel","publisher":"acme","displayName":"My Panel","description":null,"activeVersion":"1.0.0","sha256Sum":"abc123","foxe":"https://example.invalid/ext_one.foxe?sig=1"}"#;
+    let workspace = Workspace::new();
+    for (format, expected) in [
+        (
+            "json",
+            "{\"id\":\"ext_one\",\"name\":\"my_panel\",\"publisher\":\"acme\",\"displayName\":\"My Panel\",\"description\":null,\"activeVersion\":\"1.0.0\",\"sha256Sum\":\"abc123\",\"foxe\":\"https://example.invalid/ext_one.foxe?sig=1\"}\n",
+        ),
+        (
+            "csv",
+            "ID,Name,Publisher,Display Name,Description,Active Version,SHA-256 Sum,Download Link\n\
+             ext_one,my_panel,acme,My Panel,,1.0.0,abc123,https://example.invalid/ext_one.foxe?sig=1\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/extensions/ext_one", EXTENSION)]);
+        let output = run(
+            &workspace,
+            &server,
+            &["extensions", "get", "ext_one", "--format", format],
+        );
+        assert_success(&output);
+        server.finish();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected, "{format}");
+    }
+
+    let server = Server::new(vec![Reply {
+        status: 404,
+        ..Reply::json("GET", "/v1/extensions/ext_gone", r#"{"error":"Not Found"}"#)
+    }]);
+    let output = run(&workspace, &server, &["extensions", "get", "ext_gone"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Extension not found: ext_gone\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn session_recordings_report_a_missing_session() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply {
@@ -3222,6 +3437,12 @@ fn deleting_what_is_not_found_fails() {
             "Recording not found: one\n",
         ),
         (
+            &["devices", "delete", "one"],
+            "/v1/devices/one",
+            r#"{"error":"Not Found"}"#,
+            "Device not found: one\n",
+        ),
+        (
             &["extensions", "unpublish", "one"],
             "/v1/extensions/one",
             r#"{"error":"Not Found"}"#,
@@ -3232,6 +3453,12 @@ fn deleting_what_is_not_found_fails() {
             "/v1/site-tokens/one",
             r#"{"error":"Not Found"}"#,
             "Site token not found: one\n",
+        ),
+        (
+            &["event-types", "delete", "one"],
+            "/v1/event-types/one",
+            r#"{"error":"Not Found"}"#,
+            "Event type not found: one\n",
         ),
         (
             &["sessions", "delete", "one", "--project-id", "prj_gone"],
@@ -4401,6 +4628,7 @@ fn command_arguments_are_validated_before_sending_a_request() {
             "--name cannot be empty\n",
         ),
         (vec!["datasets", "edit", "ds_one"], "Nothing to update\n"),
+        (vec!["event-types", "edit", "evtt_one"], "Nothing to update\n"),
         (
             vec!["datasets", "edit", "ds_one", "--name", ""],
             "--name cannot be empty\n",
@@ -4618,6 +4846,46 @@ fn devices_list_sends_filters_and_renders_device_settings() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn devices_are_fetched_and_deleted_by_name_or_id() {
+    const DEVICE: &str = r#"{"id":"dev_one","name":"robot","properties":{"model":"x1"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one","enabled":true,"remoteAccessEnabled":false,"retainRecordingsSeconds":0,"autoDeleteAfterImport":true}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/devices/robot", DEVICE),
+        Reply::json("GET", "/v1/devices/dev_one", DEVICE),
+        Reply::json("DELETE", "/v1/devices/robot", r#"{"id":"dev_one"}"#),
+    ]);
+    let csv = run(
+        &workspace,
+        &server,
+        &["devices", "get", "robot", "--format", "csv"],
+    );
+    assert_success(&csv);
+    assert_eq!(
+        String::from_utf8_lossy(&csv.stdout),
+        "ID,Name,Custom Properties,Created At,Updated At,Project ID,Enabled,Remote Access Enabled,Retain Recordings Seconds,Auto Delete After Import\n\
+         dev_one,robot,\"{\"\"model\"\":\"\"x1\"\"}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,true,false,0,true\n"
+    );
+    let json = run(
+        &workspace,
+        &server,
+        &["devices", "get", "dev_one", "--format", "json"],
+    );
+    assert_success(&json);
+    let device: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(device["id"], "dev_one");
+    assert_eq!(device["properties"]["model"], "x1");
+    assert_eq!(device["autoDeleteAfterImport"], true);
+    let deleted = run(&workspace, &server, &["devices", "delete", "robot"]);
+    assert_success(&deleted);
+    assert_eq!(
+        String::from_utf8_lossy(&deleted.stderr),
+        "Device deleted: robot\n"
+    );
+    assert_eq!(server.finish().len(), 3);
+}
+
+#[test]
 fn device_names_cannot_be_empty() {
     let workspace = Workspace::new();
     for args in [
@@ -4660,6 +4928,18 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
             false,
         ),
         (vec!["events", "list"], "GET", "/v1/events", false),
+        (
+            vec!["devices", "get", "dev_one"],
+            "GET",
+            "/v1/devices/dev_one",
+            false,
+        ),
+        (
+            vec!["devices", "delete", "dev_one"],
+            "DELETE",
+            "/v1/devices/dev_one",
+            false,
+        ),
         (
             vec![
                 "events",
