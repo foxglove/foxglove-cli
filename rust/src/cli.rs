@@ -188,6 +188,10 @@ pub(crate) struct AttachmentDownloadArgs {
 pub(crate) struct AttachmentListArgs {
     #[command(flatten)]
     format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
     #[arg(
         long,
         help = "Maximum number of items to return (1-2000, default: 50)",
@@ -205,6 +209,23 @@ pub(crate) struct AttachmentListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Primary site ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort attachments by: logTime",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2192,7 +2213,16 @@ mod tests {
     }
 
     const SELECTOR_CASES: &[(&[&str], &[&str])] = &[
-        (&["attachments", "list"], &["recording-id"]),
+        (
+            &["attachments", "list"],
+            &[
+                "device-id",
+                "device-name",
+                "recording-id",
+                "site-id",
+                "sort-by",
+            ],
+        ),
         (
             &["coverage", "list"],
             &[
