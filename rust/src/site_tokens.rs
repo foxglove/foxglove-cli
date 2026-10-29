@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::encode_path_segment;
 use crate::cli::{SiteTokenAddArgs, SiteTokenIdArgs, SiteTokenListArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, format_record, Record};
+use crate::records::{fetch_list, format_record, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -38,7 +38,7 @@ impl Record for SiteToken {
 struct CreatedSiteToken {
     #[serde(flatten)]
     site_token: SiteToken,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     token: String,
 }
 
@@ -97,6 +97,10 @@ pub(crate) async fn add_site_token(
         .post::<_, CreatedSiteToken>("/v1/site-tokens", &request)
         .await
     {
+        Ok(created) if created.token.is_empty() => Outcome::failure(format!(
+            "Site token {id} was created, but the response did not include its value. Delete it with `foxglove site-tokens delete {id}` and try again.\n",
+            id = created.site_token.id
+        )),
         Ok(created) => {
             let mut outcome = format_record(&created, format);
             if outcome.exit_code == 0 {

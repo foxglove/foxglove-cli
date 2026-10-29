@@ -5148,6 +5148,26 @@ fn site_tokens_are_listed_created_once_and_deleted() {
         );
     }
 
+    for created in [
+        r#"{"id":"stkn_3","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z"}"#,
+        r#"{"id":"stkn_3","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z","token":""}"#,
+    ] {
+        let server = Server::new(vec![Reply::json("POST", "/v1/site-tokens", created)]);
+        let output = run(
+            &workspace,
+            &server,
+            &["site-tokens", "add", "--site-id", "site_1"],
+        );
+        server.finish();
+        assert!(!output.status.success(), "{created}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "", "{created}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Site token stkn_3 was created, but the response did not include its value. Delete it with `foxglove site-tokens delete stkn_3` and try again.\n",
+            "{created}"
+        );
+    }
+
     let server = Server::new(vec![Reply::json(
         "DELETE",
         "/v1/site-tokens/stkn_2",
