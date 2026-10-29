@@ -899,7 +899,7 @@ enum DevicesCommand {
     #[command(about = "List devices registered to your organization")]
     List(DeviceListArgs),
     #[command(
-        about = "List, get, or backfill the values a device's custom properties held over time",
+        about = "List, get, or update the values a device's custom properties held over time",
         subcommand
     )]
     PropertyIntervals(DevicePropertyIntervalsCommand),
