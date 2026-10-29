@@ -117,10 +117,10 @@ List all projects:
 
 ```
 $ foxglove projects list
-    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT |
-    |----------------------|--------------------|--------------|----------------------------|
-    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       |
-    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       |
+    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT | INVITE ONLY |
+    |----------------------|--------------------|--------------|----------------------------|-------------|
+    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       | false       |
+    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
 ### Uploads and recordings
