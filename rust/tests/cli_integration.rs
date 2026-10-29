@@ -944,13 +944,13 @@ fn login_requires_device_code_interval_and_expiry() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn login_stops_polling_when_device_code_expires() {
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
     let workspace = Workspace::new();
     let server = Server::new(vec![
         Reply::json(
             "POST",
             "/v1/auth/device-code",
-            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":5}"#,
+            r#"{"deviceCode":"dc_id","userCode":"1234","verificationUriComplete":"https://example.invalid","expiresIn":1,"interval":60}"#,
         ),
         pending_token_reply(),
     ]);
@@ -963,9 +963,19 @@ fn login_stops_polling_when_device_code_expires() {
     ]))
     .finish();
     assert_login_expired(&output, &workspace);
-    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(
+        started.elapsed() < LOGIN_EXPIRY_BOUND,
+        "{:?}",
+        started.elapsed()
+    );
     assert_eq!(server.finish().len(), 2);
 }
+
+/// Upper bound for a login whose device code expires after one second. It sits far below the
+/// 60-second poll interval and the 300-second read timeout, so finishing within it still proves
+/// that expiry ends the wait, while leaving room for slow CI runners.
+#[cfg(feature = "test-support")]
+const LOGIN_EXPIRY_BOUND: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[cfg(feature = "test-support")]
 fn assert_login_expired(output: &Output, workspace: &Workspace) {
@@ -981,7 +991,7 @@ fn assert_login_expired(output: &Output, workspace: &Workspace) {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn login_expiry_aborts_stalled_token_response() {
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
     let workspace = Workspace::new();
     let server = Server::new(vec![
         Reply::json(
@@ -1003,7 +1013,11 @@ fn login_expiry_aborts_stalled_token_response() {
     ]))
     .finish();
     assert_login_expired(&output, &workspace);
-    assert!(started.elapsed() < Duration::from_secs(3));
+    assert!(
+        started.elapsed() < LOGIN_EXPIRY_BOUND,
+        "{:?}",
+        started.elapsed()
+    );
     assert_eq!(server.finish().len(), 2);
 }
 
