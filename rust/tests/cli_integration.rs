@@ -1161,6 +1161,18 @@ fn identifier_paths_are_escaped_for_every_command() {
             r#"{"id":"device","name":"renamed"}"#,
         ),
         (
+            &["devices", "get", KEY],
+            "GET",
+            "/v1/devices/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"device","name":"renamed","createdAt":"","updatedAt":"","projectId":""}"#,
+        ),
+        (
+            &["devices", "delete", KEY],
+            "DELETE",
+            "/v1/devices/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"device"}"#,
+        ),
+        (
             &["recordings", "delete", KEY],
             "DELETE",
             "/v1/recordings/drive%231%3F%2F%5C%25%20snow%E2%98%83",
@@ -3202,6 +3214,12 @@ fn deleting_what_is_not_found_fails() {
             "Recording not found: one\n",
         ),
         (
+            &["devices", "delete", "one"],
+            "/v1/devices/one",
+            r#"{"error":"Not Found"}"#,
+            "Device not found: one\n",
+        ),
+        (
             &["extensions", "unpublish", "one"],
             "/v1/extensions/one",
             r#"{"error":"Not Found"}"#,
@@ -4592,6 +4610,46 @@ fn devices_list_sends_filters_and_renders_device_settings() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn devices_are_fetched_and_deleted_by_name_or_id() {
+    const DEVICE: &str = r#"{"id":"dev_one","name":"robot","properties":{"model":"x1"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one","enabled":true,"remoteAccessEnabled":false,"retainRecordingsSeconds":0,"autoDeleteAfterImport":true}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/devices/robot", DEVICE),
+        Reply::json("GET", "/v1/devices/dev_one", DEVICE),
+        Reply::json("DELETE", "/v1/devices/robot", r#"{"id":"dev_one"}"#),
+    ]);
+    let csv = run(
+        &workspace,
+        &server,
+        &["devices", "get", "robot", "--format", "csv"],
+    );
+    assert_success(&csv);
+    assert_eq!(
+        String::from_utf8_lossy(&csv.stdout),
+        "ID,Name,Custom Properties,Created At,Updated At,Project ID,Enabled,Remote Access Enabled,Retain Recordings Seconds,Auto Delete After Import\n\
+         dev_one,robot,\"{\"\"model\"\":\"\"x1\"\"}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,true,false,0,true\n"
+    );
+    let json = run(
+        &workspace,
+        &server,
+        &["devices", "get", "dev_one", "--format", "json"],
+    );
+    assert_success(&json);
+    let device: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(device["id"], "dev_one");
+    assert_eq!(device["properties"]["model"], "x1");
+    assert_eq!(device["autoDeleteAfterImport"], true);
+    let deleted = run(&workspace, &server, &["devices", "delete", "robot"]);
+    assert_success(&deleted);
+    assert_eq!(
+        String::from_utf8_lossy(&deleted.stderr),
+        "Device deleted: robot\n"
+    );
+    assert_eq!(server.finish().len(), 3);
+}
+
+#[test]
 fn device_names_cannot_be_empty() {
     let workspace = Workspace::new();
     for args in [
@@ -4634,6 +4692,18 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
             false,
         ),
         (vec!["events", "list"], "GET", "/v1/events", false),
+        (
+            vec!["devices", "get", "dev_one"],
+            "GET",
+            "/v1/devices/dev_one",
+            false,
+        ),
+        (
+            vec!["devices", "delete", "dev_one"],
+            "DELETE",
+            "/v1/devices/dev_one",
+            false,
+        ),
         (
             vec![
                 "events",

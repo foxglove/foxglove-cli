@@ -121,6 +121,19 @@ $ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings
     Device updated: RobotA
 ```
 
+Get one device by name or ID:
+
+```
+$ foxglove devices get RobotA --format json
+```
+
+Delete a device. The API refuses while the device still has associated data, so delete that data first:
+
+```
+$ foxglove devices delete RobotA
+    Device deleted: RobotA
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
