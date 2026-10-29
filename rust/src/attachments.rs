@@ -31,6 +31,14 @@ struct Attachment {
     crc: u64,
     size: i64,
     fingerprint: String,
+    #[serde(
+        rename = "dataOffset",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    data_offset: Option<i64>,
+    #[serde(rename = "lakePath", skip_serializing_if = "Option::is_none", default)]
+    lake_path: Option<String>,
 }
 
 impl Record for Attachment {
@@ -46,6 +54,8 @@ impl Record for Attachment {
             "CRC",
             "Size",
             "Fingerprint",
+            "Data Offset",
+            "Lake Path",
         ]
     }
 
@@ -61,6 +71,10 @@ impl Record for Attachment {
             self.crc.to_string(),
             self.size.to_string(),
             self.fingerprint.clone(),
+            self.data_offset
+                .map(|offset| offset.to_string())
+                .unwrap_or_default(),
+            self.lake_path.clone().unwrap_or_default(),
         ]
     }
 }
@@ -169,8 +183,39 @@ pub(crate) async fn download_attachment(
 mod tests {
     use std::fs;
 
-    use super::{download_attachment, BINARY_OUTPUT_TERMINAL_ERROR};
+    use super::{download_attachment, Attachment, BINARY_OUTPUT_TERMINAL_ERROR};
     use crate::cli::AttachmentDownloadArgs;
+    use crate::records::Record;
+
+    #[test]
+    fn data_offset_and_lake_path_are_optional() {
+        let base = serde_json::json!({
+            "id": "att_1",
+            "recordingId": "rec_1",
+            "siteId": "site_1",
+            "name": "a.yaml",
+            "mediaType": "application/yaml",
+            "logTime": "",
+            "createTime": "",
+            "crc": 0,
+            "size": 1,
+            "fingerprint": "f",
+        });
+        let attachment: Attachment = serde_json::from_value(base.clone()).unwrap();
+        assert_eq!(attachment.fields()[10..], ["", ""]);
+        let json = serde_json::to_value(&attachment).unwrap();
+        assert!(json.get("dataOffset").is_none(), "{json}");
+        assert!(json.get("lakePath").is_none(), "{json}");
+
+        let mut with_fields = base;
+        with_fields["dataOffset"] = serde_json::json!(4096);
+        with_fields["lakePath"] = serde_json::json!("lake/rec_1/a.yaml");
+        let attachment: Attachment = serde_json::from_value(with_fields).unwrap();
+        assert_eq!(attachment.fields()[10..], ["4096", "lake/rec_1/a.yaml"]);
+        let json = serde_json::to_value(&attachment).unwrap();
+        assert_eq!(json["dataOffset"], 4096);
+        assert_eq!(json["lakePath"], "lake/rec_1/a.yaml");
+    }
 
     #[tokio::test]
     async fn downloads_refuse_a_terminal_before_requesting() {
