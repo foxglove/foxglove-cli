@@ -15,7 +15,8 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
+    extensions, pending_imports, projects, recordings, runtime, sessions, site_tokens, topics,
+    upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -159,6 +160,12 @@ enum CliCommand {
     Recordings(RecordingsCommand),
     #[command(about = "List and manage sessions", subcommand)]
     Sessions(SessionsCommand),
+    #[command(
+        name = "site-tokens",
+        about = "List and manage site tokens",
+        subcommand
+    )]
+    SiteTokens(SiteTokensCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
     #[command(
@@ -1358,6 +1365,38 @@ pub(crate) struct ExtensionIdArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum SiteTokensCommand {
+    #[command(about = "Create a token for a site controller and print it once")]
+    Add(SiteTokenAddArgs),
+    #[command(about = "Delete a site token")]
+    Delete(SiteTokenIdArgs),
+    #[command(about = "List site tokens")]
+    List(SiteTokenListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteTokenAddArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Site ID (required)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteTokenIdArgs {
+    #[arg(value_name = "SITE_TOKEN_ID")]
+    pub(crate) site_token_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteTokenListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Only tokens for this site ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum PendingImportsCommand {
     #[command(about = "List pending and errored import jobs for uploaded recordings")]
     List(PendingImportListArgs),
@@ -1933,6 +1972,21 @@ fn command_project_scope(
     Some(runtime.project_scope(flag.as_deref()))
 }
 
+fn log_project_scope(command: &CliCommand, runtime: &runtime::Runtime) {
+    if let Some(scope) = command_project_scope(command, runtime) {
+        let id = if scope.id.is_empty() {
+            "unscoped"
+        } else {
+            &scope.id
+        };
+        let _ = writeln!(
+            std::io::stderr(),
+            "[DEBUG] Project scope: {id} (source: {})",
+            scope.source
+        );
+    }
+}
+
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
@@ -1945,18 +1999,7 @@ async fn dispatch_api_command(
         Err(error) => return Outcome::failure(error),
     };
     if debug {
-        if let Some(scope) = command_project_scope(&command, &runtime) {
-            let id = if scope.id.is_empty() {
-                "unscoped"
-            } else {
-                &scope.id
-            };
-            let _ = writeln!(
-                std::io::stderr(),
-                "[DEBUG] Project scope: {id} (source: {})",
-                scope.source
-            );
-        }
+        log_project_scope(&command, &runtime);
     }
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
@@ -2029,6 +2072,7 @@ async fn dispatch_api_command(
             recordings::list_recordings(&runtime, &args, format).await
         }
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
+        CliCommand::SiteTokens(command) => dispatch_site_token_command(&runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
             let format = args.format.format;
             topics::list_topics(&runtime, &args, format).await
@@ -2130,6 +2174,23 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
         EpisodesCommand::Versions(EpisodeVersionsCommand::List(args)) => {
             let format = args.format.format;
             episodes::list_versions(runtime, &args, format).await
+        }
+    }
+}
+
+async fn dispatch_site_token_command(
+    runtime: &runtime::Runtime,
+    command: SiteTokensCommand,
+) -> Outcome {
+    match command {
+        SiteTokensCommand::Add(args) => {
+            let format = args.format.format;
+            site_tokens::add_site_token(runtime, &args, format).await
+        }
+        SiteTokensCommand::Delete(args) => site_tokens::delete_site_token(runtime, &args).await,
+        SiteTokensCommand::List(args) => {
+            let format = args.format.format;
+            site_tokens::list_site_tokens(runtime, &args, format).await
         }
     }
 }
