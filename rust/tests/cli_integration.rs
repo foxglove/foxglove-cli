@@ -1,5 +1,7 @@
 #[path = "cli_integration/episodes.rs"]
 mod episodes;
+#[path = "cli_integration/layouts.rs"]
+mod layouts;
 #[path = "cli_integration/sites.rs"]
 mod sites;
 
@@ -405,6 +407,152 @@ fn events_without_properties_render_an_empty_cell() {
         String::from_utf8_lossy(&output.stdout),
         "ID,Device ID,Device Name,Start,End,Event Type ID,Created At,Updated At,Metadata,Properties\n\
          evt_one,dev_one,robot,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,2024-01-02T03:04:07Z,2024-01-02T03:04:08Z,{},\n"
+    );
+}
+
+const EVENT: &str = r#"{"id":"evt_one","device":{"id":"dev_one","name":"robot"},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","eventTypeId":"evt_type","metadata":{},"properties":{"note":"slow"},"createdAt":"2024-01-02T03:04:07Z","updatedAt":"2024-01-02T03:04:08Z"}"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn an_event_is_printed_and_a_missing_one_is_named() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/events/evt_one", EVENT),
+        Reply {
+            status: 404,
+            ..Reply::json("GET", "/v1/events/evt_missing", r#"{"error":"Not Found"}"#)
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["events", "get", "evt_one", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Device ID,Device Name,Start,End,Event Type ID,Created At,Updated At,Metadata,Properties\n\
+         evt_one,dev_one,robot,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,evt_type,2024-01-02T03:04:07Z,2024-01-02T03:04:08Z,{},\"{\"\"note\"\":\"\"slow\"\"}\"\n"
+    );
+    let output = run(&workspace, &server, &["events", "get", "evt_missing"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Event not found: evt_missing\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_edits_send_only_the_fields_given() {
+    const EVENT_PROPERTIES: &str = r#"[{"id":"cp_speed","key":"speed","label":"Speed","resourceType":"event","valueType":"number","hasAssociatedData":false}]"#;
+    let workspace = Workspace::new();
+    for (flags, expected_body) in [
+        (
+            vec![
+                "--start",
+                "2024-01-02T03:04:05Z",
+                "--end",
+                "2024-01-02T03:04:06Z",
+                "--event-type-id",
+                "evt_type",
+            ],
+            serde_json::json!({
+                "start": "2024-01-02T03:04:05Z",
+                "end": "2024-01-02T03:04:06Z",
+                "eventTypeId": "evt_type",
+            }),
+        ),
+        (
+            vec!["-m", "weather:rain", "-m", "note:at 10:30"],
+            serde_json::json!({"metadata": {"weather": "rain", "note": "at 10:30"}}),
+        ),
+        (
+            vec![
+                "--remove-event-type",
+                "--clear-metadata",
+                "--remove-property",
+                "note",
+            ],
+            serde_json::json!({"eventTypeId": "", "metadata": {}, "properties": {"note": null}}),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json("PATCH", "/v1/events/evt_one", EVENT)]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .args(["events", "edit", "evt_one"])
+                .args(&flags),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Event updated: evt_one\n",
+            "{flags:?}"
+        );
+        let requests = server.finish();
+        assert_eq!(requests.len(), 1, "{flags:?}");
+        assert_eq!(json_body(&requests[0]), expected_body, "{flags:?}");
+    }
+
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", EVENT_PROPERTIES),
+        Reply::json("PATCH", "/v1/events/evt_one", EVENT),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "events",
+            "edit",
+            "evt_one",
+            "-p",
+            "speed:3.5",
+            "--remove-property",
+            "note",
+        ],
+    );
+    assert_success(&output);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "event")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"properties": {"speed": 3.5, "note": null}})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn deleting_an_event_reports_it_or_names_a_missing_one() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("DELETE", "/v1/events/evt_one", r#"{"id":"evt_one"}"#),
+        Reply {
+            status: 404,
+            ..Reply::json(
+                "DELETE",
+                "/v1/events/evt_missing",
+                r#"{"error":"Not Found"}"#,
+            )
+        },
+    ]);
+    let output = run(&workspace, &server, &["events", "delete", "evt_one"]);
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Event deleted: evt_one\n"
+    );
+    let output = run(&workspace, &server, &["events", "delete", "evt_missing"]);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Event not found: evt_missing\n"
     );
 }
 
@@ -1251,6 +1399,24 @@ fn other_identifier_paths_are_escaped() {
             "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/episodes",
             r#"{"episodes":[]}"#,
         ),
+    ];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn event_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    const EVENT_PATH: &str = "/v1/events/drive%231%3F%2F%5C%25%20snow%E2%98%83";
+    let cases: &[(&[&str], &str, &str, &str)] = &[
+        (&["events", "get", KEY], "GET", EVENT_PATH, EVENT),
+        (
+            &["events", "edit", KEY, "--start", "2024-01-02T03:04:05Z"],
+            "PATCH",
+            EVENT_PATH,
+            EVENT,
+        ),
+        (&["events", "delete", KEY], "DELETE", EVENT_PATH, "{}"),
     ];
     assert_each_request_reaches(cases);
 }
@@ -2936,6 +3102,12 @@ fn fractional_timestamp_query_parameters_are_preserved() {
             "[]",
             vec![("--updated-since", "updatedSince")],
         ),
+        (
+            vec!["layouts", "list"],
+            "/v1/layouts",
+            "[]",
+            vec![("--updated-since", "updatedSince")],
+        ),
     ] {
         let server = Server::new(vec![Reply::json("GET", endpoint, response)]);
         let mut command = workspace.command(&server.url);
@@ -4609,6 +4781,15 @@ fn command_arguments_are_validated_before_sending_a_request() {
             "--name cannot be empty\n",
         ),
         (vec!["datasets", "edit", "ds_one"], "Nothing to update\n"),
+        (vec!["events", "edit", "evt_one"], "Nothing to update\n"),
+        (
+            vec!["events", "edit", "evt_one", "-p", "note:x", "--remove-property", "note"],
+            "cannot set and remove property note in the same edit\n",
+        ),
+        (
+            vec!["events", "edit", "evt_one", "--metadata", "no-colon"],
+            "Invalid metadata key/value pair: no-colon\n",
+        ),
         (vec!["event-types", "edit", "evtt_one"], "Nothing to update\n"),
         (
             vec!["datasets", "edit", "ds_one", "--name", ""],
@@ -4823,6 +5004,245 @@ fn devices_list_sends_filters_and_renders_device_settings() {
         "ID,Name,Custom Properties,Created At,Updated At,Project ID,Enabled,Remote Access Enabled,Retain Recordings Seconds,Auto Delete After Import\n\
          dev_one,robot,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,,,,\n\
          dev_two,rover,\"{\"\"model\"\":\"\"x1\"\"}\",2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,prj_one,false,true,3600,false\n"
+    );
+}
+
+const PROPERTY_INTERVALS: &str = r#"[{"id":"dpi_one","deviceId":"dev_one","key":"tags","value":["red","blue"],"start":"2026-01-01T00:00:00Z","end":"2026-02-01T00:00:00Z"},{"id":"dpi_two","deviceId":"dev_one","key":"note","value":"night run","start":"2026-02-01T00:00:00Z"}]"#;
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn device_property_intervals_are_listed_and_fetched() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "GET",
+            "/v1/devices/robot%2Fone/property-time-intervals",
+            PROPERTY_INTERVALS,
+        ),
+        Reply::json(
+            "GET",
+            "/v1/devices/robot%2Fone/property-time-intervals/dpi_two",
+            r#"{"id":"dpi_two","deviceId":"dev_one","key":"note","value":"night run","start":"2026-02-01T00:00:00Z"}"#,
+        ),
+    ]);
+    let list = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "property-intervals",
+            "list",
+            "robot/one",
+            "--format",
+            "csv",
+            "--query",
+            "tags:red",
+            "--start",
+            "2026-01-01",
+            "--sort-by",
+            "start",
+            "--sort-order",
+            "desc",
+            "--project-id",
+            "prj_one",
+        ],
+    );
+    let get = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "property-intervals",
+            "get",
+            "robot/one",
+            "dpi_two",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&list);
+    assert_success(&get);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[
+            ("limit", "50"),
+            ("projectId", "prj_one"),
+            ("query", "tags:red"),
+            ("sortBy", "start"),
+            ("sortOrder", "desc"),
+            ("start", "2026-01-01T00:00:00Z"),
+        ])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&list.stdout),
+        "ID,Device ID,Key,Value,Start,End\n\
+         dpi_one,dev_one,tags,\"[\"\"red\"\",\"\"blue\"\"]\",2026-01-01T00:00:00Z,2026-02-01T00:00:00Z\n\
+         dpi_two,dev_one,note,night run,2026-02-01T00:00:00Z,\n"
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&get.stdout).unwrap(),
+        serde_json::json!({
+            "id": "dpi_two",
+            "deviceId": "dev_one",
+            "key": "note",
+            "value": "night run",
+            "start": "2026-02-01T00:00:00Z",
+        })
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn missing_devices_and_property_intervals_are_named() {
+    let workspace = Workspace::new();
+    let not_found = |path: &'static str, error: &str| Reply {
+        status: 404,
+        ..Reply::json("GET", path, &format!(r#"{{"error":"{error}"}}"#))
+    };
+    let server = Server::new(vec![
+        not_found(
+            "/v1/devices/dev_gone/property-time-intervals",
+            "Device not found",
+        ),
+        not_found(
+            "/v1/devices/dev_gone/property-time-intervals/dpi_one",
+            "Device not found",
+        ),
+        not_found(
+            "/v1/devices/dev_one/property-time-intervals/dpi_gone",
+            "Property time interval not found",
+        ),
+    ]);
+    for (args, message) in [
+        (vec!["list", "dev_gone"], "Device not found: dev_gone\n"),
+        (
+            vec!["get", "dev_gone", "dpi_one"],
+            "Device not found: dev_gone\n",
+        ),
+        (
+            vec!["get", "dev_one", "dpi_gone"],
+            "Property time interval not found: dpi_gone\n",
+        ),
+    ] {
+        let mut argv = vec!["devices", "property-intervals"];
+        argv.extend(&args);
+        let output = run(&workspace, &server, &argv);
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), message, "{args:?}");
+    }
+    assert_eq!(server.finish().len(), 3);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn property_time_intervals_are_updated_with_typed_values_or_unset() {
+    const PATH: &str = "/v1/actions/devices/dev_one/update-property-time-interval";
+    let workspace = Workspace::new();
+    let no_content = || Reply {
+        status: 204,
+        ..Reply::json("POST", PATH, "")
+    };
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", DEVICE_PROPERTIES),
+        no_content(),
+        no_content(),
+    ]);
+    let range = [
+        "--start",
+        "2026-01-01T08:00",
+        "--end",
+        "2026-01-01T09:00:00Z",
+    ];
+    let mut set = vec![
+        "devices",
+        "property-intervals",
+        "update",
+        "dev_one",
+        "--key",
+        "tags",
+        "--value",
+        "red",
+        "--value",
+        "blue",
+    ];
+    set.extend(range);
+    let mut unset = vec![
+        "devices",
+        "property-intervals",
+        "update",
+        "dev_one",
+        "--key",
+        "mode",
+        "--unset",
+    ];
+    unset.extend(range);
+    let set = run(&workspace, &server, &set);
+    let unset = run(&workspace, &server, &unset);
+    assert_success(&set);
+    assert_success(&unset);
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "device")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({
+            "key": "tags",
+            "value": ["red", "blue"],
+            "start": "2026-01-01T08:00:00Z",
+            "end": "2026-01-01T09:00:00Z",
+        })
+    );
+    assert_eq!(
+        json_body(&requests[2]),
+        serde_json::json!({
+            "key": "mode",
+            "start": "2026-01-01T08:00:00Z",
+            "end": "2026-01-01T09:00:00Z",
+        })
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&set.stderr),
+        "Property time interval updated: tags from 2026-01-01T08:00:00Z to 2026-01-01T09:00:00Z\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn single_value_properties_take_one_interval_value() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/custom-properties",
+        DEVICE_PROPERTIES,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "devices",
+            "property-intervals",
+            "update",
+            "dev_one",
+            "--key",
+            "mode",
+            "--value",
+            "auto",
+            "--value",
+            "auto",
+            "--start",
+            "2026-01-01",
+            "--end",
+            "2026-01-02",
+        ],
+    );
+    assert_eq!(server.finish().len(), 1);
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to update property time interval: --value can be repeated only for multi-enum properties; mode takes one value\n"
     );
 }
 

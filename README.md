@@ -134,6 +134,22 @@ $ foxglove devices delete RobotA
     Device deleted: RobotA
 ```
 
+List the values a device's custom properties held over time, by device name or ID:
+
+```
+$ foxglove devices property-intervals list RobotA --query 'location:*' --start 2026-01-01
+```
+
+Record the value a property held over a past time range, or that it had none. Overlapping
+intervals are split, trimmed, or removed; repeat `--value` for each value of a multi-enum
+property:
+
+```
+$ foxglove devices property-intervals update RobotA --key location --value sf --start 2026-01-01 --end 2026-02-01
+    Property time interval updated: location from 2026-01-01T00:00:00Z to 2026-02-01T00:00:00Z
+$ foxglove devices property-intervals update RobotA --key location --unset --start 2026-02-01 --end 2026-03-01
+```
+
 ### Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
@@ -290,6 +306,17 @@ since a given time with `--created-after` and `--updated-after`:
 
 ```
 $ foxglove events list --updated-after 2023-04-19T13:25:00Z
+```
+
+Show one event, change it, or delete it. `--metadata` replaces all of the
+event's metadata; `--clear-metadata`, `--remove-event-type`, and
+`--remove-property` remove those values:
+
+```
+$ foxglove events get evt_idMGJImlICYP4dcy
+$ foxglove events edit evt_idMGJImlICYP4dcy --end 2023-04-19T13:27:00Z \
+    --metadata requires-labeling:false
+$ foxglove events delete evt_idMGJImlICYP4dcy
 ```
 
 Event types define the custom properties an event carries. Create one with its
@@ -564,6 +591,39 @@ all Foxglove organization members:
 ```
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
+
+### Layouts
+
+List the layouts shared with your organization:
+
+```
+$ foxglove layouts list
+```
+
+Save a layout's data to a file, then create a copy from it. The layout data
+format is not stable; treat it as opaque and send back what the API returned.
+
+```
+$ foxglove layouts get lay_123 --include-data --format json | jq .data > layout.json
+$ foxglove layouts add --name "Overview (copy)" --permission ORG_WRITE --data layout.json
+```
+
+Rename a layout, move it out of its folder, or replace its data:
+
+```
+$ foxglove layouts edit lay_123 --name "Overview" --folder-name ""
+$ foxglove layouts edit lay_123 --data layout.json
+```
+
+Delete a layout, and restore it if needed:
+
+```
+$ foxglove layouts delete lay_123
+$ foxglove layouts restore lay_123
+```
+
+API keys can only create and change layouts shared with the organization
+(`ORG_READ` or `ORG_WRITE`).
 
 ## Shell autocompletion
 

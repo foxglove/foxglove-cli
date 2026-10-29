@@ -1,5 +1,11 @@
 //! Device commands.
 
+mod property_intervals;
+
+pub(crate) use property_intervals::{
+    get_property_interval, list_property_intervals, update_property_interval,
+};
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Number, Value};
 use std::collections::BTreeMap;

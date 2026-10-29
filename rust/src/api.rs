@@ -725,6 +725,23 @@ impl FoxgloveClient {
             .await
     }
 
+    /// Execute an authenticated JSON POST whose success response has no body.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, serialization, or transport error.
+    pub async fn post_without_response<B>(&self, endpoint: &str, body: &B) -> Result<(), ApiError>
+    where
+        B: Serialize + ?Sized,
+    {
+        let request = self
+            .request_with_auth(Method::POST, endpoint, true)?
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(encode_json(body)?);
+        let response = self.send(request, None).await?;
+        ensure_success_response(response).await.map(drop)
+    }
+
     /// Execute an authenticated JSON POST with query parameters and decode its
     /// JSON response.
     ///

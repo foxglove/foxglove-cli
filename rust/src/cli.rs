@@ -15,7 +15,8 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, sites, topics, upload,
+    extensions, layouts, pending_imports, projects, recordings, runtime, sessions, sites, topics,
+    upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -155,6 +156,11 @@ enum CliCommand {
     Export(ExportArgs),
     #[command(about = "List, inspect, and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
+    #[command(
+        about = "List and manage layouts shared with your organization",
+        subcommand
+    )]
+    Layouts(LayoutsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
     #[command(about = "List and manage projects", subcommand)]
@@ -911,6 +917,133 @@ enum DevicesCommand {
     Get(DeviceGetArgs),
     #[command(about = "List devices registered to your organization")]
     List(DeviceListArgs),
+    #[command(
+        about = "List, get, or update the values a device's custom properties held over time",
+        subcommand
+    )]
+    PropertyIntervals(DevicePropertyIntervalsCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum DevicePropertyIntervalsCommand {
+    #[command(about = "Get one property time interval")]
+    Get(DevicePropertyIntervalGetArgs),
+    #[command(about = "List the values a device's custom properties held and when")]
+    List(DevicePropertyIntervalListArgs),
+    #[command(
+        about = "Record the value a custom property held over a past time range",
+        long_about = "Record the value a device custom property held over a past time range, or that it had no value.\n\nExisting intervals that overlap the range are split, trimmed, or removed. To change a property's current value, use `devices edit --property`."
+    )]
+    Update(DevicePropertyIntervalUpdateArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicePropertyIntervalListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DEVICE", help = "Device name or ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+    #[arg(
+        long,
+        help = "Include intervals active before this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by property key and value, for example 'location:sf model:*'",
+        allow_hyphen_values = true
+    )]
+    pub(crate) query: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort intervals by: id, key, start, or end",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+    #[arg(
+        long,
+        help = "Include intervals active on or after this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicePropertyIntervalGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "DEVICE", help = "Device name or ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+    #[arg(value_name = "INTERVAL_ID", help = "Property time interval ID", value_parser = parse_id)]
+    pub(crate) id: String,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DevicePropertyIntervalUpdateArgs {
+    #[arg(value_name = "DEVICE", help = "Device name or ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+    #[arg(
+        long,
+        help = "Exclusive end of the time range (ISO 8601, must be in the past)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: String,
+    #[arg(
+        long,
+        help = "Device custom property key",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) key: String,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Inclusive start of the time range (ISO 8601, must be in the past)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: String,
+    #[arg(
+        long,
+        help = "Record that the property had no value over the range",
+        conflicts_with = "value",
+        required_unless_present = "value"
+    )]
+    pub(crate) unset: bool,
+    #[arg(
+        long,
+        help = "Value the property held over the range; repeat for each value of a multi-enum property",
+        allow_hyphen_values = true,
+        action = clap::ArgAction::Append
+    )]
+    pub(crate) value: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1341,8 +1474,50 @@ pub(crate) struct EventTypeEditArgs {
 enum EventsCommand {
     #[command(about = "Add an event")]
     Add(EventAddArgs),
+    #[command(about = "Delete an event")]
+    Delete(EventIdArgs),
+    #[command(about = "Edit an event's time range, event type, metadata, or properties")]
+    Edit(EventEditArgs),
+    #[command(about = "Get an event")]
+    Get(EventGetArgs),
     #[command(about = "List events")]
     List(Box<EventListArgs>),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventIdArgs {
+    #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
+    pub(crate) event_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
+    pub(crate) event_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventEditArgs {
+    #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
+    pub(crate) event_id: String,
+    #[arg(long, help = "New start of the event (inclusive), RFC 3339", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "New end of the event (inclusive), RFC 3339", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Event type ID; the event must conform to the event type's schema", allow_hyphen_values = true, value_parser = parse_id, conflicts_with = "remove_event_type")]
+    pub(crate) event_type_id: Option<String>,
+    #[arg(long, help = "Remove the event's event type")]
+    pub(crate) remove_event_type: bool,
+    #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair; replaces all of the event's metadata, repeat for more pairs", allow_hyphen_values = true, action = clap::ArgAction::Append, conflicts_with = "clear_metadata")]
+    pub(crate) metadata: Vec<String>,
+    #[arg(long, help = "Remove all of the event's metadata")]
+    pub(crate) clear_metadata: bool,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1467,6 +1642,112 @@ pub(crate) struct ExtensionGetArgs {
 pub(crate) struct ExtensionIdArgs {
     #[arg(value_name = "EXTENSION_ID")]
     pub(crate) extension_id: String,
+}
+
+#[derive(Debug, Subcommand)]
+enum LayoutsCommand {
+    #[command(about = "Create a layout from a JSON file of layout data")]
+    Add(LayoutAddArgs),
+    #[command(about = "Delete a layout; restore brings it back")]
+    Delete(LayoutIdArgs),
+    #[command(about = "Update a layout's name, folder, permission, or data")]
+    Edit(LayoutEditArgs),
+    #[command(about = "Get a layout")]
+    Get(LayoutGetArgs),
+    #[command(about = "List layouts shared with your organization")]
+    List(LayoutListArgs),
+    #[command(about = "Restore a deleted layout")]
+    Restore(LayoutIdArgs),
+}
+
+const LAYOUT_PERMISSION_HELP: &str =
+    "Who can view and edit the layout: ORG_READ, ORG_WRITE, or CREATOR_WRITE (API keys can only use ORG_READ or ORG_WRITE)";
+const LAYOUT_FOLDER_HELP: &str =
+    "Folder that organizes the layout in the app; cannot contain a forward slash";
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long, help = "Include each layout's data in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_data: bool,
+    #[arg(
+        long,
+        help = "Only layouts updated since this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) updated_since: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "LAYOUT_ID", value_parser = parse_id)]
+    pub(crate) layout_id: String,
+    #[arg(
+        long, help = "Include the layout data in JSON output",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_data: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutIdArgs {
+    #[arg(value_name = "LAYOUT_ID", value_parser = parse_id)]
+    pub(crate) layout_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutAddArgs {
+    #[arg(long, value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file containing the layout data object")]
+    pub(crate) data: PathBuf,
+    #[arg(long, help = LAYOUT_FOLDER_HELP, allow_hyphen_values = true)]
+    pub(crate) folder_name: Option<String>,
+    #[arg(long, help = "ID for the new layout (at most 36 characters; defaults to a server-generated ID)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) id: Option<String>,
+    #[arg(long, help = "Display name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: String,
+    #[arg(long, help = LAYOUT_PERMISSION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) permission: String,
+    #[arg(
+        long,
+        help = "When the layout was last saved locally (ISO 8601)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) saved_at: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LayoutEditArgs {
+    #[arg(value_name = "LAYOUT_ID", value_parser = parse_id)]
+    pub(crate) layout_id: String,
+    #[arg(long, value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file containing the new layout data object")]
+    pub(crate) data: Option<PathBuf>,
+    #[arg(
+        long,
+        help = "New folder for the layout; pass an empty value to remove it from its folder",
+        allow_hyphen_values = true
+    )]
+    pub(crate) folder_name: Option<String>,
+    #[arg(long, help = "New display name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
+    #[arg(long, help = LAYOUT_PERMISSION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) permission: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2123,6 +2404,11 @@ fn command_project_scope(
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
         CliCommand::Devices(DevicesCommand::Get(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::PropertyIntervals(command)) => match command {
+            DevicePropertyIntervalsCommand::Get(args) => &args.project_id,
+            DevicePropertyIntervalsCommand::List(args) => &args.project_id,
+            DevicePropertyIntervalsCommand::Update(args) => &args.project_id,
+        },
         CliCommand::Episodes(EpisodesCommand::Add(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
@@ -2214,12 +2500,9 @@ async fn dispatch_api_command(
         CliCommand::Devices(command) => dispatch_device_command(&runtime, command).await,
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
         CliCommand::EventTypes(command) => dispatch_event_type_command(&runtime, command).await,
-        CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
-        CliCommand::Events(EventsCommand::List(args)) => {
-            let format = args.format.format;
-            events::list_events(&runtime, &args, format).await
-        }
+        CliCommand::Events(command) => dispatch_event_command(&runtime, command).await,
         CliCommand::Extensions(command) => dispatch_extension_command(&runtime, command).await,
+        CliCommand::Layouts(command) => dispatch_layout_command(&runtime, command).await,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
             pending_imports::list_pending_imports(&runtime, &args, format).await
@@ -2259,6 +2542,23 @@ async fn dispatch_extension_command(
         ExtensionsCommand::List(args) => extensions::list_extensions(runtime, args.format).await,
         ExtensionsCommand::Publish(args) => extensions::publish_extension(runtime, &args).await,
         ExtensionsCommand::Unpublish(args) => extensions::unpublish_extension(runtime, &args).await,
+    }
+}
+
+async fn dispatch_layout_command(runtime: &runtime::Runtime, command: LayoutsCommand) -> Outcome {
+    match command {
+        LayoutsCommand::Add(args) => layouts::add_layout(runtime, &args).await,
+        LayoutsCommand::Delete(args) => layouts::delete_layout(runtime, &args).await,
+        LayoutsCommand::Edit(args) => layouts::edit_layout(runtime, &args).await,
+        LayoutsCommand::Get(args) => {
+            let format = args.format.format;
+            layouts::get_layout(runtime, &args, format).await
+        }
+        LayoutsCommand::List(args) => {
+            let format = args.format.format;
+            layouts::list_layouts(runtime, &args, format).await
+        }
+        LayoutsCommand::Restore(args) => layouts::restore_layout(runtime, &args).await,
     }
 }
 
@@ -2323,6 +2623,19 @@ async fn dispatch_device_command(runtime: &runtime::Runtime, command: DevicesCom
             let format = args.format.format;
             devices::list_devices(runtime, &args, format).await
         }
+        DevicesCommand::PropertyIntervals(command) => match command {
+            DevicePropertyIntervalsCommand::Get(args) => {
+                let format = args.format.format;
+                devices::get_property_interval(runtime, &args, format).await
+            }
+            DevicePropertyIntervalsCommand::List(args) => {
+                let format = args.format.format;
+                devices::list_property_intervals(runtime, &args, format).await
+            }
+            DevicePropertyIntervalsCommand::Update(args) => {
+                devices::update_property_interval(runtime, &args).await
+            }
+        },
     }
 }
 
@@ -2345,6 +2658,22 @@ async fn dispatch_dataset_version_command(
             datasets::list_versions(runtime, &args, format).await
         }
         DatasetVersionsCommand::Restore(args) => datasets::restore_version(runtime, &args).await,
+    }
+}
+
+async fn dispatch_event_command(runtime: &runtime::Runtime, command: EventsCommand) -> Outcome {
+    match command {
+        EventsCommand::Add(args) => events::add_event(runtime, &args).await,
+        EventsCommand::Delete(args) => events::delete_event(runtime, &args).await,
+        EventsCommand::Edit(args) => events::edit_event(runtime, &args).await,
+        EventsCommand::Get(args) => {
+            let format = args.format.format;
+            events::get_event(runtime, &args, format).await
+        }
+        EventsCommand::List(args) => {
+            let format = args.format.format;
+            events::list_events(runtime, &args, format).await
+        }
     }
 }
 
@@ -2657,6 +2986,14 @@ mod tests {
             ],
         ),
         (
+            &["devices", "property-intervals", "list", "dev_1"],
+            &["sort-by"],
+        ),
+        (
+            &["devices", "property-intervals", "update", "dev_1"],
+            &["key"],
+        ),
+        (
             &["coverage", "list"],
             &[
                 "device-id",
@@ -2774,6 +3111,33 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn property_interval_updates_take_a_value_or_unset() {
+        let update = [
+            "foxglove",
+            "devices",
+            "property-intervals",
+            "update",
+            "dev_1",
+            "--key",
+            "mode",
+            "--start",
+            "2026-01-01",
+            "--end",
+            "2026-01-02",
+        ];
+        for (extra, kind) in [
+            (&[][..], ErrorKind::MissingRequiredArgument),
+            (
+                &["--unset", "--value", "auto"][..],
+                ErrorKind::ArgumentConflict,
+            ),
+        ] {
+            let error = super::Cli::try_parse_from(update.iter().chain(extra)).unwrap_err();
+            assert_eq!(error.kind(), kind, "{extra:?}");
+        }
+    }
+
     #[test]
     fn session_sort_order_requires_its_sort_field() {
         let error =
