@@ -136,6 +136,32 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
+### Custom properties
+
+Custom properties define typed fields for devices, events, sessions, and
+episodes; `devices` and `episodes` commands set them with `--property`. Create
+one, giving the allowed values for an enum or multi-enum property:
+
+```
+$ foxglove custom-properties add --key weather --label Weather \
+    --resource-type device --value-type enum --enum-value rain --enum-value sun
+    Custom property created: cp_Nfx3KbCvT0pWdy9Z
+```
+
+List them, optionally for one resource type:
+
+```
+$ foxglove custom-properties list --resource-type device
+```
+
+Change a property's label, or reorder or add to its enum values by passing the
+complete list:
+
+```
+$ foxglove custom-properties edit cp_Nfx3KbCvT0pWdy9Z --enum-value sun --enum-value rain --enum-value snow
+    Custom property updated: cp_Nfx3KbCvT0pWdy9Z
+```
+
 ### Uploads and recordings
 
 Upload ROS 1 bag and [MCAP](https://mcap.dev) files into the Foxglove platform:

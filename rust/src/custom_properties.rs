@@ -1,11 +1,227 @@
-//! Typed custom property assignment shared by resource commands.
+//! Custom property commands and the typed property assignment shared by
+//! resource commands.
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::api::encode_path_segment;
+use crate::cli::{
+    CustomPropertyAddArgs, CustomPropertyEditArgs, CustomPropertyGetArgs, CustomPropertyIdArgs,
+    CustomPropertyListArgs,
+};
+use crate::output::Format;
+use crate::records::{format_output, format_record, null_to_default, Record};
 use crate::runtime::Runtime;
+use crate::Outcome;
+
+/// Value types whose values must come from `enumValues`.
+const ENUM_VALUE_TYPES: [&str; 2] = ["enum", "multi-enum"];
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomProperty {
+    id: String,
+    key: String,
+    label: String,
+    resource_type: String,
+    value_type: String,
+    #[serde(
+        default,
+        deserialize_with = "null_to_default",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    enum_values: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    has_associated_data: Option<bool>,
+}
+
+impl Record for CustomProperty {
+    fn headers() -> &'static [&'static str] {
+        &[
+            "ID",
+            "Key",
+            "Label",
+            "Resource Type",
+            "Value Type",
+            "Enum Values",
+            "Has Associated Data",
+        ]
+    }
+
+    fn fields(&self) -> Vec<String> {
+        vec![
+            self.id.clone(),
+            self.key.clone(),
+            self.label.clone(),
+            self.resource_type.clone(),
+            self.value_type.clone(),
+            self.enum_values.join(", "),
+            self.has_associated_data
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+        ]
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomPropertyListQuery<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource_type: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateCustomPropertyRequest<'a> {
+    key: &'a str,
+    label: &'a str,
+    resource_type: &'a str,
+    value_type: &'a str,
+    #[serde(skip_serializing_if = "<[String]>::is_empty")]
+    enum_values: &'a [String],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditCustomPropertyRequest<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<&'a str>,
+    #[serde(skip_serializing_if = "<[String]>::is_empty")]
+    enum_values: &'a [String],
+}
+
+#[derive(Deserialize)]
+struct CustomPropertyIdResponse {
+    id: String,
+}
+
+fn custom_property_endpoint(id: &str) -> String {
+    format!("/v1/custom-properties/{}", encode_path_segment(id))
+}
+
+fn custom_property_not_found(id: &str) -> Outcome {
+    Outcome::failure(format!("Custom property not found: {id}\n"))
+}
+
+pub(crate) async fn list_custom_properties(
+    runtime: &Runtime,
+    args: &CustomPropertyListArgs,
+    format: Format,
+) -> Outcome {
+    let query = CustomPropertyListQuery {
+        resource_type: args.resource_type.as_deref(),
+    };
+    match runtime
+        .client
+        .get::<_, Vec<CustomProperty>>("/v1/custom-properties", &query)
+        .await
+    {
+        Ok(properties) => format_output(&properties, format),
+        Err(error) => Outcome::failure(format!("Failed to list custom properties: {error}\n")),
+    }
+}
+
+pub(crate) async fn get_custom_property(
+    runtime: &Runtime,
+    args: &CustomPropertyGetArgs,
+    format: Format,
+) -> Outcome {
+    match runtime
+        .client
+        .get::<_, CustomProperty>(&custom_property_endpoint(&args.custom_property_id), &())
+        .await
+    {
+        Ok(property) => format_record(&property, format),
+        Err(error) if error.is_not_found_for("custom property") => {
+            custom_property_not_found(&args.custom_property_id)
+        }
+        Err(error) => Outcome::failure(format!("Failed to get custom property: {error}\n")),
+    }
+}
+
+pub(crate) async fn add_custom_property(
+    runtime: &Runtime,
+    args: &CustomPropertyAddArgs,
+) -> Outcome {
+    let takes_enum_values = ENUM_VALUE_TYPES.contains(&args.value_type.as_str());
+    if !takes_enum_values && !args.enum_value.is_empty() {
+        return Outcome::failure(format!(
+            "--enum-value can only be used with --value-type enum or multi-enum, not {}\n",
+            args.value_type
+        ));
+    }
+    if args.value_type == "enum" && args.enum_value.is_empty() {
+        return Outcome::failure("--value-type enum requires at least one --enum-value\n");
+    }
+    let request = CreateCustomPropertyRequest {
+        key: &args.key,
+        label: &args.label,
+        resource_type: &args.resource_type,
+        value_type: &args.value_type,
+        enum_values: &args.enum_value,
+    };
+    match runtime
+        .client
+        .post::<_, CustomPropertyIdResponse>("/v1/custom-properties", &request)
+        .await
+    {
+        Ok(response) => Outcome::notice(format!("Custom property created: {}\n", response.id)),
+        Err(error) => Outcome::failure(format!("Failed to create custom property: {error}\n")),
+    }
+}
+
+pub(crate) async fn edit_custom_property(
+    runtime: &Runtime,
+    args: &CustomPropertyEditArgs,
+) -> Outcome {
+    if args.label.is_none() && args.enum_value.is_empty() {
+        return Outcome::failure("Nothing to update\n");
+    }
+    let request = EditCustomPropertyRequest {
+        label: args.label.as_deref(),
+        enum_values: &args.enum_value,
+    };
+    match runtime
+        .client
+        .patch::<_, _, Value>(
+            &custom_property_endpoint(&args.custom_property_id),
+            &(),
+            &request,
+        )
+        .await
+    {
+        Ok(_) => Outcome::notice(format!(
+            "Custom property updated: {}\n",
+            args.custom_property_id
+        )),
+        Err(error) if error.is_not_found_for("custom property") => {
+            custom_property_not_found(&args.custom_property_id)
+        }
+        Err(error) => Outcome::failure(format!("Failed to edit custom property: {error}\n")),
+    }
+}
+
+pub(crate) async fn delete_custom_property(
+    runtime: &Runtime,
+    args: &CustomPropertyIdArgs,
+) -> Outcome {
+    match runtime
+        .client
+        .delete(&custom_property_endpoint(&args.custom_property_id))
+        .await
+    {
+        Ok(()) => Outcome::notice(format!(
+            "Custom property deleted: {}\n",
+            args.custom_property_id
+        )),
+        Err(error) if error.is_not_found_for("custom property") => {
+            custom_property_not_found(&args.custom_property_id)
+        }
+        Err(error) => Outcome::failure(format!("Failed to delete custom property: {error}\n")),
+    }
+}
 
 #[derive(Deserialize)]
 struct CustomPropertyDefinition {
