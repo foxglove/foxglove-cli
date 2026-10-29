@@ -11,7 +11,8 @@ use crate::cli::{
 use crate::episodes::parse_time_range;
 use crate::output::{escape_terminal_text, Format};
 use crate::records::{
-    fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    fetch_list, format_output, is_zero, null_to_default, DeviceSummary, ProjectFallback, Record,
+    DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -55,13 +56,15 @@ struct Session {
     #[serde(
         rename = "recordingStart",
         skip_serializing_if = "String::is_empty",
-        default
+        default,
+        deserialize_with = "null_to_default"
     )]
     recording_start: String,
     #[serde(
         rename = "recordingEnd",
         skip_serializing_if = "String::is_empty",
-        default
+        default,
+        deserialize_with = "null_to_default"
     )]
     recording_end: String,
 }
@@ -444,6 +447,17 @@ mod tests {
         .unwrap();
         assert_eq!(session.fields()[6..], ["0", "", ""]);
         assert_eq!(serde_json::to_value(&session).unwrap()["recordingCount"], 0);
+
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+            "recordingCount": null,
+            "recordingStart": null,
+            "recordingEnd": null,
+        }))
+        .unwrap();
+        assert_eq!(session.fields()[6..], ["", "", ""]);
     }
 
     #[test]
