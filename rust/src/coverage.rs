@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::CoverageListArgs;
 use crate::output::Format;
 use crate::records::{
-    fetch_list, is_false, is_zero, null_to_default, parse_timestamp, DeviceSummary,
-    ProjectFallback, Record,
+    fetch_list, is_false, is_zero, null_to_default, parse_timestamp, ProjectFallback, Record,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -17,15 +16,37 @@ struct Coverage {
     #[serde(default, deserialize_with = "null_to_default")]
     device_id: String,
     #[serde(default, deserialize_with = "null_to_default")]
-    device: DeviceSummary,
+    device: CoverageDevice,
     start: String,
     end: String,
     status: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct CoverageDevice {
+    name: String,
+    id: String,
+    #[serde(rename = "pendingCoverageUpdate", default)]
+    pending_coverage_update: Option<PendingCoverageUpdate>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct PendingCoverageUpdate {
+    #[serde(rename = "nextInvalidationRequestedAt")]
+    #[serde(default, deserialize_with = "null_to_default")]
+    next_invalidation_requested_at: String,
+}
+
 impl Record for Coverage {
     fn headers() -> &'static [&'static str] {
-        &["Device ID", "Device Name", "Start", "End", "Status"]
+        &[
+            "Device ID",
+            "Device Name",
+            "Start",
+            "End",
+            "Status",
+            "Coverage Update Requested At",
+        ]
     }
 
     fn fields(&self) -> Vec<String> {
@@ -35,6 +56,11 @@ impl Record for Coverage {
             self.start.clone(),
             self.end.clone(),
             self.status.clone(),
+            self.device
+                .pending_coverage_update
+                .as_ref()
+                .map(|update| update.next_invalidation_requested_at.clone())
+                .unwrap_or_default(),
         ]
     }
 }
@@ -54,6 +80,8 @@ struct CoverageListQuery {
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    recording_key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     session_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -86,6 +114,7 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
         include_edge_recordings: args.include_edge_recordings,
         project_id,
         recording_id: args.recording_id.clone().unwrap_or_default(),
+        recording_key: args.recording_key.clone().unwrap_or_default(),
         session_id: args.session_id.clone().unwrap_or_default(),
         session_key,
         start,
@@ -111,7 +140,10 @@ mod tests {
         let original = serde_json::json!({"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"});
         for (field, expected) in [
             ("deviceId", serde_json::json!("")),
-            ("device", serde_json::json!({"id": "", "name": ""})),
+            (
+                "device",
+                serde_json::json!({"id": "", "name": "", "pendingCoverageUpdate": null}),
+            ),
         ] {
             let mut with_null = original.clone();
             with_null[field] = serde_json::Value::Null;
@@ -120,6 +152,30 @@ mod tests {
                 let output = serde_json::to_value(record).unwrap();
                 assert_eq!(output[field], expected, "{field}");
             }
+        }
+    }
+
+    #[test]
+    fn a_pending_coverage_update_is_kept_and_null_when_absent() {
+        let pending = serde_json::json!({"nextInvalidationRequestedAt": "2024-01-02T03:04:07Z"});
+        for (response_update, expected) in [
+            (Some(pending.clone()), pending),
+            (Some(serde_json::Value::Null), serde_json::Value::Null),
+            (None, serde_json::Value::Null),
+        ] {
+            let mut response = serde_json::json!({
+                "deviceId": "dev_one",
+                "device": {"id": "dev_one", "name": "Robot A"},
+                "start": "2024-01-02T03:04:05Z",
+                "end": "2024-01-02T03:04:06Z",
+                "status": "imported",
+            });
+            if let Some(update) = response_update {
+                response["device"]["pendingCoverageUpdate"] = update;
+            }
+            let record: Coverage = serde_json::from_value(response).unwrap();
+            let output = serde_json::to_value(record).unwrap();
+            assert_eq!(output["device"]["pendingCoverageUpdate"], expected);
         }
     }
 }
