@@ -1344,6 +1344,55 @@ fn empty_export_topics_fail_before_requesting_or_replacing_output() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn session_list_sends_filters_and_renders_recording_ranges() {
+    const SESSIONS: &str = r#"[{"id":"ses_one","key":"drive-41","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","recordings":[],"recordingCount":2,"recordingStart":"2024-01-02T00:00:00Z","recordingEnd":"2024-01-02T01:00:00Z"},{"id":"ses_two","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-03T03:04:05Z","updatedAt":"2024-01-03T03:04:06Z","recordings":[]}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/sessions", SESSIONS)]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "list",
+            "--key-matches",
+            "drive",
+            "--query",
+            "vehicle:car",
+            "--start",
+            "2024-01-02T00:00:00Z",
+            "--end",
+            "2024-01-03T00:00:00Z",
+            "--sort-by",
+            "updatedAt",
+            "--sort-order",
+            "asc",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("end", "2024-01-03T00:00:00Z"),
+            ("keyMatches", "drive"),
+            ("limit", "50"),
+            ("query", "vehicle:car"),
+            ("sortBy", "updatedAt"),
+            ("sortOrder", "asc"),
+            ("start", "2024-01-02T00:00:00Z"),
+        ])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Key,Project ID,Device,Created At,Updated At,Recordings,Recording Start,Recording End\n\
+         ses_one,drive-41,prj_one,robot (dev_one),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,2,2024-01-02T00:00:00Z,2024-01-02T01:00:00Z\n\
+         ses_two,,prj_one,robot (dev_one),2024-01-03T03:04:05Z,2024-01-03T03:04:06Z,,,\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn session_add_sends_key() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
@@ -2763,6 +2812,8 @@ fn half_open_episode_time_ranges_are_rejected_before_sending_a_request() {
     for args in [
         vec!["episodes", "list", "--start", "2024-01-02"],
         vec!["episodes", "list", "--end", "2024-01-03"],
+        vec!["sessions", "list", "--start", "2024-01-02"],
+        vec!["sessions", "list", "--end", "2024-01-03"],
         vec![
             "datasets",
             "episodes",
@@ -2810,6 +2861,12 @@ fn fractional_timestamp_query_parameters_are_preserved() {
             vec!["episodes", "list"],
             "/v1/episodes",
             r#"{"episodes":[]}"#,
+            vec![("--start", "start"), ("--end", "end")],
+        ),
+        (
+            vec!["sessions", "list"],
+            "/v1/sessions",
+            "[]",
             vec![("--start", "start"), ("--end", "end")],
         ),
         (

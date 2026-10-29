@@ -156,6 +156,12 @@ List only recordings that contain a topic:
 $ foxglove recordings list --topic /camera/image
 ```
 
+List sessions whose recordings overlap a time range, with each session's recording count and data range:
+
+```
+$ foxglove sessions list --key-matches drive --start 2026-04-19 --end 2026-04-20 --sort-by updatedAt
+```
+
 Request transfer of an existing edge recording to its configured Primary Site:
 
 ```sh
