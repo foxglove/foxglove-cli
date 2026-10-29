@@ -51,6 +51,8 @@ pub(crate) struct EpisodeRecording {
     pub(crate) device_id: String,
     #[serde(default)]
     pub(crate) available: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub(crate) resolvable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -61,6 +63,12 @@ pub(crate) struct Episode {
     pub(crate) latest_version: i32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) properties: Option<BTreeMap<String, Value>>,
+    #[serde(
+        rename = "creationContext",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub(crate) creation_context: Option<Value>,
     #[serde(rename = "projectId")]
     pub(crate) project_id: String,
     #[serde(rename = "startTime")]
@@ -293,8 +301,6 @@ struct EpisodeInput {
     #[serde(skip_serializing_if = "String::is_empty")]
     end_time: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     properties: Option<BTreeMap<String, Value>>,
 }
 
@@ -316,25 +322,21 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
     if start_time.is_empty() != end_time.is_empty() {
         return Err("both --start and --end must be specified, or neither".to_owned());
     }
-    let metadata = args
-        .metadata
-        .as_deref()
-        .map(|raw| match serde_json::from_str::<Value>(raw) {
-            Ok(value @ Value::Object(_)) => Ok(value),
-            _ => Err(format!("--metadata must be a JSON object: {raw}")),
-        })
-        .transpose()?;
     Ok(EpisodeInput {
         event_id: args.event_id.clone(),
         recordings: args.recording_id.clone(),
         start_time,
         end_time,
-        metadata,
         properties: None,
     })
 }
 
 pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Outcome {
+    if args.metadata.is_some() {
+        return Outcome::failure(
+            "--metadata is no longer supported; set episode custom properties with --property\n",
+        );
+    }
     let mut episode = match episode_input(args) {
         Ok(episode) => episode,
         Err(error) => return Outcome::failure(format!("{error}\n")),
@@ -360,10 +362,6 @@ pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Out
             Some(episode) if episode.created => {
                 Outcome::notice(format!("Episode created: {}\n", episode.id))
             }
-            Some(episode) if args.metadata.is_some() => Outcome::notice(format!(
-                "Episode already exists: {} (its metadata is unchanged)\n",
-                episode.id
-            )),
             Some(episode) => Outcome::notice(format!("Episode already exists: {}\n", episode.id)),
             None => Outcome::failure("Failed to create episode: the API returned no episode\n"),
         },
@@ -483,6 +481,7 @@ mod tests {
         .unwrap();
         let output = serde_json::to_value(&record).unwrap();
         assert!(output.get("recordings").is_none());
+        assert!(output.get("creationContext").is_none());
         assert_eq!(record.recording_ids(), "");
     }
 
@@ -516,6 +515,7 @@ mod tests {
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
             "metadata": {},
+            "creationContext": {"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_s3"]}},
             "createdAt": "2024-01-02T03:04:07Z",
             "recordings": [
                 {
@@ -524,7 +524,8 @@ mod tests {
                     "location": {"bucket": "robot-logs", "path": "fleet/one.mcap"},
                     "start": "",
                     "end": "",
-                    "available": true,
+                    "available": false,
+                    "resolvable": true,
                 },
                 {
                     "id": "rec_azure",
@@ -559,6 +560,12 @@ mod tests {
             })
         );
         assert!(recordings[2].get("location").is_none());
+        assert_eq!(recordings[0]["resolvable"], true);
+        assert!(recordings[2].get("resolvable").is_none());
+        assert_eq!(
+            output["creationContext"],
+            serde_json::json!({"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_s3"]}})
+        );
     }
 
     #[test]

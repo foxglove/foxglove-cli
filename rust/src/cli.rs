@@ -1504,8 +1504,6 @@ pub(crate) struct EpisodeAddArgs {
         conflicts_with_all = ["start", "end"]
     )]
     pub(crate) event_id: Option<String>,
-    #[arg(long, help = "Metadata as a JSON object", allow_hyphen_values = true)]
-    pub(crate) metadata: Option<String>,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording in the episode; repeat to add more (required unless --event-id is given)", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
@@ -1518,6 +1516,9 @@ pub(crate) struct EpisodeAddArgs {
     pub(crate) start: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+    /// Accepted only to point scripts that still pass the removed flag at `--property`.
+    #[arg(long, hide = true, allow_hyphen_values = true)]
+    pub(crate) metadata: Option<String>,
 }
 
 #[derive(Debug, Args)]

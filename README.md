@@ -465,7 +465,7 @@ and the completed recordings from its device that overlap it; later edits to the
 event or new imports do not change it:
 
 ```
-$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"merge"}'
+$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p
 Episode created: ep_Rz6pXk3mWq9TfLbN
 ```
 
