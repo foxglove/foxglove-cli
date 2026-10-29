@@ -565,6 +565,39 @@ all Foxglove organization members:
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
 
+### Layouts
+
+List the layouts shared with your organization:
+
+```
+$ foxglove layouts list
+```
+
+Save a layout's data to a file, then create a copy from it. The layout data
+format is not stable; treat it as opaque and send back what the API returned.
+
+```
+$ foxglove layouts get lay_123 --include-data --format json | jq .data > layout.json
+$ foxglove layouts add --name "Overview (copy)" --permission ORG_WRITE --data layout.json
+```
+
+Rename a layout, move it out of its folder, or replace its data:
+
+```
+$ foxglove layouts edit lay_123 --name "Overview" --folder-name ""
+$ foxglove layouts edit lay_123 --data layout.json
+```
+
+Delete a layout, and restore it if needed:
+
+```
+$ foxglove layouts delete lay_123
+$ foxglove layouts restore lay_123
+```
+
+API keys can only create and change layouts shared with the organization
+(`ORG_READ` or `ORG_WRITE`).
+
 ## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support generated
