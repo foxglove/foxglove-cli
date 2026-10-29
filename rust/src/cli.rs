@@ -431,7 +431,7 @@ pub(crate) struct CoverageListArgs {
 enum LakeFilesCommand {
     #[command(
         about = "List MCAP files in a self-managed Primary Site's lake bucket",
-        long_about = "List the MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Each imported recording produces one file per topic. Limit the query with --device-id, --device-name, --recording-id, or --recording-key; device queries also need --start and --end, at most 24 hours apart. Only self-managed sites are supported."
+        long_about = "List the MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Each imported recording produces one file per topic. Limit the query with --device-id, --device-name, --recording-id, or --recording-key. A device query also needs --session-id, --session-key, or --start and --end at most 24 hours apart. Only self-managed sites are supported."
     )]
     List(LakeFileListArgs),
 }
@@ -454,7 +454,7 @@ pub(crate) struct LakeFileListArgs {
     pub(crate) device_name: Option<String>,
     #[arg(
         long,
-        help = "End of an imported recording's time range (ISO 8601); give with --start",
+        help = "End of an imported recording's time range (ISO 8601); give with --start (required for a device query without a recording or session)",
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
@@ -470,7 +470,7 @@ pub(crate) struct LakeFileListArgs {
     pub(crate) site_id: String,
     #[arg(
         long,
-        help = "Start of an imported recording's time range (ISO 8601); give with --end",
+        help = "Start of an imported recording's time range (ISO 8601); give with --end (required for a device query without a recording or session)",
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
