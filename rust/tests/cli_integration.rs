@@ -1418,6 +1418,19 @@ fn attachment_identifier_paths_are_escaped() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn site_token_identifier_paths_are_escaped() {
+    const KEY: &str = "drive#1?/\\% snow☃";
+    let cases: &[(&[&str], &str, &str, &str)] = &[(
+        &["site-tokens", "delete", KEY],
+        "DELETE",
+        "/v1/site-tokens/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+        "{}",
+    )];
+    assert_each_request_reaches(cases);
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn event_identifier_paths_are_escaped() {
     const KEY: &str = "drive#1?/\\% snow☃";
     const EVENT_PATH: &str = "/v1/events/drive%231%3F%2F%5C%25%20snow%E2%98%83";
@@ -3669,6 +3682,12 @@ fn deleting_what_is_not_found_fails() {
             "Extension not found: one\n",
         ),
         (
+            &["site-tokens", "delete", "one"],
+            "/v1/site-tokens/one",
+            r#"{"error":"Not Found"}"#,
+            "Site token not found: one\n",
+        ),
+        (
             &["event-types", "delete", "one"],
             "/v1/event-types/one",
             r#"{"error":"Not Found"}"#,
@@ -5836,6 +5855,115 @@ fn dataset_episode_pins_can_be_added_or_updated() {
         assert_eq!(String::from_utf8_lossy(&output.stderr), "At most 2000 episode IDs can be changed at once (got 2001). Split the IDs into more than one command.\n");
         server.finish();
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn site_tokens_are_listed_created_once_and_deleted() {
+    let workspace = Workspace::new();
+    let token = r#"{"id":"stkn_1","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z"}"#;
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/site-tokens",
+        &format!("[{token}]"),
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "site-tokens",
+            "list",
+            "--site-id",
+            "site_1",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("siteId", "site_1")])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Site ID,Created At\nstkn_1,site_1,2026-01-02T03:04:05Z\n"
+    );
+
+    let created = r#"{"id":"stkn_2","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z","token":"fox_st_fake"}"#;
+    for (format, expected) in [
+        (
+            "csv",
+            "ID,Site ID,Created At,Token\nstkn_2,site_1,2026-01-02T03:04:05Z,fox_st_fake\n"
+                .to_owned(),
+        ),
+        ("json", format!("{created}\n")),
+    ] {
+        let server = Server::new(vec![Reply::json("POST", "/v1/site-tokens", created)]);
+        let output = run(
+            &workspace,
+            &server,
+            &[
+                "site-tokens",
+                "add",
+                "--site-id",
+                " site_1 ",
+                "--format",
+                format,
+            ],
+        );
+        assert_success(&output);
+        assert_eq!(
+            json_body(&server.finish()[0]),
+            serde_json::json!({"siteId": "site_1"})
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Site token created. Save the token now; it is not shown again.\n"
+        );
+    }
+
+    for created in [
+        r#"{"id":"stkn_3","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z"}"#,
+        r#"{"id":"stkn_3","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z","token":""}"#,
+    ] {
+        let server = Server::new(vec![Reply::json("POST", "/v1/site-tokens", created)]);
+        let output = run(
+            &workspace,
+            &server,
+            &["site-tokens", "add", "--site-id", "site_1"],
+        );
+        server.finish();
+        assert!(!output.status.success(), "{created}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "", "{created}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Site token stkn_3 was created, but the response did not include its value. Delete it with `foxglove site-tokens delete stkn_3` and try again.\n",
+            "{created}"
+        );
+    }
+
+    let server = Server::new(vec![Reply::json(
+        "DELETE",
+        "/v1/site-tokens/stkn_2",
+        r#"{"success":true}"#,
+    )]);
+    let output = run(&workspace, &server, &["site-tokens", "delete", "stkn_2"]);
+    assert_success(&output);
+    server.finish();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Site token deleted\n"
+    );
+
+    let server = Server::new(vec![]);
+    let output = run(
+        &workspace,
+        &server,
+        &["site-tokens", "add", "--site-id", " "],
+    );
+    assert!(!output.status.success());
+    server.finish();
 }
 
 #[test]

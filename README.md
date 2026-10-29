@@ -592,6 +592,22 @@ all Foxglove organization members:
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
 ```
 
+### Site tokens
+
+Site tokens authenticate site controllers for a Primary or Edge Site. Create a
+token for a site; the token value is printed only once, so save it right away:
+
+```
+$ foxglove site-tokens add --site-id site_example
+```
+
+List tokens, optionally for one site, and delete a token by its ID:
+
+```
+$ foxglove site-tokens list --site-id site_example
+$ foxglove site-tokens delete stkn_example
+```
+
 ### Layouts
 
 List the layouts shared with your organization:
