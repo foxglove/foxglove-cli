@@ -1191,6 +1191,24 @@ fn identifier_paths_are_escaped_for_every_command() {
             "{}",
         ),
         (
+            &["event-types", "get", KEY, "--format", "json"],
+            "GET",
+            "/v1/event-types/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"evtt","name":"Stop","createdAt":"","updatedAt":""}"#,
+        ),
+        (
+            &["event-types", "edit", KEY, "--name", "renamed"],
+            "PATCH",
+            "/v1/event-types/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"evtt"}"#,
+        ),
+        (
+            &["event-types", "delete", KEY],
+            "DELETE",
+            "/v1/event-types/drive%231%3F%2F%5C%25%20snow%E2%98%83",
+            r#"{"id":"evtt"}"#,
+        ),
+        (
             &["attachments", "download", KEY],
             "GET",
             "/v1/recording-attachments/drive%231%3F%2F%5C%25%20snow%E2%98%83/download",
@@ -2963,6 +2981,127 @@ fn event_types_are_listed_with_their_custom_properties() {
     );
 }
 
+#[test]
+#[ignore = "requires loopback sockets"]
+fn creating_an_event_type_sends_its_custom_properties_in_order() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec!["--name", "Stop"],
+            serde_json::json!({"name": "Stop", "customProperties": []}),
+        ),
+        (
+            vec![
+                "--name",
+                "Stop",
+                "--color",
+                "red",
+                "--custom-property",
+                "cp_two:required",
+                "--custom-property",
+                "cp_one",
+            ],
+            serde_json::json!({
+                "name": "Stop",
+                "colorName": "red",
+                "customProperties": [
+                    {"id": "cp_two", "required": true},
+                    {"id": "cp_one", "required": false},
+                ],
+            }),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/event-types",
+            r#"{"id":"evtt_new","name":"Stop","createdAt":"","updatedAt":""}"#,
+        )]);
+        let mut args = vec!["event-types", "add"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Event type created: evtt_new\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn editing_an_event_type_sends_only_the_fields_given() {
+    let workspace = Workspace::new();
+    for (flags, expected) in [
+        (
+            vec!["--name", "Halt", "--color", "blue"],
+            serde_json::json!({"name": "Halt", "colorName": "blue"}),
+        ),
+        (
+            vec!["--custom-property", "cp_one:required"],
+            serde_json::json!({"customProperties": [{"id": "cp_one", "required": true}]}),
+        ),
+        (
+            vec!["--clear-custom-properties"],
+            serde_json::json!({"customProperties": []}),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "PATCH",
+            "/v1/event-types/evtt_one",
+            r#"{"id":"evtt_one","name":"Halt","createdAt":"","updatedAt":""}"#,
+        )]);
+        let mut args = vec!["event-types", "edit", "evtt_one"];
+        args.extend(&flags);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Event type updated: evtt_one\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn getting_an_event_type_renders_one_record_with_custom_property_keys() {
+    const EVENT_TYPE: &str = r#"{"id":"evtt_one","name":"Stop","colorName":"red","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","customProperties":[{"id":"cp_one","required":true}]}"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/event-types/evtt_one", EVENT_TYPE),
+        Reply::json(
+            "GET",
+            "/v1/custom-properties",
+            r#"[{"id":"cp_one","key":"stop_reason"}]"#,
+        ),
+        Reply::json("GET", "/v1/event-types/evtt_one", EVENT_TYPE),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "get", "evtt_one", "--format", "csv"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Name,Color,Custom Properties,Created At,Updated At\n\
+         evtt_one,Stop,red,stop_reason (required),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["event-types", "get", "evtt_one", "--format", "json"],
+    );
+    assert_success(&output);
+    server.finish();
+    let event_type: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        event_type["customProperties"],
+        serde_json::json!([{"id": "cp_one", "required": true}])
+    );
+}
+
 fn json_body(request: &str) -> serde_json::Value {
     serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap()
 }
@@ -3224,6 +3363,12 @@ fn deleting_what_is_not_found_fails() {
             "/v1/extensions/one",
             r#"{"error":"Not Found"}"#,
             "Extension not found: one\n",
+        ),
+        (
+            &["event-types", "delete", "one"],
+            "/v1/event-types/one",
+            r#"{"error":"Not Found"}"#,
+            "Event type not found: one\n",
         ),
         (
             &["sessions", "delete", "one", "--project-id", "prj_gone"],
@@ -4393,6 +4538,7 @@ fn command_arguments_are_validated_before_sending_a_request() {
             "--name cannot be empty\n",
         ),
         (vec!["datasets", "edit", "ds_one"], "Nothing to update\n"),
+        (vec!["event-types", "edit", "evtt_one"], "Nothing to update\n"),
         (
             vec!["datasets", "edit", "ds_one", "--name", ""],
             "--name cannot be empty\n",

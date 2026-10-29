@@ -270,6 +270,20 @@ since a given time with `--created-after` and `--updated-after`:
 $ foxglove events list --updated-after 2023-04-19T13:25:00Z
 ```
 
+Event types define the custom properties an event carries. Create one with its
+custom properties in display order, marking those every event must set with
+`:required`:
+
+```
+$ foxglove event-types add --name Stop --color red \
+    --custom-property cprop_reason:required --custom-property cprop_operator
+Event type created: evtt_5Ch2ztVt8M9w9fsu
+```
+
+`event-types edit` changes the name or color; `--custom-property` replaces the
+whole list, and `--clear-custom-properties` removes it. Use `event-types get` to
+show one event type, and `event-types delete` to remove one that no events use.
+
 ### Datasets and episodes
 
 An episode is a time window over one or more recordings; a dataset is a named,
