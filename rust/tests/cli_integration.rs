@@ -2481,8 +2481,8 @@ fn getting_an_attachment_renders_one_record() {
         ),
         (
             "csv",
-            "ID,Recording ID,Site ID,Name,Media Type,Log Time,Create Time,CRC,Size,Fingerprint\n\
-             att_one,rec_one,site_one,calibration.yaml,application/yaml,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,1234,56,abc\n",
+            "ID,Recording ID,Site ID,Name,Media Type,Log Time,Create Time,CRC,Size,Fingerprint,Data Offset,Lake Path\n\
+             att_one,rec_one,site_one,calibration.yaml,application/yaml,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,1234,56,abc,,\n",
         ),
     ] {
         let server = Server::new(vec![Reply::json(
