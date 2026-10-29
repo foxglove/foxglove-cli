@@ -4768,10 +4768,7 @@ fn creating_an_episode_keeps_its_window_to_the_millisecond() {
     let workspace = Workspace::new();
     for (created, stderr) in [
         (true, "Episode created: ep_new\n"),
-        (
-            false,
-            "Episode already exists: ep_new (its metadata is unchanged)\n",
-        ),
+        (false, "Episode already exists: ep_new\n"),
     ] {
         let server = Server::new(vec![Reply::json(
             "POST",
@@ -4794,8 +4791,6 @@ fn creating_an_episode_keeps_its_window_to_the_millisecond() {
                 "2024-01-02T03:04:05.250Z",
                 "--end",
                 "2024-01-02T03:04:06.1239Z",
-                "--metadata",
-                r#"{"run":7}"#,
             ],
         );
         assert_success(&output);
@@ -4807,7 +4802,6 @@ fn creating_an_episode_keeps_its_window_to_the_millisecond() {
                     "recordings": ["rec_one", "rec_two"],
                     "startTime": "2024-01-02T03:04:05.25Z",
                     "endTime": "2024-01-02T03:04:06.123Z",
-                    "metadata": {"run": 7},
                 }],
             })
         );
@@ -4857,8 +4851,6 @@ fn an_event_episode_sends_only_the_event_id() {
             "prj_explicit",
             "--event-id",
             "evt_one",
-            "--metadata",
-            r#"{"label":"merge"}"#,
         ],
     );
     assert_success(&output);
@@ -4866,7 +4858,7 @@ fn an_event_episode_sends_only_the_event_id() {
         json_body(&server.finish()[0]),
         serde_json::json!({
             "projectId": "prj_explicit",
-            "episodes": [{"eventId": "evt_one", "metadata": {"label": "merge"}}],
+            "episodes": [{"eventId": "evt_one"}],
         })
     );
     assert_eq!(
@@ -5240,17 +5232,6 @@ fn command_arguments_are_validated_before_sending_a_request() {
                 "2024-01-02",
             ],
             "both --start and --end must be specified, or neither\n",
-        ),
-        (
-            vec![
-                "episodes",
-                "add",
-                "--recording-id",
-                "rec_one",
-                "--metadata",
-                "[1]",
-            ],
-            "--metadata must be a JSON object: [1]\n",
         ),
     ] {
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(&args)).finish();
