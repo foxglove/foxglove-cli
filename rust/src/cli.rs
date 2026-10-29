@@ -395,7 +395,15 @@ enum LakeFilesCommand {
     List(LakeFileListArgs),
 }
 
+// The lake files endpoint is scoped by `--site-id` and takes no project parameter, so this
+// command has no `--project-id` and no entry in `command_project_scope`.
 #[derive(Debug, Args)]
+#[command(group(
+    ArgGroup::new("selector")
+        .args(["device_id", "device_name", "recording_id", "recording_key"])
+        .multiple(true)
+        .required(true)
+))]
 pub(crate) struct LakeFileListArgs {
     #[command(flatten)]
     format: FormatArgs,
@@ -2482,6 +2490,10 @@ mod tests {
         ),
         (&["episodes", "add"], &["recording-id"]),
         (
+            &["episodes", "list"],
+            &["recording-id", "sort-by", "sort-order"],
+        ),
+        (
             &["lake-files", "list", "--site-id", "site_1"],
             &[
                 "device-id",
@@ -2494,10 +2506,6 @@ mod tests {
             ],
         ),
         (&["lake-files", "list"], &["site-id"]),
-        (
-            &["episodes", "list"],
-            &["recording-id", "sort-by", "sort-order"],
-        ),
         (
             &[
                 "events",
@@ -2664,7 +2672,14 @@ mod tests {
             ),
             (&["events", "list"], &["device-name"]),
             (
-                &["lake-files", "list", "--site-id", "site_1"],
+                &[
+                    "lake-files",
+                    "list",
+                    "--site-id",
+                    "site_1",
+                    "--recording-id",
+                    "rec_1",
+                ],
                 &["device-name", "recording-key", "session-key"],
             ),
             (

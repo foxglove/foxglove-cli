@@ -4386,15 +4386,21 @@ fn lake_files_are_listed_by_device_and_time_range_or_by_recording() {
 #[test]
 fn lake_file_queries_are_limited_before_sending_a_request() {
     let workspace = Workspace::new();
+    for args in [vec![], vec!["--session-id", "ses_one"]] {
+        let mut command = vec!["lake-files", "list", "--site-id", "site_one"];
+        command.extend(&args);
+        let output =
+            Process::spawn(workspace.command("http://127.0.0.1:1").args(&command)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.starts_with(
+                "error: the following required arguments were not provided:\n  <--device-id <DEVICE_ID>|--device-name <DEVICE_NAME>|--recording-id <RECORDING_ID>|--recording-key <RECORDING_KEY>>\n"
+            ),
+            "{args:?}: {stderr}"
+        );
+    }
     for (args, expected) in [
-        (
-            vec![],
-            "provide one of --device-id, --device-name, --recording-id, or --recording-key\n",
-        ),
-        (
-            vec!["--session-id", "ses_one"],
-            "provide one of --device-id, --device-name, --recording-id, or --recording-key\n",
-        ),
         (
             vec!["--device-id", "dev_one"],
             "--start and --end are required when listing by device\n",

@@ -55,11 +55,6 @@ struct LakeFileListQuery {
 
 pub(crate) async fn list(runtime: &Runtime, args: &LakeFileListArgs, format: Format) -> Outcome {
     let has_recording = args.recording_id.is_some() || args.recording_key.is_some();
-    if !has_recording && args.device_id.is_none() && args.device_name.is_none() {
-        return Outcome::failure(
-            "provide one of --device-id, --device-name, --recording-id, or --recording-key\n",
-        );
-    }
     let (start, end) = match parse_time_range(args.start.as_deref(), args.end.as_deref()) {
         Ok(range) => range,
         Err(error) => return Outcome::failure(format!("{error}\n")),
