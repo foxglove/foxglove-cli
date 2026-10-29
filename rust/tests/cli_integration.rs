@@ -2070,6 +2070,43 @@ fn dataset_list_filters_reach_the_api() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn attachment_list_filters_reach_the_api() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/recording-attachments", "[]")]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "attachments",
+        "list",
+        "--project-id",
+        "prj_explicit",
+        "--device-id",
+        "dev_one",
+        "--device-name",
+        "robot one",
+        "--site-id",
+        "site_one",
+        "--sort-by",
+        "logTime",
+        "--sort-order",
+        "asc",
+    ]))
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("deviceId", "dev_one"),
+            ("deviceName", "robot one"),
+            ("limit", "50"),
+            ("projectId", "prj_explicit"),
+            ("siteId", "site_one"),
+            ("sortBy", "logTime"),
+            ("sortOrder", "asc"),
+        ])
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn recordings_are_listed_with_their_session() {
     const RECORDINGS: &str = r#"[{"id":"rec_one","projectId":"prj_default","path":"one.mcap","size":128,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"complete","sessionId":"ses_one"},{"id":"rec_two","projectId":"prj_default","path":"two.mcap","size":64,"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","createdAt":"2024-01-02T03:04:07Z","importStatus":"none"}]"#;
     let workspace = Workspace::new();

@@ -65,6 +65,10 @@ impl Record for Attachment {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AttachmentListQuery {
+    #[serde(skip_serializing_if = "String::is_empty")]
+    device_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    device_name: String,
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
@@ -72,6 +76,12 @@ struct AttachmentListQuery {
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     recording_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    site_id: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_order: String,
 }
 
 pub(crate) async fn list_attachments(
@@ -80,10 +90,15 @@ pub(crate) async fn list_attachments(
     format: Format,
 ) -> Outcome {
     let query = AttachmentListQuery {
+        device_id: args.device_id.clone().unwrap_or_default(),
+        device_name: args.device_name.clone().unwrap_or_default(),
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         recording_id: args.recording_id.clone().unwrap_or_default(),
+        site_id: args.site_id.clone().unwrap_or_default(),
+        sort_by: args.sort_by.clone().unwrap_or_default(),
+        sort_order: args.sort_order.clone().unwrap_or_default(),
     };
     fetch_list::<Attachment, _>(
         runtime,
