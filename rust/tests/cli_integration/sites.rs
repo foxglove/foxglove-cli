@@ -321,6 +321,40 @@ fn bucket_notifications_use_the_site_notification_token() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn a_rejected_site_notification_token_is_named() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 401,
+        ..Reply::json("POST", "/v1/site-bucket-notifications", "")
+    }]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sites",
+            "notify-bucket",
+            "--message-id",
+            "msg-1",
+            "--file-name",
+            "robot/run.mcap",
+            "--bucket-name",
+            "inbox",
+            "--storage-provider",
+            "aws",
+            "--token",
+            "fox_snt_expired",
+        ],
+    );
+    server.finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to send bucket notification: the API rejected the Site Bucket Notification Token\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn invalid_bucket_notifications_are_rejected_before_sending() {
     let workspace = Workspace::new();
     let base = [

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
-use crate::api::encode_path_segment;
+use crate::api::{encode_path_segment, ApiError};
 use crate::cli::{
     SiteAddArgs, SiteBucketNotificationArgs, SiteEditArgs, SiteGetArgs, SiteIdArgs,
     SitePolicySetArgs,
@@ -217,6 +217,9 @@ pub(crate) async fn notify_bucket(runtime: &Runtime, args: &SiteBucketNotificati
         .await
     {
         Ok(_) => Outcome::notice(format!("Bucket notification sent: {}\n", args.file_name)),
+        Err(ApiError::Unauthorized) => Outcome::failure(
+            "Failed to send bucket notification: the API rejected the Site Bucket Notification Token\n",
+        ),
         Err(error) => Outcome::failure(format!("Failed to send bucket notification: {error}\n")),
     }
 }

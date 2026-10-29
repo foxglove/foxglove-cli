@@ -2510,7 +2510,7 @@ enum SitesCommand {
     #[command(
         name = "notify-bucket",
         about = "Notify a Primary Site that an object in its bucket was created or removed",
-        long_about = "Notify a Primary Site that an object in its bucket was created or removed. Most users should set up bucket notifications instead. This request authenticates with a Site Bucket Notification Token (fox_snt_...), not your login: pass it with --token or FOXGLOVE_SITE_NOTIFICATION_TOKEN."
+        long_about = "Notify a Primary Site that an object in its bucket was created or removed. Most users should have their storage provider send these notifications automatically instead. This request authenticates with a Site Bucket Notification Token (fox_snt_...), not your login: pass it with --token or FOXGLOVE_SITE_NOTIFICATION_TOKEN."
     )]
     NotifyBucket(SiteBucketNotificationArgs),
 }

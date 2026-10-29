@@ -211,9 +211,10 @@ $ foxglove sites ingest-path-policy set site_drpLqjBZYUzus3gv policy.json
     Ingest path policy for site site_drpLqjBZYUzus3gv is at revision 5
 ```
 
-Tell a Primary Site that an object in its bucket was created or removed. Most users should set up
-bucket notifications instead. This request authenticates with a Site Bucket Notification Token,
-passed with `--token` or `FOXGLOVE_SITE_NOTIFICATION_TOKEN`, and the CLI never saves it:
+Tell a Primary Site that an object in its bucket was created or removed. Most users should have
+their storage provider send these notifications automatically instead. This request authenticates
+with a Site Bucket Notification Token, passed with `--token` or `FOXGLOVE_SITE_NOTIFICATION_TOKEN`,
+and the CLI never saves it:
 
 ```
 $ FOXGLOVE_SITE_NOTIFICATION_TOKEN=fox_snt_... foxglove sites notify-bucket \
