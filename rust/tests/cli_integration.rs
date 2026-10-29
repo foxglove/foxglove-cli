@@ -2101,6 +2101,7 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         ("/v1/devices", "[]", &["devices", "list"]),
         ("/v1/episodes", r#"{"episodes":[]}"#, &["episodes", "list"]),
         ("/v1/events", "[]", &["events", "list"]),
+        ("/v1/data/import-errors", "[]", &["import-errors", "list"]),
         (
             "/v1/data/pending-imports",
             "[]",
@@ -2194,6 +2195,7 @@ fn offset_list_requests_send_the_offset_only_when_given() {
     let cases: &[(&str, &[&str])] = &[
         ("/v1/recording-attachments", &["attachments", "list"]),
         ("/v1/devices", &["devices", "list"]),
+        ("/v1/data/import-errors", &["import-errors", "list"]),
         ("/v1/data/pending-imports", &["pending-imports", "list"]),
         ("/v1/sessions", &["sessions", "list"]),
     ];
@@ -5349,6 +5351,12 @@ fn newly_scoped_commands_honor_defaults_and_explicit_empty_overrides() {
         ),
         (vec!["events", "list"], "GET", "/v1/events", false),
         (
+            vec!["import-errors", "list"],
+            "GET",
+            "/v1/data/import-errors",
+            false,
+        ),
+        (
             vec!["devices", "get", "dev_one"],
             "GET",
             "/v1/devices/dev_one",
@@ -5930,6 +5938,60 @@ fn pending_imports_accept_backfill_job_filter_and_sort() {
     assert_eq!(query["siteBackfillJobId"], "sbj_1");
     assert_eq!(query["sortBy"], "updatedAt");
     assert_eq!(query["sortOrder"], "desc");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn import_errors_send_filters_and_render_failed_imports() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/data/import-errors",
+        r#"[{"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","orgId":"org_1","filename":"drive.mcap","pipelineStage":"parse","requestId":"req_1","deviceId":null,"deviceName":"Robot A","siteId":"site_1","projectId":"prj_1","status":"error","error":"invalid chunk"}]"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "import-errors",
+            "list",
+            "--device-name",
+            "Robot A",
+            "--filename-matches",
+            "drive*",
+            "--error",
+            "chunk",
+            "--project-id",
+            "prj_1",
+            "--site-backfill-job-id",
+            "sbj_1",
+            "--sort-by",
+            "updatedAt",
+            "--sort-order",
+            "desc",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("deviceName", "Robot A"),
+            ("error", "chunk"),
+            ("filenameMatches", "drive*"),
+            ("limit", "50"),
+            ("projectId", "prj_1"),
+            ("siteBackfillJobId", "sbj_1"),
+            ("sortBy", "updatedAt"),
+            ("sortOrder", "desc"),
+        ])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Created at,Updated at,Org ID,Filename,Pipeline stage,Request ID,Device ID,Device name,Import ID,Site ID,Project ID,Status,Error,Quarantined at\n\
+         2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,org_1,drive.mcap,parse,req_1,,Robot A,,site_1,prj_1,error,invalid chunk,\n"
+    );
 }
 
 #[test]

@@ -43,7 +43,7 @@ Update your environment variables:
 | `--json` | `--format json` |
 | `export --output-format mcap0` | `export --output-format mcap` (still the default) |
 | `--import-id IMPORT_ID` on `export` and `attachments list` | `--recording-id RECORDING_ID` |
-| `pending-imports list --error` | Filter the `error` field of `--format json` |
+| `pending-imports list --error TEXT` | `import-errors list --error TEXT` |
 
 Imports have long been deprecated in favor of Recordings. If you still have
 workflows using Import IDs you'll need to switch over to Recording IDs.

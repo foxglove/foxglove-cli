@@ -156,6 +156,8 @@ enum CliCommand {
     Export(ExportArgs),
     #[command(about = "List, inspect, and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
+    #[command(name = "import-errors", about = "List import errors", subcommand)]
+    ImportErrors(ImportErrorsCommand),
     #[command(
         about = "List and manage layouts shared with your organization",
         subcommand
@@ -1651,6 +1653,66 @@ pub(crate) struct ExtensionIdArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum ImportErrorsCommand {
+    #[command(about = "List uploaded recordings whose import failed during processing")]
+    List(ImportErrorListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ImportErrorListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "Pattern to match against the filename",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) filename_matches: Option<String>,
+    #[arg(
+        long,
+        help = "Only import errors whose error message matches this text",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) error: Option<String>,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Only import errors from imports enqueued by this site backfill job", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_backfill_job_id: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort import errors by: createdAt, deviceName, error, requestId, or updatedAt",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc (default: asc)",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum SiteTokensCommand {
     #[command(about = "Create a token for a site controller and print it once")]
     Add(SiteTokenAddArgs),
@@ -2451,6 +2513,7 @@ fn command_project_scope(
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
+        CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => &args.project_id,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             if args.without_project {
                 return Some(runtime::ProjectScope {
@@ -2540,6 +2603,10 @@ async fn dispatch_api_command(
         CliCommand::EventTypes(command) => dispatch_event_type_command(&runtime, command).await,
         CliCommand::Events(command) => dispatch_event_command(&runtime, command).await,
         CliCommand::Extensions(command) => dispatch_extension_command(&runtime, command).await,
+        CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => {
+            let format = args.format.format;
+            pending_imports::list_import_errors(&runtime, &args, format).await
+        }
         CliCommand::Layouts(command) => dispatch_layout_command(&runtime, command).await,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
@@ -3112,6 +3179,17 @@ mod tests {
             &["device-id", "device-name", "event-type-id", "sort-by"],
         ),
         (
+            &["import-errors", "list"],
+            &[
+                "device-name",
+                "filename-matches",
+                "error",
+                "site-backfill-job-id",
+                "sort-by",
+                "sort-order",
+            ],
+        ),
+        (
             &["pending-imports", "list"],
             &[
                 "device-id",
@@ -3286,6 +3364,10 @@ mod tests {
                 &["device-name", "key", "session-key"],
             ),
             (&["events", "list"], &["device-name"]),
+            (
+                &["import-errors", "list"],
+                &["device-name", "filename-matches", "error"],
+            ),
             (
                 &["pending-imports", "list"],
                 &["device-name", "key", "filename"],

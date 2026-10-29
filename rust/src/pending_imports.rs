@@ -1,8 +1,8 @@
-//! Pending import commands.
+//! Pending import and import error commands.
 
 use serde::{Deserialize, Serialize};
 
-use crate::cli::PendingImportListArgs;
+use crate::cli::{ImportErrorListArgs, PendingImportListArgs};
 use crate::output::Format;
 use crate::records::{
     fetch_list, is_false, is_zero, null_to_default, parse_timestamp, ProjectFallback, Record,
@@ -172,6 +172,56 @@ pub(crate) async fn list_pending_imports(
         format,
         "Failed to list pending imports",
         "/v1/data/pending-imports",
+        &query,
+        Some(query.limit),
+    )
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportErrorListQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename_matches: Option<String>,
+    limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    site_backfill_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_order: Option<String>,
+}
+
+/// Lists failed imports, which the API returns in the pending import shape.
+pub(crate) async fn list_import_errors(
+    runtime: &Runtime,
+    args: &ImportErrorListArgs,
+    format: Format,
+) -> Outcome {
+    let query = ImportErrorListQuery {
+        device_name: args.device_name.clone(),
+        error: args.error.clone(),
+        filename_matches: args.filename_matches.clone(),
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+        site_backfill_job_id: args.site_backfill_job_id.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: args.sort_order.clone(),
+    };
+    fetch_list::<PendingImport, _>(
+        runtime,
+        format,
+        "Failed to list import errors",
+        "/v1/data/import-errors",
         &query,
         Some(query.limit),
     )
