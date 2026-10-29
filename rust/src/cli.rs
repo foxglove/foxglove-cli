@@ -15,7 +15,8 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
+    extensions, lake_files, pending_imports, projects, recordings, runtime, sessions, topics,
+    upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -151,6 +152,12 @@ enum CliCommand {
     Export(ExportArgs),
     #[command(about = "List and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
+    #[command(
+        name = "lake-files",
+        about = "List files in a self-managed Primary Site's lake bucket",
+        subcommand
+    )]
+    LakeFiles(LakeFilesCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
     #[command(about = "List and manage projects", subcommand)]
@@ -377,6 +384,49 @@ pub(crate) struct CoverageListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) tolerance: Option<i64>,
+}
+
+#[derive(Debug, Subcommand)]
+enum LakeFilesCommand {
+    #[command(
+        about = "List MCAP files in a self-managed Primary Site's lake bucket",
+        long_about = "List the MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Each imported recording produces one file per topic. Limit the query with --device-id, --device-name, --recording-id, or --recording-key; device queries also need --start and --end, at most 24 hours apart. Only self-managed sites are supported."
+    )]
+    List(LakeFileListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct LakeFileListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Device ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
+    #[arg(
+        long,
+        help = "End of an imported recording's time range (ISO 8601); give with --start",
+        allow_hyphen_values = true
+    )]
+    pub(crate) end: Option<String>,
+    #[arg(long, help = "Recording ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) recording_key: Option<String>,
+    #[arg(long, help = "Only files for recordings in the session with this ID", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) session_id: Option<String>,
+    #[arg(long, help = "Only files for recordings in the session with this key", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) session_key: Option<String>,
+    #[arg(long, help = "Self-managed Primary Site ID (required)", required = true, allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) site_id: String,
+    #[arg(
+        long,
+        help = "Start of an imported recording's time range (ISO 8601); give with --end",
+        allow_hyphen_values = true
+    )]
+    pub(crate) start: Option<String>,
+    #[arg(long, help = "Only files for this topic", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) topic: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -1933,6 +1983,8 @@ fn command_project_scope(
     Some(runtime.project_scope(flag.as_deref()))
 }
 
+// One arm per API command keeps the dispatch table flat and easy to scan.
+#[allow(clippy::too_many_lines)]
 async fn dispatch_api_command(
     command: CliCommand,
     config_path: Option<&std::path::Path>,
@@ -1971,6 +2023,10 @@ async fn dispatch_api_command(
         CliCommand::Coverage(CoverageCommand::List(args)) => {
             let format = args.format.format;
             coverage::list(&runtime, &args, format).await
+        }
+        CliCommand::LakeFiles(LakeFilesCommand::List(args)) => {
+            let format = args.format.format;
+            lake_files::list(&runtime, &args, format).await
         }
         CliCommand::Export(args) => {
             let diagnostic = debug
@@ -2426,6 +2482,19 @@ mod tests {
         ),
         (&["episodes", "add"], &["recording-id"]),
         (
+            &["lake-files", "list", "--site-id", "site_1"],
+            &[
+                "device-id",
+                "device-name",
+                "recording-id",
+                "recording-key",
+                "session-id",
+                "session-key",
+                "topic",
+            ],
+        ),
+        (&["lake-files", "list"], &["site-id"]),
+        (
             &["episodes", "list"],
             &["recording-id", "sort-by", "sort-order"],
         ),
@@ -2594,6 +2663,10 @@ mod tests {
                 &["device-name", "key", "session-key"],
             ),
             (&["events", "list"], &["device-name"]),
+            (
+                &["lake-files", "list", "--site-id", "site_1"],
+                &["device-name", "recording-key", "session-key"],
+            ),
             (
                 &["pending-imports", "list"],
                 &["device-name", "key", "filename"],

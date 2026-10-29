@@ -168,6 +168,13 @@ Request transfer of an existing edge recording to its configured Primary Site:
 foxglove recordings transfer rec_123
 ```
 
+List the per-topic MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Query by recording, or by device with a time range of at most 24 hours:
+
+```
+$ foxglove lake-files list --site-id site_123 --recording-id rec_123
+$ foxglove lake-files list --site-id site_123 --device-name RobotA --start 2026-04-19 --end 2026-04-20 --topic /gps
+```
+
 ### Exports
 
 Retrieve data for a device, time range, and optional list of topics, and export it directly to the console (`--output-format json`) or to a new file (`--output-format mcap` or `--output-format bag1`):
