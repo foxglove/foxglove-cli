@@ -4867,7 +4867,7 @@ fn dataset_episode_pins_can_be_added_or_updated() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn pending_imports_accept_backfill_job_filter() {
+fn pending_imports_accept_backfill_job_filter_and_sort() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/data/pending-imports", "[]")]);
     assert_success(&run(
@@ -4878,14 +4878,18 @@ fn pending_imports_accept_backfill_job_filter() {
             "list",
             "--site-backfill-job-id",
             "sbj_1",
+            "--sort-by",
+            "updatedAt",
+            "--sort-order",
+            "desc",
             "--format",
             "json",
         ],
     ));
-    assert_eq!(
-        query_pairs(&server.finish()[0])["siteBackfillJobId"],
-        "sbj_1"
-    );
+    let query = query_pairs(&server.finish()[0]);
+    assert_eq!(query["siteBackfillJobId"], "sbj_1");
+    assert_eq!(query["sortBy"], "updatedAt");
+    assert_eq!(query["sortOrder"], "desc");
 }
 
 #[test]
