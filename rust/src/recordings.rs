@@ -138,6 +138,8 @@ struct RecordingListQuery {
     sort_order: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    topic: String,
 }
 
 pub(crate) async fn list_recordings(
@@ -184,6 +186,7 @@ pub(crate) async fn list_recordings(
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
         start,
+        topic: args.topic.clone().unwrap_or_default(),
     };
     fetch_list::<Recording, _>(
         runtime,

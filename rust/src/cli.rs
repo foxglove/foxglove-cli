@@ -1394,6 +1394,8 @@ pub(crate) struct RecordingListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
+    #[arg(long, help = "Only recordings containing this topic", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) topic: Option<String>,
     #[arg(
         long, help = "Only recordings without a device",
         action = clap::ArgAction::Set,
@@ -2278,6 +2280,7 @@ mod tests {
                 "import-status",
                 "sort-by",
                 "sort-order",
+                "topic",
             ],
         ),
         (&["sessions", "add"], &["device-id", "key"]),
