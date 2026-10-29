@@ -4992,6 +4992,115 @@ fn coverage_is_filtered_by_recording_key_and_shows_pending_coverage_updates() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn lake_files_are_listed_by_device_and_time_range_or_by_recording() {
+    let workspace = Workspace::new();
+    for (args, expected) in [
+        (
+            vec![
+                "--device-name",
+                "Robot A",
+                "--start",
+                "2024-01-02",
+                "--end",
+                "2024-01-02T23:59:59Z",
+                "--session-key",
+                "drive-1",
+                "--topic",
+                "/camera",
+            ],
+            expected_pairs(&[
+                ("siteId", "site_one"),
+                ("deviceName", "Robot A"),
+                ("start", "2024-01-02T00:00:00Z"),
+                ("end", "2024-01-02T23:59:59Z"),
+                ("sessionKey", "drive-1"),
+                ("topic", "/camera"),
+            ]),
+        ),
+        (
+            vec!["--recording-id", "rec_one"],
+            expected_pairs(&[("siteId", "site_one"), ("recordingId", "rec_one")]),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "GET",
+            "/v1/lake-files",
+            r#"[{"path":"lake/rec_one/camera.mcap","topics":["/camera","/camera/info"]},{"path":"lake/rec_one/imu.mcap","topics":["/imu"]}]"#,
+        )]);
+        let mut command = vec![
+            "lake-files",
+            "list",
+            "--site-id",
+            "site_one",
+            "--format",
+            "csv",
+        ];
+        command.extend(&args);
+        let output = run(&workspace, &server, &command);
+        assert_success(&output);
+        assert_eq!(query_pairs(&server.finish()[0]), expected, "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            "Path,Topics\n\
+             lake/rec_one/camera.mcap,\"/camera, /camera/info\"\n\
+             lake/rec_one/imu.mcap,/imu\n"
+        );
+    }
+}
+
+#[test]
+fn lake_file_queries_are_limited_before_sending_a_request() {
+    let workspace = Workspace::new();
+    for args in [vec![], vec!["--session-id", "ses_one"]] {
+        let mut command = vec!["lake-files", "list", "--site-id", "site_one"];
+        command.extend(&args);
+        let output =
+            Process::spawn(workspace.command("http://127.0.0.1:1").args(&command)).finish();
+        assert!(!output.status.success(), "{args:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.starts_with(
+                "error: the following required arguments were not provided:\n  <--device-id <DEVICE_ID>|--device-name <DEVICE_NAME>|--recording-id <RECORDING_ID>|--recording-key <RECORDING_KEY>>\n"
+            ),
+            "{args:?}: {stderr}"
+        );
+    }
+    for (args, expected) in [
+        (
+            vec!["--device-id", "dev_one"],
+            "--start and --end are required when listing by device\n",
+        ),
+        (
+            vec!["--recording-id", "rec_one", "--start", "2024-01-02"],
+            "both --start and --end must be specified, or neither\n",
+        ),
+        (
+            vec![
+                "--device-id",
+                "dev_one",
+                "--start",
+                "2024-01-02",
+                "--end",
+                "2024-01-03T00:00:01Z",
+            ],
+            "--start and --end must be at most 24 hours apart\n",
+        ),
+    ] {
+        let mut command = vec!["lake-files", "list", "--site-id", "site_one"];
+        command.extend(&args);
+        let output =
+            Process::spawn(workspace.command("http://127.0.0.1:1").args(&command)).finish();
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn an_episode_in_a_dataset_is_not_deleted() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply {

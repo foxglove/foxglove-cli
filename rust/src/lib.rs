@@ -16,6 +16,7 @@ mod events;
 mod export;
 mod extensions;
 pub mod format;
+mod lake_files;
 mod layouts;
 pub mod output;
 mod pending_imports;
