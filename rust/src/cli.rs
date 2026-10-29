@@ -1462,6 +1462,8 @@ enum RecordingsCommand {
         long_about = "Delete a recording and its data. For recordings imported from an Edge Site, only the imported data is removed: the edge copy and session membership remain. Use `recordings transfer RECORDING_ID` to restore its data."
     )]
     Delete(RecordingDeleteArgs),
+    #[command(about = "Get a recording by ID or key")]
+    Get(RecordingGetArgs),
     #[command(about = "List recordings")]
     List(Box<RecordingListArgs>),
     #[command(
@@ -1479,6 +1481,14 @@ pub(crate) struct RecordingTransferArgs {
 #[derive(Debug, Args)]
 pub(crate) struct RecordingDeleteArgs {
     #[arg(value_name = "RECORDING_ID")]
+    pub(crate) id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct RecordingGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "RECORDING_ID_OR_KEY", value_parser = parse_non_blank)]
     pub(crate) id: String,
 }
 
@@ -1982,9 +1992,6 @@ async fn dispatch_api_command(
             export::export_data(&runtime, &args, writer).await
         }
         CliCommand::Upload(args) => upload::upload_file(&runtime, &args).await,
-        CliCommand::Recordings(RecordingsCommand::Transfer(args)) => {
-            recordings::transfer_recording(&runtime, &args).await
-        }
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
         CliCommand::Devices(DevicesCommand::Add(args)) => {
             devices::add_device(&runtime, &args).await
@@ -2021,13 +2028,7 @@ async fn dispatch_api_command(
         CliCommand::Projects(ProjectsCommand::List(args)) => {
             projects::list_projects(&runtime, args.format).await
         }
-        CliCommand::Recordings(RecordingsCommand::Delete(args)) => {
-            recordings::delete_recording(&runtime, &args).await
-        }
-        CliCommand::Recordings(RecordingsCommand::List(args)) => {
-            let format = args.format.format;
-            recordings::list_recordings(&runtime, &args, format).await
-        }
+        CliCommand::Recordings(command) => dispatch_recording_command(&runtime, command).await,
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
             let format = args.format.format;
@@ -2131,6 +2132,24 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
             let format = args.format.format;
             episodes::list_versions(runtime, &args, format).await
         }
+    }
+}
+
+async fn dispatch_recording_command(
+    runtime: &runtime::Runtime,
+    command: RecordingsCommand,
+) -> Outcome {
+    match command {
+        RecordingsCommand::Delete(args) => recordings::delete_recording(runtime, &args).await,
+        RecordingsCommand::Get(args) => {
+            let format = args.format.format;
+            recordings::get_recording(runtime, &args, format).await
+        }
+        RecordingsCommand::List(args) => {
+            let format = args.format.format;
+            recordings::list_recordings(runtime, &args, format).await
+        }
+        RecordingsCommand::Transfer(args) => recordings::transfer_recording(runtime, &args).await,
     }
 }
 
