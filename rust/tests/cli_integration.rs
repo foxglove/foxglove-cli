@@ -4120,8 +4120,43 @@ fn coverage_without_a_device_summary_shows_its_device_id() {
     server.finish();
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Device ID,Device Name,Start,End,Status\n\
-         dev_one,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported\n"
+        "Device ID,Device Name,Start,End,Status,Coverage Update Requested At\n\
+         dev_one,,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported,\n"
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn coverage_is_filtered_by_recording_key_and_shows_pending_coverage_updates() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json(
+        "GET",
+        "/v1/data/coverage",
+        r#"[{"deviceId":"dev_one","device":{"id":"dev_one","name":"Robot A","pendingCoverageUpdate":{"nextInvalidationRequestedAt":"2024-01-02T03:04:07Z"}},"start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","status":"imported"}]"#,
+    )]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "coverage",
+            "list",
+            "--recording-key",
+            " drive-1\r",
+            "--format",
+            "csv",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0])
+            .get("recordingKey")
+            .map(String::as_str),
+        Some(" drive-1\r")
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Device ID,Device Name,Start,End,Status,Coverage Update Requested At\n\
+         dev_one,Robot A,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,imported,2024-01-02T03:04:07Z\n"
     );
 }
 

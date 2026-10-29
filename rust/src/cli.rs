@@ -359,6 +359,8 @@ pub(crate) struct CoverageListArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, help = "Recording ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) recording_id: Option<String>,
+    #[arg(long, help = "Recording key", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) recording_key: Option<String>,
     #[arg(long, help = "Session ID", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) session_id: Option<String>,
     #[arg(long, help = "Session key", allow_hyphen_values = true, value_parser = parse_non_blank)]
@@ -2229,6 +2231,7 @@ mod tests {
                 "device-id",
                 "device-name",
                 "recording-id",
+                "recording-key",
                 "session-id",
                 "session-key",
             ],
@@ -2402,7 +2405,10 @@ mod tests {
     #[test]
     fn keys_and_device_names_keep_their_exact_contents() {
         let cases: &[(&[&str], &[&str])] = &[
-            (&["coverage", "list"], &["device-name", "session-key"]),
+            (
+                &["coverage", "list"],
+                &["device-name", "recording-key", "session-key"],
+            ),
             (&["export"], &["device-name", "key", "session-key"]),
             (
                 &["upload", "file.mcap"],
