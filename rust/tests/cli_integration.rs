@@ -3060,6 +3060,37 @@ fn creating_in_an_unknown_project_names_the_project() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn a_device_token_names_the_project_only_when_no_device_is_given() {
+    let workspace = Workspace::new();
+    for (args, expected) in [
+        (
+            vec!["--project-id", "prj_gone"],
+            "Project not found: prj_gone\n",
+        ),
+        (
+            vec!["--device-id", "dev_missing"],
+            "Failed to create device token: Not Found\n",
+        ),
+    ] {
+        let server = Server::new(vec![Reply {
+            status: 404,
+            ..Reply::json("POST", "/v1/device-tokens", r#"{"error":"Not Found"}"#)
+        }]);
+        let mut command = vec!["device-tokens", "add"];
+        command.extend(&args);
+        let output = run(&workspace, &server, &command);
+        server.finish();
+        assert!(!output.status.success(), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            expected,
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn editing_a_dataset_sends_only_the_fields_given_and_an_empty_description_clears_it() {
     let workspace = Workspace::new();
     for (flags, expected) in [

@@ -185,7 +185,11 @@ pub(crate) async fn add_device_token(
             }
             outcome
         }
-        Err(error) if error.is_not_found_for("project") => {
+        Err(error)
+            if args.device_id.is_none()
+                && !request.project_id.is_empty()
+                && error.is_not_found_for("project") =>
+        {
             Outcome::failure(format!("Project not found: {}\n", request.project_id))
         }
         Err(error) => Outcome::failure(format!("Failed to create device token: {error}\n")),
