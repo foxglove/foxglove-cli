@@ -11,11 +11,11 @@ use serde_json::{Number, Value};
 use std::collections::BTreeMap;
 
 use crate::api::encode_path_segment;
-use crate::cli::{DeviceAddArgs, DeviceEditArgs, DeviceListArgs};
+use crate::cli::{DeviceAddArgs, DeviceDeleteArgs, DeviceEditArgs, DeviceGetArgs, DeviceListArgs};
 use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -139,6 +139,46 @@ pub(crate) async fn list_devices(
         Some(query.limit),
     )
     .await
+}
+
+pub(crate) async fn get_device(runtime: &Runtime, args: &DeviceGetArgs, format: Format) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    match runtime
+        .client
+        .get::<_, Device>(
+            &format!("/v1/devices/{}", encode_path_segment(&args.device)),
+            &query,
+        )
+        .await
+    {
+        Ok(device) => format_record(&device, format),
+        Err(error) if error.is_not_found_for("device") => {
+            Outcome::failure(format!("Device not found: {}\n", args.device))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get device: {error}\n")),
+    }
+}
+
+pub(crate) async fn delete_device(runtime: &Runtime, args: &DeviceDeleteArgs) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    match runtime
+        .client
+        .delete_with_query(
+            &format!("/v1/devices/{}", encode_path_segment(&args.device)),
+            &query,
+        )
+        .await
+    {
+        Ok(()) => Outcome::notice(format!("Device deleted: {}\n", args.device)),
+        Err(error) if error.is_not_found_for("device") => {
+            Outcome::failure(format!("Device not found: {}\n", args.device))
+        }
+        Err(error) => Outcome::failure(format!("Failed to delete device: {error}\n")),
+    }
 }
 
 #[derive(Default, Serialize)]

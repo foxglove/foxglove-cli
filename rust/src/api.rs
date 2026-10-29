@@ -639,6 +639,32 @@ impl FoxgloveClient {
         Ok(PagedResponse { data, next_cursor })
     }
 
+    /// Execute an authenticated GET for an endpoint that answers 204 No Content
+    /// when there is nothing to return, decoding a 200 JSON response.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn get_optional<Q, T>(&self, endpoint: &str, query: &Q) -> Result<Option<T>, ApiError>
+    where
+        Q: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let request = self
+            .request_with_auth(Method::GET, endpoint, true)?
+            .query(query);
+        let response = self.send(request, None).await?;
+        if response.status() == StatusCode::NO_CONTENT {
+            return Ok(None);
+        }
+        let response = ensure_ok_response(response).await?;
+        response
+            .json::<T>()
+            .await
+            .map(Some)
+            .map_err(ApiError::Decode)
+    }
+
     /// Execute an authenticated GET with cancellation support.
     ///
     /// # Errors
