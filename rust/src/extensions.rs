@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::api::encode_path_segment;
 use crate::cli::{ExtensionGetArgs, ExtensionIdArgs, FileArgs};
 use crate::output::Format;
-use crate::records::{fetch_list, format_record, Record};
+use crate::records::{fetch_list, format_record, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -56,7 +56,7 @@ impl Record for Extension {
 struct ExtensionDetails {
     #[serde(flatten)]
     extension: Extension,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_to_default")]
     foxe: String,
 }
 
@@ -172,5 +172,26 @@ pub(crate) async fn publish_extension(runtime: &Runtime, args: &FileArgs) -> Out
             ..Outcome::default()
         },
         Err(error) => Outcome::failure(format!("Extension upload failed: {error}\n")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExtensionDetails;
+
+    #[test]
+    fn a_null_download_link_reads_as_empty() {
+        let details: ExtensionDetails = serde_json::from_value(serde_json::json!({
+            "id": "ext_1",
+            "name": "viz",
+            "publisher": "acme",
+            "displayName": "Viz",
+            "description": null,
+            "activeVersion": "1.0.0",
+            "sha256Sum": null,
+            "foxe": null,
+        }))
+        .unwrap();
+        assert_eq!(details.foxe, "");
     }
 }
