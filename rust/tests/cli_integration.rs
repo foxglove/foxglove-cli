@@ -1122,8 +1122,8 @@ fn login_stops_polling_when_device_code_expires() {
 }
 
 /// Upper bound for a login whose device code expires after one second. It sits far below the
-/// 60-second poll interval and the 300-second read timeout, so finishing within it still proves
-/// that expiry ends the wait, while leaving room for slow CI runners.
+/// 60-second poll interval and the 60 seconds a stalled test response stays open, so finishing
+/// within it still proves that expiry ends the wait, while leaving room for slow CI runners.
 #[cfg(feature = "test-support")]
 const LOGIN_EXPIRY_BOUND: std::time::Duration = std::time::Duration::from_secs(30);
 
