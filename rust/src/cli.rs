@@ -15,7 +15,7 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, datasets, devices, episodes, event_types, events, export,
-    extensions, pending_imports, projects, recordings, runtime, sessions, topics, upload,
+    extensions, pending_imports, projects, recordings, runtime, sessions, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -143,13 +143,17 @@ enum CliCommand {
     Devices(DevicesCommand),
     #[command(about = "List and manage episodes", subcommand)]
     Episodes(EpisodesCommand),
-    #[command(name = "event-types", about = "List event types", subcommand)]
+    #[command(
+        name = "event-types",
+        about = "List and manage event types",
+        subcommand
+    )]
     EventTypes(EventTypesCommand),
     #[command(about = "List and manage events", subcommand)]
     Events(EventsCommand),
     #[command(about = "Export data by recording, session, episode, or device and time range")]
     Export(ExportArgs),
-    #[command(about = "List and publish Studio extensions", subcommand)]
+    #[command(about = "List, inspect, and publish Studio extensions", subcommand)]
     Extensions(ExtensionsCommand),
     #[command(name = "import-errors", about = "List import errors", subcommand)]
     ImportErrors(ImportErrorsCommand),
@@ -161,6 +165,8 @@ enum CliCommand {
     Recordings(RecordingsCommand),
     #[command(about = "List and manage sessions", subcommand)]
     Sessions(SessionsCommand),
+    #[command(about = "List and manage sites", subcommand)]
+    Sites(SitesCommand),
     #[command(about = "List topics", subcommand)]
     Topics(TopicsCommand),
     #[command(
@@ -896,10 +902,35 @@ pub(crate) struct DatasetEpisodeListArgs {
 enum DevicesCommand {
     #[command(about = "Add a device for your organization")]
     Add(DeviceAddArgs),
+    #[command(
+        about = "Delete a device",
+        long_about = "Delete a device. The API refuses to delete a device that still has associated data; delete that data first."
+    )]
+    Delete(DeviceDeleteArgs),
     #[command(about = "Edit a device")]
     Edit(DeviceEditArgs),
+    #[command(about = "Get a device by name or ID")]
+    Get(DeviceGetArgs),
     #[command(about = "List devices registered to your organization")]
     List(DeviceListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "DEVICE_NAME_OR_ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DeviceDeleteArgs {
+    #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(value_name = "DEVICE_NAME_OR_ID", value_parser = parse_non_blank)]
+    pub(crate) device: String,
 }
 
 #[derive(Debug, Args)]
@@ -1233,8 +1264,79 @@ pub(crate) struct EpisodeListArgs {
 
 #[derive(Debug, Subcommand)]
 enum EventTypesCommand {
+    #[command(about = "Create an event type")]
+    Add(EventTypeAddArgs),
+    #[command(about = "Delete an event type that has no events")]
+    Delete(EventTypeIdArgs),
+    #[command(about = "Edit an event type's name, color, or custom properties")]
+    Edit(EventTypeEditArgs),
+    #[command(about = "Get an event type")]
+    Get(EventTypeGetArgs),
     #[command(about = "List event types")]
     List(FormatArgs),
+}
+
+const EVENT_TYPE_CUSTOM_PROPERTY_HELP: &str = "Custom property ID to attach, with a :required suffix if events must set it; repeat in display order";
+
+/// A custom property attached to an event type, written as `ID` or
+/// `ID:required`.
+#[derive(Clone, Debug)]
+pub(crate) struct EventTypeCustomPropertyArg {
+    pub(crate) id: String,
+    pub(crate) required: bool,
+}
+
+fn parse_event_type_custom_property(value: &str) -> Result<EventTypeCustomPropertyArg, String> {
+    let (id, required) = match value.strip_suffix(":required") {
+        Some(id) => (id, true),
+        None => (value, false),
+    };
+    Ok(EventTypeCustomPropertyArg {
+        id: parse_id(id)?,
+        required,
+    })
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeAddArgs {
+    #[arg(long, help = "Color name, such as red", value_parser = parse_non_blank)]
+    pub(crate) color: Option<String>,
+    #[arg(long, help = EVENT_TYPE_CUSTOM_PROPERTY_HELP, value_name = "ID[:required]", action = clap::ArgAction::Append, value_parser = parse_event_type_custom_property)]
+    pub(crate) custom_property: Vec<EventTypeCustomPropertyArg>,
+    #[arg(long, help = "Event type name, unique within your organization", value_parser = parse_non_blank)]
+    pub(crate) name: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeIdArgs {
+    #[arg(value_name = "EVENT_TYPE_ID", value_parser = parse_id)]
+    pub(crate) event_type_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EVENT_TYPE_ID", value_parser = parse_id)]
+    pub(crate) event_type_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct EventTypeEditArgs {
+    #[arg(value_name = "EVENT_TYPE_ID", value_parser = parse_id)]
+    pub(crate) event_type_id: String,
+    #[arg(
+        long,
+        help = "Remove every custom property from the event type",
+        conflicts_with = "custom_property"
+    )]
+    pub(crate) clear_custom_properties: bool,
+    #[arg(long, help = "New color name, such as red", value_parser = parse_non_blank)]
+    pub(crate) color: Option<String>,
+    #[arg(long, help = "Custom property ID, with a :required suffix if events must set it; replaces the existing list, so repeat for each property in display order", value_name = "ID[:required]", action = clap::ArgAction::Append, value_parser = parse_event_type_custom_property)]
+    pub(crate) custom_property: Vec<EventTypeCustomPropertyArg>,
+    #[arg(long, help = "New name, unique within your organization", value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1339,6 +1441,8 @@ pub(crate) struct EventListArgs {
 
 #[derive(Debug, Subcommand)]
 enum ExtensionsCommand {
+    #[command(about = "Show a Studio extension and a signed link to download it")]
+    Get(ExtensionGetArgs),
     #[command(about = "List Studio extensions created for your organization")]
     List(FormatArgs),
     #[command(about = "Publish a Studio extension (.foxe) to your organization")]
@@ -1351,6 +1455,14 @@ enum ExtensionsCommand {
 pub(crate) struct FileArgs {
     #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub(crate) file: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ExtensionGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "EXTENSION_ID")]
+    pub(crate) extension_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -1764,6 +1876,113 @@ pub(crate) struct SessionRecordingMutationArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum SitesCommand {
+    #[command(about = "Create a site")]
+    Add(SiteAddArgs),
+    #[command(
+        about = "Delete a site",
+        long_about = "Delete a site. Deletion is permanent: recordings stored at the site are no longer available through Foxglove. Shut down the site's deployment before deleting it. Files in the site's own storage are not removed."
+    )]
+    Delete(SiteIdArgs),
+    #[command(about = "Edit a site's name, retention period, or URL")]
+    Edit(SiteEditArgs),
+    #[command(about = "Get a site")]
+    Get(SiteGetArgs),
+    #[command(
+        name = "ingest-path-policy",
+        about = "Get or save a site's ingest path policy",
+        subcommand
+    )]
+    IngestPathPolicy(SitePolicyCommand),
+    #[command(about = "List sites")]
+    List(FormatArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum SitePolicyCommand {
+    #[command(
+        about = "Print a site's latest ingest path policy revision as JSON",
+        long_about = "Print a site's latest ingest path policy revision as JSON. A saved policy with an empty rules list ignores every path; a site with no saved policy prints nothing on stdout."
+    )]
+    Get(SiteIdArgs),
+    #[command(
+        about = "Save a site's ingest path policy from a JSON file",
+        long_about = "Save a site's ingest path policy from a JSON file holding schemaVersion and a rules array; the first matching rule wins, and an empty rules list ignores every path. A new revision is recorded only when the policy changes. Only Bring Your Own Storage sites accept a policy."
+    )]
+    Set(SitePolicySetArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteAddArgs {
+    #[arg(long, help = "Name of the site", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: String,
+    #[arg(
+        long = "type",
+        value_name = "TYPE",
+        help = "Type of site to create",
+        value_parser = ["self-hosted", "edge"]
+    )]
+    pub(crate) site_type: String,
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "How long an Edge Site keeps the recordings it creates, in seconds; 0 keeps them indefinitely",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) retain_recordings_seconds: Option<u64>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteIdArgs {
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SiteEditArgs {
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+    #[arg(long, help = "New name of the site", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
+    #[arg(
+        long,
+        value_name = "SECONDS",
+        help = "How long an Edge Site keeps the recordings it creates, in seconds; 0 keeps them indefinitely",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) retain_recordings_seconds: Option<u64>,
+    #[arg(
+        long,
+        help = "URL a self-hosted Primary Site exposes for accessing its data",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) url: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SitePolicySetArgs {
+    #[arg(value_name = "SITE_ID", value_parser = parse_id)]
+    pub(crate) site_id: String,
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath, help = "JSON file with the policy's schemaVersion and rules, or the output of `ingest-path-policy get`")]
+    pub(crate) file: std::path::PathBuf,
+    #[arg(
+        long,
+        value_name = "REVISION",
+        help = "Revision the policy was edited from (default: the revision in a saved `get` output); the save fails if another revision has replaced it (0 when the site has no saved policy)",
+        value_parser = clap::value_parser!(u64)
+    )]
+    pub(crate) previous_revision: Option<u64>,
+}
+
+#[derive(Debug, Subcommand)]
 enum TopicsCommand {
     #[command(about = "List topics")]
     List(TopicListArgs),
@@ -1962,7 +2181,9 @@ fn command_project_scope(
         CliCommand::Datasets(DatasetsCommand::Add(args)) => &args.project_id,
         CliCommand::Datasets(DatasetsCommand::List(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Add(args)) => &args.project_id,
+        CliCommand::Devices(DevicesCommand::Delete(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::Edit(args)) => &args.update.project_id,
+        CliCommand::Devices(DevicesCommand::Get(args)) => &args.project_id,
         CliCommand::Devices(DevicesCommand::List(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::Add(args)) => &args.project_id,
         CliCommand::Episodes(EpisodesCommand::List(args)) => &args.project_id,
@@ -1996,7 +2217,7 @@ fn command_project_scope(
     Some(runtime.project_scope(flag.as_deref()))
 }
 
-fn report_project_scope(command: &CliCommand, runtime: &runtime::Runtime) {
+fn log_project_scope(command: &CliCommand, runtime: &runtime::Runtime) {
     if let Some(scope) = command_project_scope(command, runtime) {
         let id = if scope.id.is_empty() {
             "unscoped"
@@ -2023,7 +2244,7 @@ async fn dispatch_api_command(
         Err(error) => return Outcome::failure(error),
     };
     if debug {
-        report_project_scope(&command, &runtime);
+        log_project_scope(&command, &runtime);
     }
     match command {
         CliCommand::Attachments(AttachmentsCommand::Download(args)) => {
@@ -2053,34 +2274,15 @@ async fn dispatch_api_command(
             recordings::transfer_recording(&runtime, &args).await
         }
         CliCommand::Datasets(command) => dispatch_dataset_command(&runtime, command).await,
-        CliCommand::Devices(DevicesCommand::Add(args)) => {
-            devices::add_device(&runtime, &args).await
-        }
-        CliCommand::Devices(DevicesCommand::Edit(args)) => {
-            devices::edit_device(&runtime, &args).await
-        }
-        CliCommand::Devices(DevicesCommand::List(args)) => {
-            let format = args.format.format;
-            devices::list_devices(&runtime, &args, format).await
-        }
+        CliCommand::Devices(command) => dispatch_device_command(&runtime, command).await,
         CliCommand::Episodes(command) => dispatch_episode_command(&runtime, command).await,
-        CliCommand::EventTypes(EventTypesCommand::List(args)) => {
-            event_types::list_event_types(&runtime, args.format).await
-        }
+        CliCommand::EventTypes(command) => dispatch_event_type_command(&runtime, command).await,
         CliCommand::Events(EventsCommand::Add(args)) => events::add_event(&runtime, &args).await,
         CliCommand::Events(EventsCommand::List(args)) => {
             let format = args.format.format;
             events::list_events(&runtime, &args, format).await
         }
-        CliCommand::Extensions(ExtensionsCommand::List(args)) => {
-            extensions::list_extensions(&runtime, args.format).await
-        }
-        CliCommand::Extensions(ExtensionsCommand::Publish(args)) => {
-            extensions::publish_extension(&runtime, &args).await
-        }
-        CliCommand::Extensions(ExtensionsCommand::Unpublish(args)) => {
-            extensions::unpublish_extension(&runtime, &args).await
-        }
+        CliCommand::Extensions(command) => dispatch_extension_command(&runtime, command).await,
         CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => {
             let format = args.format.format;
             pending_imports::list_import_errors(&runtime, &args, format).await
@@ -2100,6 +2302,7 @@ async fn dispatch_api_command(
             recordings::list_recordings(&runtime, &args, format).await
         }
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
+        CliCommand::Sites(command) => dispatch_site_command(&runtime, command).await,
         CliCommand::Topics(TopicsCommand::List(args)) => {
             let format = args.format.format;
             topics::list_topics(&runtime, &args, format).await
@@ -2108,6 +2311,21 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_extension_command(
+    runtime: &runtime::Runtime,
+    command: ExtensionsCommand,
+) -> Outcome {
+    match command {
+        ExtensionsCommand::Get(args) => {
+            let format = args.format.format;
+            extensions::get_extension(runtime, &args, format).await
+        }
+        ExtensionsCommand::List(args) => extensions::list_extensions(runtime, args.format).await,
+        ExtensionsCommand::Publish(args) => extensions::publish_extension(runtime, &args).await,
+        ExtensionsCommand::Unpublish(args) => extensions::unpublish_extension(runtime, &args).await,
     }
 }
 
@@ -2159,6 +2377,22 @@ async fn dispatch_dataset_command(runtime: &runtime::Runtime, command: DatasetsC
     }
 }
 
+async fn dispatch_device_command(runtime: &runtime::Runtime, command: DevicesCommand) -> Outcome {
+    match command {
+        DevicesCommand::Add(args) => devices::add_device(runtime, &args).await,
+        DevicesCommand::Delete(args) => devices::delete_device(runtime, &args).await,
+        DevicesCommand::Edit(args) => devices::edit_device(runtime, &args).await,
+        DevicesCommand::Get(args) => {
+            let format = args.format.format;
+            devices::get_device(runtime, &args, format).await
+        }
+        DevicesCommand::List(args) => {
+            let format = args.format.format;
+            devices::list_devices(runtime, &args, format).await
+        }
+    }
+}
+
 async fn dispatch_dataset_version_command(
     runtime: &runtime::Runtime,
     command: DatasetVersionsCommand,
@@ -2178,6 +2412,21 @@ async fn dispatch_dataset_version_command(
             datasets::list_versions(runtime, &args, format).await
         }
         DatasetVersionsCommand::Restore(args) => datasets::restore_version(runtime, &args).await,
+    }
+}
+
+async fn dispatch_event_type_command(
+    runtime: &runtime::Runtime,
+    command: EventTypesCommand,
+) -> Outcome {
+    match command {
+        EventTypesCommand::Add(args) => event_types::add_event_type(runtime, &args).await,
+        EventTypesCommand::Delete(args) => event_types::delete_event_type(runtime, &args).await,
+        EventTypesCommand::Edit(args) => event_types::edit_event_type(runtime, &args).await,
+        EventTypesCommand::Get(args) => {
+            event_types::get_event_type(runtime, &args, args.format.format).await
+        }
+        EventTypesCommand::List(args) => event_types::list_event_types(runtime, args.format).await,
     }
 }
 
@@ -2202,6 +2451,25 @@ async fn dispatch_episode_command(runtime: &runtime::Runtime, command: EpisodesC
             let format = args.format.format;
             episodes::list_versions(runtime, &args, format).await
         }
+    }
+}
+
+async fn dispatch_site_command(runtime: &runtime::Runtime, command: SitesCommand) -> Outcome {
+    match command {
+        SitesCommand::Add(args) => sites::add_site(runtime, &args).await,
+        SitesCommand::Delete(args) => sites::delete_site(runtime, &args).await,
+        SitesCommand::Edit(args) => sites::edit_site(runtime, &args).await,
+        SitesCommand::Get(args) => {
+            let format = args.format.format;
+            sites::get_site(runtime, &args, format).await
+        }
+        SitesCommand::IngestPathPolicy(SitePolicyCommand::Get(args)) => {
+            sites::get_policy(runtime, &args).await
+        }
+        SitesCommand::IngestPathPolicy(SitePolicyCommand::Set(args)) => {
+            sites::set_policy(runtime, &args).await
+        }
+        SitesCommand::List(args) => sites::list_sites(runtime, args.format).await,
     }
 }
 
