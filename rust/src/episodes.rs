@@ -51,8 +51,6 @@ pub(crate) struct EpisodeRecording {
     pub(crate) device_id: String,
     #[serde(default)]
     pub(crate) available: bool,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub(crate) resolvable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -525,7 +523,6 @@ mod tests {
                     "start": "",
                     "end": "",
                     "available": false,
-                    "resolvable": true,
                 },
                 {
                     "id": "rec_azure",
@@ -560,8 +557,6 @@ mod tests {
             })
         );
         assert!(recordings[2].get("location").is_none());
-        assert_eq!(recordings[0]["resolvable"], true);
-        assert!(recordings[2].get("resolvable").is_none());
         assert_eq!(
             output["creationContext"],
             serde_json::json!({"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_s3"]}})
