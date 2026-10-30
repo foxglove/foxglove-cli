@@ -335,7 +335,7 @@ fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
         (Some(episode_id), Some(version)) => Some(DerivedFrom {
             episode_id: episode_id.clone(),
             version,
-            remove_recordings: args.remove_recording.clone(),
+            remove_recordings: args.remove_recording_id.clone(),
         }),
         _ => None,
     };

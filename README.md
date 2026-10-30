@@ -475,7 +475,7 @@ defaults to that version's:
 
 ```
 $ foxglove episodes add --from-episode ep_BCUw2zxpBnToJbOS --from-version 2 \
-    --remove-recording rec_lwjzOMxryMmP3yXg --start 2026-04-19T13:22:50Z --end 2026-04-19T13:23:00Z
+    --remove-recording-id rec_lwjzOMxryMmP3yXg --start 2026-04-19T13:22:50Z --end 2026-04-19T13:23:00Z
 Episode created: ep_Mk2vRt8QpLx5WnZc
 ```
 

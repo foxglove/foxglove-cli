@@ -1531,7 +1531,7 @@ pub(crate) struct EpisodeAddArgs {
         value_parser = parse_id,
         requires = "from_episode"
     )]
-    pub(crate) remove_recording: Vec<String>,
+    pub(crate) remove_recording_id: Vec<String>,
     #[arg(
         long,
         help = "Start of the episode window (ISO 8601); give with --end (default: the start of its recordings, or of the --from-episode version)",

@@ -4946,7 +4946,7 @@ fn a_derived_episode_sends_its_source_version() {
             "ep_source",
             "--from-version",
             "3",
-            "--remove-recording",
+            "--remove-recording-id",
             "rec_gone",
             "--start",
             "2024-01-02T03:04:05Z",
@@ -5039,7 +5039,7 @@ fn an_episode_takes_an_event_recordings_or_a_source_episode() {
             "error: the argument '--from-episode <FROM_EPISODE>' cannot be used with '--recording-id <RECORDING_ID>'\n",
         ),
         (
-            vec!["--recording-id", "rec_one", "--remove-recording", "rec_two"],
+            vec!["--recording-id", "rec_one", "--remove-recording-id", "rec_two"],
             "error: the following required arguments were not provided:\n  --from-version <FROM_VERSION>\n  --from-episode <FROM_EPISODE>\n",
         ),
         (
