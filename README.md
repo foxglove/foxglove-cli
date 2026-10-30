@@ -469,16 +469,6 @@ $ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p
 Episode created: ep_Rz6pXk3mWq9TfLbN
 ```
 
-Or derive one from a version of another episode. It keeps that version's recordings,
-including any whose data was deleted, except the ones you leave out; the window
-defaults to that version's:
-
-```
-$ foxglove episodes add --from-episode ep_BCUw2zxpBnToJbOS --from-version 2 \
-    --remove-recording-id rec_lwjzOMxryMmP3yXg --start 2026-04-19T13:22:50Z --end 2026-04-19T13:23:00Z
-Episode created: ep_Mk2vRt8QpLx5WnZc
-```
-
 List the episodes in one dataset. The same filters apply, plus `addedAt` sorting
 on when each episode joined the dataset:
 

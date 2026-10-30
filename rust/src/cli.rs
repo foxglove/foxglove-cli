@@ -1488,11 +1488,11 @@ enum EpisodesCommand {
 }
 
 #[derive(Debug, Args)]
-#[command(group(ArgGroup::new("source").args(["event_id", "recording_id", "from_episode"]).required(true)))]
+#[command(group(ArgGroup::new("source").args(["event_id", "recording_id"]).required(true)))]
 pub(crate) struct EpisodeAddArgs {
     #[arg(
         long,
-        help = "End of the episode window (ISO 8601); give with --start (default: the end of its recordings, or of the --from-episode version)",
+        help = "End of the episode window (ISO 8601); give with --start (default: the end of its recordings)",
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
@@ -1504,37 +1504,13 @@ pub(crate) struct EpisodeAddArgs {
         conflicts_with_all = ["start", "end"]
     )]
     pub(crate) event_id: Option<String>,
-    #[arg(
-        long,
-        help = "Episode whose recordings the new episode covers, including recordings whose data was deleted; give with --from-version",
-        allow_hyphen_values = true,
-        value_parser = parse_id,
-        requires = "from_version"
-    )]
-    pub(crate) from_episode: Option<String>,
-    #[arg(
-        long,
-        help = "Version of --from-episode to copy recordings from",
-        requires = "from_episode",
-        value_parser = clap::value_parser!(u32).range(1..=2_147_483_647)
-    )]
-    pub(crate) from_version: Option<u32>,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Recording in the episode; repeat to add more (required unless --event-id or --from-episode is given)", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
+    #[arg(long, help = "Recording in the episode; repeat to add more (required unless --event-id is given)", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) recording_id: Vec<String>,
     #[arg(
         long,
-        help = "Recording of --from-episode to leave out; repeat to leave out more",
-        allow_hyphen_values = true,
-        action = clap::ArgAction::Append,
-        value_parser = parse_id,
-        requires = "from_episode"
-    )]
-    pub(crate) remove_recording_id: Vec<String>,
-    #[arg(
-        long,
-        help = "Start of the episode window (ISO 8601); give with --end (default: the start of its recordings, or of the --from-episode version)",
+        help = "Start of the episode window (ISO 8601); give with --end (default: the start of its recordings)",
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
