@@ -23,8 +23,8 @@ use crate::cli::{
 use crate::episodes::{episode_include, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_list_output, format_record, null_to_default, plural,
-    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    format_list_output, format_record, null_to_default, plural, warn_if_has_next_cursor,
+    NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -94,7 +94,6 @@ impl Record for DatasetEpisode {
             "Start Time",
             "End Time",
             "Recordings",
-            "Metadata",
             "Added At",
             "Added In Version",
             "Created At",
@@ -111,7 +110,6 @@ impl Record for DatasetEpisode {
             self.episode.start_time.clone(),
             self.episode.end_time.clone(),
             self.episode.recording_ids(),
-            compact_json(&self.episode.metadata),
             self.added_at.clone(),
             self.added_in_version.to_string(),
             self.episode.created_at.clone(),
@@ -575,15 +573,13 @@ mod tests {
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",
-                "metadata": {"run": 7},
                 "createdAt": "2024-01-02T03:04:07Z",
             },
         }))
         .unwrap();
         let fields = record.fields();
         assert_eq!(fields[0], "ep_fixture");
-        assert_eq!(fields[5], r#"{"run":7}"#);
-        assert_eq!(fields[6], "2024-01-02T03:04:08Z");
-        assert_eq!(fields[7], "3");
+        assert_eq!(fields[5], "2024-01-02T03:04:08Z");
+        assert_eq!(fields[6], "3");
     }
 }

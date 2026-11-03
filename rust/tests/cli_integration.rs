@@ -2563,6 +2563,7 @@ fn recordings_are_listed_with_their_session() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
+    // The response keeps a `metadata` object so the test shows it is accepted and left out of the output.
     const EPISODES: &str = r#"{"episodes":[{"id":"ep_one","version":1,"latestVersion":1,"projectId":"prj_explicit","startTime":"2024-01-02T03:04:05Z","endTime":"2024-01-02T03:04:06Z","metadata":{"run":7},"recordings":[{"id":"rec_one","path":"one.mcap","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","available":false}],"createdAt":"2024-01-02T03:04:07Z"}]}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/episodes", EPISODES)]);
@@ -2593,8 +2594,8 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Project ID,Start Time,End Time,Recordings,Metadata,Created At,Version,Latest Version,Custom Properties\n\
-         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,\"{\"\"run\"\":7}\",2024-01-02T03:04:07Z,1,1,\n"
+        "ID,Project ID,Start Time,End Time,Recordings,Created At,Version,Latest Version,Custom Properties\n\
+         ep_one,prj_explicit,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,rec_one,2024-01-02T03:04:07Z,1,1,\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),
@@ -2636,8 +2637,8 @@ fn dataset_episode_membership_is_rendered_alongside_the_episode() {
     assert_success(&output);
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "Episode ID,Project ID,Start Time,End Time,Recordings,Metadata,Added At,Added In Version,Created At,Version,Latest Version,Custom Properties\n\
-         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,{},2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z,1,1,\n"
+        "Episode ID,Project ID,Start Time,End Time,Recordings,Added At,Added In Version,Created At,Version,Latest Version,Custom Properties\n\
+         ep_one,prj_default,2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,,2024-01-02T03:04:08Z,3,2024-01-02T03:04:07Z,1,1,\n"
     );
     assert_eq!(
         query_pairs(&server.finish()[0]),

@@ -16,7 +16,7 @@ use crate::cli::{
 use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
+    format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
     warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
@@ -73,8 +73,6 @@ pub(crate) struct Episode {
     pub(crate) start_time: String,
     #[serde(rename = "endTime")]
     pub(crate) end_time: String,
-    #[serde(default)]
-    pub(crate) metadata: Value,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub(crate) recordings: Option<Vec<EpisodeRecording>>,
     #[serde(
@@ -117,7 +115,6 @@ impl Record for Episode {
             "Start Time",
             "End Time",
             "Recordings",
-            "Metadata",
             "Created At",
             "Version",
             "Latest Version",
@@ -132,7 +129,6 @@ impl Record for Episode {
             self.start_time.clone(),
             self.end_time.clone(),
             self.recording_ids(),
-            compact_json(&self.metadata),
             self.created_at.clone(),
             self.version.to_string(),
             self.latest_version.to_string(),
@@ -463,6 +459,7 @@ pub(crate) async fn list_versions(
 #[cfg(test)]
 mod tests {
     use super::{episode_include, parse_time_range, Episode};
+    use crate::records::Record;
 
     #[test]
     fn an_absent_recordings_list_is_omitted_from_json_output() {
@@ -473,7 +470,6 @@ mod tests {
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
-            "metadata": {},
             "createdAt": "2024-01-02T03:04:07Z",
         }))
         .unwrap();
@@ -481,6 +477,24 @@ mod tests {
         assert!(output.get("recordings").is_none());
         assert!(output.get("creationContext").is_none());
         assert_eq!(record.recording_ids(), "");
+    }
+
+    #[test]
+    fn a_metadata_object_in_the_response_is_ignored() {
+        let record: Episode = serde_json::from_value(serde_json::json!({
+            "id": "ep_fixture",
+            "version": 1,
+            "latestVersion": 1,
+            "projectId": "prj_default",
+            "startTime": "2024-01-02T03:04:05Z",
+            "endTime": "2024-01-02T03:04:06Z",
+            "metadata": {"run": 7},
+            "createdAt": "2024-01-02T03:04:07Z",
+        }))
+        .unwrap();
+        let output = serde_json::to_value(&record).unwrap();
+        assert!(output.get("metadata").is_none());
+        assert!(!record.fields().iter().any(|field| field.contains("run")));
     }
 
     #[test]
@@ -492,7 +506,6 @@ mod tests {
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
-            "metadata": {},
             "createdAt": "2024-01-02T03:04:07Z",
             "recordings": [
                 {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true},
@@ -512,7 +525,6 @@ mod tests {
             "projectId": "prj_default",
             "startTime": "2024-01-02T03:04:05Z",
             "endTime": "2024-01-02T03:04:06Z",
-            "metadata": {},
             "creationContext": {"version": 1, "basis": {"kind": "recordings", "recordingIds": ["rec_s3"]}},
             "createdAt": "2024-01-02T03:04:07Z",
             "recordings": [

@@ -171,7 +171,6 @@ impl Record for DatasetEpisodeChange {
             "Start Time",
             "End Time",
             "Recordings",
-            "Metadata",
             "Added At",
             "Added In Version",
             "Created At",
@@ -706,7 +705,6 @@ mod tests {
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",
-                "metadata": {},
                 "createdAt": "2024-01-02T03:04:07Z",
             },
         }))

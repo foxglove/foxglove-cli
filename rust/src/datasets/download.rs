@@ -76,7 +76,6 @@ struct ManifestEpisode {
     file: Option<String>,
     start_time: String,
     end_time: String,
-    metadata: Value,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     properties: Option<BTreeMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -376,7 +375,6 @@ fn manifest_entry(
         file: byte_size.map(|_| file.clone()),
         start_time: entry.episode.start_time.clone(),
         end_time: entry.episode.end_time.clone(),
-        metadata: entry.episode.metadata.clone(),
         properties: entry.episode.properties.clone(),
         byte_size,
         status,
@@ -733,11 +731,11 @@ mod tests {
             })).unwrap();
             let previous: ManifestEpisode = serde_json::from_value(serde_json::json!({
                 "index":0, "id":"ep", "file":"old/episode_0000_ep.mcap", "startTime":"", "endTime":"",
-                "metadata":{}, "properties":{"weather":"old"}, "byteSize":123, "status":"downloaded"
+                "properties":{"weather":"old"}, "byteSize":123, "status":"downloaded"
             })).unwrap();
             let mut entry: DatasetEpisode = serde_json::from_value(serde_json::json!({
                 "addedAt":"", "addedInVersion":1, "episode":{"id":"ep", "projectId":"prj", "version":1,
-                "latestVersion":2, "startTime":"", "endTime":"", "metadata":{}, "createdAt":""}
+                "latestVersion":2, "startTime":"", "endTime":"", "createdAt":""}
             })).unwrap();
             entry.episode.properties = properties
                 .clone()
