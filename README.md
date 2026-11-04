@@ -586,6 +586,11 @@ $ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
 $ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
 ```
 
+Restoring a dataset version also restores the selected version of each episode.
+In the restore summary, `changed` counts episodes that stay in the dataset
+but now use a different episode version. With `--force`, the discard summary includes
+pending episode version updates.
+
 Clone a committed version into a new dataset in the same project. The new
 dataset has a single committed version; pass `--include-history` to copy every
 version up to and including the cloned one:
@@ -595,11 +600,6 @@ $ foxglove datasets versions clone ds_mHH1Cp4gPybCPR8y 3 --name "Night merges v3
 Dataset created: ds_Wn5rKc8TzQ2xHb7M
 Cloned from version 3 of dataset ds_mHH1Cp4gPybCPR8y
 ```
-
-Restoring a dataset version also restores the selected version of each episode.
-In the restore summary, `changed` counts episodes that stay in the dataset
-but now use a different episode version. With `--force`, the discard summary includes
-pending episode version updates.
 
 Download a committed version of a dataset. The CLI writes one MCAP file per
 episode, at the episode version selected by the dataset version, plus a
