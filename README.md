@@ -553,9 +553,9 @@ $ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W --description "Merges after the l
 Committed version 1 with 2 episodes (2 added, 0 removed, 0 changed); version 2 is now the draft
 ```
 
-Without `--description`, the new version keeps the draft's description. Edit a
-version's description later with `datasets versions edit`; pass an empty
-`--description` to clear it:
+Without `--description`, the new version keeps the draft's description; pass an
+empty `--description` to commit it without one. Edit a version's description
+later with `datasets versions edit`; pass an empty `--description` to clear it:
 
 ```
 $ foxglove datasets versions edit ds_Qp4sT7vKx2NbLm9W 1 --description "Merges at night"
@@ -584,6 +584,16 @@ any version by number:
 $ foxglove datasets versions list ds_mHH1Cp4gPybCPR8y
 $ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
 $ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
+```
+
+Clone a committed version into a new dataset in the same project. The new
+dataset has a single committed version; pass `--include-history` to copy every
+version up to and including the cloned one:
+
+```
+$ foxglove datasets versions clone ds_mHH1Cp4gPybCPR8y 3 --name "Night merges v3"
+Dataset created: ds_Wn5rKc8TzQ2xHb7M
+Cloned from version 3 of dataset ds_mHH1Cp4gPybCPR8y
 ```
 
 Restoring a dataset version also restores the selected version of each episode.
