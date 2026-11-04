@@ -1555,6 +1555,12 @@ fn dataset_and_episode_identifier_paths_are_escaped() {
             "{}",
         ),
         (
+            &["datasets", "versions", "clone", KEY, "1", "--name", "Copy"],
+            "POST",
+            "/v1/datasets/drive%231%3F%2F%5C%25%20snow%E2%98%83/versions/1/clone",
+            r#"{"id":"ds_copy"}"#,
+        ),
+        (
             &["episodes", "get", KEY],
             "GET",
             EPISODE_PATH,
@@ -4747,28 +4753,110 @@ fn committing_and_discarding_report_the_counts() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn committing_with_a_description_sends_it() {
+fn committing_with_a_description_sends_or_clears_it() {
     let workspace = Workspace::new();
-    let server = Server::new(vec![Reply::json(
-        "POST",
-        "/v1/datasets/ds_one/commit",
-        r#"{"committed":{"versionNumber":4,"episodeCount":12,"addedEpisodeCount":3,"removedEpisodeCount":1},"editableVersionNumber":5}"#,
-    )]);
+    for (description, expected) in [
+        (
+            "Night drives",
+            serde_json::json!({"description": "Night drives"}),
+        ),
+        ("", serde_json::json!({"description": null})),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/datasets/ds_one/commit",
+            r#"{"committed":{"versionNumber":4,"episodeCount":12,"addedEpisodeCount":3,"removedEpisodeCount":1},"editableVersionNumber":5}"#,
+        )]);
+        let output = run(
+            &workspace,
+            &server,
+            &["datasets", "commit", "ds_one", "--description", description],
+        );
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected, "{description:?}");
+    }
+}
+
+#[test]
+fn committing_rejects_a_blank_description() {
+    let workspace = Workspace::new();
+    let output = Process::spawn(workspace.command("http://127.0.0.1:1").args([
+        "datasets",
+        "commit",
+        "ds_one",
+        "--description",
+        " ",
+    ]))
+    .finish();
+    assert!(!output.status.success());
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        error.contains("for '--description <DESCRIPTION>'"),
+        "{error}"
+    );
+    assert!(error.contains("cannot be empty"), "{error}");
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn cloning_a_version_creates_a_dataset() {
+    let workspace = Workspace::new();
+    for (extra, expected) in [
+        (&[][..], serde_json::json!({"name": "Night copy"})),
+        (
+            &["--description", "Merges", "--include-history"][..],
+            serde_json::json!({"name": "Night copy", "description": "Merges", "includeHistory": true}),
+        ),
+    ] {
+        let server = Server::new(vec![Reply::json(
+            "POST",
+            "/v1/datasets/ds_one/versions/3/clone",
+            r#"{"id":"ds_copy","projectId":"prj_one","name":"Night copy","createdAt":"","updatedAt":""}"#,
+        )]);
+        let mut args = vec![
+            "datasets",
+            "versions",
+            "clone",
+            "ds_one",
+            "3",
+            "--name",
+            "Night copy",
+        ];
+        args.extend_from_slice(extra);
+        let output = run(&workspace, &server, &args);
+        assert_success(&output);
+        assert_eq!(json_body(&server.finish()[0]), expected);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stderr),
+            "Dataset created: ds_copy\nCloned from version 3 of dataset ds_one\n"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn cloning_into_a_taken_name_names_the_conflict() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply {
+        status: 409,
+        ..Reply::json(
+            "POST",
+            "/v1/datasets/ds_one/versions/3/clone",
+            r#"{"error":"A dataset with that name already exists"}"#,
+        )
+    }]);
     let output = run(
         &workspace,
         &server,
         &[
-            "datasets",
-            "commit",
-            "ds_one",
-            "--description",
-            "Night drives",
+            "datasets", "versions", "clone", "ds_one", "3", "--name", "Night",
         ],
     );
-    assert_success(&output);
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
     assert_eq!(
-        json_body(&server.finish()[0]),
-        serde_json::json!({"description": "Night drives"})
+        String::from_utf8_lossy(&output.stderr),
+        "A dataset named \"Night\" already exists in this project\n"
     );
 }
 

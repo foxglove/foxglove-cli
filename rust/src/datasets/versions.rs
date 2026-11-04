@@ -11,8 +11,9 @@ use super::{
 };
 use crate::api::ApiError;
 use crate::cli::{
-    DatasetCommitArgs, DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionEditArgs,
-    DatasetVersionGetArgs, DatasetVersionListArgs, DatasetVersionRestoreArgs,
+    DatasetCommitArgs, DatasetIdArgs, DatasetVersionCloneArgs, DatasetVersionCompareArgs,
+    DatasetVersionEditArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
+    DatasetVersionRestoreArgs,
 };
 use crate::episodes::{episode_include, Episode};
 use crate::output::Format;
@@ -241,9 +242,25 @@ struct RestoreQuery {
 }
 
 #[derive(Serialize)]
-struct CommitRequest<'a> {
+struct CommitRequest {
+    /// Omitted keeps the draft's description; `Value::Null` clears it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<Value>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloneRequest<'a> {
+    name: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<&'a str>,
+    #[serde(skip_serializing_if = "is_false")]
+    include_history: bool,
+}
+
+#[derive(Deserialize)]
+struct ClonedDataset {
+    id: String,
 }
 
 #[derive(Serialize)]
@@ -562,13 +579,67 @@ pub(crate) async fn edit_version(runtime: &Runtime, args: &DatasetVersionEditArg
     }
 }
 
+pub(crate) async fn clone_version(runtime: &Runtime, args: &DatasetVersionCloneArgs) -> Outcome {
+    if args.name.trim().is_empty() {
+        return Outcome::failure("--name cannot be empty\n");
+    }
+    let request = CloneRequest {
+        name: &args.name,
+        description: args
+            .description
+            .as_deref()
+            .filter(|description| !description.is_empty()),
+        include_history: args.include_history,
+    };
+    match runtime
+        .client
+        .post::<_, ClonedDataset>(
+            &format!(
+                "{}/versions/{}/clone",
+                dataset_endpoint(&args.dataset_id),
+                args.version
+            ),
+            &request,
+        )
+        .await
+    {
+        Ok(dataset) => Outcome::notice(format!(
+            "Dataset created: {}\nCloned from version {} of dataset {}\n",
+            dataset.id, args.version, args.dataset_id
+        )),
+        Err(error) if error.is_bare_not_found() => Outcome::failure(format!(
+            "Dataset {} not found, or it has no committed version {}\n",
+            args.dataset_id, args.version
+        )),
+        Err(error) if error.is_not_found_for("version") => Outcome::failure(format!(
+            "Committed version {} of dataset {} not found\n",
+            args.version, args.dataset_id
+        )),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
+        Err(ApiError::Response { status: 409, .. }) => Outcome::failure(format!(
+            "A dataset named {:?} already exists in this project\n",
+            args.name
+        )),
+        Err(error) => Outcome::failure(format!(
+            "Failed to clone version {}: {error}\n",
+            args.version
+        )),
+    }
+}
+
 pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetCommitArgs) -> Outcome {
     match runtime
         .client
         .post::<_, CommitResponse>(
             &format!("{}/commit", dataset_endpoint(&args.dataset_id)),
             &CommitRequest {
-                description: args.description.as_deref(),
+                description: args.description.as_deref().map(|description| {
+                    if description.is_empty() {
+                        Value::Null
+                    } else {
+                        Value::from(description)
+                    }
+                }),
             },
         )
         .await

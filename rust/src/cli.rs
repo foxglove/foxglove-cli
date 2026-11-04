@@ -53,6 +53,14 @@ fn parse_non_blank(value: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
+/// Accept an empty value, which clears a field, but reject other blank values.
+fn parse_empty_or_non_blank(value: &str) -> Result<String, String> {
+    if value.is_empty() {
+        return Ok(String::new());
+    }
+    parse_non_blank(value)
+}
+
 /// Reject accidental surrounding whitespace when assigning a session key.
 fn parse_new_key(value: &str) -> Result<String, String> {
     let key = parse_non_blank(value)?;
@@ -705,7 +713,7 @@ enum DatasetsCommand {
     #[command(about = "List datasets")]
     List(DatasetListArgs),
     #[command(
-        about = "List, compare, edit, and restore dataset versions",
+        about = "List, compare, edit, restore, and clone dataset versions",
         subcommand
     )]
     Versions(DatasetVersionsCommand),
@@ -743,9 +751,9 @@ pub(crate) struct DatasetCommitArgs {
     pub(crate) dataset_id: String,
     #[arg(
         long,
-        help = "Description of the new version (default: the draft's description)",
+        help = "Description of the new version (default: the draft's description); pass an empty value to clear it",
         allow_hyphen_values = true,
-        value_parser = parse_non_blank
+        value_parser = parse_empty_or_non_blank
     )]
     pub(crate) description: Option<String>,
 }
@@ -846,6 +854,11 @@ pub(crate) struct DatasetEpisodeMutationArgs {
 
 #[derive(Debug, Subcommand)]
 enum DatasetVersionsCommand {
+    #[command(
+        about = "Create a new dataset from a committed version",
+        long_about = "Create a new dataset in the same project with the episodes and episode versions of a committed version. The new dataset is independent of the original. It has a single committed version, or with --include-history, copies of every version up to and including the cloned one."
+    )]
+    Clone(DatasetVersionCloneArgs),
     #[command(about = "List the episodes added, removed, or changed between two versions")]
     Compare(DatasetVersionCompareArgs),
     #[command(about = "Edit a dataset version's description")]
@@ -911,6 +924,36 @@ pub(crate) struct DatasetVersionEditArgs {
         required = true
     )]
     pub(crate) description: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DatasetVersionCloneArgs {
+    #[arg(value_name = "DATASET_ID")]
+    pub(crate) dataset_id: String,
+    #[arg(value_name = "VERSION")]
+    pub(crate) version: i64,
+    #[arg(
+        long,
+        help = "Optional display description of the new dataset",
+        allow_hyphen_values = true
+    )]
+    pub(crate) description: Option<String>,
+    #[arg(
+        long, help = "Copy the versions up to and including the cloned version",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_history: bool,
+    #[arg(
+        long,
+        help = "Display name of the new dataset, unique within the project",
+        allow_hyphen_values = true
+    )]
+    pub(crate) name: String,
 }
 
 #[derive(Debug, Args)]
@@ -3198,6 +3241,7 @@ async fn dispatch_dataset_version_command(
     command: DatasetVersionsCommand,
 ) -> Outcome {
     match command {
+        DatasetVersionsCommand::Clone(args) => datasets::clone_version(runtime, &args).await,
         DatasetVersionsCommand::Compare(args) => {
             let format = args.format.format;
             datasets::compare_versions(runtime, &args, format).await
