@@ -2566,7 +2566,7 @@ enum SessionsCommand {
     Add(SessionAddArgs),
     #[command(about = "Delete a session")]
     Delete(SessionLookupArgs),
-    #[command(about = "Change or remove a session key")]
+    #[command(about = "Change a session's key or custom properties")]
     Edit(SessionEditArgs),
     #[command(about = "Get a session by ID or key")]
     Get(SessionLookupArgs),
@@ -2577,9 +2577,12 @@ enum SessionsCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("device").args(["device_id", "recording_id"]).required(true).multiple(true)))]
 pub(crate) struct SessionAddArgs {
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true, value_parser = parse_id)]
+    #[arg(long, help = "Device ID (required unless --recording-id is given)", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Recording to add to the session; repeat for more. All must belong to one device, which is used when --device-id is omitted", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
+    pub(crate) recording_id: Vec<String>,
     #[arg(
         long,
         help = "Session key, unique within the project (cannot start or end with whitespace)",
@@ -2589,6 +2592,8 @@ pub(crate) struct SessionAddArgs {
     pub(crate) key: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -2600,7 +2605,7 @@ pub(crate) struct SessionLookupArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(group(ArgGroup::new("key_change").args(["key", "remove_key"]).required(true)))]
+#[command(group(ArgGroup::new("change").args(["key", "remove_key", "property", "remove_property"]).required(true).multiple(true)))]
 pub(crate) struct SessionEditArgs {
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
@@ -2610,11 +2615,16 @@ pub(crate) struct SessionEditArgs {
         long,
         help = "New session key, unique within the project (cannot start or end with whitespace)",
         value_parser = parse_new_key,
-        allow_hyphen_values = true
+        allow_hyphen_values = true,
+        conflicts_with = "remove_key"
     )]
     pub(crate) key: Option<String>,
     #[arg(long, help = "Remove the existing session key")]
     pub(crate) remove_key: bool,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -3523,7 +3533,7 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
-        SessionsCommand::Edit(args) => sessions::edit_session_key(runtime, &args).await,
+        SessionsCommand::Edit(args) => sessions::edit_session(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
         SessionsCommand::List(args) => {
             let format = args.format.format;
@@ -3820,6 +3830,7 @@ mod tests {
         (&["device-tokens", "add"], &["device-id"]),
         (&["device-tokens", "list"], &["device-id"]),
         (&["episodes", "add"], &["recording-id"]),
+        (&["sessions", "add"], &["device-id", "recording-id"]),
         (
             &["episodes", "list"],
             &["recording-id", "sort-by", "sort-order"],
@@ -3984,6 +3995,48 @@ mod tests {
             super::Cli::try_parse_from(["foxglove", "sessions", "list", "--sort-order", "asc"])
                 .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn sessions_require_a_device_selector_or_a_change() {
+        for (extra, kind) in [
+            (&[][..], Some(ErrorKind::MissingRequiredArgument)),
+            (
+                &["--key", "drive"][..],
+                Some(ErrorKind::MissingRequiredArgument),
+            ),
+            (&["--device-id", "dev_1"][..], None),
+            (
+                &["--recording-id", "rec_1", "--recording-id", "rec_2"][..],
+                None,
+            ),
+            (
+                &["--device-id", "dev_1", "--recording-id", "rec_1"][..],
+                None,
+            ),
+        ] {
+            let result =
+                super::Cli::try_parse_from(["foxglove", "sessions", "add"].iter().chain(extra));
+            assert_eq!(result.err().map(|error| error.kind()), kind, "{extra:?}");
+        }
+        for (extra, kind) in [
+            (&[][..], Some(ErrorKind::MissingRequiredArgument)),
+            (&["--remove-key"][..], None),
+            (&["-p", "mode:auto"][..], None),
+            (&["--remove-property", "mode"][..], None),
+            (&["--key", "drive", "-p", "mode:auto"][..], None),
+            (
+                &["--key", "drive", "--remove-key"][..],
+                Some(ErrorKind::ArgumentConflict),
+            ),
+        ] {
+            let result = super::Cli::try_parse_from(
+                ["foxglove", "sessions", "edit", "ses_1"]
+                    .iter()
+                    .chain(extra),
+            );
+            assert_eq!(result.err().map(|error| error.kind()), kind, "{extra:?}");
+        }
     }
 
     #[test]

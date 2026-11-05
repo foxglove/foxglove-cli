@@ -1670,7 +1670,7 @@ fn empty_export_topics_fail_before_requesting_or_replacing_output() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn session_list_sends_filters_and_renders_recording_ranges() {
-    const SESSIONS: &str = r#"[{"id":"ses_one","key":"drive-41","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","recordings":[],"recordingCount":2,"recordingStart":"2024-01-02T00:00:00Z","recordingEnd":"2024-01-02T01:00:00Z"},{"id":"ses_two","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-03T03:04:05Z","updatedAt":"2024-01-03T03:04:06Z","recordings":[]}]"#;
+    const SESSIONS: &str = r#"[{"id":"ses_one","key":"drive-41","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","recordings":[],"recordingCount":2,"recordingStart":"2024-01-02T00:00:00Z","recordingEnd":"2024-01-02T01:00:00Z","properties":{"vehicle":"car"}},{"id":"ses_two","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-03T03:04:05Z","updatedAt":"2024-01-03T03:04:06Z","recordings":[]}]"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/sessions", SESSIONS)]);
     let output = run(
@@ -1710,9 +1710,9 @@ fn session_list_sends_filters_and_renders_recording_ranges() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Key,Project ID,Device,Created At,Updated At,Recordings,Recording Start,Recording End\n\
-         ses_one,drive-41,prj_one,robot (dev_one),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,2,2024-01-02T00:00:00Z,2024-01-02T01:00:00Z\n\
-         ses_two,,prj_one,robot (dev_one),2024-01-03T03:04:05Z,2024-01-03T03:04:06Z,,,\n"
+        "ID,Key,Project ID,Device,Created At,Updated At,Recordings,Recording Start,Recording End,Custom Properties\n\
+         ses_one,drive-41,prj_one,robot (dev_one),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,2,2024-01-02T00:00:00Z,2024-01-02T01:00:00Z,\"{\"\"vehicle\"\":\"\"car\"\"}\"\n\
+         ses_two,,prj_one,robot (dev_one),2024-01-03T03:04:05Z,2024-01-03T03:04:06Z,,,,\n"
     );
 }
 
@@ -1748,7 +1748,42 @@ fn session_add_sends_key() {
         json_body(&requests[0]),
         serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
     );
+
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", SESSION_PROPERTIES),
+        Reply::json("POST", "/v1/sessions", r#"{"id":"ses_two"}"#),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "add",
+            "--recording-id",
+            "rec_one",
+            "--recording-id",
+            "rec_two",
+            "-p",
+            "laps:3",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session created: ses_two\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "session")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"recordingIds": ["rec_one", "rec_two"], "properties": {"laps": 3}})
+    );
 }
+
+const SESSION_PROPERTIES: &str = r#"[{"id":"cp_laps","key":"laps","label":"Laps","resourceType":"session","valueType":"number","hasAssociatedData":false}]"#;
 
 #[test]
 #[ignore = "requires loopback sockets"]
@@ -1795,6 +1830,42 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
         assert_eq!(query_pairs(&requests[0])["projectId"], "default-project");
         assert_eq!(json_body(&requests[0]), expected_body, "{flags:?}");
     }
+
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", SESSION_PROPERTIES),
+        Reply::json(
+            "PATCH",
+            "/v1/sessions/old-key",
+            r#"{"id":"ses_one","createdAt":"","updatedAt":""}"#,
+        ),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "edit",
+            "old-key",
+            "-p",
+            "laps:4",
+            "--remove-property",
+            "driver",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session updated: ses_one\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "session")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"properties": {"laps": 4, "driver": null}})
+    );
 }
 
 #[test]
@@ -1899,12 +1970,12 @@ fn session_commands_report_the_api_reason_when_forbidden() {
 }
 
 #[test]
-fn session_key_edit_requires_exactly_one_change() {
+fn session_edit_requires_a_change_and_one_key_change() {
     let workspace = Workspace::new();
     for (flags, expected) in [
         (
             vec![],
-            "error: the following required arguments were not provided:\n  <--key <KEY>|--remove-key>\n",
+            "error: the following required arguments were not provided:\n  <--key <KEY>|--remove-key|--property <PROPERTY>|--remove-property <REMOVE_PROPERTY>>\n",
         ),
         (
             vec!["--key", ""],
@@ -2617,6 +2688,7 @@ fn blank_and_conflicting_filters_are_rejected() {
         &["upload", "--session-key", " \r", "data.mcap"],
         &["pending-imports", "list", "--key", ""],
         &["sessions", "add", "--device-id", " "],
+        &["sessions", "add", "--recording-id", " "],
         &[
             "recordings",
             "list",
@@ -5580,6 +5652,10 @@ fn command_arguments_are_validated_before_sending_a_request() {
         ),
         (
             vec!["devices", "edit", "dev_one", "-p", "note:x", "--remove-property", "note"],
+            "cannot set and remove property note in the same edit\n",
+        ),
+        (
+            vec!["sessions", "edit", "ses_one", "-p", "note:x", "--remove-property", "note"],
             "cannot set and remove property note in the same edit\n",
         ),
         (
