@@ -1,6 +1,7 @@
 use super::*;
 
 const AUTOMATION: &str = r#"{"id":"auto_1","projectId":"prj_1","name":"Triage","actionPrompt":"Summarize new recordings","isOwner":true,"permissions":{"canEdit":true,"canRun":true,"canDelete":true},"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}"#;
+const TRIGGER: &str = r#"{"id":"trg_1","automationId":"auto_1","eventType":"clock.updated","enabled":false,"configurationVersion":1,"configuration":{"schedule":{"cadence":"daily","anchor":"2026-01-05T09:00:00Z"}},"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z","deletedAt":null}"#;
 
 fn created(method: &'static str, path: &'static str, body: &str) -> Reply {
     Reply {
@@ -115,5 +116,81 @@ fn automations_are_created_edited_and_deleted() {
     assert_eq!(
         json_body(&requests[1]),
         serde_json::json!({"name": "Renamed"})
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn triggers_are_replaced_with_put_and_read_back() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        created("PUT", "/v1/automations/auto_1/trigger", TRIGGER),
+        Reply::json("GET", "/v1/automations/auto_1/trigger", TRIGGER),
+        Reply {
+            status: 404,
+            ..Reply::json(
+                "GET",
+                "/v1/automations/auto_2/trigger",
+                r#"{"error":"Not found"}"#,
+            )
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "automations",
+            "trigger",
+            "set",
+            "auto_1",
+            "--event-type",
+            "clock.updated",
+            "--enabled=false",
+            "--schedule-cadence",
+            "daily",
+            "--schedule-anchor",
+            "2026-01-05T09:00",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Trigger set for automation auto_1: clock.updated (disabled)\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "automations",
+            "trigger",
+            "get",
+            "auto_1",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::from_str::<serde_json::Value>(TRIGGER).unwrap()
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["automations", "trigger", "get", "auto_2"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Automation auto_2 not found, or it has no trigger\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({
+            "eventType": "clock.updated",
+            "enabled": false,
+            "configuration": {"schedule": {"cadence": "daily", "anchor": "2026-01-05T09:00:00Z"}},
+        })
     );
 }

@@ -1,5 +1,9 @@
 //! Automation commands.
 
+mod trigger;
+
+pub(crate) use trigger::{delete_trigger, get_trigger, set_trigger};
+
 use serde::{Deserialize, Serialize};
 
 use crate::api::{encode_path_segment, ApiError};

@@ -355,6 +355,11 @@ enum AutomationsCommand {
     Get(AutomationGetArgs),
     #[command(about = "List a project's automations, newest first, with their run counts")]
     List(AutomationListArgs),
+    #[command(
+        about = "Get, set, or delete the trigger that starts an automation",
+        subcommand
+    )]
+    Trigger(AutomationTriggerCommand),
 }
 
 #[derive(Debug, Args)]
@@ -401,6 +406,59 @@ pub(crate) struct AutomationListArgs {
     pub(crate) offset: Option<i64>,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum AutomationTriggerCommand {
+    #[command(about = "Delete an automation's trigger, so it runs only on demand")]
+    Delete(AutomationIdArgs),
+    #[command(about = "Get an automation's trigger")]
+    Get(AutomationGetArgs),
+    #[command(
+        about = "Replace an automation's trigger",
+        long_about = "Replace an automation's trigger with a new definition.\n\nA clock.updated trigger runs on a schedule and requires --schedule-cadence and --schedule-anchor; other event types do not accept a schedule. --event-type-id applies only to event.created and event.updated triggers."
+    )]
+    Set(AutomationTriggerSetArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationTriggerSetArgs {
+    #[arg(value_name = "AUTOMATION_ID", value_parser = parse_id)]
+    pub(crate) automation_id: String,
+    #[arg(
+        long, help = "Enable or disable the trigger (default: true)",
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_parser = parse_bool
+    )]
+    pub(crate) enabled: Option<bool>,
+    #[arg(
+        long,
+        help = "Event that starts a run: recording.created, recording.imported, session.created, event.created, event.updated, or clock.updated (a schedule)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) event_type: String,
+    #[arg(long, help = "Start runs only for events of this event type (event.created and event.updated only)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) event_type_id: Option<String>,
+    #[arg(
+        long,
+        help = "UTC time at a whole hour when the schedule starts (ISO 8601); its calendar fields set the recurrence, and monthly anchors use days 1-28",
+        allow_hyphen_values = true,
+        requires = "schedule_cadence",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) schedule_anchor: Option<String>,
+    #[arg(
+        long,
+        help = "How often a clock.updated trigger runs: hourly, daily, weekly, or monthly",
+        allow_hyphen_values = true,
+        requires = "schedule_anchor",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) schedule_cadence: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -3157,6 +3215,16 @@ async fn dispatch_automation_command(
         AutomationsCommand::List(args) => {
             let format = args.format.format;
             automations::list_automations(runtime, &args, format).await
+        }
+        AutomationsCommand::Trigger(AutomationTriggerCommand::Delete(args)) => {
+            automations::delete_trigger(runtime, &args).await
+        }
+        AutomationsCommand::Trigger(AutomationTriggerCommand::Get(args)) => {
+            let format = args.format.format;
+            automations::get_trigger(runtime, &args, format).await
+        }
+        AutomationsCommand::Trigger(AutomationTriggerCommand::Set(args)) => {
+            automations::set_trigger(runtime, &args).await
         }
     }
 }

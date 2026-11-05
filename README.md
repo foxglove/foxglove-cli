@@ -766,6 +766,16 @@ $ foxglove automations get auto_123 --format json
 $ foxglove automations edit auto_123 --name "Nightly triage"
 ```
 
+Set the trigger that starts runs. A `clock.updated` trigger runs on a UTC
+schedule; event triggers such as `recording.imported` run for each new event:
+
+```
+$ foxglove automations trigger set auto_123 --event-type clock.updated --schedule-cadence daily --schedule-anchor 2026-01-05T09:00:00Z
+$ foxglove automations trigger set auto_123 --event-type event.created --event-type-id evt_type_123 --enabled=false
+$ foxglove automations trigger get auto_123
+$ foxglove automations trigger delete auto_123
+```
+
 ## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support generated

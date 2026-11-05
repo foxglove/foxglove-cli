@@ -778,6 +778,21 @@ impl FoxgloveClient {
         self.send_json_created(Method::POST, endpoint, body).await
     }
 
+    /// Execute an authenticated JSON PUT for an endpoint that answers
+    /// 201 Created, and decode its JSON response. A 200 response is also
+    /// accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn put_created<B, T>(&self, endpoint: &str, body: &B) -> Result<T, ApiError>
+    where
+        B: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        self.send_json_created(Method::PUT, endpoint, body).await
+    }
+
     /// Execute an authenticated JSON PATCH and decode its JSON response.
     ///
     /// # Errors
