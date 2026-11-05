@@ -14,9 +14,10 @@ use crate::config::Config;
 use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
-    attachments, auth, coverage, custom_properties, datasets, device_tokens, devices, episodes,
-    event_types, events, export, extensions, lake_files, layouts, pending_imports, projects,
-    recordings, runtime, sessions, site_notification_tokens, site_tokens, sites, topics, upload,
+    attachments, auth, automations, coverage, custom_properties, datasets, device_tokens, devices,
+    episodes, event_types, events, export, extensions, lake_files, layouts, pending_imports,
+    projects, recordings, runtime, sessions, site_notification_tokens, site_tokens, sites, topics,
+    upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -140,6 +141,12 @@ enum CliCommand {
     Attachments(AttachmentsCommand),
     #[command(about = "Manage authentication", subcommand)]
     Auth(AuthCommand),
+    #[command(
+        about = "List and manage automations (beta)",
+        long_about = AUTOMATIONS_HELP,
+        subcommand
+    )]
+    Automations(AutomationsCommand),
     #[command(about = "Generate a shell completion script", subcommand)]
     Completion(CompletionCommand),
     #[command(about = "Manage CLI configuration values", subcommand)]
@@ -324,6 +331,76 @@ pub(crate) struct LoginArgs {
         allow_hyphen_values = true
     )]
     pub(crate) base_url: Option<String>,
+}
+
+const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.\n\nSigned-in members and personal access tokens can create, edit, and delete automations. Organization API keys can list automations.\n\nAutomations are in beta.";
+const AUTOMATION_LIMIT_HELP: &str = "Maximum number of items to return (1-2000, default: 50)";
+const AUTOMATION_OFFSET_HELP: &str = "Number of items to skip before returning the results";
+
+#[derive(Debug, Subcommand)]
+enum AutomationsCommand {
+    #[command(about = "Create an automation")]
+    Add(AutomationAddArgs),
+    #[command(
+        about = "Delete an automation and its trigger",
+        long_about = "Delete an automation and its trigger. Its runs are no longer listed. Runs in progress finish, and runs that have not started are rejected."
+    )]
+    Delete(AutomationIdArgs),
+    #[command(
+        about = "Edit an automation's name or instructions",
+        long_about = "Edit an automation's name or saved instructions. Runs already created keep the instructions they started with."
+    )]
+    Edit(AutomationEditArgs),
+    #[command(about = "Get an automation")]
+    Get(AutomationGetArgs),
+    #[command(about = "List a project's automations, newest first, with their run counts")]
+    List(AutomationListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationIdArgs {
+    #[arg(value_name = "AUTOMATION_ID", value_parser = parse_id)]
+    pub(crate) automation_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "AUTOMATION_ID", value_parser = parse_id)]
+    pub(crate) automation_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationAddArgs {
+    #[arg(long, help = "Instructions the agent follows on every run", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) action_prompt: String,
+    #[arg(long, help = "Display name (at most 100 characters)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: String,
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationEditArgs {
+    #[arg(value_name = "AUTOMATION_ID", value_parser = parse_id)]
+    pub(crate) automation_id: String,
+    #[arg(long, help = "New instructions the agent follows on every run", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) action_prompt: Option<String>,
+    #[arg(long, help = "New display name (at most 100 characters)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) name: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = AUTOMATION_LIMIT_HELP, allow_hyphen_values = true, value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = AUTOMATION_OFFSET_HELP, allow_hyphen_values = true, value_parser = clap::value_parser!(i64).range(0..))]
+    pub(crate) offset: Option<i64>,
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2917,6 +2994,10 @@ fn command_project_scope(
 ) -> Option<runtime::ProjectScope> {
     let flag = match command {
         CliCommand::Attachments(AttachmentsCommand::List(args)) => &args.project_id,
+        CliCommand::Automations(
+            AutomationsCommand::Add(AutomationAddArgs { project_id, .. })
+            | AutomationsCommand::List(AutomationListArgs { project_id, .. }),
+        ) => project_id,
         CliCommand::Coverage(CoverageCommand::List(args)) => &args.project_id,
         CliCommand::Export(args) => &args.project_id,
         CliCommand::Upload(args) => &args.project_id,
@@ -3004,6 +3085,7 @@ async fn dispatch_api_command(
             dispatch_attachment_command(&runtime, command, writer).await
         }
         CliCommand::Auth(AuthCommand::Info) => auth::info(&runtime).await,
+        CliCommand::Automations(command) => dispatch_automation_command(&runtime, command).await,
         CliCommand::Coverage(CoverageCommand::List(args)) => {
             let format = args.format.format;
             coverage::list(&runtime, &args, format).await
@@ -3057,6 +3139,25 @@ async fn dispatch_api_command(
         | CliCommand::Completion(_)
         | CliCommand::Config(_)
         | CliCommand::Version => unreachable!("handled before API dispatch"),
+    }
+}
+
+async fn dispatch_automation_command(
+    runtime: &runtime::Runtime,
+    command: AutomationsCommand,
+) -> Outcome {
+    match command {
+        AutomationsCommand::Add(args) => automations::add_automation(runtime, &args).await,
+        AutomationsCommand::Delete(args) => automations::delete_automation(runtime, &args).await,
+        AutomationsCommand::Edit(args) => automations::edit_automation(runtime, &args).await,
+        AutomationsCommand::Get(args) => {
+            let format = args.format.format;
+            automations::get_automation(runtime, &args, format).await
+        }
+        AutomationsCommand::List(args) => {
+            let format = args.format.format;
+            automations::list_automations(runtime, &args, format).await
+        }
     }
 }
 

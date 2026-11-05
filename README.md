@@ -748,6 +748,24 @@ $ foxglove layouts restore lay_123
 API keys can only create and change layouts shared with the organization
 (`ORG_READ` or `ORG_WRITE`).
 
+### Automations
+
+[Automations](https://docs.foxglove.dev/docs/automations) run an AI agent on
+your data on a schedule, when an event occurs, or on demand. Automations are in
+beta. Each automation acts as its owner, with the owner's access to data in its
+project. Signed-in members and personal access tokens can create, edit, and
+delete automations; organization API keys can list automations.
+
+Create an automation, then list or get it:
+
+```
+$ foxglove automations add --project-id prj_123 --name "Recording triage" --action-prompt "Summarize each new recording"
+    Automation created: auto_123
+$ foxglove automations list --project-id prj_123
+$ foxglove automations get auto_123 --format json
+$ foxglove automations edit auto_123 --name "Nightly triage"
+```
+
 ## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support generated
