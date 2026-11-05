@@ -717,7 +717,8 @@ $ foxglove site-notification-tokens delete sint_example
 
 ### Layouts
 
-List the layouts shared with your organization:
+List the layouts shared with your organization, plus your personal layouts when
+signed in with `foxglove auth login`:
 
 ```
 $ foxglove layouts list

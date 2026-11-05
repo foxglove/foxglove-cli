@@ -74,6 +74,24 @@ pub(crate) struct ProjectScope {
 }
 
 impl Runtime {
+    /// Whether the configured credential is an API key (an organization API
+    /// key or a personal access token) rather than a session token from
+    /// `foxglove auth login`.
+    pub(crate) fn uses_api_key(&self) -> bool {
+        // The saved auth_type describes the saved token, not FOXGLOVE_BEARER_TOKEN.
+        let auth_type = self
+            .config
+            .get_string("auth_type")
+            .filter(|_| !self.config.is_env_set("bearer_token"))
+            .and_then(|value| value.parse::<i32>().ok());
+        auth_type == Some(2)
+            || (auth_type != Some(1)
+                && self
+                    .config
+                    .get_string("bearer_token")
+                    .is_some_and(|token| token.starts_with("fox_sk_")))
+    }
+
     pub(crate) fn project_scope(&self, explicit: Option<&str>) -> ProjectScope {
         if let Some(id) = explicit {
             return ProjectScope {

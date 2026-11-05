@@ -4,6 +4,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 
 use crate::api::encode_path_segment;
 use crate::cli::{LayoutAddArgs, LayoutEditArgs, LayoutGetArgs, LayoutIdArgs, LayoutListArgs};
@@ -210,6 +212,8 @@ struct EditLayoutRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    saved_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     folder_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     permission: Option<String>,
@@ -228,6 +232,20 @@ pub(crate) async fn edit_layout(runtime: &Runtime, args: &LayoutEditArgs) -> Out
     if let Err(error) = check_folder_name(args.folder_name.as_deref()) {
         return Outcome::failure(format!("{error}\n"));
     }
+    let saved_at = match args.saved_at.as_deref() {
+        Some(raw) => match parse_timestamp(raw, "saved at") {
+            Ok(value) => Some(value),
+            Err(error) => {
+                return Outcome::failure(format!("Failed to parse value of --saved-at: {error}\n"))
+            }
+        },
+        // API keys may omit savedAt, but session tokens must send it.
+        None if runtime.uses_api_key() => None,
+        None => match OffsetDateTime::now_utc().format(&Rfc3339) {
+            Ok(value) => Some(value),
+            Err(error) => return Outcome::failure(format!("Failed to edit layout: {error}\n")),
+        },
+    };
     let data = match &args.data {
         Some(path) => match read_layout_data(path).await {
             Ok(data) => Some(data),
@@ -237,6 +255,7 @@ pub(crate) async fn edit_layout(runtime: &Runtime, args: &LayoutEditArgs) -> Out
     };
     let request = EditLayoutRequest {
         name: args.name.clone(),
+        saved_at,
         folder_name: args.folder_name.clone(),
         permission: args.permission.clone(),
         data,
