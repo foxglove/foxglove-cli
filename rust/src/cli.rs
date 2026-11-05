@@ -15,8 +15,9 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, coverage, custom_properties, datasets, device_tokens, devices, episodes,
-    event_types, events, export, extensions, lake_files, layouts, pending_imports, projects,
-    recordings, runtime, sessions, site_notification_tokens, site_tokens, sites, topics, upload,
+    event_types, events, export, extensions, lake_files, layouts, org_members, pending_imports,
+    projects, recordings, runtime, sessions, site_notification_tokens, site_tokens, sites, topics,
+    upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
@@ -189,6 +190,8 @@ enum CliCommand {
         subcommand
     )]
     Layouts(LayoutsCommand),
+    #[command(name = "org-members", about = "List organization members", subcommand)]
+    OrgMembers(OrgMembersCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
     #[command(about = "List and manage projects", subcommand)]
@@ -2307,6 +2310,77 @@ pub(crate) struct PendingImportListArgs {
 }
 
 #[derive(Debug, Subcommand)]
+enum OrgMembersCommand {
+    #[command(
+        about = "List organization members",
+        long_about = "List the members of your organization. Requires an API key with the orgMembers.list capability that is not limited to specific projects."
+    )]
+    List(OrgMemberListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OrgMemberListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(
+        long,
+        help = "Filter by project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)",
+        allow_hyphen_values = true,
+        value_parser = parse_trimmed
+    )]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by name or email",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) search: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by role: admin or user",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) role: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by status: active, invited, pending-approval, or denied-approval",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) status: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort members by: displayName, email, role, lastSeenAt, createdAt, status, or projectCount",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
 enum ProjectsCommand {
     #[command(about = "List projects")]
     List(FormatArgs),
@@ -2943,6 +3017,7 @@ fn command_project_scope(
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
         CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => &args.project_id,
+        CliCommand::OrgMembers(OrgMembersCommand::List(args)) => &args.project_id,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             if args.without_project {
                 return Some(runtime::ProjectScope {
@@ -3035,6 +3110,10 @@ async fn dispatch_api_command(
             pending_imports::list_import_errors(&runtime, &args, format).await
         }
         CliCommand::Layouts(command) => dispatch_layout_command(&runtime, command).await,
+        CliCommand::OrgMembers(OrgMembersCommand::List(args)) => {
+            let format = args.format.format;
+            org_members::list_org_members(&runtime, &args, format).await
+        }
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
             pending_imports::list_pending_imports(&runtime, &args, format).await
@@ -3733,6 +3812,10 @@ mod tests {
                 "sort-by",
                 "sort-order",
             ],
+        ),
+        (
+            &["org-members", "list"],
+            &["search", "role", "status", "sort-by", "sort-order"],
         ),
         (
             &["pending-imports", "list"],

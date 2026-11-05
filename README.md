@@ -189,6 +189,17 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
+### Organization members
+
+List your organization's members. This requires an API key with the `orgMembers.list`
+capability that is not limited to specific projects. Like other commands, `--project-id`
+defaults to your default project; pass `--project-id=` to list members across all projects.
+
+```
+$ foxglove org-members list --project-id=
+$ foxglove org-members list --search ada --role admin --status active --sort-by lastSeenAt --sort-order desc
+```
+
 ### Sites
 
 List your organization's sites, and create, edit, or delete them:
