@@ -2337,9 +2337,9 @@ pub(crate) struct OrgMemberListArgs {
     pub(crate) offset: Option<i64>,
     #[arg(
         long,
-        help = "Filter by project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)",
+        help = "Filter by project ID; the default project does not apply",
         allow_hyphen_values = true,
-        value_parser = parse_trimmed
+        value_parser = parse_non_blank
     )]
     pub(crate) project_id: Option<String>,
     #[arg(
@@ -3017,7 +3017,6 @@ fn command_project_scope(
         CliCommand::Events(EventsCommand::Add(args)) => &args.project_id,
         CliCommand::Events(EventsCommand::List(args)) => &args.project_id,
         CliCommand::ImportErrors(ImportErrorsCommand::List(args)) => &args.project_id,
-        CliCommand::OrgMembers(OrgMembersCommand::List(args)) => &args.project_id,
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             if args.without_project {
                 return Some(runtime::ProjectScope {

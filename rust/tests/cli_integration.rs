@@ -2213,7 +2213,6 @@ fn org_member_filters_are_sent_and_members_are_listed() {
         expected_pairs(&[
             ("limit", "2"),
             ("offset", "4"),
-            ("projectId", "prj_default"),
             ("role", "admin"),
             ("search", "ada lovelace"),
             ("sortBy", "lastSeenAt"),
@@ -2234,13 +2233,20 @@ fn org_member_filters_are_sent_and_members_are_listed() {
         workspace
             .command(&server.url)
             .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
-            .args(["org-members", "list", "--project-id=", "--format", "json"]),
+            .args([
+                "org-members",
+                "list",
+                "--project-id",
+                "prj_one",
+                "--format",
+                "json",
+            ]),
     )
     .finish();
     assert_success(&output);
     assert_eq!(
         query_pairs(&server.finish()[0]),
-        expected_pairs(&[("limit", "50")])
+        expected_pairs(&[("limit", "50"), ("projectId", "prj_one")])
     );
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::OrgMemberListArgs;
 use crate::output::Format;
-use crate::records::{fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT};
+use crate::records::{fetch_list, is_zero, Record, DEFAULT_LIST_LIMIT};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -69,8 +69,8 @@ struct OrgMemberListQuery {
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     search: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,7 +91,9 @@ pub(crate) async fn list_org_members(
     let query = OrgMemberListQuery {
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
-        project_id: args.project_id.clone().or_project(&runtime.project_id),
+        // Members belong to the organization, so the default project does not
+        // narrow this list; only an explicit --project-id filters it.
+        project_id: args.project_id.clone(),
         search: args.search.clone(),
         role: args.role.clone(),
         status: args.status.clone(),
