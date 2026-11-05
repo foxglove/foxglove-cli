@@ -227,7 +227,8 @@ $ FOXGLOVE_SITE_NOTIFICATION_TOKEN=fox_snt_... foxglove sites notify-bucket \
 ### Custom properties
 
 Custom properties define typed fields for devices, events, sessions, and
-episodes; `devices` and `episodes` commands set them with `--property`. Create
+episodes; the `add` and `edit` commands for each set them with `--property`, and
+the `edit` commands remove them with `--remove-property`. Create
 one, giving the allowed values for an enum or multi-enum property:
 
 ```
@@ -286,6 +287,14 @@ List sessions whose recordings overlap a time range, with each session's recordi
 
 ```
 $ foxglove sessions list --key-matches drive --start 2026-04-19 --end 2026-04-20 --sort-by updatedAt
+```
+
+Create a session for a device, or from recordings that all belong to one device,
+and change its key or custom properties later:
+
+```
+$ foxglove sessions add --recording-id rec_123 --recording-id rec_456 --key drive-41 --property vehicle:car
+$ foxglove sessions edit drive-41 --property vehicle:truck --remove-property driver
 ```
 
 Request transfer of an existing edge recording to its configured Primary Site:
