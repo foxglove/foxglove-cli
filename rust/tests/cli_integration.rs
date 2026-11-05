@@ -3683,6 +3683,27 @@ fn creating_a_device_token_prints_its_secret_once() {
             "Device token created: dt_new\nStore the token now; it is not shown again.\n"
         );
     }
+
+    let server = Server::new(vec![Reply::json("POST", "/v1/device-tokens", DEVICE_TOKEN)]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "device-tokens",
+            "add",
+            "--device-id",
+            "dev_one",
+            "--format",
+            "json",
+        ],
+    );
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token created: dt_one, but the API returned no token. Delete it and create a new one.\n"
+    );
 }
 
 #[test]

@@ -175,6 +175,12 @@ pub(crate) async fn add_device_token(
         .post::<_, CreatedDeviceToken>("/v1/device-tokens", &request)
         .await
     {
+        // The secret is only returned on creation, so an empty one can't be
+        // recovered later; fail rather than report success without it.
+        Ok(created) if created.token.is_empty() => Outcome::failure(format!(
+            "Device token created: {}, but the API returned no token. Delete it and create a new one.\n",
+            created.device_token.id
+        )),
         Ok(created) => {
             let mut outcome = format_record(&created, format);
             if outcome.exit_code == 0 {
