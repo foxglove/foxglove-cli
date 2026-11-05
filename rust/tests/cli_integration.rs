@@ -5320,6 +5320,10 @@ fn command_arguments_are_validated_before_sending_a_request() {
             "cannot set and remove property note in the same edit\n",
         ),
         (
+            vec!["devices", "edit", "dev_one", "-p", "note:x", "--remove-property", "note"],
+            "cannot set and remove property note in the same edit\n",
+        ),
+        (
             vec!["events", "edit", "evt_one", "--metadata", "no-colon"],
             "Invalid metadata key/value pair: no-colon\n",
         ),
@@ -5411,6 +5415,14 @@ fn editing_a_device_sends_only_the_fields_given() {
         (
             vec!["-p", "mode:auto"],
             serde_json::json!({"properties": {"mode": "auto"}}),
+        ),
+        (
+            vec!["-p", "mode:auto", "--remove-property", "note"],
+            serde_json::json!({"properties": {"mode": "auto", "note": null}}),
+        ),
+        (
+            vec!["--remove-property", "note"],
+            serde_json::json!({"properties": {"note": null}}),
         ),
         (
             vec!["--name", "renamed"],

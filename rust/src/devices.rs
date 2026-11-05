@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 use crate::api::encode_path_segment;
 use crate::cli::{DeviceAddArgs, DeviceDeleteArgs, DeviceEditArgs, DeviceGetArgs, DeviceListArgs};
-use crate::custom_properties::properties;
+use crate::custom_properties::{check_property_edits, properties, remove_properties};
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, format_record, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
@@ -239,11 +239,15 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
     {
         return Outcome::failure("--name cannot be empty\n");
     }
-    let properties = match properties(runtime, "device", &args.update.property).await {
+    let update = &args.update;
+    if let Err(error) = check_property_edits(&update.property, &update.remove_property) {
+        return Outcome::failure(format!("{error}\n"));
+    }
+    let mut properties = match properties(runtime, "device", &update.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
     };
-    let update = &args.update;
+    remove_properties(&mut properties, &update.remove_property);
     let request = DeviceRequest {
         name: update.name.clone().unwrap_or_default(),
         project_id: String::new(),

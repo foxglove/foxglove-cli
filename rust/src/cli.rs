@@ -23,6 +23,7 @@ const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
+const REMOVE_PROPERTY_HELP: &str = "Remove a property assignment; repeat for more keys";
 const INCLUDE_PROPERTIES_HELP: &str =
     "Include episode custom properties (requires API access to episode properties)";
 const PROPERTIES_QUERY_HELP: &str = "Filter by episode custom properties, for example 'weather:rain note:\"night run\"' (requires API access to episode properties)";
@@ -1425,6 +1426,8 @@ pub(crate) struct DeviceUpdateArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
     #[arg(
         long, help = "Enable or disable the device; a disabled device can't upload recordings",
         action = clap::ArgAction::Set,
@@ -1578,7 +1581,7 @@ pub(crate) struct EpisodeEditArgs {
     pub(crate) episode_id: String,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
-    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
     pub(crate) remove_property: Vec<String>,
     #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) applies_to_version: Option<i32>,
@@ -1856,7 +1859,7 @@ pub(crate) struct EventEditArgs {
     pub(crate) clear_metadata: bool,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
-    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
     pub(crate) remove_property: Vec<String>,
 }
 

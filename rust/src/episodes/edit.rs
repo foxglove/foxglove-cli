@@ -8,7 +8,7 @@ use serde_json::Value;
 use super::{episode_endpoint, Episode};
 use crate::api::ApiError;
 use crate::cli::{EpisodeBulkEditArgs, EpisodeEditArgs};
-use crate::custom_properties::properties;
+use crate::custom_properties::{check_property_edits, properties, remove_properties};
 use crate::output::Format;
 use crate::records::{format_list_output, parse_timestamp_millis, NextCursor, Record};
 use crate::runtime::Runtime;
@@ -50,16 +50,7 @@ fn episode_patch(args: &EpisodeEditArgs) -> Result<EpisodePatch<'_>, String> {
     {
         return Err("Nothing to update".to_owned());
     }
-    for property in &args.property {
-        let Some((key, _)) = property.split_once(':') else {
-            return Err(format!("invalid key/value pair: {property}"));
-        };
-        if args.remove_property.iter().any(|removed| removed == key) {
-            return Err(format!(
-                "cannot set and remove property {key} in the same edit"
-            ));
-        }
-    }
+    check_property_edits(&args.property, &args.remove_property)?;
     if let Some(id) = args
         .add_recording_id
         .iter()
@@ -99,12 +90,7 @@ pub(crate) async fn edit_episode(runtime: &Runtime, args: &EpisodeEditArgs) -> O
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit episode: {error}\n")),
     };
-    if !args.remove_property.is_empty() {
-        let properties = patch.properties.get_or_insert_with(BTreeMap::new);
-        for key in &args.remove_property {
-            properties.insert(key.clone(), Value::Null);
-        }
-    }
+    remove_properties(&mut patch.properties, &args.remove_property);
     match runtime
         .client
         .patch::<_, _, Episode>(&episode_endpoint(&args.episode_id), &(), &patch)

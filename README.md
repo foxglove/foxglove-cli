@@ -119,6 +119,8 @@ Change a device's settings. Boolean flags take an optional `=true` or `=false`:
 ```
 $ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings-seconds 604800 --auto-delete-after-import
     Device updated: RobotA
+$ foxglove devices edit dev_drpLqjBZYUzus3gv --property location:sf --remove-property owner
+    Device updated: RobotA
 ```
 
 Get one device by name or ID:
