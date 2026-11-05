@@ -25,6 +25,8 @@ const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLO
 const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
 const INCLUDE_PROPERTIES_HELP: &str =
     "Include episode custom properties (requires API access to episode properties)";
+const INCLUDE_CREATION_CONTEXT_HELP: &str =
+    "Include each episode's creation context: the selection or search that produced it";
 const PROPERTIES_QUERY_HELP: &str = "Filter by episode custom properties, for example 'weather:rain note:\"night run\"' (requires API access to episode properties)";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
@@ -974,6 +976,16 @@ pub(crate) struct DatasetVersionCompareArgs {
     )]
     pub(crate) cursor: Option<String>,
     #[arg(
+        long, help = INCLUDE_CREATION_CONTEXT_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
+    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -1072,6 +1084,16 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
+        long, help = INCLUDE_CREATION_CONTEXT_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
     #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
@@ -1667,6 +1689,16 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
+        long, help = INCLUDE_CREATION_CONTEXT_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
     #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,

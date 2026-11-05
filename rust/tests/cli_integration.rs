@@ -2585,6 +2585,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         "--recording-id",
         "rec_one",
         "--include-recordings",
+        "--include-creation-context",
         "--limit",
         "10",
         "--cursor",
@@ -2607,7 +2608,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         query_pairs(&server.finish()[0]),
         expected_pairs(&[
             ("end", "2024-01-03T00:00:00Z"),
-            ("include", "recordings"),
+            ("include", "recordings,creationContext"),
             ("limit", "10"),
             ("cursor", "next_page"),
             ("projectId", "prj_explicit"),
