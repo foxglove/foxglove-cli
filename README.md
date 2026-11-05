@@ -383,6 +383,14 @@ $ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y \
     --metadata requires-labeling:true
 ```
 
+Name the device with `--device-name` instead of `--device-id`, and set event
+custom properties with `--property`:
+
+```
+$ foxglove events add --device-name RobotA \
+    --start 2023-04-19T13:26:37Z --end 2023-04-19T13:27:00Z --property speed:3.5
+```
+
 List all events:
 
 ```

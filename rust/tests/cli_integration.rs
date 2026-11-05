@@ -532,6 +532,53 @@ fn event_edits_send_only_the_fields_given() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn event_add_sends_a_device_name_and_typed_properties() {
+    const EVENT_PROPERTIES: &str = r#"[{"id":"cp_speed","key":"speed","label":"Speed","resourceType":"event","valueType":"number","hasAssociatedData":false}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", EVENT_PROPERTIES),
+        Reply::json("POST", "/v1/events", r#"{"id":"evt_one"}"#),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "events",
+            "add",
+            "--device-name",
+            "robot",
+            "--start",
+            "2024-01-02T03:04:05Z",
+            "--end",
+            "2024-01-02T03:04:06Z",
+            "-p",
+            "speed:3.5",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Created event: evt_one\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "event")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({
+            "deviceName": "robot",
+            "start": "2024-01-02T03:04:05Z",
+            "end": "2024-01-02T03:04:06Z",
+            "metadata": {},
+            "properties": {"speed": 3.5},
+        })
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn deleting_an_event_reports_it_or_names_a_missing_one() {
     let workspace = Workspace::new();
     let server = Server::new(vec![
@@ -2554,6 +2601,18 @@ fn blank_and_conflicting_filters_are_rejected() {
         &["recordings", "list", "--device-id="],
         &["sessions", "list", "--device-id", " "],
         &["events", "list", "--sort-by", "", "--sort-order", "desc"],
+        &[
+            "events",
+            "add",
+            "--device-id",
+            "dev_1",
+            "--device-name",
+            "robot",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-01-01T00:00:01Z",
+        ],
         &["upload", "--key", "", "data.mcap"],
         &["upload", "--session-key", " \r", "data.mcap"],
         &["pending-imports", "list", "--key", ""],
