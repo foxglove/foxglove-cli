@@ -171,10 +171,17 @@ struct EpisodeListQuery<'a> {
     start: String,
 }
 
-pub(crate) fn episode_include(recordings: bool, properties: bool) -> String {
+pub(crate) fn episode_include(
+    recordings: bool,
+    creation_context: bool,
+    properties: bool,
+) -> String {
     let mut includes = Vec::new();
     if recordings {
         includes.push("recordings");
+    }
+    if creation_context {
+        includes.push("creationContext");
     }
     if properties {
         includes.push("properties");
@@ -216,7 +223,11 @@ pub(crate) async fn list_episodes(
         end,
         exact_recording_ids: args.exact_recording_ids.join(","),
         has_missing_recordings: args.has_missing_recordings,
-        include: episode_include(args.include_recordings, args.include_properties),
+        include: episode_include(
+            args.include_recordings,
+            args.include_creation_context,
+            args.include_properties,
+        ),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         properties_query: args.properties_query.as_deref(),
@@ -261,7 +272,8 @@ pub(crate) async fn get_episode(
 ) -> Outcome {
     let query = EpisodeGetQuery {
         version: args.version,
-        include: episode_include(args.include_recordings, args.include_properties),
+        // Fetching one episode always returns its creation context.
+        include: episode_include(args.include_recordings, false, args.include_properties),
     };
     match runtime
         .client
@@ -617,13 +629,17 @@ mod tests {
 
     #[test]
     fn included_episode_data_is_a_comma_separated_list() {
-        for (recordings, properties, expected) in [
-            (false, false, ""),
-            (true, false, "recordings"),
-            (false, true, "properties"),
-            (true, true, "recordings,properties"),
+        for (recordings, creation_context, properties, expected) in [
+            (false, false, false, ""),
+            (true, false, false, "recordings"),
+            (false, true, false, "creationContext"),
+            (false, false, true, "properties"),
+            (true, true, true, "recordings,creationContext,properties"),
         ] {
-            assert_eq!(episode_include(recordings, properties), expected);
+            assert_eq!(
+                episode_include(recordings, creation_context, properties),
+                expected
+            );
         }
     }
 }

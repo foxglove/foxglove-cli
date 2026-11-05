@@ -496,7 +496,10 @@ on when each episode joined the dataset:
 $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-order desc
 ```
 
-Member recordings are omitted unless you pass `--include-recordings`.
+Member recordings are omitted unless you pass `--include-recordings`. List
+commands and `datasets versions compare` also accept `--include-creation-context`
+to add the selection or search that produced each episode to JSON output;
+`episodes get` always returns it.
 
 Episode custom properties are also omitted by default. Organizations with API
 access to episode properties can set them during creation, request them on reads,
