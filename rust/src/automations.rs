@@ -117,7 +117,7 @@ struct AutomationListResponse {
     automations: Vec<AutomationListItem>,
 }
 
-/// The part of a create response that the create commands print. Decoding only
+/// The part of a create response that the create command prints. Decoding only
 /// the ID keeps a create from failing after the server accepted it.
 #[derive(Debug, Deserialize)]
 struct Created {
@@ -132,8 +132,7 @@ fn automation_endpoint(id: &str) -> String {
     format!("/v1/automations/{}", encode_path_segment(id))
 }
 
-/// The automation endpoints answer 404 only when the automation itself, or for
-/// trigger and run endpoints the named trigger or run, does not exist.
+/// The automation endpoints answer 404 only when the automation does not exist.
 fn is_not_found(error: &ApiError) -> bool {
     matches!(error, ApiError::NotFound { .. })
 }
