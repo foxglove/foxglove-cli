@@ -245,15 +245,28 @@ fn session_outcome(session: &Session) -> Outcome {
             .collect::<Vec<_>>()
             .join(", ")
     };
+    let properties = session
+        .properties
+        .as_ref()
+        .map(|properties| {
+            format!(
+                "Properties: {}\n",
+                escape_terminal_text(
+                    &serde_json::to_string(properties).expect("property values are JSON")
+                )
+            )
+        })
+        .unwrap_or_default();
     Outcome::success(format!(
-        "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
+        "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n{}",
         session.id,
         escape_terminal_text(&session.key),
         session.project_id,
         device,
         session.created_at,
         session.updated_at,
-        recordings
+        recordings,
+        properties
     ))
 }
 
@@ -587,6 +600,22 @@ mod tests {
         assert!(stdout.contains("Key:        \\u{1b}key\n"), "{stdout}");
         assert!(
             stdout.contains("Device:     \\u{1b}name (dev_1)\n"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("Properties:"), "{stdout}");
+
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "",
+            "updatedAt": "",
+            "properties": {"mode": "auto", "note": "\u{1b}x"},
+        }))
+        .unwrap();
+        let stdout = String::from_utf8(session_outcome(&session).stdout).unwrap();
+        assert!(
+            stdout.ends_with(
+                "Recordings: (none)\nProperties: {\"mode\":\"auto\",\"note\":\"\\u001bx\"}\n"
+            ),
             "{stdout}"
         );
     }
