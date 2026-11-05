@@ -17,6 +17,11 @@ use crate::Outcome;
 
 const SLOW_DOWN_STEP: Duration = Duration::from_secs(5);
 
+/// Error code for a request that needs a credential acting as a member, such
+/// as a session token or personal access token, rather than an organization
+/// API key.
+const MEMBER_CREDENTIAL_REQUIRED: &str = "MemberCredentialRequired";
+
 const LOGIN_EXPIRED: &str =
     "the login request expired before it was authorized; run `foxglove auth login` again";
 
@@ -42,22 +47,19 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
             "Not signed in. Run `foxglove auth login` or `foxglove auth configure-api-key` to continue.\n",
         );
     }
-    // The saved auth_type describes the saved token, not FOXGLOVE_BEARER_TOKEN.
-    let auth_type = runtime
-        .config
-        .get_string("auth_type")
-        .filter(|_| !runtime.config.is_env_set("bearer_token"))
-        .and_then(|value| value.parse::<i32>().ok());
-    if auth_type == Some(2) || (auth_type != Some(1) && token.starts_with("fox_sk_")) {
-        return Outcome::success("Authenticated with API key\n");
-    }
+    let api_key = runtime.uses_api_key();
     match runtime
         .client
         .get::<_, MeResponse>("/v1/me", &Vec::<(String, String)>::new())
         .await
     {
         Ok(me) => {
-            let mut stdout = b"Authenticated with session token\n".to_vec();
+            // An API key that identifies a member is a personal access token.
+            let mut stdout = if api_key {
+                b"Authenticated with personal access token\n".to_vec()
+            } else {
+                b"Authenticated with session token\n".to_vec()
+            };
             let headers = ["Email", "Email verified", "Org ID", "Org Slug", "Admin"];
             let rows = [vec![
                 me.email,
@@ -70,6 +72,10 @@ pub(crate) async fn info(runtime: &Runtime) -> Outcome {
                 Ok(()) => Outcome::success(stdout),
                 Err(error) => Outcome::failure(format!("Info command failed: {error}\n")),
             }
+        }
+        // Organization API keys do not act as a member, so /v1/me refuses them.
+        Err(error) if api_key && error.code() == Some(MEMBER_CREDENTIAL_REQUIRED) => {
+            Outcome::success("Authenticated with API key\n")
         }
         Err(error) => Outcome::failure(format!("Info command failed: {error}\n")),
     }

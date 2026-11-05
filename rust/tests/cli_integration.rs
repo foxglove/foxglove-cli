@@ -2074,6 +2074,98 @@ fn configure_api_key_rejects_plain_http_before_prompting() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn auth_info_reports_the_member_behind_session_tokens_and_personal_access_tokens() {
+    const ME: &str = r#"{"email":"ada@example.com","emailVerified":true,"orgId":"org_1","orgSlug":"acme","admin":false}"#;
+    const MEMBER_CREDENTIAL_REQUIRED: &str = r#"{"error":"This operation requires a member credential.","code":"MemberCredentialRequired"}"#;
+    let forbidden = |body| Reply {
+        status: 403,
+        ..Reply::json("GET", "/v1/me", body)
+    };
+    let workspace = Workspace::new();
+    for (token, reply, expected) in [
+        (
+            "fixture",
+            Reply::json("GET", "/v1/me", ME),
+            "Authenticated with session token\n",
+        ),
+        (
+            "fox_sk_fixture",
+            Reply::json("GET", "/v1/me", ME),
+            "Authenticated with personal access token\n",
+        ),
+        (
+            "fox_sk_fixture",
+            forbidden(MEMBER_CREDENTIAL_REQUIRED),
+            "Authenticated with API key\n",
+        ),
+    ] {
+        let server = Server::new(vec![reply]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_BEARER_TOKEN", token)
+                .args(["auth", "info"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(server.finish().len(), 1, "{token}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.starts_with(expected), "{token}: {stdout}");
+        assert_eq!(
+            stdout.contains("ada@example.com"),
+            expected != "Authenticated with API key\n",
+            "{stdout}"
+        );
+    }
+
+    // A saved API key is recognized by its auth type, whatever its prefix.
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        "auth_type: 2\nbearer_token: saved-key\n",
+    )
+    .unwrap();
+    let server = Server::new(vec![forbidden(MEMBER_CREDENTIAL_REQUIRED)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env_remove("FOXGLOVE_BEARER_TOKEN")
+            .args(["auth", "info"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert!(server.finish()[0].contains("Bearer saved-key"));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Authenticated with API key\n"
+    );
+
+    // Other refusals, and this code for a session token, are still failures.
+    for (token, body) in [
+        (
+            "fox_sk_fixture",
+            r#"{"error":"API key is disabled","code":"Disabled"}"#,
+        ),
+        ("fixture", MEMBER_CREDENTIAL_REQUIRED),
+    ] {
+        let server = Server::new(vec![forbidden(body)]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_BEARER_TOKEN", token)
+                .args(["auth", "info"]),
+        )
+        .finish();
+        server.finish();
+        assert_eq!(output.status.code(), Some(1), "{token}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).starts_with("Info command failed: "),
+            "{token}"
+        );
+    }
+}
+
+#[test]
 fn missing_home_requires_explicit_config_for_writes() {
     let workspace = Workspace::new();
     for (args, prefix) in [

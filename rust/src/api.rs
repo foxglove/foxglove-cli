@@ -50,8 +50,12 @@ pub enum ApiError {
     Unauthorized,
     /// The API refused the request with HTTP 403.
     Forbidden,
-    /// The API refused the request with HTTP 403 and said why.
-    ForbiddenWithMessage(String),
+    /// The API refused the request with HTTP 403 and said why, with the
+    /// error code it gave, if any.
+    ForbiddenWithMessage {
+        code: Option<String>,
+        message: String,
+    },
     /// The requested resource does not exist, with the error code and
     /// message the API gave, if any.
     NotFound {
@@ -84,7 +88,7 @@ impl ApiError {
     pub const fn is_forbidden(&self) -> bool {
         matches!(
             self,
-            Self::Unauthorized | Self::Forbidden | Self::ForbiddenWithMessage(_)
+            Self::Unauthorized | Self::Forbidden | Self::ForbiddenWithMessage { .. }
         )
     }
 
@@ -112,7 +116,9 @@ impl ApiError {
     #[must_use]
     pub fn code(&self) -> Option<&str> {
         match self {
-            Self::NotFound { code, .. } => code.as_deref(),
+            Self::NotFound { code, .. } | Self::ForbiddenWithMessage { code, .. } => {
+                code.as_deref()
+            }
             _ => None,
         }
     }
@@ -146,7 +152,7 @@ impl fmt::Display for ApiError {
             Self::Response { status, message } if message.is_empty() => {
                 write!(formatter, "unexpected status {status}")
             }
-            Self::ForbiddenWithMessage(message)
+            Self::ForbiddenWithMessage { message, .. }
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
             Self::Transport(error) | Self::Decode(error) => write_reqwest_error(formatter, error),
@@ -169,7 +175,7 @@ impl std::error::Error for ApiError {
             Self::Write(error) => Some(error),
             Self::Unauthorized
             | Self::Forbidden
-            | Self::ForbiddenWithMessage(_)
+            | Self::ForbiddenWithMessage { .. }
             | Self::NotFound { .. }
             | Self::Response { .. }
             | Self::Cancelled
@@ -1421,7 +1427,10 @@ fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
             if message.is_empty() {
                 ApiError::Forbidden
             } else {
-                ApiError::ForbiddenWithMessage(message)
+                ApiError::ForbiddenWithMessage {
+                    code: response_code(body),
+                    message,
+                }
             }
         }
         StatusCode::NOT_FOUND => ApiError::NotFound {
@@ -1835,6 +1844,7 @@ mod tests {
             forbidden.to_string(),
             "This operation requires the `devices.list` capability."
         );
+        assert_eq!(forbidden.code(), Some("MissingApiKeyCapability"));
         let bare = api_error_from_response(StatusCode::FORBIDDEN, "");
         assert!(matches!(bare, ApiError::Forbidden));
         assert_eq!(bare.to_string(), "forbidden");

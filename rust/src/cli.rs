@@ -184,10 +184,7 @@ enum CliCommand {
         subcommand
     )]
     LakeFiles(LakeFilesCommand),
-    #[command(
-        about = "List and manage layouts shared with your organization",
-        subcommand
-    )]
+    #[command(about = "List and manage layouts", subcommand)]
     Layouts(LayoutsCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
@@ -2118,7 +2115,9 @@ enum LayoutsCommand {
     Edit(LayoutEditArgs),
     #[command(about = "Get a layout")]
     Get(LayoutGetArgs),
-    #[command(about = "List layouts shared with your organization")]
+    #[command(
+        about = "List layouts shared with your organization, plus your personal layouts when signed in with `foxglove auth login`"
+    )]
     List(LayoutListArgs),
     #[command(about = "Restore a deleted layout")]
     Restore(LayoutIdArgs),
@@ -2212,6 +2211,13 @@ pub(crate) struct LayoutEditArgs {
     pub(crate) name: Option<String>,
     #[arg(long, help = LAYOUT_PERMISSION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) permission: Option<String>,
+    #[arg(
+        long,
+        help = "When this change was saved locally (ISO 8601); the API rejects a time older than the layout's last save. Defaults to now when signed in with `foxglove auth login`; omitted for API keys",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) saved_at: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
