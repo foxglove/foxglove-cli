@@ -145,7 +145,7 @@ enum CliCommand {
     #[command(about = "Manage authentication", subcommand)]
     Auth(AuthCommand),
     #[command(
-        about = "List and manage automations (beta)",
+        about = "List, manage, and run automations (beta)",
         long_about = AUTOMATIONS_HELP,
         subcommand
     )]
@@ -335,7 +335,11 @@ pub(crate) struct LoginArgs {
     pub(crate) base_url: Option<String>,
 }
 
-const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.\n\nSigned-in members and personal access tokens can create automations. Who can edit or delete an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it. Organization API keys can list automations but not edit or delete them.\n\nAutomations are in beta.";
+const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.
+
+Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
+
+Automations are in beta.";
 const AUTOMATION_LIMIT_HELP: &str = "Maximum number of items to return (1-2000, default: 50)";
 const AUTOMATION_OFFSET_HELP: &str = "Number of items to skip before returning the results";
 
@@ -357,6 +361,8 @@ enum AutomationsCommand {
     Get(AutomationGetArgs),
     #[command(about = "List a project's automations, newest first, with their run counts")]
     List(AutomationListArgs),
+    #[command(about = "Start, list, and get automation runs", subcommand)]
+    Runs(AutomationRunsCommand),
     #[command(
         about = "Get, set, or delete the trigger that starts an automation",
         subcommand
@@ -461,6 +467,89 @@ pub(crate) struct AutomationTriggerSetArgs {
         value_parser = parse_non_blank
     )]
     pub(crate) schedule_cadence: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+enum AutomationRunsCommand {
+    #[command(
+        about = "Start a run of an automation",
+        long_about = "Start a run of an automation. The run is created pending and executes as the automation's owner, with the owner's data access and AI usage; follow it with `automations runs get`.\n\nSigned-in members and personal access tokens must give --run-prompt. Organization API keys must omit it; their runs use only the automation's saved instructions."
+    )]
+    Add(AutomationRunAddArgs),
+    #[command(about = "Get a run, including its prompts and final answer")]
+    Get(AutomationRunGetArgs),
+    #[command(about = "List a project's automation runs, newest first by default")]
+    List(AutomationRunListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationRunAddArgs {
+    #[arg(value_name = "AUTOMATION_ID", value_parser = parse_id)]
+    pub(crate) automation_id: String,
+    #[arg(
+        long,
+        help = "Instructions for this run, which may reference recordings or other resources (required for members and personal access tokens; omit with an organization API key)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) run_prompt: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationRunGetArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(value_name = "RUN_ID", value_parser = parse_id)]
+    pub(crate) run_id: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationRunListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(long, help = "Filter to runs of these automations; comma-separated or repeated", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_id, num_args = 1)]
+    pub(crate) automation_id: Vec<String>,
+    #[arg(
+        long,
+        help = "Only include runs created at or after this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) created_after: Option<String>,
+    #[arg(
+        long,
+        help = "Only include runs created at or before this time (ISO 8601)",
+        allow_hyphen_values = true
+    )]
+    pub(crate) created_before: Option<String>,
+    #[arg(long, help = AUTOMATION_LIMIT_HELP, allow_hyphen_values = true, value_parser = parse_list_limit)]
+    pub(crate) limit: Option<i64>,
+    #[arg(long, help = AUTOMATION_OFFSET_HELP, allow_hyphen_values = true, value_parser = clap::value_parser!(i64).range(0..))]
+    pub(crate) offset: Option<i64>,
+    #[arg(
+        long,
+        help = "Filter to runs of automations owned by this organization member; use me for your own (not available to organization API keys)",
+        allow_hyphen_values = true,
+        value_parser = parse_id
+    )]
+    pub(crate) owner_member_id: Option<String>,
+    #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort runs by: createdAt (default: createdAt)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc (default: desc)",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
+    #[arg(long, help = "Filter to runs with these statuses: pending, running, succeeded, or failed; comma-separated or repeated", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_non_blank, num_args = 1)]
+    pub(crate) status: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -3190,7 +3279,11 @@ fn command_project_scope(
         CliCommand::Attachments(AttachmentsCommand::List(args)) => &args.project_id,
         CliCommand::Automations(
             AutomationsCommand::Add(AutomationAddArgs { project_id, .. })
-            | AutomationsCommand::List(AutomationListArgs { project_id, .. }),
+            | AutomationsCommand::List(AutomationListArgs { project_id, .. })
+            | AutomationsCommand::Runs(AutomationRunsCommand::List(AutomationRunListArgs {
+                project_id,
+                ..
+            })),
         ) => project_id,
         CliCommand::Coverage(CoverageCommand::List(args)) => &args.project_id,
         CliCommand::Export(args) => &args.project_id,
@@ -3355,6 +3448,17 @@ async fn dispatch_automation_command(
         AutomationsCommand::List(args) => {
             let format = args.format.format;
             automations::list_automations(runtime, &args, format).await
+        }
+        AutomationsCommand::Runs(AutomationRunsCommand::Add(args)) => {
+            automations::add_run(runtime, &args).await
+        }
+        AutomationsCommand::Runs(AutomationRunsCommand::Get(args)) => {
+            let format = args.format.format;
+            automations::get_run(runtime, &args, format).await
+        }
+        AutomationsCommand::Runs(AutomationRunsCommand::List(args)) => {
+            let format = args.format.format;
+            automations::list_runs(runtime, &args, format).await
         }
         AutomationsCommand::Trigger(AutomationTriggerCommand::Delete(args)) => {
             automations::delete_trigger(runtime, &args).await
