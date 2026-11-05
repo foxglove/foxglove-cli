@@ -753,8 +753,9 @@ API keys can only create and change layouts shared with the organization
 [Automations](https://docs.foxglove.dev/docs/automations) run an AI agent on
 your data on a schedule, when an event occurs, or on demand. Automations are in
 beta. Each automation acts as its owner, with the owner's access to data in its
-project. Signed-in members and personal access tokens can create, edit, and
-delete automations; organization API keys can list automations.
+project. Signed-in members and personal access tokens can create, edit, delete,
+and run automations; organization API keys can list automations and their runs,
+and start runs.
 
 Create an automation, then list or get it:
 
@@ -774,6 +775,17 @@ $ foxglove automations trigger set auto_123 --event-type clock.updated --schedul
 $ foxglove automations trigger set auto_123 --event-type event.created --event-type-id evt_type_123 --enabled=false
 $ foxglove automations trigger get auto_123
 $ foxglove automations trigger delete auto_123
+```
+
+Start a run on demand and follow it. Members and personal access tokens give
+`--run-prompt`; organization API keys omit it, and the run uses only the
+automation's saved instructions:
+
+```
+$ foxglove automations runs add auto_123 --run-prompt "Look at rec_123"
+    Automation run created: run_123
+$ foxglove automations runs list --project-id prj_123 --automation-id auto_123 --status running,failed
+$ foxglove automations runs get run_123 --format json
 ```
 
 ## Shell autocompletion

@@ -2,6 +2,7 @@ use super::*;
 
 const AUTOMATION: &str = r#"{"id":"auto_1","projectId":"prj_1","name":"Triage","actionPrompt":"Summarize new recordings","isOwner":true,"permissions":{"canEdit":true,"canRun":true,"canDelete":true},"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z"}"#;
 const TRIGGER: &str = r#"{"id":"trg_1","automationId":"auto_1","eventType":"clock.updated","enabled":false,"configurationVersion":1,"configuration":{"schedule":{"cadence":"daily","anchor":"2026-01-05T09:00:00Z"}},"createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z","deletedAt":null}"#;
+const RUN: &str = r#"{"id":"run_1","automationId":"auto_1","actionPrompt":"Summarize new recordings","runPrompt":"Check rec_1","status":"pending","createdAt":"2026-01-02T03:04:05Z","updatedAt":"2026-01-02T03:04:05Z","startedAt":null,"completedAt":null,"errorMessage":null}"#;
 
 fn created(method: &'static str, path: &'static str, body: &str) -> Reply {
     Reply {
@@ -192,5 +193,99 @@ fn triggers_are_replaced_with_put_and_read_back() {
             "enabled": false,
             "configuration": {"schedule": {"cadence": "daily", "anchor": "2026-01-05T09:00:00Z"}},
         })
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn runs_are_started_and_listed_with_their_filters() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        created("POST", "/v1/automations/runs", RUN),
+        // A create needs only the new ID; other fields may be missing or null.
+        created(
+            "POST",
+            "/v1/automations/runs",
+            r#"{"id":"run_2","runPrompt":null}"#,
+        ),
+        Reply::json("GET", "/v1/automations/runs", r#"{"runs":[]}"#),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "automations",
+            "runs",
+            "add",
+            "auto_1",
+            "--run-prompt",
+            "Check rec_1",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Automation run created: run_1\nRun foxglove automations runs get run_1 to follow its progress.\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["automations", "runs", "add", "auto_1"],
+    );
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stderr).starts_with("Automation run created: run_2\n"));
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "automations",
+            "runs",
+            "list",
+            "--project-id",
+            "prj_1",
+            "--automation-id",
+            "auto_1,auto_2",
+            "--automation-id",
+            "auto_3",
+            "--status",
+            "failed",
+            "--created-after",
+            "2026-01-02",
+            "--created-before",
+            "2026-01-03T12:00:00Z",
+            "--sort-by",
+            "createdAt",
+            "--sort-order",
+            "asc",
+            "--owner-member-id",
+            "me",
+            "--format",
+            "json",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "{\"data\":[]}\n");
+    let requests = server.finish();
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"automationId": "auto_1", "runPrompt": "Check rec_1"})
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"automationId": "auto_1"})
+    );
+    assert_eq!(
+        query_pairs(&requests[2]),
+        expected_pairs(&[
+            ("projectId", "prj_1"),
+            ("automationId", "auto_1,auto_2,auto_3"),
+            ("status", "failed"),
+            ("createdAfter", "2026-01-02T00:00:00Z"),
+            ("createdBefore", "2026-01-03T12:00:00Z"),
+            ("sortBy", "createdAt"),
+            ("sortOrder", "asc"),
+            ("ownerMemberId", "me"),
+            ("limit", "50"),
+        ])
     );
 }
