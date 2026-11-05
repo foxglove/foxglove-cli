@@ -1,5 +1,9 @@
 //! Automation commands.
 
+mod trigger;
+
+pub(crate) use trigger::{delete_trigger, get_trigger, set_trigger};
+
 use serde::{Deserialize, Serialize};
 
 use crate::api::{encode_path_segment, ApiError};
@@ -132,7 +136,8 @@ fn automation_endpoint(id: &str) -> String {
     format!("/v1/automations/{}", encode_path_segment(id))
 }
 
-/// The automation endpoints answer 404 only when the automation does not exist.
+/// The automation endpoints answer 404 only when the automation, or for trigger
+/// endpoints its trigger, does not exist.
 fn is_not_found(error: &ApiError) -> bool {
     matches!(error, ApiError::NotFound { .. })
 }
