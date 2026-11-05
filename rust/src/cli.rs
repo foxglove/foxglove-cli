@@ -333,7 +333,11 @@ pub(crate) struct LoginArgs {
     pub(crate) base_url: Option<String>,
 }
 
-const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.\n\nSigned-in members and personal access tokens can create, edit, delete, and run automations. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions.\n\nAutomations are in beta.";
+const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.
+
+Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
+
+Automations are in beta.";
 const AUTOMATION_LIMIT_HELP: &str = "Maximum number of items to return (1-2000, default: 50)";
 const AUTOMATION_OFFSET_HELP: &str = "Number of items to skip before returning the results";
 

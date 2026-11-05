@@ -753,9 +753,11 @@ API keys can only create and change layouts shared with the organization
 [Automations](https://docs.foxglove.dev/docs/automations) run an AI agent on
 your data on a schedule, when an event occurs, or on demand. Automations are in
 beta. Each automation acts as its owner, with the owner's access to data in its
-project. Signed-in members and personal access tokens can create, edit, delete,
-and run automations; organization API keys can list automations and their runs,
-and start runs.
+project. Signed-in members and personal access tokens can create automations.
+Who can edit, delete, or run an automation depends on its permissions, which
+`automations get` shows: the owner and organization admins can delete it.
+Organization API keys can list automations and their runs, and start runs, but
+can't edit or delete automations.
 
 Create an automation, then list or get it:
 
