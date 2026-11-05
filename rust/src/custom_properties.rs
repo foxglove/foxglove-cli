@@ -249,6 +249,36 @@ pub(crate) async fn properties(
     typed_properties(definitions, pairs).map(Some)
 }
 
+/// Rejects malformed `key:value` pairs and keys that are both set and removed,
+/// before any request is sent.
+pub(crate) fn check_property_edits(pairs: &[String], removed: &[String]) -> Result<(), String> {
+    for pair in pairs {
+        let Some((key, _)) = pair.split_once(':') else {
+            return Err(format!("invalid key/value pair: {pair}"));
+        };
+        if removed.iter().any(|removed| removed == key) {
+            return Err(format!(
+                "cannot set and remove property {key} in the same edit"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Adds a `null` value, which unsets a property, for each removed key.
+pub(crate) fn remove_properties(
+    properties: &mut Option<BTreeMap<String, Value>>,
+    removed: &[String],
+) {
+    if removed.is_empty() {
+        return;
+    }
+    let properties = properties.get_or_insert_with(BTreeMap::new);
+    for key in removed {
+        properties.insert(key.clone(), Value::Null);
+    }
+}
+
 /// Converts `key:value` pairs to the JSON types their definitions declare.
 fn typed_properties(
     definitions: Vec<CustomPropertyDefinition>,
@@ -317,7 +347,7 @@ fn typed_properties(
 
 #[cfg(test)]
 mod tests {
-    use super::typed_properties;
+    use super::{check_property_edits, remove_properties, typed_properties};
 
     fn convert(pairs: &[&str]) -> Result<serde_json::Value, String> {
         let definitions = serde_json::from_value(serde_json::json!([
@@ -369,5 +399,39 @@ mod tests {
         ] {
             assert_eq!(convert(&[pair]), Err(error.to_owned()), "{pair}");
         }
+    }
+
+    #[test]
+    fn removed_properties_are_sent_as_null_and_cannot_also_be_set() {
+        let strings = |values: &[&str]| -> Vec<String> {
+            values.iter().map(|&value| value.to_owned()).collect()
+        };
+        assert_eq!(
+            check_property_edits(&strings(&["note:a:b"]), &strings(&["mode"])),
+            Ok(())
+        );
+        assert_eq!(
+            check_property_edits(&strings(&["note:x"]), &strings(&["note"])),
+            Err("cannot set and remove property note in the same edit".to_owned())
+        );
+        assert_eq!(
+            check_property_edits(&strings(&["note"]), &[]),
+            Err("invalid key/value pair: note".to_owned())
+        );
+
+        let mut properties = None;
+        remove_properties(&mut properties, &[]);
+        assert_eq!(properties, None);
+        remove_properties(&mut properties, &strings(&["mode"]));
+        assert_eq!(
+            serde_json::json!(properties),
+            serde_json::json!({"mode": null})
+        );
+        let mut properties = Some([("speed".to_owned(), serde_json::json!(3.5))].into());
+        remove_properties(&mut properties, &strings(&["mode"]));
+        assert_eq!(
+            serde_json::json!(properties),
+            serde_json::json!({"speed": 3.5, "mode": null})
+        );
     }
 }

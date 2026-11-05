@@ -8,7 +8,7 @@ use crate::cli::{
     DeviceTokenListArgs,
 };
 use crate::output::Format;
-use crate::records::{fetch_list, format_record, ProjectFallback, Record};
+use crate::records::{fetch_list, format_record, null_to_default, ProjectFallback, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -61,6 +61,7 @@ impl Record for DeviceToken {
 struct CreatedDeviceToken {
     #[serde(flatten)]
     device_token: DeviceToken,
+    #[serde(default, deserialize_with = "null_to_default")]
     token: String,
 }
 
@@ -174,6 +175,12 @@ pub(crate) async fn add_device_token(
         .post::<_, CreatedDeviceToken>("/v1/device-tokens", &request)
         .await
     {
+        // The secret is only returned on creation, so an empty one can't be
+        // recovered later; fail rather than report success without it.
+        Ok(created) if created.token.is_empty() => Outcome::failure(format!(
+            "Device token created: {}, but the API returned no token. Delete it and create a new one.\n",
+            created.device_token.id
+        )),
         Ok(created) => {
             let mut outcome = format_record(&created, format);
             if outcome.exit_code == 0 {
@@ -277,5 +284,16 @@ mod tests {
             serde_json::to_value(&created).unwrap()["token"],
             "fake-device-token"
         );
+
+        let without_token: CreatedDeviceToken = serde_json::from_value(serde_json::json!({
+            "id": "dt_1",
+            "deviceId": "dev_1",
+            "projectId": "prj_1",
+            "enabled": true,
+            "preapproved": true,
+            "createdAt": "2024-01-02T03:04:05Z",
+        }))
+        .unwrap();
+        assert_eq!(without_token.fields().last().unwrap(), "");
     }
 }

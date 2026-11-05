@@ -276,7 +276,7 @@ fn edits_preserve_null_removals_typed_values_and_version_preconditions() {
     let requests = server.finish();
     assert_eq!(
         json_body(&requests[1]),
-        serde_json::json!({"appliesToVersion":3, "startTime":"2024-01-02T03:04:05.123Z", "properties":{"accepted":false,"tags":["night"],"note":null}, "recordings":{"add":["rec_new"], "remove":["rec_old"]}})
+        serde_json::json!({"appliesToVersion":3, "startTime":"2024-01-02T03:04:05.123456Z", "properties":{"accepted":false,"tags":["night"],"note":null}, "recordings":{"add":["rec_new"], "remove":["rec_old"]}})
     );
     assert!(output.stdout.is_empty());
     assert_eq!(

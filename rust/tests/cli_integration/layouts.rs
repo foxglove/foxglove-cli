@@ -198,11 +198,22 @@ fn editing_a_layout_sends_only_the_fields_given() {
             vec!["--data", "layout.json"],
             serde_json::json!({"data": {"layout": "Plot!b"}}),
         ),
+        (
+            vec!["--name", "Renamed", "--saved-at", "2024-01-02T03:04:07"],
+            serde_json::json!({"name": "Renamed", "savedAt": "2024-01-02T03:04:07Z"}),
+        ),
     ] {
         let server = Server::new(vec![Reply::json("PATCH", "/v1/layouts/lay_one", LAYOUT)]);
         let mut args = vec!["layouts", "edit", "lay_one"];
         args.extend(&flags);
-        let output = run(&workspace, &server, &args);
+        // API keys may omit savedAt, so it is sent only when given.
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_BEARER_TOKEN", "fox_sk_fixture")
+                .args(&args),
+        )
+        .finish();
         assert_success(&output);
         assert_eq!(json_body(&server.finish()[0]), expected, "{flags:?}");
         assert_eq!(
@@ -210,6 +221,48 @@ fn editing_a_layout_sends_only_the_fields_given() {
             "Layout updated: lay_one\n"
         );
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn editing_a_layout_with_a_session_token_sends_saved_at() {
+    use time::format_description::well_known::Rfc3339;
+    use time::OffsetDateTime;
+
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("PATCH", "/v1/layouts/lay_one", LAYOUT)]);
+    let before = OffsetDateTime::now_utc();
+    let output = run(
+        &workspace,
+        &server,
+        &["layouts", "edit", "lay_one", "--name", "Renamed"],
+    );
+    let after = OffsetDateTime::now_utc();
+    assert_success(&output);
+    let body = json_body(&server.finish()[0]);
+    assert_eq!(body["name"], "Renamed");
+    let saved_at = OffsetDateTime::parse(body["savedAt"].as_str().unwrap(), &Rfc3339).unwrap();
+    assert!(before <= saved_at && saved_at <= after, "{body}");
+
+    let server = Server::new(vec![Reply::json("PATCH", "/v1/layouts/lay_one", LAYOUT)]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "layouts",
+            "edit",
+            "lay_one",
+            "--name",
+            "Renamed",
+            "--saved-at",
+            "2024-01-02T03:04:07+01:00",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        json_body(&server.finish()[0]),
+        serde_json::json!({"name": "Renamed", "savedAt": "2024-01-02T03:04:07+01:00"})
+    );
 }
 
 #[test]

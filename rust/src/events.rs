@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::api::encode_path_segment;
 use crate::cli::{EventAddArgs, EventEditArgs, EventGetArgs, EventIdArgs, EventListArgs};
-use crate::custom_properties::properties;
+use crate::custom_properties::{check_property_edits, properties, remove_properties};
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, format_record, null_to_default, DeviceSummary, ProjectFallback,
@@ -143,11 +143,16 @@ pub(crate) async fn list_events(
 struct CreateEventRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
-    device_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_name: Option<String>,
     end: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     event_type_id: String,
     metadata: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<BTreeMap<String, Value>>,
     start: String,
 }
 
@@ -170,18 +175,31 @@ fn metadata(pairs: &[String]) -> Result<BTreeMap<String, String>, String> {
     Ok(metadata)
 }
 
-pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome {
-    let metadata = match metadata(&args.metadata) {
-        Ok(metadata) => metadata,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
-    };
-    let request = CreateEventRequest {
-        project_id: args.project_id.clone().or_project(&runtime.project_id),
+fn create_event_request(
+    args: &EventAddArgs,
+    project_id: String,
+) -> Result<CreateEventRequest, String> {
+    Ok(CreateEventRequest {
+        project_id,
         device_id: args.device_id.clone(),
+        device_name: args.device_name.clone(),
         end: args.end.clone(),
         event_type_id: args.event_type_id.clone().unwrap_or_default(),
-        metadata,
+        metadata: metadata(&args.metadata)?,
+        properties: None,
         start: args.start.clone(),
+    })
+}
+
+pub(crate) async fn add_event(runtime: &Runtime, args: &EventAddArgs) -> Outcome {
+    let project_id = args.project_id.clone().or_project(&runtime.project_id);
+    let mut request = match create_event_request(args, project_id) {
+        Ok(request) => request,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    request.properties = match properties(runtime, "event", &args.property).await {
+        Ok(properties) => properties,
+        Err(error) => return Outcome::failure(format!("Failed to add event: {error}\n")),
     };
     match runtime
         .client
@@ -251,16 +269,7 @@ fn event_patch(args: &EventEditArgs) -> Result<EventPatch, String> {
     {
         return Err("Nothing to update".to_owned());
     }
-    for property in &args.property {
-        let Some((key, _)) = property.split_once(':') else {
-            return Err(format!("invalid key/value pair: {property}"));
-        };
-        if args.remove_property.iter().any(|removed| removed == key) {
-            return Err(format!(
-                "cannot set and remove property {key} in the same edit"
-            ));
-        }
-    }
+    check_property_edits(&args.property, &args.remove_property)?;
     let metadata = if args.clear_metadata {
         Some(BTreeMap::new())
     } else if args.metadata.is_empty() {
@@ -290,12 +299,7 @@ pub(crate) async fn edit_event(runtime: &Runtime, args: &EventEditArgs) -> Outco
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit event: {error}\n")),
     };
-    if !args.remove_property.is_empty() {
-        let properties = patch.properties.get_or_insert_with(BTreeMap::new);
-        for key in &args.remove_property {
-            properties.insert(key.clone(), Value::Null);
-        }
-    }
+    remove_properties(&mut patch.properties, &args.remove_property);
     match runtime
         .client
         .patch::<_, _, Event>(&event_endpoint(&args.event_id), &(), &patch)
@@ -311,7 +315,33 @@ pub(crate) async fn edit_event(runtime: &Runtime, args: &EventEditArgs) -> Outco
 
 #[cfg(test)]
 mod tests {
-    use super::Event;
+    use super::{create_event_request, Event};
+    use crate::cli::EventAddArgs;
+
+    #[test]
+    fn a_new_event_names_its_device_by_id_or_name() {
+        let args = |device_id: Option<&str>, device_name: Option<&str>| EventAddArgs {
+            project_id: None,
+            device_id: device_id.map(str::to_owned),
+            device_name: device_name.map(str::to_owned),
+            end: "2024-01-02T03:04:06Z".to_owned(),
+            event_type_id: None,
+            metadata: Vec::new(),
+            property: Vec::new(),
+            start: "2024-01-02T03:04:05Z".to_owned(),
+        };
+        let body = |args: &EventAddArgs| {
+            serde_json::to_value(create_event_request(args, String::new()).unwrap()).unwrap()
+        };
+        assert_eq!(
+            body(&args(Some("dev_1"), None)),
+            serde_json::json!({"deviceId": "dev_1", "start": "2024-01-02T03:04:05Z", "end": "2024-01-02T03:04:06Z", "metadata": {}})
+        );
+        assert_eq!(
+            body(&args(None, Some("robot"))),
+            serde_json::json!({"deviceName": "robot", "start": "2024-01-02T03:04:05Z", "end": "2024-01-02T03:04:06Z", "metadata": {}})
+        );
+    }
 
     #[test]
     fn missing_and_null_fields_render_explicit_defaults() {
