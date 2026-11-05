@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::api::encode_path_segment;
 use crate::cli::{EventAddArgs, EventEditArgs, EventGetArgs, EventIdArgs, EventListArgs};
-use crate::custom_properties::properties;
+use crate::custom_properties::{check_property_edits, properties, remove_properties};
 use crate::output::Format;
 use crate::records::{
     compact_json, fetch_list, format_record, null_to_default, DeviceSummary, ProjectFallback,
@@ -269,16 +269,7 @@ fn event_patch(args: &EventEditArgs) -> Result<EventPatch, String> {
     {
         return Err("Nothing to update".to_owned());
     }
-    for property in &args.property {
-        let Some((key, _)) = property.split_once(':') else {
-            return Err(format!("invalid key/value pair: {property}"));
-        };
-        if args.remove_property.iter().any(|removed| removed == key) {
-            return Err(format!(
-                "cannot set and remove property {key} in the same edit"
-            ));
-        }
-    }
+    check_property_edits(&args.property, &args.remove_property)?;
     let metadata = if args.clear_metadata {
         Some(BTreeMap::new())
     } else if args.metadata.is_empty() {
@@ -308,12 +299,7 @@ pub(crate) async fn edit_event(runtime: &Runtime, args: &EventEditArgs) -> Outco
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit event: {error}\n")),
     };
-    if !args.remove_property.is_empty() {
-        let properties = patch.properties.get_or_insert_with(BTreeMap::new);
-        for key in &args.remove_property {
-            properties.insert(key.clone(), Value::Null);
-        }
-    }
+    remove_properties(&mut patch.properties, &args.remove_property);
     match runtime
         .client
         .patch::<_, _, Event>(&event_endpoint(&args.event_id), &(), &patch)
