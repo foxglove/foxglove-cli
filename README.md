@@ -439,10 +439,10 @@ An episode is a time window over one or more recordings; a dataset is a named,
 versioned collection of episodes. Both require a plan that supports
 [datasets](https://docs.foxglove.dev/docs/datasets).
 
-List datasets:
+List datasets. `--name` keeps only those whose name contains a value, ignoring case:
 
 ```
-$ foxglove datasets list
+$ foxglove datasets list --name highway
 ID | Name | Project ID | Description | Episode Count | Created At | Updated At
 --- | --- | --- | --- | --- | --- | ---
 ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
