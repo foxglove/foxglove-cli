@@ -1033,6 +1033,13 @@ pub(crate) struct DatasetListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
+    #[arg(
+        long,
+        help = "Filter to datasets whose name contains this value, ignoring case",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) name: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
     #[arg(
@@ -3680,7 +3687,7 @@ mod tests {
             ],
         ),
         (&["datasets", "add", "--name", "data"], &["episode-id"]),
-        (&["datasets", "list"], &["sort-by", "sort-order"]),
+        (&["datasets", "list"], &["name", "sort-by", "sort-order"]),
         (&["datasets", "versions", "list", "ds_1"], &["sort-order"]),
         (
             &["datasets", "episodes", "list", "ds_1"],
@@ -3914,6 +3921,7 @@ mod tests {
                 &["import-errors", "list"],
                 &["device-name", "filename-matches", "error"],
             ),
+            (&["datasets", "list"], &["name"]),
             (
                 &[
                     "lake-files",

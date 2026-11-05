@@ -2398,6 +2398,7 @@ fn blank_and_conflicting_filters_are_rejected() {
             "--session-key",
             "key",
         ],
+        &["datasets", "list", "--name", " "],
     ] {
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
         assert!(!output.status.success(), "{args:?}");
@@ -2417,6 +2418,8 @@ fn dataset_list_filters_reach_the_api() {
         "list",
         "--project-id",
         "prj_explicit",
+        "--name",
+        "high",
         "--limit",
         "10",
         "--cursor",
@@ -2440,6 +2443,7 @@ fn dataset_list_filters_reach_the_api() {
         expected_pairs(&[
             ("limit", "10"),
             ("cursor", "next_page"),
+            ("name", "high"),
             ("projectId", "prj_explicit"),
             ("sortBy", "name"),
             ("sortOrder", "desc"),
