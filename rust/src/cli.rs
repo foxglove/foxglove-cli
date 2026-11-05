@@ -1861,11 +1861,14 @@ pub(crate) struct EventEditArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("device").args(["device_id", "device_name"]).required(true)))]
 pub(crate) struct EventAddArgs {
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true, value_parser = parse_id)]
-    pub(crate) device_id: String,
+    #[arg(long, help = "Device ID (required unless --device-name is given)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name, looked up in the project (required unless --device-id is given)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
     #[arg(
         long,
         help = "End of event (inclusive), RFC 3339 (required)",
@@ -1876,6 +1879,8 @@ pub(crate) struct EventAddArgs {
     pub(crate) event_type_id: Option<String>,
     #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) metadata: Vec<String>,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
     #[arg(
         long,
         help = "Start of event, RFC 3339 (required)",
@@ -3717,7 +3722,7 @@ mod tests {
                 "--end",
                 "2026-01-01T01:00:00Z",
             ],
-            &["device-id", "event-type-id"],
+            &["device-id", "device-name", "event-type-id"],
         ),
         (
             &["events", "list"],
@@ -3791,6 +3796,31 @@ mod tests {
             ],
         ),
     ];
+    #[test]
+    fn events_require_exactly_one_device_selector() {
+        let event = [
+            "foxglove",
+            "events",
+            "add",
+            "--start",
+            "2026-01-01T00:00:00Z",
+            "--end",
+            "2026-01-01T01:00:00Z",
+        ];
+        for (extra, kind) in [
+            (&[][..], Some(ErrorKind::MissingRequiredArgument)),
+            (&["--device-id", "dev_1"][..], None),
+            (&["--device-name", "robot"][..], None),
+            (
+                &["--device-id", "dev_1", "--device-name", "robot"][..],
+                Some(ErrorKind::ArgumentConflict),
+            ),
+        ] {
+            let result = super::Cli::try_parse_from(event.iter().chain(extra));
+            assert_eq!(result.err().map(|error| error.kind()), kind, "{extra:?}");
+        }
+    }
+
     #[test]
     fn property_interval_updates_take_a_value_or_unset() {
         let update = [
@@ -3910,6 +3940,17 @@ mod tests {
                 &["device-name", "key", "session-key"],
             ),
             (&["events", "list"], &["device-name"]),
+            (
+                &[
+                    "events",
+                    "add",
+                    "--start",
+                    "2026-01-01T00:00:00Z",
+                    "--end",
+                    "2026-01-01T01:00:00Z",
+                ],
+                &["device-name"],
+            ),
             (
                 &["import-errors", "list"],
                 &["device-name", "filename-matches", "error"],

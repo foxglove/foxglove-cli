@@ -78,7 +78,7 @@ When relevant a project ID is selected in order of `--project-id`,
 - `export --output-format json --output-file` writes to the file; v1 wrote to
   stdout.
 - `events list` returns newest first, `--sort-order` requires `--sort-by`, and
-  `events add` requires `--device-id`, `--start`, and `--end`.
+  `events add` requires `--device-id` or `--device-name`, `--start`, and `--end`.
 - `upload --session-key` no longer requires a project and cannot be combined
   with `--session-id`.
 - Timestamps preserve precise boundaries by keeping fractional seconds, so
