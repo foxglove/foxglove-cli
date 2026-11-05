@@ -16,8 +16,8 @@ use crate::cli::{
 use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
-    format_list_output, format_record, parse_timestamp, parse_timestamp_millis,
-    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    format_list_output, format_record, parse_timestamp, warn_if_has_next_cursor, NextCursor,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -171,10 +171,17 @@ struct EpisodeListQuery<'a> {
     start: String,
 }
 
-pub(crate) fn episode_include(recordings: bool, properties: bool) -> String {
+pub(crate) fn episode_include(
+    recordings: bool,
+    creation_context: bool,
+    properties: bool,
+) -> String {
     let mut includes = Vec::new();
     if recordings {
         includes.push("recordings");
+    }
+    if creation_context {
+        includes.push("creationContext");
     }
     if properties {
         includes.push("properties");
@@ -216,7 +223,11 @@ pub(crate) async fn list_episodes(
         end,
         exact_recording_ids: args.exact_recording_ids.join(","),
         has_missing_recordings: args.has_missing_recordings,
-        include: episode_include(args.include_recordings, args.include_properties),
+        include: episode_include(
+            args.include_recordings,
+            args.include_creation_context,
+            args.include_properties,
+        ),
         limit,
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         properties_query: args.properties_query.as_deref(),
@@ -261,7 +272,8 @@ pub(crate) async fn get_episode(
 ) -> Outcome {
     let query = EpisodeGetQuery {
         version: args.version,
-        include: episode_include(args.include_recordings, args.include_properties),
+        // Fetching one episode always returns its creation context.
+        include: episode_include(args.include_recordings, false, args.include_properties),
     };
     match runtime
         .client
@@ -311,8 +323,8 @@ struct CreatedEpisode {
 }
 
 fn episode_input(args: &EpisodeAddArgs) -> Result<EpisodeInput, String> {
-    let start_time = parse_timestamp_millis(args.start.as_deref().unwrap_or_default(), "start")?;
-    let end_time = parse_timestamp_millis(args.end.as_deref().unwrap_or_default(), "end")?;
+    let start_time = parse_timestamp(args.start.as_deref().unwrap_or_default(), "start")?;
+    let end_time = parse_timestamp(args.end.as_deref().unwrap_or_default(), "end")?;
     if start_time.is_empty() != end_time.is_empty() {
         return Err("both --start and --end must be specified, or neither".to_owned());
     }
@@ -458,8 +470,25 @@ pub(crate) async fn list_versions(
 
 #[cfg(test)]
 mod tests {
-    use super::{episode_include, parse_time_range, Episode};
+    use super::{episode_include, episode_input, parse_time_range, Episode};
+    use crate::cli::EpisodeAddArgs;
     use crate::records::Record;
+
+    #[test]
+    fn added_episodes_send_times_at_nanosecond_precision() {
+        let args = EpisodeAddArgs {
+            end: Some("2024-01-02T03:04:05.000000001Z".to_owned()),
+            event_id: None,
+            project_id: None,
+            recording_id: vec!["rec_one".to_owned()],
+            start: Some("2024-01-02T03:04:05.000000001Z".to_owned()),
+            property: Vec::new(),
+            metadata: None,
+        };
+        let input = episode_input(&args).unwrap();
+        assert_eq!(input.start_time, "2024-01-02T03:04:05.000000001Z");
+        assert_eq!(input.end_time, "2024-01-02T03:04:05.000000001Z");
+    }
 
     #[test]
     fn an_absent_recordings_list_is_omitted_from_json_output() {
@@ -600,13 +629,17 @@ mod tests {
 
     #[test]
     fn included_episode_data_is_a_comma_separated_list() {
-        for (recordings, properties, expected) in [
-            (false, false, ""),
-            (true, false, "recordings"),
-            (false, true, "properties"),
-            (true, true, "recordings,properties"),
+        for (recordings, creation_context, properties, expected) in [
+            (false, false, false, ""),
+            (true, false, false, "recordings"),
+            (false, true, false, "creationContext"),
+            (false, false, true, "properties"),
+            (true, true, true, "recordings,creationContext,properties"),
         ] {
-            assert_eq!(episode_include(recordings, properties), expected);
+            assert_eq!(
+                episode_include(recordings, creation_context, properties),
+                expected
+            );
         }
     }
 }

@@ -534,6 +534,53 @@ fn event_edits_send_only_the_fields_given() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn event_add_sends_a_device_name_and_typed_properties() {
+    const EVENT_PROPERTIES: &str = r#"[{"id":"cp_speed","key":"speed","label":"Speed","resourceType":"event","valueType":"number","hasAssociatedData":false}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", EVENT_PROPERTIES),
+        Reply::json("POST", "/v1/events", r#"{"id":"evt_one"}"#),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "events",
+            "add",
+            "--device-name",
+            "robot",
+            "--start",
+            "2024-01-02T03:04:05Z",
+            "--end",
+            "2024-01-02T03:04:06Z",
+            "-p",
+            "speed:3.5",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Created event: evt_one\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "event")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({
+            "deviceName": "robot",
+            "start": "2024-01-02T03:04:05Z",
+            "end": "2024-01-02T03:04:06Z",
+            "metadata": {},
+            "properties": {"speed": 3.5},
+        })
+    );
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn deleting_an_event_reports_it_or_names_a_missing_one() {
     let workspace = Workspace::new();
     let server = Server::new(vec![
@@ -1625,7 +1672,7 @@ fn empty_export_topics_fail_before_requesting_or_replacing_output() {
 #[test]
 #[ignore = "requires loopback sockets"]
 fn session_list_sends_filters_and_renders_recording_ranges() {
-    const SESSIONS: &str = r#"[{"id":"ses_one","key":"drive-41","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","recordings":[],"recordingCount":2,"recordingStart":"2024-01-02T00:00:00Z","recordingEnd":"2024-01-02T01:00:00Z"},{"id":"ses_two","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-03T03:04:05Z","updatedAt":"2024-01-03T03:04:06Z","recordings":[]}]"#;
+    const SESSIONS: &str = r#"[{"id":"ses_one","key":"drive-41","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","recordings":[],"recordingCount":2,"recordingStart":"2024-01-02T00:00:00Z","recordingEnd":"2024-01-02T01:00:00Z","properties":{"vehicle":"car"}},{"id":"ses_two","projectId":"prj_one","device":{"id":"dev_one","name":"robot"},"createdAt":"2024-01-03T03:04:05Z","updatedAt":"2024-01-03T03:04:06Z","recordings":[]}]"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json("GET", "/v1/sessions", SESSIONS)]);
     let output = run(
@@ -1665,9 +1712,9 @@ fn session_list_sends_filters_and_renders_recording_ranges() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "ID,Key,Project ID,Device,Created At,Updated At,Recordings,Recording Start,Recording End\n\
-         ses_one,drive-41,prj_one,robot (dev_one),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,2,2024-01-02T00:00:00Z,2024-01-02T01:00:00Z\n\
-         ses_two,,prj_one,robot (dev_one),2024-01-03T03:04:05Z,2024-01-03T03:04:06Z,,,\n"
+        "ID,Key,Project ID,Device,Created At,Updated At,Recordings,Recording Start,Recording End,Custom Properties\n\
+         ses_one,drive-41,prj_one,robot (dev_one),2024-01-02T03:04:05Z,2024-01-02T03:04:06Z,2,2024-01-02T00:00:00Z,2024-01-02T01:00:00Z,\"{\"\"vehicle\"\":\"\"car\"\"}\"\n\
+         ses_two,,prj_one,robot (dev_one),2024-01-03T03:04:05Z,2024-01-03T03:04:06Z,,,,\n"
     );
 }
 
@@ -1703,7 +1750,42 @@ fn session_add_sends_key() {
         json_body(&requests[0]),
         serde_json::json!({"deviceId": "dev_one", "key": "drive-41"})
     );
+
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", SESSION_PROPERTIES),
+        Reply::json("POST", "/v1/sessions", r#"{"id":"ses_two"}"#),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "add",
+            "--recording-id",
+            "rec_one",
+            "--recording-id",
+            "rec_two",
+            "-p",
+            "laps:3",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session created: ses_two\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "session")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"recordingIds": ["rec_one", "rec_two"], "properties": {"laps": 3}})
+    );
 }
+
+const SESSION_PROPERTIES: &str = r#"[{"id":"cp_laps","key":"laps","label":"Laps","resourceType":"session","valueType":"number","hasAssociatedData":false}]"#;
 
 #[test]
 #[ignore = "requires loopback sockets"]
@@ -1750,6 +1832,42 @@ fn session_key_edit_sends_string_or_null_without_other_changes() {
         assert_eq!(query_pairs(&requests[0])["projectId"], "default-project");
         assert_eq!(json_body(&requests[0]), expected_body, "{flags:?}");
     }
+
+    let server = Server::new(vec![
+        Reply::json("GET", "/v1/custom-properties", SESSION_PROPERTIES),
+        Reply::json(
+            "PATCH",
+            "/v1/sessions/old-key",
+            r#"{"id":"ses_one","createdAt":"","updatedAt":""}"#,
+        ),
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "sessions",
+            "edit",
+            "old-key",
+            "-p",
+            "laps:4",
+            "--remove-property",
+            "driver",
+        ],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Session updated: ses_one\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        query_pairs(&requests[0]),
+        expected_pairs(&[("resourceType", "session")])
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"properties": {"laps": 4, "driver": null}})
+    );
 }
 
 #[test]
@@ -1854,12 +1972,12 @@ fn session_commands_report_the_api_reason_when_forbidden() {
 }
 
 #[test]
-fn session_key_edit_requires_exactly_one_change() {
+fn session_edit_requires_a_change_and_one_key_change() {
     let workspace = Workspace::new();
     for (flags, expected) in [
         (
             vec![],
-            "error: the following required arguments were not provided:\n  <--key <KEY>|--remove-key>\n",
+            "error: the following required arguments were not provided:\n  <--key <KEY>|--remove-key|--property <PROPERTY>|--remove-property <REMOVE_PROPERTY>>\n",
         ),
         (
             vec!["--key", ""],
@@ -2076,6 +2194,98 @@ fn configure_api_key_rejects_plain_http_before_prompting() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn auth_info_reports_the_member_behind_session_tokens_and_personal_access_tokens() {
+    const ME: &str = r#"{"email":"ada@example.com","emailVerified":true,"orgId":"org_1","orgSlug":"acme","admin":false}"#;
+    const MEMBER_CREDENTIAL_REQUIRED: &str = r#"{"error":"This operation requires a member credential.","code":"MemberCredentialRequired"}"#;
+    let forbidden = |body| Reply {
+        status: 403,
+        ..Reply::json("GET", "/v1/me", body)
+    };
+    let workspace = Workspace::new();
+    for (token, reply, expected) in [
+        (
+            "fixture",
+            Reply::json("GET", "/v1/me", ME),
+            "Authenticated with session token\n",
+        ),
+        (
+            "fox_sk_fixture",
+            Reply::json("GET", "/v1/me", ME),
+            "Authenticated with personal access token\n",
+        ),
+        (
+            "fox_sk_fixture",
+            forbidden(MEMBER_CREDENTIAL_REQUIRED),
+            "Authenticated with API key\n",
+        ),
+    ] {
+        let server = Server::new(vec![reply]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_BEARER_TOKEN", token)
+                .args(["auth", "info"]),
+        )
+        .finish();
+        assert_success(&output);
+        assert_eq!(server.finish().len(), 1, "{token}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.starts_with(expected), "{token}: {stdout}");
+        assert_eq!(
+            stdout.contains("ada@example.com"),
+            expected != "Authenticated with API key\n",
+            "{stdout}"
+        );
+    }
+
+    // A saved API key is recognized by its auth type, whatever its prefix.
+    fs::write(
+        workspace.0.join(".foxgloverc"),
+        "auth_type: 2\nbearer_token: saved-key\n",
+    )
+    .unwrap();
+    let server = Server::new(vec![forbidden(MEMBER_CREDENTIAL_REQUIRED)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env_remove("FOXGLOVE_BEARER_TOKEN")
+            .args(["auth", "info"]),
+    )
+    .finish();
+    assert_success(&output);
+    assert!(server.finish()[0].contains("Bearer saved-key"));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "Authenticated with API key\n"
+    );
+
+    // Other refusals, and this code for a session token, are still failures.
+    for (token, body) in [
+        (
+            "fox_sk_fixture",
+            r#"{"error":"API key is disabled","code":"Disabled"}"#,
+        ),
+        ("fixture", MEMBER_CREDENTIAL_REQUIRED),
+    ] {
+        let server = Server::new(vec![forbidden(body)]);
+        let output = Process::spawn(
+            workspace
+                .command(&server.url)
+                .env("FOXGLOVE_BEARER_TOKEN", token)
+                .args(["auth", "info"]),
+        )
+        .finish();
+        server.finish();
+        assert_eq!(output.status.code(), Some(1), "{token}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).starts_with("Info command failed: "),
+            "{token}"
+        );
+    }
+}
+
+#[test]
 fn missing_home_requires_explicit_config_for_writes() {
     let workspace = Workspace::new();
     for (args, prefix) in [
@@ -2142,6 +2352,7 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         ("/v1/episodes", r#"{"episodes":[]}"#, &["episodes", "list"]),
         ("/v1/events", "[]", &["events", "list"]),
         ("/v1/data/import-errors", "[]", &["import-errors", "list"]),
+        ("/v1/org-members", "[]", &["org-members", "list"]),
         (
             "/v1/data/pending-imports",
             "[]",
@@ -2174,6 +2385,87 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn org_member_filters_are_sent_and_members_are_listed() {
+    const MEMBERS: &str = r#"[{"id":"om_one","createdAt":"2024-01-02T03:04:05.000Z","displayName":"Ada","email":"ada@example.com","orgId":"org_one","role":"admin","updatedAt":"2024-01-03T03:04:05.000Z","status":"active","projectIds":["prj_one","prj_two"]},{"id":"om_two","createdAt":"2024-01-04T03:04:05.000Z","email":"new@example.com","orgId":"org_one","role":"user","updatedAt":"2024-01-04T03:04:05.000Z","status":"invited"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/org-members", MEMBERS)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
+            .args([
+                "org-members",
+                "list",
+                "--search",
+                "ada lovelace",
+                "--role",
+                "admin",
+                "--status",
+                "pending-approval",
+                "--sort-by",
+                "lastSeenAt",
+                "--sort-order",
+                "desc",
+                "--limit",
+                "2",
+                "--offset",
+                "4",
+                "--format",
+                "csv",
+            ]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("limit", "2"),
+            ("offset", "4"),
+            ("role", "admin"),
+            ("search", "ada lovelace"),
+            ("sortBy", "lastSeenAt"),
+            ("sortOrder", "desc"),
+            ("status", "pending-approval"),
+        ])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Email,Display Name,Role,Status,Project IDs,Last Seen At,Created At,Updated At\n\
+         om_one,ada@example.com,Ada,admin,active,\"prj_one,prj_two\",,2024-01-02T03:04:05.000Z,2024-01-03T03:04:05.000Z\n\
+         om_two,new@example.com,,user,invited,,,2024-01-04T03:04:05.000Z,2024-01-04T03:04:05.000Z\n"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Showing the first 2 results"));
+
+    let server = Server::new(vec![Reply::json("GET", "/v1/org-members", MEMBERS)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
+            .args([
+                "org-members",
+                "list",
+                "--project-id",
+                "prj_one",
+                "--format",
+                "json",
+            ]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "50"), ("projectId", "prj_one")])
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        json["data"][0]["projectIds"],
+        serde_json::json!(["prj_one", "prj_two"])
+    );
+    assert!(json["data"][1].get("projectIds").is_none());
 }
 
 #[test]
@@ -2382,10 +2674,23 @@ fn blank_and_conflicting_filters_are_rejected() {
         &["recordings", "list", "--device-id="],
         &["sessions", "list", "--device-id", " "],
         &["events", "list", "--sort-by", "", "--sort-order", "desc"],
+        &[
+            "events",
+            "add",
+            "--device-id",
+            "dev_1",
+            "--device-name",
+            "robot",
+            "--start",
+            "2024-01-01T00:00:00Z",
+            "--end",
+            "2024-01-01T00:00:01Z",
+        ],
         &["upload", "--key", "", "data.mcap"],
         &["upload", "--session-key", " \r", "data.mcap"],
         &["pending-imports", "list", "--key", ""],
         &["sessions", "add", "--device-id", " "],
+        &["sessions", "add", "--recording-id", " "],
         &[
             "recordings",
             "list",
@@ -2400,6 +2705,7 @@ fn blank_and_conflicting_filters_are_rejected() {
             "--session-key",
             "key",
         ],
+        &["datasets", "list", "--name", " "],
     ] {
         let output = Process::spawn(workspace.command("http://127.0.0.1:1").args(args)).finish();
         assert!(!output.status.success(), "{args:?}");
@@ -2419,6 +2725,8 @@ fn dataset_list_filters_reach_the_api() {
         "list",
         "--project-id",
         "prj_explicit",
+        "--name",
+        "high",
         "--limit",
         "10",
         "--cursor",
@@ -2442,6 +2750,7 @@ fn dataset_list_filters_reach_the_api() {
         expected_pairs(&[
             ("limit", "10"),
             ("cursor", "next_page"),
+            ("name", "high"),
             ("projectId", "prj_explicit"),
             ("sortBy", "name"),
             ("sortOrder", "desc"),
@@ -2587,6 +2896,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         "--recording-id",
         "rec_one",
         "--include-recordings",
+        "--include-creation-context",
         "--limit",
         "10",
         "--cursor",
@@ -2609,7 +2919,7 @@ fn episode_filters_reach_the_api_and_the_response_envelope_is_unwrapped() {
         query_pairs(&server.finish()[0]),
         expected_pairs(&[
             ("end", "2024-01-03T00:00:00Z"),
-            ("include", "recordings"),
+            ("include", "recordings,creationContext"),
             ("limit", "10"),
             ("cursor", "next_page"),
             ("projectId", "prj_explicit"),
@@ -3685,6 +3995,27 @@ fn creating_a_device_token_prints_its_secret_once() {
             "Device token created: dt_new\nStore the token now; it is not shown again.\n"
         );
     }
+
+    let server = Server::new(vec![Reply::json("POST", "/v1/device-tokens", DEVICE_TOKEN)]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "device-tokens",
+            "add",
+            "--device-id",
+            "dev_one",
+            "--format",
+            "json",
+        ],
+    );
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token created: dt_one, but the API returned no token. Delete it and create a new one.\n"
+    );
 }
 
 #[test]
@@ -4864,7 +5195,7 @@ fn cloning_into_a_taken_name_names_the_conflict() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn creating_an_episode_keeps_its_window_to_the_millisecond() {
+fn creating_an_episode_keeps_its_window_at_full_precision() {
     let workspace = Workspace::new();
     for (created, stderr) in [
         (true, "Episode created: ep_new\n"),
@@ -4901,7 +5232,7 @@ fn creating_an_episode_keeps_its_window_to_the_millisecond() {
                 "episodes": [{
                     "recordings": ["rec_one", "rec_two"],
                     "startTime": "2024-01-02T03:04:05.25Z",
-                    "endTime": "2024-01-02T03:04:06.123Z",
+                    "endTime": "2024-01-02T03:04:06.1239Z",
                 }],
             })
         );
@@ -5322,6 +5653,14 @@ fn command_arguments_are_validated_before_sending_a_request() {
             "cannot set and remove property note in the same edit\n",
         ),
         (
+            vec!["devices", "edit", "dev_one", "-p", "note:x", "--remove-property", "note"],
+            "cannot set and remove property note in the same edit\n",
+        ),
+        (
+            vec!["sessions", "edit", "ses_one", "-p", "note:x", "--remove-property", "note"],
+            "cannot set and remove property note in the same edit\n",
+        ),
+        (
             vec!["events", "edit", "evt_one", "--metadata", "no-colon"],
             "Invalid metadata key/value pair: no-colon\n",
         ),
@@ -5413,6 +5752,14 @@ fn editing_a_device_sends_only_the_fields_given() {
         (
             vec!["-p", "mode:auto"],
             serde_json::json!({"properties": {"mode": "auto"}}),
+        ),
+        (
+            vec!["-p", "mode:auto", "--remove-property", "note"],
+            serde_json::json!({"properties": {"mode": "auto", "note": null}}),
+        ),
+        (
+            vec!["--remove-property", "note"],
+            serde_json::json!({"properties": {"note": null}}),
         ),
         (
             vec!["--name", "renamed"],
@@ -5774,10 +6121,12 @@ fn single_value_properties_take_one_interval_value() {
 #[ignore = "requires loopback sockets"]
 fn devices_are_fetched_and_deleted_by_name_or_id() {
     const DEVICE: &str = r#"{"id":"dev_one","name":"robot","properties":{"model":"x1"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one","enabled":true,"remoteAccessEnabled":false,"retainRecordingsSeconds":0,"autoDeleteAfterImport":true}"#;
+    // createdAt and updatedAt are optional on a single-device response.
+    const DEVICE_WITHOUT_TIMES: &str = r#"{"id":"dev_one","name":"robot","properties":{"model":"x1"},"projectId":"prj_one","enabled":true,"remoteAccessEnabled":false,"retainRecordingsSeconds":0,"autoDeleteAfterImport":true}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![
         Reply::json("GET", "/v1/devices/robot", DEVICE),
-        Reply::json("GET", "/v1/devices/dev_one", DEVICE),
+        Reply::json("GET", "/v1/devices/dev_one", DEVICE_WITHOUT_TIMES),
         Reply::json("DELETE", "/v1/devices/robot", r#"{"id":"dev_one"}"#),
     ]);
     let csv = run(
@@ -5801,6 +6150,8 @@ fn devices_are_fetched_and_deleted_by_name_or_id() {
     assert_eq!(device["id"], "dev_one");
     assert_eq!(device["properties"]["model"], "x1");
     assert_eq!(device["autoDeleteAfterImport"], true);
+    assert!(device.get("createdAt").is_none(), "{device}");
+    assert!(device.get("updatedAt").is_none(), "{device}");
     let deleted = run(&workspace, &server, &["devices", "delete", "robot"]);
     assert_success(&deleted);
     assert_eq!(

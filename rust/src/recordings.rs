@@ -243,8 +243,10 @@ pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteAr
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TransferResponse {
-    id: String,
-    import_status: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    import_status: Option<String>,
 }
 
 pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransferArgs) -> Outcome {
@@ -264,17 +266,20 @@ fn transfer_outcome(id: &str, result: Result<TransferResponse, ApiError>) -> Out
             // This command initiates an asynchronous request: HTTP success determines
             // its exit status, while importStatus reports processing state, not the
             // outcome of waiting for completion. Preserve even unfamiliar statuses.
-            let message = match response.import_status.as_str() {
-                "complete" => "Recording already available at its Primary Site",
-                "pending" | "importing" => "Transfer request accepted",
-                _ => "Recording transfer status",
+            let response_id = response.id.as_deref().unwrap_or(id);
+            let stderr = match response.import_status.as_deref() {
+                Some(status) => {
+                    let message = match status {
+                        "complete" => "Recording already available at its Primary Site",
+                        "pending" | "importing" => "Transfer request accepted",
+                        _ => "Recording transfer status",
+                    };
+                    format!("{message}: {response_id} (importStatus: {status})\n")
+                }
+                None => format!("Transfer request accepted: {response_id}\n"),
             };
             Outcome {
-                stderr: format!(
-                    "{message}: {} (importStatus: {})\n",
-                    response.id, response.import_status
-                )
-                .into_bytes(),
+                stderr: stderr.into_bytes(),
                 ..Outcome::default()
             }
         }
@@ -302,8 +307,8 @@ mod tests {
             let outcome = transfer_outcome(
                 "rec_example",
                 Ok(TransferResponse {
-                    id: "rec_example".into(),
-                    import_status: status.into(),
+                    id: Some("rec_example".into()),
+                    import_status: Some(status.into()),
                 }),
             );
             assert_eq!(outcome.exit_code, 0);
@@ -313,6 +318,10 @@ mod tests {
                 format!("{message}: rec_example (importStatus: {status})\n").as_bytes()
             );
         }
+        let response: TransferResponse = serde_json::from_value(serde_json::json!({})).unwrap();
+        let outcome = transfer_outcome("rec_example", Ok(response));
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.stderr, b"Transfer request accepted: rec_example\n");
         let outcome = transfer_outcome(
             "rec_missing",
             Err(ApiError::NotFound {

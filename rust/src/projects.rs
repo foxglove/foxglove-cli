@@ -12,8 +12,12 @@ struct Project {
     id: String,
     #[serde(skip_serializing_if = "String::is_empty", default)]
     name: String,
-    #[serde(rename = "orgMemberCount")]
-    org_member_count: i64,
+    #[serde(
+        rename = "orgMemberCount",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    org_member_count: Option<i64>,
     #[serde(
         rename = "lastSeenAt",
         skip_serializing_if = "Option::is_none",
@@ -43,7 +47,9 @@ impl Record for Project {
         vec![
             self.id.clone(),
             self.name.clone(),
-            self.org_member_count.to_string(),
+            self.org_member_count
+                .map(|count| count.to_string())
+                .unwrap_or_default(),
             self.last_seen_at.clone().unwrap_or_default(),
             self.is_invite_only
                 .map(|invite_only| invite_only.to_string())
@@ -91,5 +97,16 @@ mod tests {
             .get("isInviteOnly")
             .is_none());
         assert_eq!(older.fields()[4], "");
+
+        let without_count: Project = serde_json::from_value(serde_json::json!({
+            "id": "prj_3",
+            "isInviteOnly": false
+        }))
+        .unwrap();
+        assert_eq!(without_count.fields()[2], "");
+        assert!(serde_json::to_value(&without_count)
+            .unwrap()
+            .get("orgMemberCount")
+            .is_none());
     }
 }

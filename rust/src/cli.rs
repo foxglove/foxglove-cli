@@ -15,17 +15,20 @@ use crate::output::Format;
 use crate::records::MAX_LIST_LIMIT;
 use crate::{
     attachments, auth, automations, coverage, custom_properties, datasets, device_tokens, devices,
-    episodes, event_types, events, export, extensions, lake_files, layouts, pending_imports,
-    projects, recordings, runtime, sessions, site_notification_tokens, site_tokens, sites, topics,
-    upload,
+    episodes, event_types, events, export, extensions, lake_files, layouts, org_members,
+    pending_imports, projects, recordings, runtime, sessions, site_notification_tokens,
+    site_tokens, sites, topics, upload,
 };
 
 const ROOT_COMMAND: &str = "foxglove";
 const PROJECT_ID_HELP: &str = "Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)";
 const REQUIRED_PROJECT_ID_HELP: &str = "Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)";
 const CUSTOM_PROPERTY_HELP: &str = "Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values";
+const REMOVE_PROPERTY_HELP: &str = "Remove a property assignment; repeat for more keys";
 const INCLUDE_PROPERTIES_HELP: &str =
     "Include episode custom properties (requires API access to episode properties)";
+const INCLUDE_CREATION_CONTEXT_HELP: &str =
+    "Include each episode's creation context: the selection or search that produced it";
 const PROPERTIES_QUERY_HELP: &str = "Filter by episode custom properties, for example 'weather:rain note:\"night run\"' (requires API access to episode properties)";
 
 /// Parse conventional command-line boolean values. Explicit values require `=`
@@ -191,11 +194,10 @@ enum CliCommand {
         subcommand
     )]
     LakeFiles(LakeFilesCommand),
-    #[command(
-        about = "List and manage layouts shared with your organization",
-        subcommand
-    )]
+    #[command(about = "List and manage layouts", subcommand)]
     Layouts(LayoutsCommand),
+    #[command(name = "org-members", about = "List organization members", subcommand)]
+    OrgMembers(OrgMembersCommand),
     #[command(name = "pending-imports", about = "List pending imports", subcommand)]
     PendingImports(PendingImportsCommand),
     #[command(about = "List and manage projects", subcommand)]
@@ -1198,6 +1200,16 @@ pub(crate) struct DatasetVersionCompareArgs {
     )]
     pub(crate) cursor: Option<String>,
     #[arg(
+        long, help = INCLUDE_CREATION_CONTEXT_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
+    #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
@@ -1257,6 +1269,13 @@ pub(crate) struct DatasetListArgs {
     pub(crate) limit: Option<i64>,
     #[arg(long, help = "Cursor from a previous page", allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) cursor: Option<String>,
+    #[arg(
+        long,
+        help = "Filter to datasets whose name contains this value, ignoring case",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) name: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
     #[arg(
@@ -1296,6 +1315,16 @@ pub(crate) struct DatasetEpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
+        long, help = INCLUDE_CREATION_CONTEXT_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
     #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
@@ -1649,6 +1678,8 @@ pub(crate) struct DeviceUpdateArgs {
     pub(crate) project_id: Option<String>,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
     #[arg(
         long, help = "Enable or disable the device; a disabled device can't upload recordings",
         action = clap::ArgAction::Set,
@@ -1802,13 +1833,13 @@ pub(crate) struct EpisodeEditArgs {
     pub(crate) episode_id: String,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
-    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
     pub(crate) remove_property: Vec<String>,
     #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) applies_to_version: Option<i32>,
-    #[arg(long, help = "New start of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(long, help = "New start of the episode window (ISO 8601)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) start: Option<String>,
-    #[arg(long, help = "New end of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(long, help = "New end of the episode window (ISO 8601)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) end: Option<String>,
     #[arg(long, help = "Add a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) add_recording_id: Vec<String>,
@@ -1891,6 +1922,16 @@ pub(crate) struct EpisodeListArgs {
         value_parser = parse_bool
     )]
     pub(crate) has_missing_recordings: Option<bool>,
+    #[arg(
+        long, help = INCLUDE_CREATION_CONTEXT_HELP,
+        action = clap::ArgAction::Set,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        default_value = "false",
+        value_parser = parse_bool
+    )]
+    pub(crate) include_creation_context: bool,
     #[arg(
         long, help = "Include the member recordings of each episode",
         action = clap::ArgAction::Set,
@@ -2080,16 +2121,19 @@ pub(crate) struct EventEditArgs {
     pub(crate) clear_metadata: bool,
     #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) property: Vec<String>,
-    #[arg(long, help = "Remove a property assignment; repeat for more keys", action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
     pub(crate) remove_property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("device").args(["device_id", "device_name"]).required(true)))]
 pub(crate) struct EventAddArgs {
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true, value_parser = parse_id)]
-    pub(crate) device_id: String,
+    #[arg(long, help = "Device ID (required unless --device-name is given)", allow_hyphen_values = true, value_parser = parse_id)]
+    pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Device name, looked up in the project (required unless --device-id is given)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) device_name: Option<String>,
     #[arg(
         long,
         help = "End of event (inclusive), RFC 3339 (required)",
@@ -2100,6 +2144,8 @@ pub(crate) struct EventAddArgs {
     pub(crate) event_type_id: Option<String>,
     #[arg(long, short = 'm', help = "Metadata colon-separated key/value pair", allow_hyphen_values = true, action = clap::ArgAction::Append)]
     pub(crate) metadata: Vec<String>,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
     #[arg(
         long,
         help = "Start of event, RFC 3339 (required)",
@@ -2342,7 +2388,9 @@ enum LayoutsCommand {
     Edit(LayoutEditArgs),
     #[command(about = "Get a layout")]
     Get(LayoutGetArgs),
-    #[command(about = "List layouts shared with your organization")]
+    #[command(
+        about = "List layouts shared with your organization, plus your personal layouts when signed in with `foxglove auth login`"
+    )]
     List(LayoutListArgs),
     #[command(about = "Restore a deleted layout")]
     Restore(LayoutIdArgs),
@@ -2436,6 +2484,13 @@ pub(crate) struct LayoutEditArgs {
     pub(crate) name: Option<String>,
     #[arg(long, help = LAYOUT_PERMISSION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) permission: Option<String>,
+    #[arg(
+        long,
+        help = "When this change was saved locally (ISO 8601); the API rejects a time older than the layout's last save. Defaults to now when signed in with `foxglove auth login`; omitted for API keys",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) saved_at: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2528,6 +2583,77 @@ pub(crate) struct PendingImportListArgs {
         value_parser = parse_bool
     )]
     pub(crate) without_project: bool,
+}
+
+#[derive(Debug, Subcommand)]
+enum OrgMembersCommand {
+    #[command(
+        about = "List organization members",
+        long_about = "List the members of your organization. Requires an API key with the orgMembers.list capability that is not limited to specific projects."
+    )]
+    List(OrgMemberListArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OrgMemberListArgs {
+    #[command(flatten)]
+    format: FormatArgs,
+    #[arg(
+        long,
+        help = "Maximum number of items to return (1-2000, default: 50)",
+        allow_hyphen_values = true,
+        value_parser = parse_list_limit
+    )]
+    pub(crate) limit: Option<i64>,
+    #[arg(
+        long,
+        help = "Number of items to skip before returning the results",
+        allow_hyphen_values = true
+    )]
+    pub(crate) offset: Option<i64>,
+    #[arg(
+        long,
+        help = "Filter by project ID; the default project does not apply",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) project_id: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by name or email",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) search: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by role: admin or user",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) role: Option<String>,
+    #[arg(
+        long,
+        help = "Filter by status: active, invited, pending-approval, or denied-approval",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) status: Option<String>,
+    #[arg(
+        long,
+        help = "Field to sort members by: displayName, email, role, lastSeenAt, createdAt, status, or projectCount",
+        allow_hyphen_values = true,
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_by: Option<String>,
+    #[arg(
+        long,
+        help = "Sort order for the --sort-by field: asc or desc",
+        allow_hyphen_values = true,
+        requires = "sort_by",
+        value_parser = parse_non_blank
+    )]
+    pub(crate) sort_order: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -2663,7 +2789,7 @@ enum SessionsCommand {
     Add(SessionAddArgs),
     #[command(about = "Delete a session")]
     Delete(SessionLookupArgs),
-    #[command(about = "Change or remove a session key")]
+    #[command(about = "Change a session's key or custom properties")]
     Edit(SessionEditArgs),
     #[command(about = "Get a session by ID or key")]
     Get(SessionLookupArgs),
@@ -2674,9 +2800,12 @@ enum SessionsCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("device").args(["device_id", "recording_id"]).required(true).multiple(true)))]
 pub(crate) struct SessionAddArgs {
-    #[arg(long, help = "Device ID (required)", allow_hyphen_values = true, value_parser = parse_id)]
+    #[arg(long, help = "Device ID (required unless --recording-id is given)", allow_hyphen_values = true, value_parser = parse_id)]
     pub(crate) device_id: Option<String>,
+    #[arg(long, help = "Recording to add to the session; repeat for more. All must belong to one device, which is used when --device-id is omitted", allow_hyphen_values = true, action = clap::ArgAction::Append, value_parser = parse_id)]
+    pub(crate) recording_id: Vec<String>,
     #[arg(
         long,
         help = "Session key, unique within the project (cannot start or end with whitespace)",
@@ -2686,6 +2815,8 @@ pub(crate) struct SessionAddArgs {
     pub(crate) key: Option<String>,
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -2697,7 +2828,7 @@ pub(crate) struct SessionLookupArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(group(ArgGroup::new("key_change").args(["key", "remove_key"]).required(true)))]
+#[command(group(ArgGroup::new("change").args(["key", "remove_key", "property", "remove_property"]).required(true).multiple(true)))]
 pub(crate) struct SessionEditArgs {
     #[arg(long, help = PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
@@ -2707,11 +2838,16 @@ pub(crate) struct SessionEditArgs {
         long,
         help = "New session key, unique within the project (cannot start or end with whitespace)",
         value_parser = parse_new_key,
-        allow_hyphen_values = true
+        allow_hyphen_values = true,
+        conflicts_with = "remove_key"
     )]
     pub(crate) key: Option<String>,
     #[arg(long, help = "Remove the existing session key")]
     pub(crate) remove_key: bool,
+    #[arg(long, short = 'p', help = CUSTOM_PROPERTY_HELP, allow_hyphen_values = true, action = clap::ArgAction::Append)]
+    pub(crate) property: Vec<String>,
+    #[arg(long, help = REMOVE_PROPERTY_HELP, action = clap::ArgAction::Append, value_parser = parse_non_blank)]
+    pub(crate) remove_property: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -3268,6 +3404,10 @@ async fn dispatch_api_command(
             pending_imports::list_import_errors(&runtime, &args, format).await
         }
         CliCommand::Layouts(command) => dispatch_layout_command(&runtime, command).await,
+        CliCommand::OrgMembers(OrgMembersCommand::List(args)) => {
+            let format = args.format.format;
+            org_members::list_org_members(&runtime, &args, format).await
+        }
         CliCommand::PendingImports(PendingImportsCommand::List(args)) => {
             let format = args.format.format;
             pending_imports::list_pending_imports(&runtime, &args, format).await
@@ -3665,7 +3805,7 @@ async fn dispatch_session_command(runtime: &runtime::Runtime, command: SessionsC
     match command {
         SessionsCommand::Add(args) => sessions::add_session(runtime, &args).await,
         SessionsCommand::Delete(args) => sessions::delete_session(runtime, &args).await,
-        SessionsCommand::Edit(args) => sessions::edit_session_key(runtime, &args).await,
+        SessionsCommand::Edit(args) => sessions::edit_session(runtime, &args).await,
         SessionsCommand::Get(args) => sessions::get_session(runtime, &args).await,
         SessionsCommand::List(args) => {
             let format = args.format.format;
@@ -3953,7 +4093,7 @@ mod tests {
             ],
         ),
         (&["datasets", "add", "--name", "data"], &["episode-id"]),
-        (&["datasets", "list"], &["sort-by", "sort-order"]),
+        (&["datasets", "list"], &["name", "sort-by", "sort-order"]),
         (&["datasets", "versions", "list", "ds_1"], &["sort-order"]),
         (
             &["datasets", "episodes", "list", "ds_1"],
@@ -3962,6 +4102,7 @@ mod tests {
         (&["device-tokens", "add"], &["device-id"]),
         (&["device-tokens", "list"], &["device-id"]),
         (&["episodes", "add"], &["recording-id"]),
+        (&["sessions", "add"], &["device-id", "recording-id"]),
         (
             &["episodes", "list"],
             &["recording-id", "sort-by", "sort-order"],
@@ -3990,7 +4131,7 @@ mod tests {
                 "--end",
                 "2026-01-01T01:00:00Z",
             ],
-            &["device-id", "event-type-id"],
+            &["device-id", "device-name", "event-type-id"],
         ),
         (
             &["events", "list"],
@@ -4006,6 +4147,10 @@ mod tests {
                 "sort-by",
                 "sort-order",
             ],
+        ),
+        (
+            &["org-members", "list"],
+            &["search", "role", "status", "sort-by", "sort-order"],
         ),
         (
             &["pending-imports", "list"],
@@ -4065,6 +4210,31 @@ mod tests {
         ),
     ];
     #[test]
+    fn events_require_exactly_one_device_selector() {
+        let event = [
+            "foxglove",
+            "events",
+            "add",
+            "--start",
+            "2026-01-01T00:00:00Z",
+            "--end",
+            "2026-01-01T01:00:00Z",
+        ];
+        for (extra, kind) in [
+            (&[][..], Some(ErrorKind::MissingRequiredArgument)),
+            (&["--device-id", "dev_1"][..], None),
+            (&["--device-name", "robot"][..], None),
+            (
+                &["--device-id", "dev_1", "--device-name", "robot"][..],
+                Some(ErrorKind::ArgumentConflict),
+            ),
+        ] {
+            let result = super::Cli::try_parse_from(event.iter().chain(extra));
+            assert_eq!(result.err().map(|error| error.kind()), kind, "{extra:?}");
+        }
+    }
+
+    #[test]
     fn property_interval_updates_take_a_value_or_unset() {
         let update = [
             "foxglove",
@@ -4097,6 +4267,48 @@ mod tests {
             super::Cli::try_parse_from(["foxglove", "sessions", "list", "--sort-order", "asc"])
                 .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn sessions_require_a_device_selector_or_a_change() {
+        for (extra, kind) in [
+            (&[][..], Some(ErrorKind::MissingRequiredArgument)),
+            (
+                &["--key", "drive"][..],
+                Some(ErrorKind::MissingRequiredArgument),
+            ),
+            (&["--device-id", "dev_1"][..], None),
+            (
+                &["--recording-id", "rec_1", "--recording-id", "rec_2"][..],
+                None,
+            ),
+            (
+                &["--device-id", "dev_1", "--recording-id", "rec_1"][..],
+                None,
+            ),
+        ] {
+            let result =
+                super::Cli::try_parse_from(["foxglove", "sessions", "add"].iter().chain(extra));
+            assert_eq!(result.err().map(|error| error.kind()), kind, "{extra:?}");
+        }
+        for (extra, kind) in [
+            (&[][..], Some(ErrorKind::MissingRequiredArgument)),
+            (&["--remove-key"][..], None),
+            (&["-p", "mode:auto"][..], None),
+            (&["--remove-property", "mode"][..], None),
+            (&["--key", "drive", "-p", "mode:auto"][..], None),
+            (
+                &["--key", "drive", "--remove-key"][..],
+                Some(ErrorKind::ArgumentConflict),
+            ),
+        ] {
+            let result = super::Cli::try_parse_from(
+                ["foxglove", "sessions", "edit", "ses_1"]
+                    .iter()
+                    .chain(extra),
+            );
+            assert_eq!(result.err().map(|error| error.kind()), kind, "{extra:?}");
+        }
     }
 
     #[test]
@@ -4184,9 +4396,21 @@ mod tests {
             ),
             (&["events", "list"], &["device-name"]),
             (
+                &[
+                    "events",
+                    "add",
+                    "--start",
+                    "2026-01-01T00:00:00Z",
+                    "--end",
+                    "2026-01-01T01:00:00Z",
+                ],
+                &["device-name"],
+            ),
+            (
                 &["import-errors", "list"],
                 &["device-name", "filename-matches", "error"],
             ),
+            (&["datasets", "list"], &["name"]),
             (
                 &[
                     "lake-files",
