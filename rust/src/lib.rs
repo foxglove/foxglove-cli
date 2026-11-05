@@ -18,6 +18,7 @@ mod extensions;
 pub mod format;
 mod lake_files;
 mod layouts;
+mod org_members;
 pub mod output;
 mod pending_imports;
 mod projects;

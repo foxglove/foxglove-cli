@@ -2232,6 +2232,7 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
         ("/v1/episodes", r#"{"episodes":[]}"#, &["episodes", "list"]),
         ("/v1/events", "[]", &["events", "list"]),
         ("/v1/data/import-errors", "[]", &["import-errors", "list"]),
+        ("/v1/org-members", "[]", &["org-members", "list"]),
         (
             "/v1/data/pending-imports",
             "[]",
@@ -2264,6 +2265,87 @@ fn collection_list_requests_use_the_standard_limit_and_accept_an_override() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn org_member_filters_are_sent_and_members_are_listed() {
+    const MEMBERS: &str = r#"[{"id":"om_one","createdAt":"2024-01-02T03:04:05.000Z","displayName":"Ada","email":"ada@example.com","orgId":"org_one","role":"admin","updatedAt":"2024-01-03T03:04:05.000Z","status":"active","projectIds":["prj_one","prj_two"]},{"id":"om_two","createdAt":"2024-01-04T03:04:05.000Z","email":"new@example.com","orgId":"org_one","role":"user","updatedAt":"2024-01-04T03:04:05.000Z","status":"invited"}]"#;
+    let workspace = Workspace::new();
+    let server = Server::new(vec![Reply::json("GET", "/v1/org-members", MEMBERS)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
+            .args([
+                "org-members",
+                "list",
+                "--search",
+                "ada lovelace",
+                "--role",
+                "admin",
+                "--status",
+                "pending-approval",
+                "--sort-by",
+                "lastSeenAt",
+                "--sort-order",
+                "desc",
+                "--limit",
+                "2",
+                "--offset",
+                "4",
+                "--format",
+                "csv",
+            ]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[
+            ("limit", "2"),
+            ("offset", "4"),
+            ("role", "admin"),
+            ("search", "ada lovelace"),
+            ("sortBy", "lastSeenAt"),
+            ("sortOrder", "desc"),
+            ("status", "pending-approval"),
+        ])
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "ID,Email,Display Name,Role,Status,Project IDs,Last Seen At,Created At,Updated At\n\
+         om_one,ada@example.com,Ada,admin,active,\"prj_one,prj_two\",,2024-01-02T03:04:05.000Z,2024-01-03T03:04:05.000Z\n\
+         om_two,new@example.com,,user,invited,,,2024-01-04T03:04:05.000Z,2024-01-04T03:04:05.000Z\n"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Showing the first 2 results"));
+
+    let server = Server::new(vec![Reply::json("GET", "/v1/org-members", MEMBERS)]);
+    let output = Process::spawn(
+        workspace
+            .command(&server.url)
+            .env("FOXGLOVE_DEFAULT_PROJECT_ID", "prj_default")
+            .args([
+                "org-members",
+                "list",
+                "--project-id",
+                "prj_one",
+                "--format",
+                "json",
+            ]),
+    )
+    .finish();
+    assert_success(&output);
+    assert_eq!(
+        query_pairs(&server.finish()[0]),
+        expected_pairs(&[("limit", "50"), ("projectId", "prj_one")])
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        json["data"][0]["projectIds"],
+        serde_json::json!(["prj_one", "prj_two"])
+    );
+    assert!(json["data"][1].get("projectIds").is_none());
 }
 
 #[test]
