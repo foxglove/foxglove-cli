@@ -3857,6 +3857,27 @@ fn creating_a_device_token_prints_its_secret_once() {
             "Device token created: dt_new\nStore the token now; it is not shown again.\n"
         );
     }
+
+    let server = Server::new(vec![Reply::json("POST", "/v1/device-tokens", DEVICE_TOKEN)]);
+    let output = run(
+        &workspace,
+        &server,
+        &[
+            "device-tokens",
+            "add",
+            "--device-id",
+            "dev_one",
+            "--format",
+            "json",
+        ],
+    );
+    server.finish();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Device token created: dt_one, but the API returned no token. Delete it and create a new one.\n"
+    );
 }
 
 #[test]
@@ -5036,7 +5057,7 @@ fn cloning_into_a_taken_name_names_the_conflict() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn creating_an_episode_keeps_its_window_to_the_millisecond() {
+fn creating_an_episode_keeps_its_window_at_full_precision() {
     let workspace = Workspace::new();
     for (created, stderr) in [
         (true, "Episode created: ep_new\n"),
@@ -5073,7 +5094,7 @@ fn creating_an_episode_keeps_its_window_to_the_millisecond() {
                 "episodes": [{
                     "recordings": ["rec_one", "rec_two"],
                     "startTime": "2024-01-02T03:04:05.25Z",
-                    "endTime": "2024-01-02T03:04:06.123Z",
+                    "endTime": "2024-01-02T03:04:06.1239Z",
                 }],
             })
         );
@@ -5946,10 +5967,12 @@ fn single_value_properties_take_one_interval_value() {
 #[ignore = "requires loopback sockets"]
 fn devices_are_fetched_and_deleted_by_name_or_id() {
     const DEVICE: &str = r#"{"id":"dev_one","name":"robot","properties":{"model":"x1"},"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z","projectId":"prj_one","enabled":true,"remoteAccessEnabled":false,"retainRecordingsSeconds":0,"autoDeleteAfterImport":true}"#;
+    // createdAt and updatedAt are optional on a single-device response.
+    const DEVICE_WITHOUT_TIMES: &str = r#"{"id":"dev_one","name":"robot","properties":{"model":"x1"},"projectId":"prj_one","enabled":true,"remoteAccessEnabled":false,"retainRecordingsSeconds":0,"autoDeleteAfterImport":true}"#;
     let workspace = Workspace::new();
     let server = Server::new(vec![
         Reply::json("GET", "/v1/devices/robot", DEVICE),
-        Reply::json("GET", "/v1/devices/dev_one", DEVICE),
+        Reply::json("GET", "/v1/devices/dev_one", DEVICE_WITHOUT_TIMES),
         Reply::json("DELETE", "/v1/devices/robot", r#"{"id":"dev_one"}"#),
     ]);
     let csv = run(
@@ -5973,6 +5996,8 @@ fn devices_are_fetched_and_deleted_by_name_or_id() {
     assert_eq!(device["id"], "dev_one");
     assert_eq!(device["properties"]["model"], "x1");
     assert_eq!(device["autoDeleteAfterImport"], true);
+    assert!(device.get("createdAt").is_none(), "{device}");
+    assert!(device.get("updatedAt").is_none(), "{device}");
     let deleted = run(&workspace, &server, &["devices", "delete", "robot"]);
     assert_success(&deleted);
     assert_eq!(

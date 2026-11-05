@@ -1582,9 +1582,9 @@ pub(crate) struct EpisodeEditArgs {
     pub(crate) remove_property: Vec<String>,
     #[arg(long, help = "Require this current episode version", value_parser = clap::value_parser!(i32).range(1..))]
     pub(crate) applies_to_version: Option<i32>,
-    #[arg(long, help = "New start of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(long, help = "New start of the episode window (ISO 8601)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) start: Option<String>,
-    #[arg(long, help = "New end of the episode window (ISO 8601, millisecond precision)", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(long, help = "New end of the episode window (ISO 8601)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) end: Option<String>,
     #[arg(long, help = "Add a recording; repeat for more IDs", action = clap::ArgAction::Append, value_parser = parse_id)]
     pub(crate) add_recording_id: Vec<String>,

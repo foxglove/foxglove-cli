@@ -10,7 +10,7 @@ use crate::api::ApiError;
 use crate::cli::{EpisodeBulkEditArgs, EpisodeEditArgs};
 use crate::custom_properties::properties;
 use crate::output::Format;
-use crate::records::{format_list_output, parse_timestamp_millis, NextCursor, Record};
+use crate::records::{format_list_output, parse_timestamp, NextCursor, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -83,8 +83,8 @@ fn episode_patch(args: &EpisodeEditArgs) -> Result<EpisodePatch<'_>, String> {
     };
     Ok(EpisodePatch {
         applies_to_version: args.applies_to_version,
-        start_time: parse_timestamp_millis(args.start.as_deref().unwrap_or_default(), "start")?,
-        end_time: parse_timestamp_millis(args.end.as_deref().unwrap_or_default(), "end")?,
+        start_time: parse_timestamp(args.start.as_deref().unwrap_or_default(), "start")?,
+        end_time: parse_timestamp(args.end.as_deref().unwrap_or_default(), "end")?,
         recordings,
         properties: None,
     })
@@ -218,7 +218,25 @@ pub(crate) async fn edit_episodes(
 
 #[cfg(test)]
 mod tests {
-    use super::bulk_edits;
+    use super::{bulk_edits, episode_patch};
+    use crate::cli::EpisodeEditArgs;
+
+    #[test]
+    fn edits_send_times_at_nanosecond_precision() {
+        let args = EpisodeEditArgs {
+            episode_id: "ep_one".to_owned(),
+            property: Vec::new(),
+            remove_property: Vec::new(),
+            applies_to_version: None,
+            start: Some("2024-01-02T03:04:05.123456789Z".to_owned()),
+            end: Some("2024-01-02T03:04:05.123456789+01:00".to_owned()),
+            add_recording_id: Vec::new(),
+            remove_recording_id: Vec::new(),
+        };
+        let patch = episode_patch(&args).unwrap();
+        assert_eq!(patch.start_time, "2024-01-02T03:04:05.123456789Z");
+        assert_eq!(patch.end_time, "2024-01-02T03:04:05.123456789+01:00");
+    }
 
     #[test]
     fn invalid_bulk_edits_are_rejected_before_sending() {

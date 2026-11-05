@@ -15,7 +15,8 @@ use crate::cli::{DeviceAddArgs, DeviceDeleteArgs, DeviceEditArgs, DeviceGetArgs,
 use crate::custom_properties::properties;
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, format_record, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, is_zero, null_to_default, ProjectFallback, Record,
+    DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -26,9 +27,19 @@ struct Device {
     name: String,
     #[serde(default)]
     properties: Value,
-    #[serde(rename = "createdAt")]
+    #[serde(
+        rename = "createdAt",
+        default,
+        deserialize_with = "null_to_default",
+        skip_serializing_if = "String::is_empty"
+    )]
     created_at: String,
-    #[serde(rename = "updatedAt")]
+    #[serde(
+        rename = "updatedAt",
+        default,
+        deserialize_with = "null_to_default",
+        skip_serializing_if = "String::is_empty"
+    )]
     updated_at: String,
     #[serde(rename = "projectId")]
     project_id: String,
