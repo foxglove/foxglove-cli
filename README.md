@@ -518,7 +518,7 @@ them or none. Each entry requires `id` and can contain `appliesToVersion`,
 `startTime`, `endTime`, `recordings` with `add`/`remove` arrays, and `properties`.
 Property values merge by key; `null` removes a property. An ID-only entry changes
 nothing and returns the current version. Timestamps are sent unchanged and must
-use ISO 8601 at millisecond precision (for example `2026-04-19T13:22:44.123Z`).
+use RFC 3339, up to nanosecond precision (for example `2026-04-19T13:22:44.123456789Z`).
 A version conflict names each conflicting episode's current version.
 
 ```

@@ -8,7 +8,7 @@ use crate::cli::{
     DeviceTokenListArgs,
 };
 use crate::output::Format;
-use crate::records::{fetch_list, format_record, ProjectFallback, Record};
+use crate::records::{fetch_list, format_record, null_to_default, ProjectFallback, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -61,6 +61,7 @@ impl Record for DeviceToken {
 struct CreatedDeviceToken {
     #[serde(flatten)]
     device_token: DeviceToken,
+    #[serde(default, deserialize_with = "null_to_default")]
     token: String,
 }
 
@@ -277,5 +278,16 @@ mod tests {
             serde_json::to_value(&created).unwrap()["token"],
             "fake-device-token"
         );
+
+        let without_token: CreatedDeviceToken = serde_json::from_value(serde_json::json!({
+            "id": "dt_1",
+            "deviceId": "dev_1",
+            "projectId": "prj_1",
+            "enabled": true,
+            "preapproved": true,
+            "createdAt": "2024-01-02T03:04:05Z",
+        }))
+        .unwrap();
+        assert_eq!(without_token.fields().last().unwrap(), "");
     }
 }
