@@ -1,3 +1,5 @@
+#[path = "cli_integration/automations.rs"]
+mod automations;
 #[path = "cli_integration/custom_properties.rs"]
 mod custom_properties;
 #[path = "cli_integration/episodes.rs"]

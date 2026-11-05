@@ -3,6 +3,7 @@
 pub mod api;
 mod attachments;
 mod auth;
+mod automations;
 mod cli;
 pub mod config;
 mod coverage;
