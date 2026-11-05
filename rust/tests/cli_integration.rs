@@ -4862,7 +4862,7 @@ fn cloning_into_a_taken_name_names_the_conflict() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn creating_an_episode_keeps_its_window_to_the_millisecond() {
+fn creating_an_episode_sends_its_window_unchanged() {
     let workspace = Workspace::new();
     for (created, stderr) in [
         (true, "Episode created: ep_new\n"),
@@ -4899,7 +4899,7 @@ fn creating_an_episode_keeps_its_window_to_the_millisecond() {
                 "episodes": [{
                     "recordings": ["rec_one", "rec_two"],
                     "startTime": "2024-01-02T03:04:05.25Z",
-                    "endTime": "2024-01-02T03:04:06.123Z",
+                    "endTime": "2024-01-02T03:04:06.1239Z",
                 }],
             })
         );
