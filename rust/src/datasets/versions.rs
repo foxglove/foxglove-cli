@@ -404,7 +404,11 @@ pub(crate) async fn compare_versions(
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
-        include: episode_include(args.include_recordings, args.include_properties),
+        include: episode_include(
+            args.include_recordings,
+            args.include_creation_context,
+            args.include_properties,
+        ),
     };
     let page = match runtime
         .client

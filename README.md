@@ -119,6 +119,8 @@ Change a device's settings. Boolean flags take an optional `=true` or `=false`:
 ```
 $ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings-seconds 604800 --auto-delete-after-import
     Device updated: RobotA
+$ foxglove devices edit dev_drpLqjBZYUzus3gv --property location:sf --remove-property owner
+    Device updated: RobotA
 ```
 
 Get one device by name or ID:
@@ -189,6 +191,18 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
+### Organization members
+
+List your organization's members. This requires an API key with the `orgMembers.list`
+capability that is not limited to specific projects. The list covers the whole organization;
+the default project does not apply, so pass `--project-id` to list only one project's members.
+
+```
+$ foxglove org-members list
+$ foxglove org-members list --project-id prj_123
+$ foxglove org-members list --search ada --role admin --status active --sort-by lastSeenAt --sort-order desc
+```
+
 ### Sites
 
 List your organization's sites, and create, edit, or delete them:
@@ -225,7 +239,8 @@ $ FOXGLOVE_SITE_NOTIFICATION_TOKEN=fox_snt_... foxglove sites notify-bucket \
 ### Custom properties
 
 Custom properties define typed fields for devices, events, sessions, and
-episodes; `devices` and `episodes` commands set them with `--property`. Create
+episodes; the `add` and `edit` commands for each set them with `--property`, and
+the `edit` commands remove them with `--remove-property`. Create
 one, giving the allowed values for an enum or multi-enum property:
 
 ```
@@ -284,6 +299,14 @@ List sessions whose recordings overlap a time range, with each session's recordi
 
 ```
 $ foxglove sessions list --key-matches drive --start 2026-04-19 --end 2026-04-20 --sort-by updatedAt
+```
+
+Create a session for a device, or from recordings that all belong to one device,
+and change its key or custom properties later:
+
+```
+$ foxglove sessions add --recording-id rec_123 --recording-id rec_456 --key drive-41 --property vehicle:car
+$ foxglove sessions edit drive-41 --property vehicle:truck --remove-property driver
 ```
 
 Request transfer of an existing edge recording to its configured Primary Site:
@@ -371,6 +394,14 @@ $ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y \
     --metadata requires-labeling:true
 ```
 
+Name the device with `--device-name` instead of `--device-id`, and set event
+custom properties with `--property`:
+
+```
+$ foxglove events add --device-name RobotA \
+    --start 2023-04-19T13:26:37Z --end 2023-04-19T13:27:00Z --property speed:3.5
+```
+
 List all events:
 
 ```
@@ -419,10 +450,10 @@ An episode is a time window over one or more recordings; a dataset is a named,
 versioned collection of episodes. Both require a plan that supports
 [datasets](https://docs.foxglove.dev/docs/datasets).
 
-List datasets:
+List datasets. `--name` keeps only those whose name contains a value, ignoring case:
 
 ```
-$ foxglove datasets list
+$ foxglove datasets list --name highway
 ID | Name | Project ID | Description | Episode Count | Created At | Updated At
 --- | --- | --- | --- | --- | --- | ---
 ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
@@ -476,7 +507,10 @@ on when each episode joined the dataset:
 $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-order desc
 ```
 
-Member recordings are omitted unless you pass `--include-recordings`.
+Member recordings are omitted unless you pass `--include-recordings`. List
+commands and `datasets versions compare` also accept `--include-creation-context`
+to add the selection or search that produced each episode to JSON output;
+`episodes get` always returns it.
 
 Episode custom properties are also omitted by default. Organizations with API
 access to episode properties can set them during creation, request them on reads,
@@ -518,7 +552,7 @@ them or none. Each entry requires `id` and can contain `appliesToVersion`,
 `startTime`, `endTime`, `recordings` with `add`/`remove` arrays, and `properties`.
 Property values merge by key; `null` removes a property. An ID-only entry changes
 nothing and returns the current version. Timestamps are sent unchanged and must
-use ISO 8601 at millisecond precision (for example `2026-04-19T13:22:44.123Z`).
+use RFC 3339, up to nanosecond precision (for example `2026-04-19T13:22:44.123456789Z`).
 A version conflict names each conflicting episode's current version.
 
 ```
@@ -717,7 +751,8 @@ $ foxglove site-notification-tokens delete sint_example
 
 ### Layouts
 
-List the layouts shared with your organization:
+List the layouts shared with your organization, plus your personal layouts when
+signed in with `foxglove auth login`:
 
 ```
 $ foxglove layouts list
