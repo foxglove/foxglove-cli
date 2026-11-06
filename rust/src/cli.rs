@@ -49,6 +49,17 @@ fn parse_list_limit(value: &str) -> Result<i64, String> {
         .ok_or_else(|| format!("must be an integer between 1 and {MAX_LIST_LIMIT}"))
 }
 
+/// Accept a finite, non-negative number of seconds, which may have a fractional part.
+fn parse_non_negative_seconds(value: &str) -> Result<f64, String> {
+    value
+        .parse::<f64>()
+        .ok()
+        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+        // Adding zero turns -0 into 0, so the value is never sent with a minus sign.
+        .map(|seconds| seconds + 0.0)
+        .ok_or_else(|| "must be a non-negative number of seconds".to_owned())
+}
+
 /// Reject blank selectors without changing exact keys, names, or paths.
 fn parse_non_blank(value: &str) -> Result<String, String> {
     if value.trim().is_empty() {
@@ -661,10 +672,11 @@ pub(crate) struct CoverageListArgs {
     pub(crate) start: Option<String>,
     #[arg(
         long,
-        help = "Coverage separation tolerance in seconds",
-        allow_hyphen_values = true
+        help = "Minimum gap in seconds between separate coverage ranges; may be fractional",
+        allow_hyphen_values = true,
+        value_parser = parse_non_negative_seconds
     )]
-    pub(crate) tolerance: Option<i64>,
+    pub(crate) tolerance: Option<f64>,
 }
 
 #[derive(Debug, Subcommand)]
