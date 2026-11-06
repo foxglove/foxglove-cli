@@ -434,7 +434,7 @@ pub(crate) struct AutomationTriggerSetArgs {
     #[arg(value_name = "AUTOMATION_ID", value_parser = parse_id)]
     pub(crate) automation_id: String,
     #[arg(
-        long, help = "Enable or disable the trigger (default: true)",
+        long, help = "Enable or disable the trigger. When omitted, the trigger is enabled, even when it replaces a disabled trigger; pass --enabled=false to keep it disabled",
         action = clap::ArgAction::Set,
         num_args = 0..=1,
         require_equals = true,
@@ -4604,6 +4604,15 @@ mod tests {
         assert!(String::from_utf8(outcome.stdout)
             .unwrap()
             .starts_with("List and manage devices\n"));
+    }
+
+    #[test]
+    fn trigger_set_help_explains_that_omitting_enabled_enables_the_trigger() {
+        let outcome = invoke(&["automations", "trigger", "set", "--help"]);
+        assert_eq!(outcome.exit_code, 0);
+        let help = String::from_utf8(outcome.stdout).unwrap();
+        assert!(help.contains("even when it replaces a disabled trigger"));
+        assert!(help.contains("--enabled=false to keep it disabled"));
     }
 
     #[test]
