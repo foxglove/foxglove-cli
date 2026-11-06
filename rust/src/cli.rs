@@ -55,6 +55,8 @@ fn parse_non_negative_seconds(value: &str) -> Result<f64, String> {
         .parse::<f64>()
         .ok()
         .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+        // Adding zero turns -0 into 0, so the value is never sent with a minus sign.
+        .map(|seconds| seconds + 0.0)
         .ok_or_else(|| "must be a non-negative number of seconds".to_owned())
 }
 

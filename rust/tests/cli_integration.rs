@@ -2579,7 +2579,13 @@ fn list_requests_send_device_filters_as_device_id_and_name() {
 #[ignore = "requires loopback sockets"]
 fn coverage_tolerance_is_sent_as_given_without_a_trailing_fraction() {
     let workspace = Workspace::new();
-    for (tolerance, expected) in [("14", "14"), ("0.5", "0.5"), ("1e1", "10"), ("0", "0")] {
+    for (tolerance, expected) in [
+        ("14", "14"),
+        ("0.5", "0.5"),
+        ("1e1", "10"),
+        ("0", "0"),
+        ("-0", "0"),
+    ] {
         let server = Server::new(vec![Reply::json("GET", "/v1/data/coverage", "[]")]);
         let output = run(
             &workspace,
