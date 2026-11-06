@@ -4583,6 +4583,7 @@ fn a_version_and_the_missing_recordings_filter_reach_the_dataset_episode_list() 
                 "--version",
                 "3",
                 flag,
+                "--include-creation-context",
                 "--format",
                 "json",
             ],
@@ -4590,7 +4591,11 @@ fn a_version_and_the_missing_recordings_filter_reach_the_dataset_episode_list() 
         assert_success(&output);
         assert_eq!(
             query_pairs(&server.finish()[0]),
-            expected_pairs(&[("hasMissingRecordings", value), ("limit", "50")])
+            expected_pairs(&[
+                ("hasMissingRecordings", value),
+                ("include", "creationContext"),
+                ("limit", "50"),
+            ])
         );
         let episodes: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         assert!(episodes["nextCursor"].is_null(), "{flag}");
@@ -4871,6 +4876,7 @@ fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
             "1",
             "3",
             "--include-recordings",
+            "--include-creation-context",
             "--format",
             "csv",
         ],
@@ -4880,7 +4886,11 @@ fn comparing_versions_fetches_one_page_and_says_how_to_get_the_next() {
     assert_eq!(requests.len(), 1);
     assert_eq!(
         query_pairs(&requests[0]),
-        expected_pairs(&[("include", "recordings"), ("limit", "50"), ("version", "1")])
+        expected_pairs(&[
+            ("include", "recordings,creationContext"),
+            ("limit", "50"),
+            ("version", "1"),
+        ])
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let changes: Vec<_> = stdout
