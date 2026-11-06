@@ -562,8 +562,11 @@ $ foxglove episodes edit-bulk edits.json --format json
 ```
 
 Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
-table/CSV output append Version, Latest Version, and Custom Properties columns.
-Comparison output also appends Previous Version and Previous Custom Properties;
+table/CSV output append Version, Latest Version, Custom Properties, and Missing
+Recordings columns. Missing Recordings is `true` when a member recording no longer
+has data; for `episodes list` and `episodes get` it is filled only with
+`--include-recordings`. Comparison output has no Missing Recordings column and
+appends Previous Version and Previous Custom Properties;
 JSON preserves the previous episode snapshot, and summaries report changed
 members alongside additions and removals.
 
