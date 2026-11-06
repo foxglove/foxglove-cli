@@ -2107,9 +2107,9 @@ pub(crate) struct EventGetArgs {
 pub(crate) struct EventEditArgs {
     #[arg(value_name = "EVENT_ID", value_parser = parse_id)]
     pub(crate) event_id: String,
-    #[arg(long, help = "New start of the event (inclusive), RFC 3339", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(long, help = "New start of the event (inclusive), ISO 8601", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) start: Option<String>,
-    #[arg(long, help = "New end of the event (inclusive), RFC 3339", allow_hyphen_values = true, value_parser = parse_non_blank)]
+    #[arg(long, help = "New end of the event (inclusive), ISO 8601", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) end: Option<String>,
     #[arg(long, help = "Event type ID; the event must conform to the event type's schema", allow_hyphen_values = true, value_parser = parse_id, conflicts_with = "remove_event_type")]
     pub(crate) event_type_id: Option<String>,
@@ -2136,7 +2136,7 @@ pub(crate) struct EventAddArgs {
     pub(crate) device_name: Option<String>,
     #[arg(
         long,
-        help = "End of event (inclusive), RFC 3339 (required)",
+        help = "End of event (inclusive), ISO 8601 (required)",
         allow_hyphen_values = true
     )]
     pub(crate) end: String,
@@ -2148,7 +2148,7 @@ pub(crate) struct EventAddArgs {
     pub(crate) property: Vec<String>,
     #[arg(
         long,
-        help = "Start of event, RFC 3339 (required)",
+        help = "Start of event, ISO 8601 (required)",
         allow_hyphen_values = true
     )]
     pub(crate) start: String,
@@ -2160,7 +2160,7 @@ pub(crate) struct EventListArgs {
     format: FormatArgs,
     #[arg(
         long,
-        help = "Only events created after this time",
+        help = "Only events created after this time (ISO 8601)",
         allow_hyphen_values = true
     )]
     pub(crate) created_after: Option<String>,
@@ -2170,7 +2170,7 @@ pub(crate) struct EventListArgs {
     pub(crate) device_name: Option<String>,
     #[arg(
         long,
-        help = "Exclude events after this time",
+        help = "Exclude events after this time (ISO 8601)",
         allow_hyphen_values = true
     )]
     pub(crate) end: Option<String>,
@@ -2210,13 +2210,13 @@ pub(crate) struct EventListArgs {
     pub(crate) sort_order: Option<String>,
     #[arg(
         long,
-        help = "Exclude events before this time",
+        help = "Exclude events before this time (ISO 8601)",
         allow_hyphen_values = true
     )]
     pub(crate) start: Option<String>,
     #[arg(
         long,
-        help = "Only events updated after this time",
+        help = "Only events updated after this time (ISO 8601)",
         allow_hyphen_values = true
     )]
     pub(crate) updated_after: Option<String>,

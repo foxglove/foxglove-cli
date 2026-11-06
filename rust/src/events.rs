@@ -10,8 +10,8 @@ use crate::cli::{EventAddArgs, EventEditArgs, EventGetArgs, EventIdArgs, EventLi
 use crate::custom_properties::{check_property_edits, properties, remove_properties};
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, format_record, null_to_default, DeviceSummary, ProjectFallback,
-    Record, DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, null_to_default, parse_timestamp, DeviceSummary,
+    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -73,6 +73,21 @@ impl Record for Event {
     }
 }
 
+/// Normalizes an optional time flag the same way as other commands, keeping nanoseconds.
+fn optional_time(raw: Option<&str>, label: &str) -> Result<String, String> {
+    parse_timestamp(raw.unwrap_or_default(), label)
+}
+
+/// The `createdAfter`, `end`, `start`, and `updatedAfter` list filters.
+fn list_times(args: &EventListArgs) -> Result<[String; 4], String> {
+    Ok([
+        optional_time(args.created_after.as_deref(), "created after")?,
+        optional_time(args.end.as_deref(), "end")?,
+        optional_time(args.start.as_deref(), "start")?,
+        optional_time(args.updated_after.as_deref(), "updated after")?,
+    ])
+}
+
 pub(crate) async fn list_events(
     runtime: &Runtime,
     args: &EventListArgs,
@@ -85,16 +100,17 @@ pub(crate) async fn list_events(
             ));
         }
     }
+    let [created_after, end, start, updated_after] = match list_times(args) {
+        Ok(times) => times,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let offset = args.offset.unwrap_or_default();
     let query: Vec<(String, String)> = [
-        (
-            "createdAfter",
-            args.created_after.clone().unwrap_or_default(),
-        ),
+        ("createdAfter", created_after),
         ("deviceId", args.device_id.clone().unwrap_or_default()),
         ("deviceName", args.device_name.clone().unwrap_or_default()),
-        ("end", args.end.clone().unwrap_or_default()),
+        ("end", end),
         ("eventId", args.event_id.clone().unwrap_or_default()),
         (
             "eventTypeId",
@@ -117,11 +133,8 @@ pub(crate) async fn list_events(
         ("queryFields", args.query_field.join(",")),
         ("sortBy", args.sort_by.clone().unwrap_or_default()),
         ("sortOrder", args.sort_order.clone().unwrap_or_default()),
-        ("start", args.start.clone().unwrap_or_default()),
-        (
-            "updatedAfter",
-            args.updated_after.clone().unwrap_or_default(),
-        ),
+        ("start", start),
+        ("updatedAfter", updated_after),
     ]
     .into_iter()
     .filter(|(_, value)| !value.is_empty())
@@ -183,11 +196,11 @@ fn create_event_request(
         project_id,
         device_id: args.device_id.clone(),
         device_name: args.device_name.clone(),
-        end: args.end.clone(),
+        end: parse_timestamp(&args.end, "end")?,
         event_type_id: args.event_type_id.clone().unwrap_or_default(),
         metadata: metadata(&args.metadata)?,
         properties: None,
-        start: args.start.clone(),
+        start: parse_timestamp(&args.start, "start")?,
     })
 }
 
@@ -278,8 +291,16 @@ fn event_patch(args: &EventEditArgs) -> Result<EventPatch, String> {
         Some(metadata(&args.metadata)?)
     };
     Ok(EventPatch {
-        start: args.start.clone(),
-        end: args.end.clone(),
+        start: args
+            .start
+            .as_deref()
+            .map(|raw| parse_timestamp(raw, "start"))
+            .transpose()?,
+        end: args
+            .end
+            .as_deref()
+            .map(|raw| parse_timestamp(raw, "end"))
+            .transpose()?,
         event_type_id: if args.remove_event_type {
             Some(String::new())
         } else {
@@ -315,8 +336,8 @@ pub(crate) async fn edit_event(runtime: &Runtime, args: &EventEditArgs) -> Outco
 
 #[cfg(test)]
 mod tests {
-    use super::{create_event_request, Event};
-    use crate::cli::EventAddArgs;
+    use super::{create_event_request, event_patch, Event};
+    use crate::cli::{EventAddArgs, EventEditArgs};
 
     #[test]
     fn a_new_event_names_its_device_by_id_or_name() {
@@ -341,6 +362,54 @@ mod tests {
             body(&args(None, Some("robot"))),
             serde_json::json!({"deviceName": "robot", "start": "2024-01-02T03:04:05Z", "end": "2024-01-02T03:04:06Z", "metadata": {}})
         );
+    }
+
+    #[test]
+    fn event_times_are_normalized_with_nanosecond_precision() {
+        let add = |start: &str, end: &str| EventAddArgs {
+            project_id: None,
+            device_id: Some("dev_1".to_owned()),
+            device_name: None,
+            end: end.to_owned(),
+            event_type_id: None,
+            metadata: Vec::new(),
+            property: Vec::new(),
+            start: start.to_owned(),
+        };
+        let request = create_event_request(
+            &add("2024-01-02", "2024-01-02T03:04:05.123456789"),
+            String::new(),
+        )
+        .unwrap();
+        assert_eq!(request.start, "2024-01-02T00:00:00Z");
+        assert_eq!(request.end, "2024-01-02T03:04:05.123456789Z");
+        assert!(
+            create_event_request(&add("2024-01-02", "not a date"), String::new())
+                .err()
+                .unwrap()
+                .starts_with("failed to parse end time:")
+        );
+
+        let edit = |start: Option<&str>, end: Option<&str>| EventEditArgs {
+            event_id: "evt_1".to_owned(),
+            start: start.map(str::to_owned),
+            end: end.map(str::to_owned),
+            event_type_id: None,
+            remove_event_type: false,
+            metadata: Vec::new(),
+            clear_metadata: false,
+            property: Vec::new(),
+            remove_property: Vec::new(),
+        };
+        let patch = event_patch(&edit(Some("2024-01-02T03:04:05.000000001+0100"), None)).unwrap();
+        assert_eq!(
+            patch.start.as_deref(),
+            Some("2024-01-02T03:04:05.000000001+01:00")
+        );
+        assert_eq!(patch.end, None);
+        assert!(event_patch(&edit(None, Some("2024-02-30")))
+            .unwrap_err()
+            .starts_with("failed to parse end time:"));
     }
 
     #[test]

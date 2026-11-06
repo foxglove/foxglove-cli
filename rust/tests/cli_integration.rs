@@ -378,20 +378,40 @@ fn event_id_and_change_time_filters_are_sent() {
         "--event-id",
         "evt_one",
         "--created-after",
-        "2024-01-02T03:04:05Z",
+        "2024-01-02",
         "--updated-after",
-        "2024-01-03T03:04:05Z",
+        "2024-01-03T03:04:05.123456789",
+        "--start",
+        "2024-01-01T00:00+0530",
+        "--end",
+        "2024-01-04T03:04:05Z",
     ]))
     .finish();
     assert_success(&output);
     assert_eq!(
         query_pairs(&server.finish()[0]),
         expected_pairs(&[
-            ("createdAfter", "2024-01-02T03:04:05Z"),
+            ("createdAfter", "2024-01-02T00:00:00Z"),
+            ("end", "2024-01-04T03:04:05Z"),
             ("eventId", "evt_one"),
             ("limit", "50"),
-            ("updatedAfter", "2024-01-03T03:04:05Z"),
+            ("start", "2024-01-01T00:00:00+05:30"),
+            ("updatedAfter", "2024-01-03T03:04:05.123456789Z"),
         ])
+    );
+
+    let server = Server::new(vec![]);
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "events",
+        "list",
+        "--updated-after",
+        "yesterday",
+    ]))
+    .finish();
+    server.finish();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).starts_with("failed to parse updated after time:")
     );
 }
 
