@@ -2576,6 +2576,47 @@ fn list_requests_send_device_filters_as_device_id_and_name() {
 }
 
 #[test]
+#[ignore = "requires loopback sockets"]
+fn coverage_tolerance_is_sent_as_given_without_a_trailing_fraction() {
+    let workspace = Workspace::new();
+    for (tolerance, expected) in [("14", "14"), ("0.5", "0.5"), ("1e1", "10"), ("0", "0")] {
+        let server = Server::new(vec![Reply::json("GET", "/v1/data/coverage", "[]")]);
+        let output = run(
+            &workspace,
+            &server,
+            &["coverage", "list", "--tolerance", tolerance],
+        );
+        assert_success(&output);
+        assert_eq!(
+            query_pairs(&server.finish()[0])
+                .get("tolerance")
+                .map(String::as_str),
+            Some(expected),
+            "--tolerance {tolerance}"
+        );
+    }
+}
+
+#[test]
+fn coverage_tolerance_must_be_a_non_negative_number() {
+    for tolerance in ["-1", "NaN", "inf", "ten"] {
+        let output = Process::spawn(Workspace::new().command("http://127.0.0.1:1").args([
+            "coverage",
+            "list",
+            "--tolerance",
+            tolerance,
+        ]))
+        .finish();
+        assert!(!output.status.success(), "--tolerance {tolerance}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("must be a non-negative number of seconds"),
+            "--tolerance {tolerance}"
+        );
+    }
+}
+
+#[test]
 fn list_limits_must_be_between_one_and_two_thousand() {
     for limit in ["0", "2001", "-1", "not-a-number"] {
         let output = Process::spawn(Workspace::new().command("http://127.0.0.1:1").args([
@@ -5462,17 +5503,19 @@ fn coverage_is_filtered_by_recording_key_and_shows_pending_coverage_updates() {
             "list",
             "--recording-key",
             " drive-1\r",
+            "--tolerance",
+            "14.25",
             "--format",
             "csv",
         ],
     );
     assert_success(&output);
+    let query = query_pairs(&server.finish()[0]);
     assert_eq!(
-        query_pairs(&server.finish()[0])
-            .get("recordingKey")
-            .map(String::as_str),
+        query.get("recordingKey").map(String::as_str),
         Some(" drive-1\r")
     );
+    assert_eq!(query.get("tolerance").map(String::as_str), Some("14.25"));
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
         "Device ID,Device Name,Start,End,Status,Coverage Update Requested At,Import Status\n\
