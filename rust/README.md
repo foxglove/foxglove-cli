@@ -11,3 +11,7 @@ make test
 make build
 ./rust/target/release/foxglove-rust --help
 ```
+
+Run `make docs` after changing command definitions to regenerate the
+[command reference](../docs/reference/README.md). `make docs-check` checks for
+stale generated pages without modifying them.
