@@ -2,6 +2,9 @@
 
 Interact with Foxglove, directly from the command line.
 
+See the [command reference](docs/reference/README.md) for all commands and options,
+or the [documentation index](docs/README.md).
+
 Upgrading from v1? See the [v2 migration guide](docs/v2-migration.md) and
 [release notes](https://github.com/foxglove/foxglove-cli/releases).
 
