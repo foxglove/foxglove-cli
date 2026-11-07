@@ -1,8 +1,11 @@
 # Foxglove CLI documentation
 
-- [Installation and getting started](../README.md)
+- [Quick start](../README.md#getting-started)
+- [Installation](installation.md): downloads, platform setup, and building from source
+- [Usage guide](usage.md): authentication, pagination, and workflow examples
 - [Command reference](reference/README.md): generated from the CLI's command definitions
 - [Migrating from v1 to v2](v2-migration.md)
+- [Development and releases](../rust/README.md)
 
 ## Updating the command reference
 
