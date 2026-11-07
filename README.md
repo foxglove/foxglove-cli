@@ -32,7 +32,7 @@ for updating the reference.
 
 ## Development
 
-See the [Rust development guide](rust/README.md) for building, testing, and
+See the [development guide](rust/README.md) for building, testing, and
 publishing releases.
 
 ## Stay in touch

@@ -1,4 +1,4 @@
-# Rust CLI development
+# Development guide
 
 Run these commands from the **repository root**:
 
