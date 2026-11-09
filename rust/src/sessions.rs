@@ -1,6 +1,8 @@
 //! Session commands.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use crate::api::encode_path_segment;
@@ -8,9 +10,12 @@ use crate::cli::{
     SessionAddArgs, SessionEditArgs, SessionListArgs, SessionLookupArgs,
     SessionRecordingMutationArgs,
 };
+use crate::custom_properties::{check_property_edits, properties, remove_properties};
+use crate::episodes::parse_time_range;
 use crate::output::{escape_terminal_text, Format};
 use crate::records::{
-    fetch_list, format_output, is_zero, DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    fetch_list, format_output, is_zero, null_to_default, DeviceSummary, ProjectFallback, Record,
+    DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -45,6 +50,28 @@ struct Session {
     updated_at: String,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     recordings: Vec<SessionRecording>,
+    #[serde(
+        rename = "recordingCount",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    recording_count: Option<u64>,
+    #[serde(
+        rename = "recordingStart",
+        skip_serializing_if = "String::is_empty",
+        default,
+        deserialize_with = "null_to_default"
+    )]
+    recording_start: String,
+    #[serde(
+        rename = "recordingEnd",
+        skip_serializing_if = "String::is_empty",
+        default,
+        deserialize_with = "null_to_default"
+    )]
+    recording_end: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    properties: Option<BTreeMap<String, Value>>,
 }
 
 impl Record for SessionRecording {
@@ -71,6 +98,10 @@ impl Record for Session {
             "Device",
             "Created At",
             "Updated At",
+            "Recordings",
+            "Recording Start",
+            "Recording End",
+            "Custom Properties",
         ]
     }
 
@@ -92,6 +123,16 @@ impl Record for Session {
             device,
             self.created_at.clone(),
             self.updated_at.clone(),
+            self.recording_count
+                .map(|count| count.to_string())
+                .unwrap_or_default(),
+            self.recording_start.clone(),
+            self.recording_end.clone(),
+            self.properties
+                .as_ref()
+                .map_or_else(String::new, |properties| {
+                    serde_json::to_string(properties).expect("property values are JSON")
+                }),
         ]
     }
 }
@@ -103,11 +144,23 @@ struct SessionListQuery {
     device_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     device_name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    end: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    key_matches: String,
     limit: i64,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_by: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    sort_order: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    start: String,
 }
 
 #[derive(Serialize)]
@@ -122,12 +175,22 @@ pub(crate) async fn list_sessions(
     args: &SessionListArgs,
     format: Format,
 ) -> Outcome {
+    let (start, end) = match parse_time_range(args.start.as_deref(), args.end.as_deref()) {
+        Ok(range) => range,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
     let query = SessionListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
+        end,
+        key_matches: args.key_matches.clone().unwrap_or_default(),
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
+        query: args.query.clone(),
+        sort_by: args.sort_by.clone().unwrap_or_default(),
+        sort_order: args.sort_order.clone().unwrap_or_default(),
+        start,
     };
     fetch_list::<Session, _>(
         runtime,
@@ -182,15 +245,28 @@ fn session_outcome(session: &Session) -> Outcome {
             .collect::<Vec<_>>()
             .join(", ")
     };
+    let properties = session
+        .properties
+        .as_ref()
+        .map(|properties| {
+            format!(
+                "Properties: {}\n",
+                escape_terminal_text(
+                    &serde_json::to_string(properties).expect("property values are JSON")
+                )
+            )
+        })
+        .unwrap_or_default();
     Outcome::success(format!(
-        "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n",
+        "ID:         {}\nKey:        {}\nProject ID: {}\n{}Created At: {}\nUpdated At: {}\nRecordings: {}\n{}",
         session.id,
         escape_terminal_text(&session.key),
         session.project_id,
         device,
         session.created_at,
         session.updated_at,
-        recordings
+        recordings,
+        properties
     ))
 }
 
@@ -223,11 +299,17 @@ pub(crate) async fn list_session_recordings(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateSessionRequest {
+    /// Omitted when the API should infer the device from the recordings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_id: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
-    device_id: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    recording_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<BTreeMap<String, Value>>,
 }
 
 #[derive(Deserialize)]
@@ -247,19 +329,26 @@ struct PatchSessionRecordingsRequest {
 }
 
 #[derive(Serialize)]
-struct PatchSessionKeyRequest<'a> {
-    key: Option<&'a str>,
+struct PatchSessionRequest {
+    /// Omitted keeps the key; `Value::Null` removes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key: Option<Value>,
+    /// Changes only the listed keys; a `null` value removes that property.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<BTreeMap<String, Value>>,
 }
 
 pub(crate) async fn add_session(runtime: &Runtime, args: &SessionAddArgs) -> Outcome {
-    let device_id = args.device_id.clone().unwrap_or_default();
-    if device_id.is_empty() {
-        return Outcome::failure("--device-id is required when creating a session\n");
-    }
+    let properties = match properties(runtime, "session", &args.property).await {
+        Ok(properties) => properties,
+        Err(error) => return Outcome::failure(format!("Failed to create session: {error}\n")),
+    };
     let request = CreateSessionRequest {
+        device_id: args.device_id.clone(),
         key: args.key.clone().unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
-        device_id,
+        recording_ids: args.recording_id.clone(),
+        properties,
     };
     match runtime
         .client
@@ -297,28 +386,49 @@ pub(crate) async fn delete_session(runtime: &Runtime, args: &SessionLookupArgs) 
     }
 }
 
-pub(crate) async fn edit_session_key(runtime: &Runtime, args: &SessionEditArgs) -> Outcome {
+fn session_patch(args: &SessionEditArgs) -> Result<PatchSessionRequest, String> {
+    check_property_edits(&args.property, &args.remove_property)?;
+    Ok(PatchSessionRequest {
+        key: if args.remove_key {
+            Some(Value::Null)
+        } else {
+            args.key.clone().map(Value::String)
+        },
+        properties: None,
+    })
+}
+
+pub(crate) async fn edit_session(runtime: &Runtime, args: &SessionEditArgs) -> Outcome {
+    let mut patch = match session_patch(args) {
+        Ok(patch) => patch,
+        Err(error) => return Outcome::failure(format!("{error}\n")),
+    };
+    patch.properties = match properties(runtime, "session", &args.property).await {
+        Ok(properties) => properties,
+        Err(error) => return Outcome::failure(format!("Failed to edit session: {error}\n")),
+    };
+    remove_properties(&mut patch.properties, &args.remove_property);
     let query = ProjectQuery {
         project_id: args.project_id.clone().or_project(&runtime.project_id),
-    };
-    let key = if args.remove_key {
-        None
-    } else {
-        args.key.as_deref()
     };
     match runtime
         .client
         .patch::<_, _, Session>(
             &format!("/v1/sessions/{}", encode_path_segment(&args.session)),
             &query,
-            &PatchSessionKeyRequest { key },
+            &patch,
         )
         .await
     {
-        Ok(session) => Outcome::notice(match key {
-            Some(key) => format!("Session updated: {}\nSession key: {key}\n", session.id),
-            None => format!("Session updated: {}\nSession key removed\n", session.id),
-        }),
+        Ok(session) => {
+            let mut stderr = format!("Session updated: {}\n", session.id);
+            if args.remove_key {
+                stderr.push_str("Session key removed\n");
+            } else if let Some(key) = &args.key {
+                let _ = writeln!(stderr, "Session key: {key}");
+            }
+            Outcome::notice(stderr)
+        }
         Err(error) if error.is_not_found_for("session") => {
             Outcome::failure(format!("Session not found: {}\n", args.session))
         }
@@ -370,7 +480,111 @@ pub(crate) async fn patch_session_recordings(
 
 #[cfg(test)]
 mod tests {
-    use super::{session_outcome, Session};
+    use super::{session_outcome, session_patch, CreateSessionRequest, Session};
+    use crate::cli::SessionEditArgs;
+    use crate::records::Record;
+
+    #[test]
+    fn a_new_session_names_its_device_or_its_recordings() {
+        let request = |device_id: Option<&str>, recording_ids: &[&str]| CreateSessionRequest {
+            device_id: device_id.map(str::to_owned),
+            key: String::new(),
+            project_id: String::new(),
+            recording_ids: recording_ids.iter().map(|&id| id.to_owned()).collect(),
+            properties: None,
+        };
+        assert_eq!(
+            serde_json::to_value(request(Some("dev_1"), &[])).unwrap(),
+            serde_json::json!({"deviceId": "dev_1"})
+        );
+        assert_eq!(
+            serde_json::to_value(request(None, &["rec_1", "rec_2"])).unwrap(),
+            serde_json::json!({"recordingIds": ["rec_1", "rec_2"]})
+        );
+        let mut both = request(Some("dev_1"), &["rec_1"]);
+        both.properties = Some([("mode".to_owned(), serde_json::json!("auto"))].into());
+        assert_eq!(
+            serde_json::to_value(both).unwrap(),
+            serde_json::json!({"deviceId": "dev_1", "recordingIds": ["rec_1"], "properties": {"mode": "auto"}})
+        );
+    }
+
+    #[test]
+    fn a_session_edit_sends_only_the_changes_given() {
+        let edit = |key: Option<&str>, remove_key: bool, property: &[&str], remove: &[&str]| {
+            let args = SessionEditArgs {
+                project_id: None,
+                session: "ses_1".to_owned(),
+                key: key.map(str::to_owned),
+                remove_key,
+                property: property.iter().map(|&pair| pair.to_owned()).collect(),
+                remove_property: remove.iter().map(|&key| key.to_owned()).collect(),
+            };
+            session_patch(&args).map(|patch| serde_json::to_value(patch).unwrap())
+        };
+        assert_eq!(
+            edit(Some("drive"), false, &[], &[]),
+            Ok(serde_json::json!({"key": "drive"}))
+        );
+        assert_eq!(
+            edit(None, true, &[], &[]),
+            Ok(serde_json::json!({"key": null}))
+        );
+        // Properties are typed and added after the custom property lookup.
+        assert_eq!(
+            edit(None, false, &["mode:auto"], &["note"]),
+            Ok(serde_json::json!({}))
+        );
+        assert_eq!(
+            edit(None, false, &["note:x"], &["note"]),
+            Err("cannot set and remove property note in the same edit".to_owned())
+        );
+    }
+
+    #[test]
+    fn session_list_fields_tolerate_responses_without_recording_ranges() {
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+        }))
+        .unwrap();
+        assert_eq!(session.fields()[6..], ["", "", "", ""]);
+        let json = serde_json::to_value(&session).unwrap();
+        assert!(json.get("recordingCount").is_none(), "{json}");
+        assert!(json.get("recordingStart").is_none(), "{json}");
+        assert!(json.get("properties").is_none(), "{json}");
+
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+            "recordingCount": 0,
+            "properties": {"mode": "auto", "tags": ["night"]},
+        }))
+        .unwrap();
+        assert_eq!(
+            session.fields()[6..],
+            ["0", "", "", r#"{"mode":"auto","tags":["night"]}"#]
+        );
+        assert_eq!(
+            serde_json::to_value(&session).unwrap()["properties"],
+            serde_json::json!({"mode": "auto", "tags": ["night"]})
+        );
+        assert_eq!(serde_json::to_value(&session).unwrap()["recordingCount"], 0);
+
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "2024-01-02T03:04:05Z",
+            "updatedAt": "2024-01-02T03:04:06Z",
+            "recordingCount": null,
+            "recordingStart": null,
+            "recordingEnd": null,
+            "properties": null,
+        }))
+        .unwrap();
+        assert_eq!(session.fields()[6..], ["", "", "", ""]);
+    }
 
     #[test]
     fn session_details_escape_key_and_device_name() {
@@ -386,6 +600,22 @@ mod tests {
         assert!(stdout.contains("Key:        \\u{1b}key\n"), "{stdout}");
         assert!(
             stdout.contains("Device:     \\u{1b}name (dev_1)\n"),
+            "{stdout}"
+        );
+        assert!(!stdout.contains("Properties:"), "{stdout}");
+
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_1",
+            "createdAt": "",
+            "updatedAt": "",
+            "properties": {"mode": "auto", "note": "\u{1b}x"},
+        }))
+        .unwrap();
+        let stdout = String::from_utf8(session_outcome(&session).stdout).unwrap();
+        assert!(
+            stdout.ends_with(
+                "Recordings: (none)\nProperties: {\"mode\":\"auto\",\"note\":\"\\u001bx\"}\n"
+            ),
             "{stdout}"
         );
     }

@@ -5,7 +5,7 @@
 [Command reference](README.md) · [Parent command](episodes.md)
 
 ```text
-Create an episode, or get the existing one with the same window and recordings
+Create an episode, or get the existing one with matching window, recordings, and properties
 
 Usage: foxglove episodes add [OPTIONS] <--event-id <EVENT_ID>|--recording-id <RECORDING_ID>>
 
@@ -27,9 +27,6 @@ Options:
 
           [default: false]
 
-      --metadata <METADATA>
-          Metadata as a JSON object
-
       --project-id <PROJECT_ID>
           Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)
 
@@ -38,6 +35,9 @@ Options:
 
       --start <START>
           Start of the episode window (ISO 8601); give with --end (default: the start of its recordings)
+
+  -p, --property <PROPERTY>
+          Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values
 
   -h, --help
           Print help

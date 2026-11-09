@@ -5,12 +5,14 @@
 [Command reference](README.md) · [Parent command](datasets.md)
 
 ```text
-List, compare, and restore dataset versions
+List, compare, edit, restore, and clone dataset versions
 
 Usage: foxglove datasets versions [OPTIONS] <COMMAND>
 
 Commands:
-  compare  List the episodes added and removed between two versions
+  clone    Create a new dataset from a committed version
+  compare  List the episodes added, removed, or changed between two versions
+  edit     Edit a dataset version's description
   get      Get a dataset version
   list     List a dataset's versions
   restore  Restore a committed version's episodes as pending changes
@@ -34,7 +36,9 @@ Options:
 
 ## Subcommands
 
+- [`foxglove datasets versions clone`](datasets-versions-clone.md)
 - [`foxglove datasets versions compare`](datasets-versions-compare.md)
+- [`foxglove datasets versions edit`](datasets-versions-edit.md)
 - [`foxglove datasets versions get`](datasets-versions-get.md)
 - [`foxglove datasets versions list`](datasets-versions-list.md)
 - [`foxglove datasets versions restore`](datasets-versions-restore.md)

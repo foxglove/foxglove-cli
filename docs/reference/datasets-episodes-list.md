@@ -37,6 +37,11 @@ Options:
       --has-missing-recordings[=<HAS_MISSING_RECORDINGS>]
           Filter to episodes with, or without, recordings that are no longer available
 
+      --include-creation-context[=<INCLUDE_CREATION_CONTEXT>]
+          Include each episode's creation context: the selection or search that produced it
+
+          [default: false]
+
       --include-recordings[=<INCLUDE_RECORDINGS>]
           Include the member recordings of each episode
 
@@ -62,6 +67,14 @@ Options:
 
       --version <VERSION>
           Version number to list, or draft to list the draft with its pending changes (default: the newest committed version, or the draft before the first commit)
+
+      --include-properties[=<INCLUDE_PROPERTIES>]
+          Include episode custom properties (requires API access to episode properties)
+
+          [default: false]
+
+      --properties-query <PROPERTIES_QUERY>
+          Filter by episode custom properties, for example 'weather:rain note:"night run"' (requires API access to episode properties)
 
   -h, --help
           Print help

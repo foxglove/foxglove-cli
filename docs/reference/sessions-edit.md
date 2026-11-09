@@ -5,9 +5,9 @@
 [Command reference](README.md) · [Parent command](sessions.md)
 
 ```text
-Change or remove a session key
+Change a session's key or custom properties
 
-Usage: foxglove sessions edit [OPTIONS] <--key <KEY>|--remove-key> <SESSION_ID_OR_KEY>
+Usage: foxglove sessions edit [OPTIONS] <--key <KEY>|--remove-key|--property <PROPERTY>|--remove-property <REMOVE_PROPERTY>> <SESSION_ID_OR_KEY>
 
 Arguments:
   <SESSION_ID_OR_KEY>
@@ -33,6 +33,12 @@ Options:
 
       --remove-key
           Remove the existing session key
+
+  -p, --property <PROPERTY>
+          Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values
+
+      --remove-property <REMOVE_PROPERTY>
+          Remove a property assignment; repeat for more keys
 
   -h, --help
           Print help

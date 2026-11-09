@@ -34,6 +34,21 @@ Options:
   -p, --property <PROPERTY>
           Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values
 
+      --remove-property <REMOVE_PROPERTY>
+          Remove a property assignment; repeat for more keys
+
+      --enabled[=<ENABLED>]
+          Enable or disable the device; a disabled device can't upload recordings
+
+      --remote-access-enabled[=<REMOTE_ACCESS_ENABLED>]
+          Allow or block new remote access sessions to the device
+
+      --retain-recordings-seconds <SECONDS>
+          How long Foxlet on the device keeps the recordings it creates, in seconds; 0 keeps them indefinitely
+
+      --auto-delete-after-import[=<AUTO_DELETE_AFTER_IMPORT>]
+          Have Foxlet on the device delete recordings once they are uploaded and accepted for import
+
   -h, --help
           Print help
 ```

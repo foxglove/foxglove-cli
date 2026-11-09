@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use super::{
     commit_hint, dataset_endpoint, dataset_not_found, dataset_or_version_not_found,
@@ -10,10 +11,11 @@ use super::{
 };
 use crate::api::ApiError;
 use crate::cli::{
-    DatasetIdArgs, DatasetVersionCompareArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
+    DatasetCommitArgs, DatasetIdArgs, DatasetVersionCloneArgs, DatasetVersionCompareArgs,
+    DatasetVersionEditArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
     DatasetVersionRestoreArgs,
 };
-use crate::episodes::include_recordings;
+use crate::episodes::{episode_include, Episode};
 use crate::output::Format;
 use crate::records::{
     format_list_output, format_record, is_false, plural, warn_if_has_next_cursor, EmptyRequest,
@@ -40,6 +42,26 @@ pub(super) struct DatasetVersion {
     added_episode_count: usize,
     #[serde(rename = "removedEpisodeCount", default)]
     removed_episode_count: usize,
+    #[serde(
+        rename = "changedEpisodeCount",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    changed_episode_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    description: Option<String>,
+    #[serde(
+        rename = "committedByOrgMemberId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    committed_by_org_member_id: Option<String>,
+    #[serde(
+        rename = "committedByApiKeyId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    committed_by_api_key_id: Option<String>,
 }
 
 impl Record for DatasetVersion {
@@ -51,7 +73,11 @@ impl Record for DatasetVersion {
             "Episode Count",
             "Added",
             "Removed",
+            "Changed",
             "Created At",
+            "Description",
+            "Committed By Member",
+            "Committed By API Key",
         ]
     }
 
@@ -68,7 +94,13 @@ impl Record for DatasetVersion {
             self.episode_count.to_string(),
             self.added_episode_count.to_string(),
             self.removed_episode_count.to_string(),
+            self.changed_episode_count
+                .map(|count| count.to_string())
+                .unwrap_or_default(),
             self.created_at.clone(),
+            self.description.clone().unwrap_or_default(),
+            self.committed_by_org_member_id.clone().unwrap_or_default(),
+            self.committed_by_api_key_id.clone().unwrap_or_default(),
         ]
     }
 }
@@ -96,7 +128,11 @@ impl Record for DatasetVersionDetail {
             "Episode Count",
             "Added",
             "Removed",
+            "Changed",
             "Created At",
+            "Description",
+            "Committed By Member",
+            "Committed By API Key",
             "Missing Recordings",
         ]
     }
@@ -111,6 +147,18 @@ impl Record for DatasetVersionDetail {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct DatasetEpisodeChange {
     change: String,
+    #[serde(
+        rename = "previousVersion",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    previous_version: Option<i32>,
+    #[serde(
+        rename = "previousEpisode",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    previous_episode: Option<Episode>,
     #[serde(flatten)]
     entry: DatasetEpisode,
 }
@@ -124,16 +172,29 @@ impl Record for DatasetEpisodeChange {
             "Start Time",
             "End Time",
             "Recordings",
-            "Metadata",
             "Added At",
             "Added In Version",
             "Created At",
+            "Version",
+            "Latest Version",
+            "Custom Properties",
+            "Previous Version",
+            "Previous Custom Properties",
         ]
     }
 
     fn fields(&self) -> Vec<String> {
         let mut fields = vec![self.change.clone()];
-        fields.extend(self.entry.fields());
+        fields.extend(self.entry.membership_fields());
+        fields.push(
+            self.previous_version
+                .map_or_else(String::new, |version| version.to_string()),
+        );
+        fields.push(
+            self.previous_episode
+                .as_ref()
+                .map_or_else(String::new, Episode::property_cell),
+        );
         fields
     }
 }
@@ -147,6 +208,8 @@ struct DatasetChangesetResponse {
     added_count: usize,
     #[serde(default)]
     removed_count: usize,
+    #[serde(default)]
+    changed_count: usize,
     #[serde(default)]
     next_cursor: Option<String>,
 }
@@ -178,18 +241,48 @@ struct RestoreQuery {
     force: bool,
 }
 
-#[derive(Deserialize)]
-struct CommitResponse {
-    committed: DatasetVersion,
+#[derive(Serialize)]
+struct CommitRequest {
+    /// Omitted keeps the draft's description; `Value::Null` clears it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<Value>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloneRequest<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<&'a str>,
+    #[serde(skip_serializing_if = "is_false")]
+    include_history: bool,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+struct ClonedDataset {
+    id: String,
+}
+
+#[derive(Serialize)]
+struct EditVersionRequest<'a> {
+    description: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+struct CommitResponse {
+    committed: DatasetVersion,
+    #[serde(default, rename = "editableVersionNumber")]
+    editable_version_number: Option<i64>,
+}
+
+#[derive(Deserialize)]
 struct DiscardResponse {
-    #[serde(default)]
-    discarded_adds: usize,
-    #[serde(default)]
-    discarded_removes: usize,
+    #[serde(default, rename = "discardedAdds")]
+    adds: usize,
+    #[serde(default, rename = "discardedRemoves")]
+    removes: usize,
+    #[serde(default, rename = "discardedUpdates")]
+    updates: usize,
 }
 
 #[derive(Deserialize)]
@@ -200,9 +293,13 @@ struct RestoreResponse {
     #[serde(default)]
     removed: usize,
     #[serde(default)]
+    updated: usize,
+    #[serde(default)]
     discarded_adds: usize,
     #[serde(default)]
     discarded_removes: usize,
+    #[serde(default)]
+    discarded_updates: usize,
 }
 
 pub(crate) async fn list_versions(
@@ -307,7 +404,11 @@ pub(crate) async fn compare_versions(
         version: args.base_version,
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
-        include: include_recordings(args.include_recordings),
+        include: episode_include(
+            args.include_recordings,
+            args.include_creation_context,
+            args.include_properties,
+        ),
     };
     let page = match runtime
         .client
@@ -342,9 +443,10 @@ pub(crate) async fn compare_versions(
     if outcome.exit_code == 0 {
         outcome.stderr.extend_from_slice(
             format!(
-                "{} added, {} removed\n",
+                "{} added, {} removed, {} changed\n",
                 plural(page.added_count, "episode"),
-                page.removed_count
+                page.removed_count,
+                page.changed_count
             )
             .as_bytes(),
         );
@@ -398,55 +500,170 @@ pub(crate) async fn restore_version(
 
 fn restore_summary(response: &RestoreResponse, args: &DatasetVersionRestoreArgs) -> String {
     let mut summary = String::new();
-    if response.discarded_adds > 0 || response.discarded_removes > 0 {
+    if response.discarded_adds > 0
+        || response.discarded_removes > 0
+        || response.discarded_updates > 0
+    {
         let _ = writeln!(
             summary,
             "Discarded {}",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(
+                response.discarded_adds,
+                response.discarded_removes,
+                response.discarded_updates
+            )
         );
     }
-    if response.added == 0 && response.removed == 0 {
+    if response.added == 0 && response.removed == 0 && response.updated == 0 {
         let _ = writeln!(summary, "The draft matches version {}", args.version);
     } else {
-        let _ = writeln!(
+        let _ = write!(
             summary,
             "Restored version {} into the draft: {} added, {} removed",
             args.version,
             plural(response.added, "episode"),
             response.removed
         );
+        if response.updated > 0 {
+            let _ = write!(summary, ", {} changed", response.updated);
+        }
+        summary.push('\n');
         summary.push_str(&commit_hint(&args.dataset_id));
     }
     summary
 }
 
-fn pending_changes(additions: usize, removals: usize) -> String {
-    match (additions, removals) {
-        (additions, 0) => plural(additions, "pending addition"),
-        (0, removals) => plural(removals, "pending removal"),
-        (additions, removals) => format!(
-            "{} and {}",
-            plural(additions, "pending addition"),
-            plural(removals, "pending removal")
-        ),
+fn pending_changes(additions: usize, removals: usize, updates: usize) -> String {
+    let mut parts: Vec<String> = [
+        (additions, "pending addition"),
+        (removals, "pending removal"),
+        (updates, "pending episode version update"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, noun)| plural(count, noun))
+    .collect();
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", parts.join(", "))
     }
 }
 
-pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> Outcome {
+pub(crate) async fn edit_version(runtime: &Runtime, args: &DatasetVersionEditArgs) -> Outcome {
+    let request = EditVersionRequest {
+        description: Some(args.description.as_str()).filter(|description| !description.is_empty()),
+    };
+    match runtime
+        .client
+        .patch::<_, _, Value>(
+            &format!(
+                "{}/versions/{}",
+                dataset_endpoint(&args.dataset_id),
+                args.version
+            ),
+            &(),
+            &request,
+        )
+        .await
+    {
+        Ok(_) => Outcome::notice(format!(
+            "Version {} of dataset {} updated\n",
+            args.version, args.dataset_id
+        )),
+        Err(error) if error.is_bare_not_found() => {
+            dataset_or_version_not_found(&args.dataset_id, args.version)
+        }
+        Err(error) if error.is_not_found_for("version") => {
+            version_not_found(&args.dataset_id, args.version)
+        }
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
+        Err(error) => Outcome::failure(format!("Failed to edit dataset version: {error}\n")),
+    }
+}
+
+pub(crate) async fn clone_version(runtime: &Runtime, args: &DatasetVersionCloneArgs) -> Outcome {
+    if args.name.trim().is_empty() {
+        return Outcome::failure("--name cannot be empty\n");
+    }
+    let request = CloneRequest {
+        name: &args.name,
+        description: args
+            .description
+            .as_deref()
+            .filter(|description| !description.is_empty()),
+        include_history: args.include_history,
+    };
+    match runtime
+        .client
+        .post::<_, ClonedDataset>(
+            &format!(
+                "{}/versions/{}/clone",
+                dataset_endpoint(&args.dataset_id),
+                args.version
+            ),
+            &request,
+        )
+        .await
+    {
+        Ok(dataset) => Outcome::notice(format!(
+            "Dataset created: {}\nCloned from version {} of dataset {}\n",
+            dataset.id, args.version, args.dataset_id
+        )),
+        Err(error) if error.is_bare_not_found() => Outcome::failure(format!(
+            "Dataset {} not found, or it has no committed version {}\n",
+            args.dataset_id, args.version
+        )),
+        Err(error) if error.is_not_found_for("version") => Outcome::failure(format!(
+            "Committed version {} of dataset {} not found\n",
+            args.version, args.dataset_id
+        )),
+        Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
+        Err(ApiError::Response { status: 409, .. }) => Outcome::failure(format!(
+            "A dataset named {:?} already exists in this project\n",
+            args.name
+        )),
+        Err(error) => Outcome::failure(format!(
+            "Failed to clone version {}: {error}\n",
+            args.version
+        )),
+    }
+}
+
+pub(crate) async fn commit_dataset(runtime: &Runtime, args: &DatasetCommitArgs) -> Outcome {
     match runtime
         .client
         .post::<_, CommitResponse>(
             &format!("{}/commit", dataset_endpoint(&args.dataset_id)),
-            &EmptyRequest {},
+            &CommitRequest {
+                description: args.description.as_deref().map(|description| {
+                    if description.is_empty() {
+                        Value::Null
+                    } else {
+                        Value::from(description)
+                    }
+                }),
+            },
         )
         .await
     {
-        Ok(CommitResponse { committed }) => Outcome::notice(format!(
-            "Committed version {} with {} ({} added, {} removed)\n",
+        Ok(CommitResponse {
+            committed,
+            editable_version_number,
+        }) => Outcome::notice(format!(
+            "Committed version {} with {} ({} added, {} removed{}){}\n",
             committed.version_number,
             plural(committed.episode_count, "episode"),
             committed.added_episode_count,
-            committed.removed_episode_count
+            committed.removed_episode_count,
+            committed
+                .changed_episode_count
+                .map(|count| format!(", {count} changed"))
+                .unwrap_or_default(),
+            editable_version_number
+                .map(|number| format!("; version {number} is now the draft"))
+                .unwrap_or_default()
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to commit dataset: {error}\n")),
@@ -462,12 +679,12 @@ pub(crate) async fn discard_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> 
         )
         .await
     {
-        Ok(response) if response.discarded_adds == 0 && response.discarded_removes == 0 => {
+        Ok(response) if response.adds == 0 && response.removes == 0 && response.updates == 0 => {
             Outcome::notice("No pending changes to discard\n")
         }
         Ok(response) => Outcome::notice(format!(
             "Discarded {}\n",
-            pending_changes(response.discarded_adds, response.discarded_removes)
+            pending_changes(response.adds, response.removes, response.updates)
         )),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to discard dataset changes: {error}\n")),
@@ -483,19 +700,42 @@ mod tests {
     fn the_uncommitted_version_is_listed_as_the_draft() {
         let versions: Vec<DatasetVersion> = serde_json::from_value(serde_json::json!([
             {"versionNumber": 5, "createdAt": "2024-01-03T00:00:00Z", "episodeCount": 12, "addedEpisodeCount": 3, "removedEpisodeCount": 1},
-            {"versionNumber": 4, "committedAt": "2024-01-02T00:00:00Z", "createdAt": "2024-01-01T00:00:00Z", "episodeCount": 10, "addedEpisodeCount": 10, "removedEpisodeCount": 0},
+            {"versionNumber": 4, "committedAt": "2024-01-02T00:00:00Z", "createdAt": "2024-01-01T00:00:00Z", "episodeCount": 10, "addedEpisodeCount": 10, "removedEpisodeCount": 0, "description": "Night drives", "committedByApiKeyId": "key_one"},
         ]))
         .unwrap();
         assert_eq!(
             versions[0].fields(),
-            ["5", "draft", "", "12", "3", "1", "2024-01-03T00:00:00Z"]
+            [
+                "5",
+                "draft",
+                "",
+                "12",
+                "3",
+                "1",
+                "",
+                "2024-01-03T00:00:00Z",
+                "",
+                "",
+                ""
+            ]
         );
         assert_eq!(
             versions[1].fields()[1..3],
             ["committed", "2024-01-02T00:00:00Z"]
         );
+        assert_eq!(versions[1].fields()[8..], ["Night drives", "", "key_one"]);
         let output = serde_json::to_value(&versions[0]).unwrap();
-        assert!(output.get("committedAt").is_none());
+        for omitted in [
+            "committedAt",
+            "description",
+            "committedByOrgMemberId",
+            "committedByApiKeyId",
+        ] {
+            assert!(output.get(omitted).is_none(), "{omitted}");
+        }
+        let output = serde_json::to_value(&versions[1]).unwrap();
+        assert_eq!(output["description"], "Night drives");
+        assert_eq!(output["committedByApiKeyId"], "key_one");
     }
 
     #[test]
@@ -508,6 +748,8 @@ mod tests {
             "addedEpisodeCount": 10,
             "removedEpisodeCount": 0,
             "hasMissingRecordings": true,
+            "changedEpisodeCount": 3,
+            "committedByOrgMemberId": "mem_one",
         }))
         .unwrap();
         assert_eq!(DatasetVersionDetail::headers().len(), detail.fields().len());
@@ -515,29 +757,39 @@ mod tests {
         let output = serde_json::to_value(&detail).unwrap();
         assert_eq!(output["versionNumber"], 4);
         assert_eq!(output["hasMissingRecordings"], true);
+        assert_eq!(output["changedEpisodeCount"], 3);
+        assert_eq!(output["committedByOrgMemberId"], "mem_one");
+        assert_eq!(detail.fields()[6], "3");
+        assert_eq!(detail.fields()[9], "mem_one");
     }
 
     #[test]
     fn a_change_leads_with_its_side_and_keeps_the_membership_columns() {
+        // Comparisons omit whether recordings are missing, so the change keeps every
+        // membership column except the trailing Missing Recordings column.
+        let membership = DatasetEpisode::headers().split_last().unwrap().1;
         assert_eq!(
-            DatasetEpisodeChange::headers()[1..],
-            *DatasetEpisode::headers()
+            DatasetEpisodeChange::headers()[1..=membership.len()],
+            *membership
         );
+        assert!(!DatasetEpisodeChange::headers().contains(&"Missing Recordings"));
         let change: DatasetEpisodeChange = serde_json::from_value(serde_json::json!({
             "change": "removed",
             "addedAt": "2024-01-02T03:04:08Z",
             "addedInVersion": 2,
             "episode": {
                 "id": "ep_fixture",
+                "version": 1,
+                "latestVersion": 1,
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",
-                "metadata": {},
                 "createdAt": "2024-01-02T03:04:07Z",
             },
         }))
         .unwrap();
         let fields = change.fields();
+        assert_eq!(fields.len(), DatasetEpisodeChange::headers().len());
         assert_eq!(fields[..2], ["removed", "ep_fixture"]);
         let output = serde_json::to_value(&change).unwrap();
         assert_eq!(output["change"], "removed");

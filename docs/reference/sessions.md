@@ -12,7 +12,7 @@ Usage: foxglove sessions [OPTIONS] <COMMAND>
 Commands:
   add         Create a session
   delete      Delete a session
-  edit        Change or remove a session key
+  edit        Change a session's key or custom properties
   get         Get a session by ID or key
   list        List sessions in your organization
   recordings  List, add, or remove recordings in a session

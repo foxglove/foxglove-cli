@@ -7,7 +7,7 @@
 ```text
 Add an event
 
-Usage: foxglove events add [OPTIONS] --device-id <DEVICE_ID> --end <END> --start <START>
+Usage: foxglove events add [OPTIONS] --end <END> --start <START> <--device-id <DEVICE_ID>|--device-name <DEVICE_NAME>>
 
 Options:
       --client-id <CLIENT_ID>
@@ -20,12 +20,15 @@ Options:
           Config file
 
       --device-id <DEVICE_ID>
-          Device ID (required)
+          Device ID (required unless --device-name is given)
 
       --debug[=<DEBUG>]
           Print debug diagnostics, including HTTP requests, to stderr
 
           [default: false]
+
+      --device-name <DEVICE_NAME>
+          Device name, looked up in the project (required unless --device-id is given)
 
       --end <END>
           End of event (inclusive), RFC 3339 (required)
@@ -35,6 +38,9 @@ Options:
 
   -m, --metadata <METADATA>
           Metadata colon-separated key/value pair
+
+  -p, --property <PROPERTY>
+          Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values
 
       --start <START>
           Start of event, RFC 3339 (required)

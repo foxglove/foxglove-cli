@@ -54,18 +54,6 @@ pub(crate) fn parse_timestamp_value(
     Ok(Some(parse_datetime(raw, label)?))
 }
 
-pub(crate) fn parse_timestamp_millis(raw: &str, label: &str) -> Result<String, String> {
-    if raw.is_empty() {
-        return Ok(String::new());
-    }
-    let parsed = parse_datetime(raw, label)?;
-    parsed
-        .replace_nanosecond(u32::from(parsed.millisecond()) * 1_000_000)
-        .map_err(|error| format!("failed to parse {label} time: {error}"))?
-        .format(&Rfc3339)
-        .map_err(|error| format!("failed to format {label} time: {error}"))
-}
-
 fn parse_datetime(raw: &str, label: &str) -> Result<OffsetDateTime, String> {
     OffsetDateTime::parse(raw, &Rfc3339)
         .map_err(|error| error.to_string())
@@ -380,28 +368,6 @@ mod tests {
                 "{input}"
             );
         }
-    }
-
-    #[test]
-    fn millisecond_timestamps_keep_fractions_down_to_the_millisecond() {
-        for (input, expected) in [
-            ("", ""),
-            ("2026-09-14", "2026-09-14T00:00:00Z"),
-            ("2026-09-14T12:34:56.25Z", "2026-09-14T12:34:56.25Z"),
-            ("2026-09-14T12:34:56.123456789", "2026-09-14T12:34:56.123Z"),
-            ("2026-09-14T12:34:56.9999Z", "2026-09-14T12:34:56.999Z"),
-            ("2026-09-14T12:34:56.5+0545", "2026-09-14T12:34:56.5+05:45"),
-            ("2026-09-14T1:2:3.004", "2026-09-14T01:02:03.004Z"),
-        ] {
-            assert_eq!(
-                parse_timestamp_millis(input, "start").unwrap(),
-                expected,
-                "{input}"
-            );
-        }
-        assert!(parse_timestamp_millis("2026-02-30", "end")
-            .unwrap_err()
-            .starts_with("failed to parse end time:"));
     }
 
     #[test]

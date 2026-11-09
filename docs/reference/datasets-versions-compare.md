@@ -5,7 +5,7 @@
 [Command reference](README.md) · [Parent command](datasets-versions.md)
 
 ```text
-List the episodes added and removed between two versions
+List the episodes added, removed, or changed between two versions
 
 Usage: foxglove datasets versions compare [OPTIONS] <DATASET_ID> <BASE_VERSION> <TARGET_VERSION>
 
@@ -40,6 +40,11 @@ Options:
 
           [default: false]
 
+      --include-creation-context[=<INCLUDE_CREATION_CONTEXT>]
+          Include each episode's creation context: the selection or search that produced it
+
+          [default: false]
+
       --include-recordings[=<INCLUDE_RECORDINGS>]
           Include the member recordings of each episode
 
@@ -47,6 +52,11 @@ Options:
 
       --limit <LIMIT>
           Maximum number of changes to return (1-2000, default: 50)
+
+      --include-properties[=<INCLUDE_PROPERTIES>]
+          Include episode custom properties (requires API access to episode properties)
+
+          [default: false]
 
   -h, --help
           Print help

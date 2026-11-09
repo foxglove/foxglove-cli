@@ -33,6 +33,9 @@ Options:
 
           [default: false]
 
+      --name <NAME>
+          Filter to datasets whose name contains this value, ignoring case
+
       --project-id <PROJECT_ID>
           Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)
 

@@ -4,11 +4,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::{encode_path_segment, ApiError};
-use crate::cli::{RecordingDeleteArgs, RecordingListArgs, RecordingTransferArgs};
+use crate::cli::{RecordingDeleteArgs, RecordingGetArgs, RecordingListArgs, RecordingTransferArgs};
+use crate::episodes::RecordingObjectLocation;
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, is_zero, null_to_default, parse_timestamp, DeviceSummary,
-    ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, is_zero, null_to_default, parse_timestamp,
+    DeviceSummary, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -55,6 +56,8 @@ struct Recording {
     session_id: String,
     #[serde(rename = "projectId")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    location: Option<RecordingObjectLocation>,
 }
 
 impl Record for Recording {
@@ -120,6 +123,8 @@ struct RecordingListQuery {
     #[serde(skip_serializing_if = "String::is_empty")]
     import_status: String,
     limit: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    metadata_query: String,
     #[serde(skip_serializing_if = "is_zero")]
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -138,6 +143,8 @@ struct RecordingListQuery {
     sort_order: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    topic: String,
 }
 
 pub(crate) async fn list_recordings(
@@ -171,6 +178,7 @@ pub(crate) async fn list_recordings(
         end,
         import_status: args.import_status.clone().unwrap_or_default(),
         limit,
+        metadata_query: args.metadata_query.clone().unwrap_or_default(),
         offset,
         path: args.path.clone().unwrap_or_default(),
         project_id,
@@ -184,6 +192,7 @@ pub(crate) async fn list_recordings(
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
         start,
+        topic: args.topic.clone().unwrap_or_default(),
     };
     fetch_list::<Recording, _>(
         runtime,
@@ -194,6 +203,27 @@ pub(crate) async fn list_recordings(
         Some(limit),
     )
     .await
+}
+
+pub(crate) async fn get_recording(
+    runtime: &Runtime,
+    args: &RecordingGetArgs,
+    format: Format,
+) -> Outcome {
+    match runtime
+        .client
+        .get::<_, Recording>(
+            &format!("/v1/recordings/{}", encode_path_segment(&args.id)),
+            &(),
+        )
+        .await
+    {
+        Ok(recording) => format_record(&recording, format),
+        Err(error) if error.is_not_found_for("recording") => {
+            Outcome::failure(format!("Recording not found: {}\n", args.id))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get recording: {error}\n")),
+    }
 }
 
 pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteArgs) -> Outcome {
@@ -213,8 +243,10 @@ pub(crate) async fn delete_recording(runtime: &Runtime, args: &RecordingDeleteAr
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TransferResponse {
-    id: String,
-    import_status: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    import_status: Option<String>,
 }
 
 pub(crate) async fn transfer_recording(runtime: &Runtime, args: &RecordingTransferArgs) -> Outcome {
@@ -234,17 +266,20 @@ fn transfer_outcome(id: &str, result: Result<TransferResponse, ApiError>) -> Out
             // This command initiates an asynchronous request: HTTP success determines
             // its exit status, while importStatus reports processing state, not the
             // outcome of waiting for completion. Preserve even unfamiliar statuses.
-            let message = match response.import_status.as_str() {
-                "complete" => "Recording already available at its Primary Site",
-                "pending" | "importing" => "Transfer request accepted",
-                _ => "Recording transfer status",
+            let response_id = response.id.as_deref().unwrap_or(id);
+            let stderr = match response.import_status.as_deref() {
+                Some(status) => {
+                    let message = match status {
+                        "complete" => "Recording already available at its Primary Site",
+                        "pending" | "importing" => "Transfer request accepted",
+                        _ => "Recording transfer status",
+                    };
+                    format!("{message}: {response_id} (importStatus: {status})\n")
+                }
+                None => format!("Transfer request accepted: {response_id}\n"),
             };
             Outcome {
-                stderr: format!(
-                    "{message}: {} (importStatus: {})\n",
-                    response.id, response.import_status
-                )
-                .into_bytes(),
+                stderr: stderr.into_bytes(),
                 ..Outcome::default()
             }
         }
@@ -272,8 +307,8 @@ mod tests {
             let outcome = transfer_outcome(
                 "rec_example",
                 Ok(TransferResponse {
-                    id: "rec_example".into(),
-                    import_status: status.into(),
+                    id: Some("rec_example".into()),
+                    import_status: Some(status.into()),
                 }),
             );
             assert_eq!(outcome.exit_code, 0);
@@ -283,6 +318,10 @@ mod tests {
                 format!("{message}: rec_example (importStatus: {status})\n").as_bytes()
             );
         }
+        let response: TransferResponse = serde_json::from_value(serde_json::json!({})).unwrap();
+        let outcome = transfer_outcome("rec_example", Ok(response));
+        assert_eq!(outcome.exit_code, 0);
+        assert_eq!(outcome.stderr, b"Transfer request accepted: rec_example\n");
         let outcome = transfer_outcome(
             "rec_missing",
             Err(ApiError::NotFound {
@@ -314,5 +353,22 @@ mod tests {
                 assert_eq!(output[field], expected, "{field}");
             }
         }
+    }
+
+    #[test]
+    fn a_recording_location_is_kept_in_json_output() {
+        let mut response = serde_json::json!({"id":"rec_fixture","path":"fixture.mcap","size":128,"createdAt":"2024-01-02T03:04:05Z","start":"2024-01-02T03:04:05Z","end":"2024-01-02T03:04:06Z","importStatus":"complete","projectId":"prj_default"});
+        let record: Recording = serde_json::from_value(response.clone()).unwrap();
+        assert!(serde_json::to_value(record)
+            .unwrap()
+            .get("location")
+            .is_none());
+        response["location"] =
+            serde_json::json!({"scheme": "s3", "bucket": "robot-logs", "path": "fleet/one.mcap"});
+        let record: Recording = serde_json::from_value(response).unwrap();
+        assert_eq!(
+            serde_json::to_value(record).unwrap()["location"],
+            serde_json::json!({"scheme": "s3", "bucket": "robot-logs", "path": "fleet/one.mcap"})
+        );
     }
 }

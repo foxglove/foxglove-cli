@@ -22,19 +22,25 @@ Options:
       --config <CONFIG>
           Config file
 
-      --device-id <DEVICE_ID>
-          Device ID
+      --created-after <CREATED_AFTER>
+          Only events created after this time
 
       --debug[=<DEBUG>]
           Print debug diagnostics, including HTTP requests, to stderr
 
           [default: false]
 
+      --device-id <DEVICE_ID>
+          Device ID
+
       --device-name <DEVICE_NAME>
           Device name
 
       --end <END>
           Exclude events after this time
+
+      --event-id <EVENT_ID>
+          Only the event with this ID
 
       --event-type-id <EVENT_TYPE_ID>
           Event type ID
@@ -62,6 +68,9 @@ Options:
 
       --start <START>
           Exclude events before this time
+
+      --updated-after <UPDATED_AFTER>
+          Only events updated after this time
 
   -h, --help
           Print help

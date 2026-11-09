@@ -1,14 +1,22 @@
 //! Device commands.
 
+mod property_intervals;
+
+pub(crate) use property_intervals::{
+    get_property_interval, list_property_intervals, update_property_interval,
+};
+
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Number, Value};
 use std::collections::BTreeMap;
 
 use crate::api::encode_path_segment;
-use crate::cli::{DeviceAddArgs, DeviceEditArgs, DeviceListArgs};
+use crate::cli::{DeviceAddArgs, DeviceDeleteArgs, DeviceEditArgs, DeviceGetArgs, DeviceListArgs};
+use crate::custom_properties::{check_property_edits, properties, remove_properties};
 use crate::output::Format;
 use crate::records::{
-    compact_json, fetch_list, is_zero, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    compact_json, fetch_list, format_record, is_zero, null_to_default, ProjectFallback, Record,
+    DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -19,12 +27,46 @@ struct Device {
     name: String,
     #[serde(default)]
     properties: Value,
-    #[serde(rename = "createdAt")]
+    #[serde(
+        rename = "createdAt",
+        default,
+        deserialize_with = "null_to_default",
+        skip_serializing_if = "String::is_empty"
+    )]
     created_at: String,
-    #[serde(rename = "updatedAt")]
+    #[serde(
+        rename = "updatedAt",
+        default,
+        deserialize_with = "null_to_default",
+        skip_serializing_if = "String::is_empty"
+    )]
     updated_at: String,
     #[serde(rename = "projectId")]
     project_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    #[serde(
+        rename = "remoteAccessEnabled",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    remote_access_enabled: Option<bool>,
+    #[serde(
+        rename = "retainRecordingsSeconds",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    retain_recordings_seconds: Option<Number>,
+    #[serde(
+        rename = "autoDeleteAfterImport",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    auto_delete_after_import: Option<bool>,
+}
+
+fn optional_cell(value: Option<impl ToString>) -> String {
+    value.map(|value| value.to_string()).unwrap_or_default()
 }
 
 impl Record for Device {
@@ -36,6 +78,10 @@ impl Record for Device {
             "Created At",
             "Updated At",
             "Project ID",
+            "Enabled",
+            "Remote Access Enabled",
+            "Retain Recordings Seconds",
+            "Auto Delete After Import",
         ]
     }
 
@@ -51,6 +97,10 @@ impl Record for Device {
             self.created_at.clone(),
             self.updated_at.clone(),
             self.project_id.clone(),
+            optional_cell(self.enabled),
+            optional_cell(self.remote_access_enabled),
+            optional_cell(self.retain_recordings_seconds.as_ref()),
+            optional_cell(self.auto_delete_after_import),
         ]
     }
 }
@@ -63,6 +113,12 @@ struct DeviceListQuery {
     offset: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    query: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_order: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -81,6 +137,9 @@ pub(crate) async fn list_devices(
         limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
         offset: args.offset.unwrap_or_default(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
+        query: args.query.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: args.sort_order.clone(),
     };
     fetch_list::<Device, _>(
         runtime,
@@ -93,23 +152,63 @@ pub(crate) async fn list_devices(
     .await
 }
 
-#[derive(Deserialize)]
-struct CustomPropertyDefinition {
-    key: String,
-    #[serde(rename = "valueType")]
-    value_type: String,
-    #[serde(rename = "enumValues", default)]
-    enum_values: Vec<String>,
+pub(crate) async fn get_device(runtime: &Runtime, args: &DeviceGetArgs, format: Format) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    match runtime
+        .client
+        .get::<_, Device>(
+            &format!("/v1/devices/{}", encode_path_segment(&args.device)),
+            &query,
+        )
+        .await
+    {
+        Ok(device) => format_record(&device, format),
+        Err(error) if error.is_not_found_for("device") => {
+            Outcome::failure(format!("Device not found: {}\n", args.device))
+        }
+        Err(error) => Outcome::failure(format!("Failed to get device: {error}\n")),
+    }
 }
 
-#[derive(Serialize)]
+pub(crate) async fn delete_device(runtime: &Runtime, args: &DeviceDeleteArgs) -> Outcome {
+    let query = ProjectQuery {
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+    };
+    match runtime
+        .client
+        .delete_with_query(
+            &format!("/v1/devices/{}", encode_path_segment(&args.device)),
+            &query,
+        )
+        .await
+    {
+        Ok(()) => Outcome::notice(format!("Device deleted: {}\n", args.device)),
+        Err(error) if error.is_not_found_for("device") => {
+            Outcome::failure(format!("Device not found: {}\n", args.device))
+        }
+        Err(error) => Outcome::failure(format!("Failed to delete device: {error}\n")),
+    }
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DeviceRequest {
     #[serde(skip_serializing_if = "String::is_empty")]
     name: String,
-    #[serde(rename = "projectId", skip_serializing_if = "String::is_empty")]
+    #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     properties: Option<BTreeMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remote_access_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retain_recordings_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_delete_after_import: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -118,85 +217,11 @@ struct DeviceResponse {
     name: String,
 }
 
-async fn device_properties(
-    runtime: &Runtime,
-    pairs: &[String],
-) -> Result<Option<BTreeMap<String, Value>>, String> {
-    if pairs.is_empty() {
-        return Ok(None);
-    }
-    let query = [("resourceType", "device")];
-    let definitions = runtime
-        .client
-        .get::<_, Vec<CustomPropertyDefinition>>("/v1/custom-properties", &query)
-        .await
-        .map_err(|error| format!("failed to load custom properties: {error}"))?;
-    let definitions = definitions
-        .into_iter()
-        .map(|definition| (definition.key.clone(), definition))
-        .collect::<BTreeMap<_, _>>();
-    let mut properties = BTreeMap::new();
-    for pair in pairs {
-        let Some((key, raw_value)) = pair.split_once(':') else {
-            return Err(format!("invalid key/value pair: {pair}"));
-        };
-        if key.is_empty() {
-            return Err(format!("invalid key/value pair: {pair}"));
-        }
-        let Some(definition) = definitions.get(key) else {
-            return Err(format!("unknown key: {key}"));
-        };
-        let value = match definition.value_type.as_str() {
-            "string" | "multiline-string" => Value::String(raw_value.to_owned()),
-            "number" => {
-                let number = raw_value
-                    .parse::<f64>()
-                    .map_err(|_| format!("invalid value for number: {raw_value}"))?;
-                serde_json::from_str(&number.to_string())
-                    .map_err(|_| format!("invalid value for number: {raw_value}"))?
-            }
-            "boolean" => match raw_value {
-                "1" | "t" | "T" | "TRUE" | "true" | "True" => Value::Bool(true),
-                "0" | "f" | "F" | "FALSE" | "false" | "False" => Value::Bool(false),
-                _ => return Err(format!("invalid value for boolean: {raw_value}")),
-            },
-            "enum"
-                if definition
-                    .enum_values
-                    .iter()
-                    .any(|value| value == raw_value) =>
-            {
-                Value::String(raw_value.to_owned())
-            }
-            "multi-enum"
-                if definition
-                    .enum_values
-                    .iter()
-                    .any(|value| value == raw_value) =>
-            {
-                let mut values = match properties.remove(key) {
-                    Some(Value::Array(values)) => values,
-                    _ => Vec::new(),
-                };
-                let value = Value::String(raw_value.to_owned());
-                if !values.contains(&value) {
-                    values.push(value);
-                }
-                Value::Array(values)
-            }
-            "enum" | "multi-enum" => return Err(format!("invalid enum value: {raw_value}")),
-            other => return Err(format!("unsupported type: {other}")),
-        };
-        properties.insert(key.to_owned(), value);
-    }
-    Ok(Some(properties))
-}
-
 pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceAddArgs) -> Outcome {
     if args.name.trim().is_empty() {
         return Outcome::failure("--name cannot be empty\n");
     }
-    let properties = match device_properties(runtime, &args.property).await {
+    let properties = match properties(runtime, "device", &args.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to create device: {error}\n")),
     };
@@ -204,6 +229,7 @@ pub(crate) async fn add_device(runtime: &Runtime, args: &DeviceAddArgs) -> Outco
         name: args.name.clone(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         properties,
+        ..DeviceRequest::default()
     };
     match runtime
         .client
@@ -224,12 +250,31 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
     {
         return Outcome::failure("--name cannot be empty\n");
     }
-    let properties = match device_properties(runtime, &args.update.property).await {
+    let update = &args.update;
+    if let Err(error) = check_property_edits(&update.property, &update.remove_property) {
+        return Outcome::failure(format!("{error}\n"));
+    }
+    let mut properties = match properties(runtime, "device", &update.property).await {
         Ok(properties) => properties,
         Err(error) => return Outcome::failure(format!("Failed to edit device: {error}\n")),
     };
-    let name = args.update.name.clone().unwrap_or_default();
-    if name.is_empty() && properties.is_none() {
+    remove_properties(&mut properties, &update.remove_property);
+    let request = DeviceRequest {
+        name: update.name.clone().unwrap_or_default(),
+        project_id: String::new(),
+        properties,
+        enabled: update.enabled,
+        remote_access_enabled: update.remote_access_enabled,
+        retain_recordings_seconds: update.retain_recordings_seconds,
+        auto_delete_after_import: update.auto_delete_after_import,
+    };
+    if request.name.is_empty()
+        && request.properties.is_none()
+        && request.enabled.is_none()
+        && request.remote_access_enabled.is_none()
+        && request.retain_recordings_seconds.is_none()
+        && request.auto_delete_after_import.is_none()
+    {
         return Outcome::failure("Nothing to update\n");
     }
     let query = ProjectQuery {
@@ -238,11 +283,6 @@ pub(crate) async fn edit_device(runtime: &Runtime, args: &DeviceEditArgs) -> Out
             .project_id
             .clone()
             .or_project(&runtime.project_id),
-    };
-    let request = DeviceRequest {
-        name,
-        project_id: String::new(),
-        properties,
     };
     match runtime
         .client

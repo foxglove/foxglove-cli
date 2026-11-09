@@ -1,7 +1,6 @@
 //! Dataset version download.
 
-use std::collections::HashMap;
-use std::fmt::Write as _;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -61,7 +60,8 @@ struct ManifestSelection {
 #[serde(rename_all = "lowercase")]
 enum Status {
     Downloaded,
-    Skipped,
+    /// Earlier releases recorded episodes with no data left as `skipped`.
+    #[serde(alias = "skipped")]
     Failed,
 }
 
@@ -70,17 +70,22 @@ enum Status {
 struct ManifestEpisode {
     index: usize,
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    version: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     file: Option<String>,
     start_time: String,
     end_time: String,
-    metadata: Value,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    properties: Option<BTreeMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     byte_size: Option<u64>,
     status: Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Read from manifests that earlier releases wrote, so a rerun refreshes episodes
+    /// they downloaded with missing recordings.
+    #[serde(default, skip_serializing)]
     episode_has_missing_recordings: Option<bool>,
 }
 
@@ -199,6 +204,7 @@ async fn fetch_all_episodes(
     runtime: &Runtime,
     id: &str,
     version_number: i64,
+    include_properties: bool,
 ) -> Result<Vec<DatasetEpisode>, ApiError> {
     let mut episodes = Vec::new();
     let mut cursor: Option<String> = None;
@@ -208,6 +214,9 @@ async fn fetch_all_episodes(
             ("sortBy".to_owned(), "startTime".to_owned()),
             ("sortOrder".to_owned(), "asc".to_owned()),
         ];
+        if include_properties {
+            query.push(("include".to_owned(), "properties".to_owned()));
+        }
         if let Some(next) = cursor.as_deref() {
             query.push(("cursor".to_owned(), next.to_owned()));
         }
@@ -221,7 +230,13 @@ async fn fetch_all_episodes(
                 &query,
             )
             .await?;
-        episodes.extend(page.data.episodes);
+        // Manifests carry properties only when asked for, even if the API sends them anyway.
+        episodes.extend(page.data.episodes.into_iter().map(|mut entry| {
+            if !include_properties {
+                entry.episode.properties = None;
+            }
+            entry
+        }));
         let Some(next) = page.next_cursor else {
             return Ok(episodes);
         };
@@ -280,6 +295,8 @@ fn episode_request(
     };
     Ok(StreamRequest {
         episode_id: entry.episode.id.clone(),
+        // Stream the version this dataset version pins, not the episode's latest.
+        episode_version: Some(entry.episode.version),
         start: Some(bound(&entry.episode.start_time)?),
         end: Some(bound(&entry.episode.end_time)?),
         output_format: "mcap".to_owned(),
@@ -317,7 +334,6 @@ fn is_complete(earlier: &ManifestEpisode) -> bool {
 enum EpisodeResult {
     Reused(u64),
     Downloaded(u64),
-    Skipped,
     Failed(String),
     NotAttempted(String),
 }
@@ -331,68 +347,46 @@ fn manifest_entry(
     kept: Option<u64>,
     file: String,
 ) -> (ManifestEpisode, Option<String>) {
-    let missing_recordings = entry.has_missing_recordings == Some(true);
-    let (status, byte_size, reason, missing, note) = match result {
+    let (status, byte_size, reason, note) = match result {
         EpisodeResult::Reused(size) => (
             Status::Downloaded,
             Some(*size),
             None,
-            Some(false),
             Some(format!("{size} bytes already downloaded")),
         ),
-        EpisodeResult::Downloaded(size) => (
-            Status::Downloaded,
-            Some(*size),
-            None,
-            Some(missing_recordings),
-            missing_recordings.then(|| "some of its recordings are no longer available".to_owned()),
-        ),
-        EpisodeResult::Skipped => (
-            Status::Skipped,
-            None,
-            Some(NO_DATA_LEFT_REASON.to_owned()),
-            None,
-            Some(format!("skipped: {NO_DATA_LEFT_REASON}")),
-        ),
+        EpisodeResult::Downloaded(size) => (Status::Downloaded, Some(*size), None, None),
         EpisodeResult::Failed(reason) => (
             Status::Failed,
             None,
             Some(reason.clone()),
-            None,
             Some(format!("failed: {reason}")),
         ),
         EpisodeResult::NotAttempted(reason) => (
             Status::Failed,
             None,
             Some(format!("Not attempted: {reason}")),
-            None,
             Some(format!("not attempted: {reason}")),
         ),
     };
     let mut episode = ManifestEpisode {
         index,
         id: entry.episode.id.clone(),
+        version: Some(entry.episode.version),
         file: byte_size.map(|_| file.clone()),
         start_time: entry.episode.start_time.clone(),
         end_time: entry.episode.end_time.clone(),
-        metadata: entry.episode.metadata.clone(),
+        properties: entry.episode.properties.clone(),
         byte_size,
         status,
         reason,
-        episode_has_missing_recordings: missing,
+        episode_has_missing_recordings: None,
     };
     let Some(size) = kept else {
         return (episode, note);
     };
-    // A skip means no data is left to download, so the earlier file is the download. A
-    // failure stays a failure, with the earlier file listed so the next run can find it.
-    if status == Status::Skipped {
-        episode.status = Status::Downloaded;
-        episode.reason = None;
-    }
+    // A failure stays a failure, with the earlier file listed so the next run can find it.
     episode.file = Some(file);
     episode.byte_size = Some(size);
-    episode.episode_has_missing_recordings = Some(true);
     let note = note.map(|note| format!("{size} bytes kept from an earlier run ({note})"));
     (episode, note)
 }
@@ -412,6 +406,7 @@ fn checkpoint(
         if let Some(episode) = earlier.get(&name) {
             manifest.episodes.push(ManifestEpisode {
                 file: Some(format!("{prefix}/{name}")),
+                properties: entry.episode.properties.clone(),
                 ..episode.clone()
             });
         }
@@ -439,7 +434,9 @@ async fn download_episodes(
         let name = episode_file_name(index, &entry.episode.id);
         let path = directory.join(&name);
         let on_disk = earlier.get(&name).filter(|episode| {
-            std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
+            // A file without the pinned version may hold another episode version's data.
+            episode.version == Some(entry.episode.version)
+                && std::fs::metadata(&path).is_ok_and(|file| Some(file.len()) == episode.byte_size)
         });
         let result = if let Some(complete) = on_disk.filter(|episode| is_complete(episode)) {
             EpisodeResult::Reused(complete.byte_size.unwrap_or_default())
@@ -453,7 +450,7 @@ async fn download_episodes(
             match result {
                 Ok(written) => EpisodeResult::Downloaded(written),
                 Err(error) if error.code() == Some(NO_STREAMABLE_RECORDINGS) => {
-                    EpisodeResult::Skipped
+                    EpisodeResult::Failed(NO_DATA_LEFT_REASON.to_owned())
                 }
                 Err(error) => {
                     let reason = error.to_string();
@@ -527,30 +524,28 @@ fn summary(episodes: &[ManifestEpisode], directory: &Path) -> String {
             .filter(|episode| episode.status == status)
             .count()
     };
-    let mut summary = format!(
-        "Downloaded {} of {} episodes to {} ({} failed, {} skipped)\n",
+    format!(
+        "Downloaded {} of {} episodes to {} ({} failed)\n",
         count(Status::Downloaded),
         episodes.len(),
         directory.display(),
         count(Status::Failed),
-        count(Status::Skipped)
-    );
-    let partial = episodes
-        .iter()
-        .filter(|episode| {
-            episode.status == Status::Downloaded
-                && episode.episode_has_missing_recordings == Some(true)
-        })
-        .count();
-    if partial > 0 {
-        let noun = if partial == 1 {
-            "episode has"
-        } else {
-            "episodes have"
-        };
-        let _ = writeln!(summary, "{partial} downloaded {noun} missing recordings");
-    }
-    summary
+    )
+}
+
+/// Explains why a version with missing recordings cannot be downloaded and how to
+/// find the episodes that hold them.
+fn incomplete_version_message(dataset_id: &str, version_number: i64, episodes: usize) -> String {
+    let noun = if episodes == 1 {
+        "episode has"
+    } else {
+        "episodes have"
+    };
+    format!(
+        "Version {version_number} can't be downloaded: {episodes} {noun} recordings that are no longer available.\n\
+         Select another version with --version, or remove the affected episodes from the dataset and commit a new version.\n\
+         List them with: foxglove datasets episodes list {dataset_id} --version {version_number} --has-missing-recordings\n"
+    )
 }
 
 pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadArgs) -> Outcome {
@@ -565,13 +560,31 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         Ok(version) => version,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
-    let episodes = match fetch_all_episodes(runtime, &args.dataset_id, version.version_number).await
+    let episodes = match fetch_all_episodes(
+        runtime,
+        &args.dataset_id,
+        version.version_number,
+        args.include_properties,
+    )
+    .await
     {
         Ok(episodes) => episodes,
         Err(error) => {
             return Outcome::failure(format!("Failed to list dataset episodes: {error}\n"))
         }
     };
+
+    let incomplete = episodes
+        .iter()
+        .filter(|entry| entry.has_missing_recordings == Some(true))
+        .count();
+    if incomplete > 0 {
+        return Outcome::failure(incomplete_version_message(
+            &args.dataset_id,
+            version.version_number,
+            incomplete,
+        ));
+    }
 
     let root = default_directory_name(&dataset.name, version.version_number);
     let directory = args
@@ -601,8 +614,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         selection: ManifestSelection {
             topics: topic_list(args.topics.as_deref()),
-            // The app always includes attachments and never writes this field, so a
-            // default download writes the same manifest as the app.
+            // The app always includes attachments and never writes this field.
+            // Omit it for the default selection.
             include_attachments: (!args.include_attachments).then_some(false),
             episode_count: episodes.len(),
         },
@@ -626,12 +639,10 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         ));
     }
 
-    let failed = manifest.episodes.iter().any(|episode| {
-        episode.status == Status::Failed
-            || args.strict
-                && (episode.status == Status::Skipped
-                    || episode.episode_has_missing_recordings == Some(true))
-    });
+    let failed = manifest
+        .episodes
+        .iter()
+        .any(|episode| episode.status == Status::Failed);
     Outcome {
         stderr: summary(&manifest.episodes, &directory).into_bytes(),
         exit_code: if cancelled { 130 } else { u8::from(failed) },
@@ -700,5 +711,46 @@ mod tests {
             topic_list(Some("/a, /b ,,/c")),
             Some(vec!["/a".to_owned(), "/b".to_owned(), "/c".to_owned()])
         );
+    }
+
+    #[test]
+    fn checkpoints_refresh_properties_for_files_from_an_earlier_run() {
+        use std::collections::HashMap;
+
+        use super::{checkpoint, DatasetEpisode, Manifest, ManifestEpisode};
+
+        for (case, properties) in [None, Some(serde_json::json!({}))].into_iter().enumerate() {
+            let directory = std::env::temp_dir().join(format!(
+                "foxglove-property-checkpoint-{}-{case}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&directory).unwrap();
+            let mut manifest: Manifest = serde_json::from_value(serde_json::json!({
+                "formatVersion":1, "generatedAt":"", "dataset":{"id":"ds", "name":"test", "projectId":"prj"},
+                "version":{"versionNumber":1, "committedAt":""}, "selection":{"episodeCount":1}, "episodes":[]
+            })).unwrap();
+            let previous: ManifestEpisode = serde_json::from_value(serde_json::json!({
+                "index":0, "id":"ep", "file":"old/episode_0000_ep.mcap", "startTime":"", "endTime":"",
+                "properties":{"weather":"old"}, "byteSize":123, "status":"downloaded"
+            })).unwrap();
+            let mut entry: DatasetEpisode = serde_json::from_value(serde_json::json!({
+                "addedAt":"", "addedInVersion":1, "episode":{"id":"ep", "projectId":"prj", "version":1,
+                "latestVersion":2, "startTime":"", "endTime":"", "createdAt":""}
+            })).unwrap();
+            entry.episode.properties = properties
+                .clone()
+                .map(|value| serde_json::from_value(value).unwrap());
+            let earlier = HashMap::from([("episode_0000_ep.mcap".to_owned(), previous)]);
+            checkpoint(&directory, &mut manifest, &[entry], &earlier, "current").unwrap();
+            let written: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(directory.join("manifest.json")).unwrap())
+                    .unwrap();
+            let episode = &written["episodes"][0];
+            assert_eq!(episode["file"], "current/episode_0000_ep.mcap");
+            assert_eq!(episode["byteSize"], 123);
+            assert_eq!(episode.get("properties"), properties.as_ref());
+            assert!(manifest.episodes.is_empty());
+            std::fs::remove_dir_all(directory).unwrap();
+        }
     }
 }

@@ -67,6 +67,12 @@ Options:
       --site-backfill-job-id <SITE_BACKFILL_JOB_ID>
           Only imports enqueued by this site backfill job
 
+      --sort-by <SORT_BY>
+          Field to sort imports by: createdAt, updatedAt, deviceId, deviceName, importId, requestId, or error
+
+      --sort-order <SORT_ORDER>
+          Sort order for the --sort-by field: asc or desc (default: asc)
+
       --updated-since <UPDATED_SINCE>
           Only imports updated since this time
 

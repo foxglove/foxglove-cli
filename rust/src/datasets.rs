@@ -5,7 +5,8 @@ mod versions;
 
 pub(crate) use download::download_dataset;
 pub(crate) use versions::{
-    commit_dataset, compare_versions, discard_dataset, get_version, list_versions, restore_version,
+    clone_version, commit_dataset, compare_versions, discard_dataset, edit_version, get_version,
+    list_versions, restore_version,
 };
 
 use std::collections::HashSet;
@@ -19,11 +20,11 @@ use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
     DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
 };
-use crate::episodes::{include_recordings, parse_time_range, Episode};
+use crate::episodes::{episode_include, parse_time_range, Episode};
 use crate::output::Format;
 use crate::records::{
-    compact_json, format_list_output, format_record, null_to_default, plural,
-    warn_if_has_next_cursor, NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
+    format_list_output, format_record, null_to_default, plural, warn_if_has_next_cursor,
+    NextCursor, ProjectFallback, Record, DEFAULT_LIST_LIMIT,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -38,6 +39,18 @@ struct Dataset {
     description: String,
     #[serde(rename = "episodeCount", default, deserialize_with = "null_to_default")]
     episode_count: i64,
+    #[serde(
+        rename = "creatorOrgMemberId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    creator_org_member_id: Option<String>,
+    #[serde(
+        rename = "creatorApiKeyId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    creator_api_key_id: Option<String>,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "updatedAt")]
@@ -93,24 +106,41 @@ impl Record for DatasetEpisode {
             "Start Time",
             "End Time",
             "Recordings",
-            "Metadata",
             "Added At",
             "Added In Version",
             "Created At",
+            "Version",
+            "Latest Version",
+            "Custom Properties",
+            "Missing Recordings",
         ]
     }
 
     fn fields(&self) -> Vec<String> {
+        let mut fields = self.membership_fields();
+        fields.push(
+            self.has_missing_recordings
+                .map_or_else(String::new, |missing| missing.to_string()),
+        );
+        fields
+    }
+}
+
+impl DatasetEpisode {
+    /// Columns shared with version comparisons, which do not report missing recordings.
+    fn membership_fields(&self) -> Vec<String> {
         vec![
             self.episode.id.clone(),
             self.episode.project_id.clone(),
             self.episode.start_time.clone(),
             self.episode.end_time.clone(),
             self.episode.recording_ids(),
-            compact_json(&self.episode.metadata),
             self.added_at.clone(),
             self.added_in_version.to_string(),
             self.episode.created_at.clone(),
+            self.episode.version.to_string(),
+            self.episode.latest_version.to_string(),
+            self.episode.property_cell(),
         ]
     }
 }
@@ -127,6 +157,8 @@ struct DatasetListQuery<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     limit: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<&'a str>,
     #[serde(skip_serializing_if = "String::is_empty")]
     project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -155,6 +187,8 @@ struct DatasetEpisodeListQuery<'a> {
     sort_order: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties_query: Option<&'a str>,
 }
 
 pub(crate) async fn list_datasets(
@@ -166,6 +200,7 @@ pub(crate) async fn list_datasets(
     let query = DatasetListQuery {
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         limit,
+        name: args.name.as_deref(),
         project_id: args.project_id.clone().or_project(&runtime.project_id),
         sort_by: args.sort_by.clone().unwrap_or_default(),
         sort_order: args.sort_order.clone().unwrap_or_default(),
@@ -198,10 +233,15 @@ pub(crate) async fn list_dataset_episodes(
     };
     let limit = args.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     let query = DatasetEpisodeListQuery {
+        properties_query: args.properties_query.as_deref(),
         cursor: args.cursor.as_deref().filter(|cursor| !cursor.is_empty()),
         end,
         has_missing_recordings: args.has_missing_recordings,
-        include: include_recordings(args.include_recordings),
+        include: episode_include(
+            args.include_recordings,
+            args.include_creation_context,
+            args.include_properties,
+        ),
         limit,
         recording_id: args.recording_id.clone().unwrap_or_default(),
         sort_by: args.sort_by.clone().unwrap_or_default(),
@@ -306,6 +346,8 @@ struct EpisodesPatchResponse {
     added: usize,
     #[serde(default)]
     removed: usize,
+    #[serde(default)]
+    updated: usize,
     #[serde(default)]
     already_present: usize,
 }
@@ -431,30 +473,76 @@ pub(crate) async fn delete_dataset(runtime: &Runtime, args: &DatasetIdArgs) -> O
     }
 }
 
+const MAX_EPISODE_CHANGES: usize = 2000;
+
+#[derive(Clone, Copy)]
+pub(crate) enum EpisodeChange {
+    Add,
+    Update,
+    Remove,
+}
+
+impl EpisodeChange {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Add => "add",
+            Self::Update => "update",
+            Self::Remove => "remove",
+        }
+    }
+}
+
 #[derive(Serialize)]
-struct PatchDatasetEpisodesRequest {
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    add: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    remove: Vec<String>,
+#[serde(untagged)]
+enum EpisodeReference<'a> {
+    Latest(&'a str),
+    Version { id: &'a str, version: i32 },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+enum EpisodesPatchRequest<'a> {
+    Add(Vec<EpisodeReference<'a>>),
+    Update(Vec<EpisodeReference<'a>>),
+    Remove(Vec<EpisodeReference<'a>>),
+}
+
+fn updates(response: &EpisodesPatchResponse, requested: &[String]) -> String {
+    let mut summary = format!("Updated {}", plural(response.updated, "episode"));
+    let unchanged = requested
+        .iter()
+        .collect::<HashSet<_>>()
+        .len()
+        .saturating_sub(response.updated);
+    if unchanged > 0 {
+        let _ = write!(summary, " ({unchanged} unchanged)");
+    }
+    summary.push('\n');
+    summary
 }
 
 pub(crate) async fn patch_dataset_episodes(
     runtime: &Runtime,
     args: &DatasetEpisodeMutationArgs,
-    add: bool,
+    operation: EpisodeChange,
+    episode_version: Option<i32>,
 ) -> Outcome {
-    let episode_ids = args.episode_ids.clone();
-    let request = if add {
-        PatchDatasetEpisodesRequest {
-            add: episode_ids,
-            remove: Vec::new(),
-        }
-    } else {
-        PatchDatasetEpisodesRequest {
-            add: Vec::new(),
-            remove: episode_ids,
-        }
+    if args.episode_ids.len() > MAX_EPISODE_CHANGES {
+        return Outcome::failure(format!("At most {MAX_EPISODE_CHANGES} episode IDs can be changed at once (got {}). Split the IDs into more than one command.\n", args.episode_ids.len()));
+    }
+    let references = args
+        .episode_ids
+        .iter()
+        .map(|id| {
+            episode_version.map_or(EpisodeReference::Latest(id), |version| {
+                EpisodeReference::Version { id, version }
+            })
+        })
+        .collect();
+    let request = match operation {
+        EpisodeChange::Add => EpisodesPatchRequest::Add(references),
+        EpisodeChange::Update => EpisodesPatchRequest::Update(references),
+        EpisodeChange::Remove => EpisodesPatchRequest::Remove(references),
     };
     match runtime
         .client
@@ -466,21 +554,20 @@ pub(crate) async fn patch_dataset_episodes(
         .await
     {
         Ok(response) => {
-            let mut stderr = if add {
-                additions(&response)
-            } else {
-                removals(&response, &args.episode_ids)
+            let mut stderr = match operation {
+                EpisodeChange::Add => additions(&response),
+                EpisodeChange::Update => updates(&response, &args.episode_ids),
+                EpisodeChange::Remove => removals(&response, &args.episode_ids),
             };
-            if response.added > 0 || response.removed > 0 {
+            if response.added > 0 || response.removed > 0 || response.updated > 0 {
                 stderr.push_str(&commit_hint(&args.dataset_id));
             }
             Outcome::notice(stderr)
         }
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
-        Err(error) => Outcome::failure(format!(
-            "Failed to {} episodes: {error}\n",
-            if add { "add" } else { "remove" }
-        )),
+        Err(error) => {
+            Outcome::failure(format!("Failed to {} episodes: {error}\n", operation.key()))
+        }
     }
 }
 
@@ -507,24 +594,42 @@ mod tests {
     }
 
     #[test]
+    fn the_creator_is_kept_in_json_output_when_present() {
+        let record: Dataset = serde_json::from_value(serde_json::json!({"id":"ds_fixture","projectId":"prj_default","name":"Fixture","creatorOrgMemberId":"mem_one","creatorApiKeyId":null,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}))
+            .unwrap();
+        let output = serde_json::to_value(&record).unwrap();
+        assert_eq!(output["creatorOrgMemberId"], "mem_one");
+        assert!(output.get("creatorApiKeyId").is_none());
+
+        let record: Dataset = serde_json::from_value(serde_json::json!({"id":"ds_fixture","projectId":"prj_default","name":"Fixture","creatorApiKeyId":"key_one","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}))
+            .unwrap();
+        let output = serde_json::to_value(&record).unwrap();
+        assert_eq!(output["creatorApiKeyId"], "key_one");
+        assert!(output.get("creatorOrgMemberId").is_none());
+    }
+
+    #[test]
     fn membership_fields_render_around_the_nested_episode() {
         let record: DatasetEpisode = serde_json::from_value(serde_json::json!({
             "addedAt": "2024-01-02T03:04:08Z",
             "addedInVersion": 3,
+            "hasMissingRecordings": true,
             "episode": {
                 "id": "ep_fixture",
+                "version": 1,
+                "latestVersion": 1,
                 "projectId": "prj_default",
                 "startTime": "2024-01-02T03:04:05Z",
                 "endTime": "2024-01-02T03:04:06Z",
-                "metadata": {"run": 7},
                 "createdAt": "2024-01-02T03:04:07Z",
             },
         }))
         .unwrap();
         let fields = record.fields();
         assert_eq!(fields[0], "ep_fixture");
-        assert_eq!(fields[5], r#"{"run":7}"#);
-        assert_eq!(fields[6], "2024-01-02T03:04:08Z");
-        assert_eq!(fields[7], "3");
+        assert_eq!(fields[5], "2024-01-02T03:04:08Z");
+        assert_eq!(fields[6], "3");
+        assert_eq!(fields.len(), DatasetEpisode::headers().len());
+        assert_eq!(fields.last().unwrap(), "true");
     }
 }

@@ -5,7 +5,7 @@
 [Command reference](README.md) · [Parent command](datasets-versions.md)
 
 ```text
-Get a dataset version
+Get a dataset version. The Changed column counts episodes present in this dataset version and the previous dataset version that use a different episode version. For a draft, the comparison is against the newest committed dataset version.
 
 Usage: foxglove datasets versions get [OPTIONS] <DATASET_ID> <VERSION>
 
@@ -35,5 +35,5 @@ Options:
           [default: false]
 
   -h, --help
-          Print help
+          Print help (see a summary with '-h')
 ```

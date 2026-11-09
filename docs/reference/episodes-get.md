@@ -36,6 +36,14 @@ Options:
 
           [default: false]
 
+      --include-properties[=<INCLUDE_PROPERTIES>]
+          Include episode custom properties (requires API access to episode properties)
+
+          [default: false]
+
+      --version <VERSION>
+          Episode version to read (default: latest)
+
   -h, --help
           Print help
 ```

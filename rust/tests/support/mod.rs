@@ -34,6 +34,7 @@ impl Workspace {
             .env_remove("BEARER_TOKEN")
             .env_remove("DEFAULT_PROJECT_ID")
             .env_remove("FOXGLOVE_DEFAULT_PROJECT_ID")
+            .env_remove("FOXGLOVE_SITE_NOTIFICATION_TOKEN")
             .env_remove("SSL_CERT_FILE")
             .env_remove("SSL_CERT_DIR")
             .env_remove("HTTP_PROXY")
@@ -160,6 +161,11 @@ impl Server {
                 stream.flush().unwrap();
                 sender.send(request).unwrap();
                 if reply.stall {
+                    // Hold the response open until the client gives up, for longer than any
+                    // timing bound a test asserts.
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(60)))
+                        .unwrap();
                     let _ = stream.read(&mut [0]);
                 }
             }

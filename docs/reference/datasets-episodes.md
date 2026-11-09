@@ -11,6 +11,7 @@ Usage: foxglove datasets episodes [OPTIONS] <COMMAND>
 
 Commands:
   add     Add episodes to a dataset as pending changes
+  update  Update episode versions selected in the dataset draft
   list    List the episodes in a dataset
   remove  Remove episodes from a dataset as pending changes
   help    Print this message or the help of the given subcommand(s)
@@ -34,5 +35,6 @@ Options:
 ## Subcommands
 
 - [`foxglove datasets episodes add`](datasets-episodes-add.md)
+- [`foxglove datasets episodes update`](datasets-episodes-update.md)
 - [`foxglove datasets episodes list`](datasets-episodes-list.md)
 - [`foxglove datasets episodes remove`](datasets-episodes-remove.md)

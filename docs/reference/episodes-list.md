@@ -30,8 +30,16 @@ Options:
 
           [default: false]
 
+      --exact-recording-ids <EXACT_RECORDING_IDS>
+          Filter to episodes whose recordings are exactly these display IDs; comma-separated (maximum 50)
+
       --has-missing-recordings[=<HAS_MISSING_RECORDINGS>]
           Filter to episodes with, or without, recordings that are no longer available
+
+      --include-creation-context[=<INCLUDE_CREATION_CONTEXT>]
+          Include each episode's creation context: the selection or search that produced it
+
+          [default: false]
 
       --include-recordings[=<INCLUDE_RECORDINGS>]
           Include the member recordings of each episode
@@ -58,6 +66,14 @@ Options:
 
       --start <START>
           Start of a time range the episode's window must overlap (ISO 8601); give with --end
+
+      --include-properties[=<INCLUDE_PROPERTIES>]
+          Include episode custom properties (requires API access to episode properties)
+
+          [default: false]
+
+      --properties-query <PROPERTIES_QUERY>
+          Filter by episode custom properties, for example 'weather:rain note:"night run"' (requires API access to episode properties)
 
   -h, --help
           Print help

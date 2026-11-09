@@ -33,14 +33,16 @@ Options:
 
           [default: false]
 
-      --strict
-          Fail if any episode is skipped or downloaded with missing recordings
-
       --topics <TOPICS>
           Comma-separated topic list (default: all topics)
 
       --version <VERSION>
           Committed version to download (default: the newest committed version)
+
+      --include-properties[=<INCLUDE_PROPERTIES>]
+          Include episode custom properties (requires API access to episode properties)
+
+          [default: false]
 
   -h, --help
           Print help

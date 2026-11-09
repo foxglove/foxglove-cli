@@ -19,7 +19,7 @@ Commands:
   episodes  List, add, or remove the episodes in a dataset
   get       Get a dataset
   list      List datasets
-  versions  List, compare, and restore dataset versions
+  versions  List, compare, edit, restore, and clone dataset versions
   help      Print this message or the help of the given subcommand(s)
 
 Options:

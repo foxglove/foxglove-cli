@@ -47,6 +47,9 @@ Options:
       --recording-id <RECORDING_ID>
           Recording ID
 
+      --recording-key <RECORDING_KEY>
+          Recording key
+
       --session-id <SESSION_ID>
           Session ID
 

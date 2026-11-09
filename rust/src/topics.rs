@@ -57,6 +57,10 @@ struct TopicListQuery {
     device_name: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     end: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    episode_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    episode_version: Option<i32>,
     #[serde(skip_serializing_if = "is_false")]
     include_schemas: bool,
     limit: i64,
@@ -86,6 +90,7 @@ pub(crate) async fn list_topics(
     format: Format,
 ) -> Outcome {
     if [
+        &args.episode_id,
         &args.device_id,
         &args.device_name,
         &args.recording_id,
@@ -96,7 +101,7 @@ pub(crate) async fn list_topics(
     .into_iter()
     .all(|value| value.as_deref().unwrap_or_default().is_empty())
     {
-        return Outcome::failure("provide one of --device-id, --device-name, --recording-id, --recording-key, --session-id, or --session-key\n");
+        return Outcome::failure("provide one of --episode-id, --device-id, --device-name, --recording-id, --recording-key, --session-id, or --session-key\n");
     }
     let project_id = args.project_id.clone().or_project(&runtime.project_id);
     let session_key = args.session_key.clone().unwrap_or_default();
@@ -117,6 +122,8 @@ pub(crate) async fn list_topics(
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
         end,
+        episode_id: args.episode_id.clone(),
+        episode_version: args.episode_version,
         include_schemas: args.include_schemas,
         limit,
         offset,

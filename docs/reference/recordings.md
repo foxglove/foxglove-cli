@@ -11,6 +11,7 @@ Usage: foxglove recordings [OPTIONS] <COMMAND>
 
 Commands:
   delete    Delete a recording from your organization
+  get       Get a recording by ID or key
   list      List recordings
   transfer  Request transfer of a recording from its Edge Site to its configured Primary Site
   help      Print this message or the help of the given subcommand(s)
@@ -34,5 +35,6 @@ Options:
 ## Subcommands
 
 - [`foxglove recordings delete`](recordings-delete.md)
+- [`foxglove recordings get`](recordings-get.md)
 - [`foxglove recordings list`](recordings-list.md)
 - [`foxglove recordings transfer`](recordings-transfer.md)

@@ -1,8 +1,8 @@
-//! Pending import commands.
+//! Pending import and import error commands.
 
 use serde::{Deserialize, Serialize};
 
-use crate::cli::PendingImportListArgs;
+use crate::cli::{ImportErrorListArgs, PendingImportListArgs};
 use crate::output::Format;
 use crate::records::{
     fetch_list, is_false, is_zero, null_to_default, parse_timestamp, ProjectFallback, Record,
@@ -42,6 +42,9 @@ struct PendingImport {
     status: String,
     #[serde(default, deserialize_with = "null_to_default")]
     error: String,
+    #[serde(rename = "quarantinedAt")]
+    #[serde(default, deserialize_with = "null_to_default")]
+    quarantined_at: String,
 }
 
 impl Record for PendingImport {
@@ -60,6 +63,7 @@ impl Record for PendingImport {
             "Project ID",
             "Status",
             "Error",
+            "Quarantined at",
         ]
     }
 
@@ -78,6 +82,7 @@ impl Record for PendingImport {
             self.project_id.clone(),
             self.status.clone(),
             self.error.clone(),
+            self.quarantined_at.clone(),
         ]
     }
 }
@@ -106,6 +111,10 @@ struct PendingImportListQuery {
     site_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     site_backfill_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_order: Option<String>,
     #[serde(skip_serializing_if = "is_false")]
     show_completed: bool,
     #[serde(skip_serializing_if = "is_false")]
@@ -152,6 +161,8 @@ pub(crate) async fn list_pending_imports(
         request_id: args.request_id.clone().unwrap_or_default(),
         site_id: args.site_id.clone().unwrap_or_default(),
         site_backfill_job_id: args.site_backfill_job_id.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: args.sort_order.clone(),
         show_completed: args.show_completed,
         show_quarantined: args.show_quarantined,
         updated_since,
@@ -161,6 +172,56 @@ pub(crate) async fn list_pending_imports(
         format,
         "Failed to list pending imports",
         "/v1/data/pending-imports",
+        &query,
+        Some(query.limit),
+    )
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportErrorListQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename_matches: Option<String>,
+    limit: i64,
+    #[serde(skip_serializing_if = "is_zero")]
+    offset: i64,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    site_backfill_job_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort_order: Option<String>,
+}
+
+/// Lists failed imports, which the API returns in the pending import shape.
+pub(crate) async fn list_import_errors(
+    runtime: &Runtime,
+    args: &ImportErrorListArgs,
+    format: Format,
+) -> Outcome {
+    let query = ImportErrorListQuery {
+        device_name: args.device_name.clone(),
+        error: args.error.clone(),
+        filename_matches: args.filename_matches.clone(),
+        limit: args.limit.unwrap_or(DEFAULT_LIST_LIMIT),
+        offset: args.offset.unwrap_or_default(),
+        project_id: args.project_id.clone().or_project(&runtime.project_id),
+        site_backfill_job_id: args.site_backfill_job_id.clone(),
+        sort_by: args.sort_by.clone(),
+        sort_order: args.sort_order.clone(),
+    };
+    fetch_list::<PendingImport, _>(
+        runtime,
+        format,
+        "Failed to list import errors",
+        "/v1/data/import-errors",
         &query,
         Some(query.limit),
     )
@@ -181,6 +242,7 @@ mod tests {
             ("projectId", serde_json::json!("")),
             ("status", serde_json::json!("")),
             ("error", serde_json::json!("")),
+            ("quarantinedAt", serde_json::json!("")),
         ] {
             let mut with_null = original.clone();
             with_null[field] = serde_json::Value::Null;
@@ -190,5 +252,12 @@ mod tests {
                 assert_eq!(output[field], expected, "{field}");
             }
         }
+        let mut quarantined = original;
+        quarantined["quarantinedAt"] = serde_json::json!("2024-01-02T03:04:07Z");
+        let record: PendingImport = serde_json::from_value(quarantined).unwrap();
+        assert_eq!(
+            serde_json::to_value(record).unwrap()["quarantinedAt"],
+            "2024-01-02T03:04:07Z"
+        );
     }
 }

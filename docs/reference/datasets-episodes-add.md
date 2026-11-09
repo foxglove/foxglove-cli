@@ -20,6 +20,9 @@ Options:
       --client-id <CLIENT_ID>
           Foxglove client ID
 
+      --episode-version <EPISODE_VERSION>
+          Episode version to select for each ID (default: latest)
+
       --config <CONFIG>
           Config file
 

@@ -50,8 +50,12 @@ pub enum ApiError {
     Unauthorized,
     /// The API refused the request with HTTP 403.
     Forbidden,
-    /// The API refused the request with HTTP 403 and said why.
-    ForbiddenWithMessage(String),
+    /// The API refused the request with HTTP 403 and said why, with the
+    /// error code it gave, if any.
+    ForbiddenWithMessage {
+        code: Option<String>,
+        message: String,
+    },
     /// The requested resource does not exist, with the error code and
     /// message the API gave, if any.
     NotFound {
@@ -84,7 +88,7 @@ impl ApiError {
     pub const fn is_forbidden(&self) -> bool {
         matches!(
             self,
-            Self::Unauthorized | Self::Forbidden | Self::ForbiddenWithMessage(_)
+            Self::Unauthorized | Self::Forbidden | Self::ForbiddenWithMessage { .. }
         )
     }
 
@@ -112,7 +116,9 @@ impl ApiError {
     #[must_use]
     pub fn code(&self) -> Option<&str> {
         match self {
-            Self::NotFound { code, .. } => code.as_deref(),
+            Self::NotFound { code, .. } | Self::ForbiddenWithMessage { code, .. } => {
+                code.as_deref()
+            }
             _ => None,
         }
     }
@@ -146,7 +152,7 @@ impl fmt::Display for ApiError {
             Self::Response { status, message } if message.is_empty() => {
                 write!(formatter, "unexpected status {status}")
             }
-            Self::ForbiddenWithMessage(message)
+            Self::ForbiddenWithMessage { message, .. }
             | Self::NotFound { message, .. }
             | Self::Response { message, .. } => formatter.write_str(message),
             Self::Transport(error) | Self::Decode(error) => write_reqwest_error(formatter, error),
@@ -169,7 +175,7 @@ impl std::error::Error for ApiError {
             Self::Write(error) => Some(error),
             Self::Unauthorized
             | Self::Forbidden
-            | Self::ForbiddenWithMessage(_)
+            | Self::ForbiddenWithMessage { .. }
             | Self::NotFound { .. }
             | Self::Response { .. }
             | Self::Cancelled
@@ -190,6 +196,8 @@ pub struct StreamRequest {
     pub recording_key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub episode_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode_version: Option<i32>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub project_id: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -637,6 +645,32 @@ impl FoxgloveClient {
         Ok(PagedResponse { data, next_cursor })
     }
 
+    /// Execute an authenticated GET for an endpoint that answers 204 No Content
+    /// when there is nothing to return, decoding a 200 JSON response.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn get_optional<Q, T>(&self, endpoint: &str, query: &Q) -> Result<Option<T>, ApiError>
+    where
+        Q: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let request = self
+            .request_with_auth(Method::GET, endpoint, true)?
+            .query(query);
+        let response = self.send(request, None).await?;
+        if response.status() == StatusCode::NO_CONTENT {
+            return Ok(None);
+        }
+        let response = ensure_ok_response(response).await?;
+        response
+            .json::<T>()
+            .await
+            .map(Some)
+            .map_err(ApiError::Decode)
+    }
+
     /// Execute an authenticated GET with cancellation support.
     ///
     /// # Errors
@@ -697,6 +731,23 @@ impl FoxgloveClient {
             .await
     }
 
+    /// Execute an authenticated JSON POST whose success response has no body.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, serialization, or transport error.
+    pub async fn post_without_response<B>(&self, endpoint: &str, body: &B) -> Result<(), ApiError>
+    where
+        B: Serialize + ?Sized,
+    {
+        let request = self
+            .request_with_auth(Method::POST, endpoint, true)?
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(encode_json(body)?);
+        let response = self.send(request, None).await?;
+        ensure_success_response(response).await.map(drop)
+    }
+
     /// Execute an authenticated JSON POST with query parameters and decode its
     /// JSON response.
     ///
@@ -716,6 +767,36 @@ impl FoxgloveClient {
     {
         self.send_json_with_query(Method::POST, endpoint, query, Some(body), None)
             .await
+    }
+
+    /// Execute an authenticated JSON POST for an endpoint that answers
+    /// 201 Created, and decode its JSON response. A 200 response is also
+    /// accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn post_created<B, T>(&self, endpoint: &str, body: &B) -> Result<T, ApiError>
+    where
+        B: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        self.send_json_created(Method::POST, endpoint, body).await
+    }
+
+    /// Execute an authenticated JSON PUT for an endpoint that answers
+    /// 201 Created, and decode its JSON response. A 200 response is also
+    /// accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns the mapped API, transport, or response-decoding error.
+    pub async fn put_created<B, T>(&self, endpoint: &str, body: &B) -> Result<T, ApiError>
+    where
+        B: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        self.send_json_created(Method::PUT, endpoint, body).await
     }
 
     /// Execute an authenticated JSON PATCH and decode its JSON response.
@@ -1011,6 +1092,27 @@ impl FoxgloveClient {
             response.json::<T>().await.map_err(ApiError::Decode)
         })
         .await
+    }
+
+    async fn send_json_created<B, T>(
+        &self,
+        method: Method,
+        endpoint: &str,
+        body: &B,
+    ) -> Result<T, ApiError>
+    where
+        B: Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let request = self
+            .request_with_auth(method, endpoint, true)?
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(encode_json(body)?);
+        let response = self.send(request, None).await?;
+        if !matches!(response.status(), StatusCode::OK | StatusCode::CREATED) {
+            return Err(error_from_response(response).await);
+        }
+        response.json::<T>().await.map_err(ApiError::Decode)
     }
 
     async fn send_json_with_query<Q, B, T>(
@@ -1376,7 +1478,10 @@ fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
             if message.is_empty() {
                 ApiError::Forbidden
             } else {
-                ApiError::ForbiddenWithMessage(message)
+                ApiError::ForbiddenWithMessage {
+                    code: response_code(body),
+                    message,
+                }
             }
         }
         StatusCode::NOT_FOUND => ApiError::NotFound {
@@ -1402,12 +1507,37 @@ fn response_code(body: &str) -> Option<String> {
 }
 
 fn response_message(body: &str) -> String {
+    use std::fmt::Write as _;
+
     #[derive(Deserialize)]
     struct ErrorResponse {
         error: Option<String>,
+        #[serde(default)]
+        conflicts: serde_json::Value,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct EpisodeConflict {
+        id: String,
+        current_version: i32,
     }
     if let Ok(response) = serde_json::from_str::<ErrorResponse>(body) {
-        return response.error.unwrap_or_default();
+        let mut message = response.error.unwrap_or_default();
+        // Episode version conflicts name each episode's current version.
+        for conflict in response
+            .conflicts
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| EpisodeConflict::deserialize(value).ok())
+        {
+            let _ = write!(
+                message,
+                "; {}: current version {}",
+                conflict.id, conflict.current_version
+            );
+        }
+        return message;
     }
     // Drop proxy HTML pages and other long bodies so the status shows instead.
     let body = body.trim();
@@ -1707,6 +1837,16 @@ mod tests {
     #[test]
     fn error_payload_uses_error_then_raw_body() {
         assert_eq!(response_message(r#"{"error":"bad"}"#), "bad");
+        assert_eq!(
+            response_message(
+                r#"{"error":"conflict","conflicts":[{"id":"ep_one","currentVersion":4},{"id":"ep_two"}]}"#
+            ),
+            "conflict; ep_one: current version 4"
+        );
+        assert_eq!(
+            response_message(r#"{"error":"bad","conflicts":null}"#),
+            "bad"
+        );
         assert_eq!(response_message(r#"{"message":"bad"}"#), "");
         assert_eq!(response_message("bad"), "bad");
     }
@@ -1755,6 +1895,7 @@ mod tests {
             forbidden.to_string(),
             "This operation requires the `devices.list` capability."
         );
+        assert_eq!(forbidden.code(), Some("MissingApiKeyCapability"));
         let bare = api_error_from_response(StatusCode::FORBIDDEN, "");
         assert!(matches!(bare, ApiError::Forbidden));
         assert_eq!(bare.to_string(), "forbidden");

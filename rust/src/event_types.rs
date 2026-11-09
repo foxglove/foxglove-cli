@@ -3,8 +3,13 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::api::{encode_path_segment, ApiError};
+use crate::cli::{
+    EventTypeAddArgs, EventTypeCustomPropertyArg, EventTypeEditArgs, EventTypeGetArgs,
+    EventTypeIdArgs,
+};
 use crate::output::Format;
-use crate::records::{format_output, null_to_default, Record};
+use crate::records::{format_output, format_record, null_to_default, Record};
 use crate::runtime::Runtime;
 use crate::Outcome;
 
@@ -73,6 +78,54 @@ impl Record for EventType {
     }
 }
 
+/// Fill in custom property keys for table and CSV output. JSON output keeps
+/// the API's IDs and skips the lookup.
+async fn resolve_custom_property_keys(
+    runtime: &Runtime,
+    event_types: &mut [EventType],
+    format: Format,
+) -> Option<ApiError> {
+    if format == Format::Json
+        || event_types
+            .iter()
+            .all(|event_type| event_type.custom_properties.is_empty())
+    {
+        return None;
+    }
+    match runtime
+        .client
+        .get::<_, Vec<CustomPropertyDefinition>>(
+            "/v1/custom-properties",
+            &[("resourceType", "event")],
+        )
+        .await
+    {
+        Ok(definitions) => {
+            let keys = definitions
+                .into_iter()
+                .map(|definition| (definition.id, definition.key))
+                .collect::<HashMap<_, _>>();
+            for property in event_types
+                .iter_mut()
+                .flat_map(|event_type| &mut event_type.custom_properties)
+            {
+                property.key = keys.get(&property.id).cloned();
+            }
+            None
+        }
+        Err(error) => Some(error),
+    }
+}
+
+fn with_lookup_warning(mut outcome: Outcome, lookup_error: Option<ApiError>) -> Outcome {
+    if let Some(error) = lookup_error {
+        outcome.stderr.extend_from_slice(
+            format!("Showing custom property IDs; failed to load their keys: {error}\n").as_bytes(),
+        );
+    }
+    outcome
+}
+
 pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outcome {
     let mut event_types = match runtime
         .client
@@ -82,42 +135,130 @@ pub(crate) async fn list_event_types(runtime: &Runtime, format: Format) -> Outco
         Ok(event_types) => event_types,
         Err(error) => return Outcome::failure(format!("Failed to list event types: {error}\n")),
     };
-    let mut lookup_error = None;
-    if format != Format::Json
-        && event_types
-            .iter()
-            .any(|event_type| !event_type.custom_properties.is_empty())
+    let lookup_error = resolve_custom_property_keys(runtime, &mut event_types, format).await;
+    with_lookup_warning(format_output(&event_types, format), lookup_error)
+}
+
+fn event_type_endpoint(id: &str) -> String {
+    format!("/v1/event-types/{}", encode_path_segment(id))
+}
+
+fn event_type_not_found(id: &str) -> Outcome {
+    Outcome::failure(format!("Event type not found: {id}\n"))
+}
+
+pub(crate) async fn get_event_type(
+    runtime: &Runtime,
+    args: &EventTypeGetArgs,
+    format: Format,
+) -> Outcome {
+    let event_type = match runtime
+        .client
+        .get::<_, EventType>(&event_type_endpoint(&args.event_type_id), &())
+        .await
     {
-        match runtime
-            .client
-            .get::<_, Vec<CustomPropertyDefinition>>(
-                "/v1/custom-properties",
-                &[("resourceType", "event")],
-            )
-            .await
-        {
-            Ok(definitions) => {
-                let keys = definitions
-                    .into_iter()
-                    .map(|definition| (definition.id, definition.key))
-                    .collect::<HashMap<_, _>>();
-                for property in event_types
-                    .iter_mut()
-                    .flat_map(|event_type| &mut event_type.custom_properties)
-                {
-                    property.key = keys.get(&property.id).cloned();
-                }
-            }
-            Err(error) => lookup_error = Some(error),
+        Ok(event_type) => event_type,
+        Err(error) if error.is_not_found_for("event type") => {
+            return event_type_not_found(&args.event_type_id)
         }
+        Err(error) => return Outcome::failure(format!("Failed to get event type: {error}\n")),
+    };
+    let mut event_types = [event_type];
+    let lookup_error = resolve_custom_property_keys(runtime, &mut event_types, format).await;
+    with_lookup_warning(format_record(&event_types[0], format), lookup_error)
+}
+
+fn custom_properties(args: &[EventTypeCustomPropertyArg]) -> Vec<EventTypeCustomProperty> {
+    args.iter()
+        .map(|property| EventTypeCustomProperty {
+            id: property.id.clone(),
+            required: property.required,
+            key: None,
+        })
+        .collect()
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateEventTypeRequest {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    color_name: Option<String>,
+    custom_properties: Vec<EventTypeCustomProperty>,
+}
+
+#[derive(Deserialize)]
+struct EventTypeIdResponse {
+    id: String,
+}
+
+pub(crate) async fn add_event_type(runtime: &Runtime, args: &EventTypeAddArgs) -> Outcome {
+    let request = CreateEventTypeRequest {
+        name: args.name.clone(),
+        color_name: args.color.clone(),
+        custom_properties: custom_properties(&args.custom_property),
+    };
+    match runtime
+        .client
+        .post::<_, EventTypeIdResponse>("/v1/event-types", &request)
+        .await
+    {
+        Ok(response) => Outcome::notice(format!("Event type created: {}\n", response.id)),
+        Err(error) => Outcome::failure(format!("Failed to create event type: {error}\n")),
     }
-    let mut outcome = format_output(&event_types, format);
-    if let Some(error) = lookup_error {
-        outcome.stderr.extend_from_slice(
-            format!("Showing custom property IDs; failed to load their keys: {error}\n").as_bytes(),
-        );
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditEventTypeRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    color_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    custom_properties: Option<Vec<EventTypeCustomProperty>>,
+}
+
+pub(crate) async fn edit_event_type(runtime: &Runtime, args: &EventTypeEditArgs) -> Outcome {
+    let custom_properties = (args.clear_custom_properties || !args.custom_property.is_empty())
+        .then(|| custom_properties(&args.custom_property));
+    if args.name.is_none() && args.color.is_none() && custom_properties.is_none() {
+        return Outcome::failure("Nothing to update\n");
     }
-    outcome
+    let request = EditEventTypeRequest {
+        name: args.name.clone(),
+        color_name: args.color.clone(),
+        custom_properties,
+    };
+    match runtime
+        .client
+        .patch::<_, _, EventTypeIdResponse>(
+            &event_type_endpoint(&args.event_type_id),
+            &(),
+            &request,
+        )
+        .await
+    {
+        Ok(_) => Outcome::notice(format!("Event type updated: {}\n", args.event_type_id)),
+        Err(error) if error.is_not_found_for("event type") => {
+            event_type_not_found(&args.event_type_id)
+        }
+        Err(error) => Outcome::failure(format!("Failed to edit event type: {error}\n")),
+    }
+}
+
+pub(crate) async fn delete_event_type(runtime: &Runtime, args: &EventTypeIdArgs) -> Outcome {
+    match runtime
+        .client
+        .delete(&event_type_endpoint(&args.event_type_id))
+        .await
+    {
+        Ok(()) => Outcome::notice(format!("Event type deleted: {}\n", args.event_type_id)),
+        Err(error) if error.is_not_found_for("event type") => {
+            event_type_not_found(&args.event_type_id)
+        }
+        Err(error) => Outcome::failure(format!("Failed to delete event type: {error}\n")),
+    }
 }
 
 #[cfg(test)]

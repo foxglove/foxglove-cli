@@ -36,6 +36,9 @@ Options:
       --episode-id <EPISODE_ID>
           Episode ID
 
+      --episode-version <EPISODE_VERSION>
+          Episode version to export; requires --episode-id (default: latest)
+
       --include-attachments[=<INCLUDE_ATTACHMENTS>]
           Include MCAP attachments
 

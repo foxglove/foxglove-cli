@@ -36,6 +36,15 @@ Options:
       --project-id <PROJECT_ID>
           Project ID (defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; --project-id= bypasses defaults)
 
+      --query <QUERY>
+          Filter by device custom properties, for example 'properties.location:sf properties.model:*'
+
+      --sort-by <SORT_BY>
+          Field to sort devices by: id, name, or a custom property key prefixed with properties.
+
+      --sort-order <SORT_ORDER>
+          Sort order for the --sort-by field: asc or desc
+
   -h, --help
           Print help
 ```

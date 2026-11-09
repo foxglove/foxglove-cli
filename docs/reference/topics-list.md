@@ -36,6 +36,12 @@ Options:
       --end <END>
           End of topic time range (ISO 8601)
 
+      --episode-id <EPISODE_ID>
+          Episode ID
+
+      --episode-version <EPISODE_VERSION>
+          Episode version to list topics for; requires --episode-id (default: the newest episode version)
+
       --include-schemas[=<INCLUDE_SCHEMAS>]
           Include full topic schemas
 

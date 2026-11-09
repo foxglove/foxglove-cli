@@ -45,6 +45,9 @@ Options:
       --limit <LIMIT>
           Maximum number of items to return (1-2000, default: 50)
 
+      --metadata-query <METADATA_QUERY>
+          Only recordings whose metadata matches this query, e.g. key:value
+
       --offset <OFFSET>
           Number of recordings to skip
 
@@ -71,6 +74,9 @@ Options:
 
       --start <START>
           Start of data range (ISO 8601)
+
+      --topic <TOPIC>
+          Only recordings containing this topic
 
       --without-device[=<WITHOUT_DEVICE>]
           Only recordings without a device

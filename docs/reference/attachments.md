@@ -11,6 +11,7 @@ Usage: foxglove attachments [OPTIONS] <COMMAND>
 
 Commands:
   download  Download an MCAP attachment by ID to stdout
+  get       Get an MCAP attachment's details by ID
   list      List MCAP attachments
   help      Print this message or the help of the given subcommand(s)
 
@@ -33,4 +34,5 @@ Options:
 ## Subcommands
 
 - [`foxglove attachments download`](attachments-download.md)
+- [`foxglove attachments get`](attachments-get.md)
 - [`foxglove attachments list`](attachments-list.md)

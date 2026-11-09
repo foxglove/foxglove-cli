@@ -43,7 +43,7 @@ Update your environment variables:
 | `--json` | `--format json` |
 | `export --output-format mcap0` | `export --output-format mcap` (still the default) |
 | `--import-id IMPORT_ID` on `export` and `attachments list` | `--recording-id RECORDING_ID` |
-| `pending-imports list --error` | Filter the `error` field of `--format json` |
+| `pending-imports list --error TEXT` | `import-errors list --error TEXT` |
 
 Imports have long been deprecated in favor of Recordings. If you still have
 workflows using Import IDs you'll need to switch over to Recording IDs.
@@ -78,7 +78,7 @@ When relevant a project ID is selected in order of `--project-id`,
 - `export --output-format json --output-file` writes to the file; v1 wrote to
   stdout.
 - `events list` returns newest first, `--sort-order` requires `--sort-by`, and
-  `events add` requires `--device-id`, `--start`, and `--end`.
+  `events add` requires `--device-id` or `--device-name`, `--start`, and `--end`.
 - `upload --session-key` no longer requires a project and cannot be combined
   with `--session-id`.
 - Timestamps preserve precise boundaries by keeping fractional seconds, so

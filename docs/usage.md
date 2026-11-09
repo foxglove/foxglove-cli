@@ -5,12 +5,20 @@
 - [Authentication](#authentication)
 - [Lists and pagination](#lists-and-pagination)
 - [Devices](#devices)
+- [Device tokens](#device-tokens)
 - [Projects](#projects)
+- [Organization members](#organization-members)
+- [Sites](#sites)
+- [Custom properties](#custom-properties)
 - [Uploads and recordings](#uploads-and-recordings)
 - [Exports](#exports)
 - [Events](#events)
 - [Datasets and episodes](#datasets-and-episodes)
 - [Extensions](#extensions)
+- [Site tokens](#site-tokens)
+- [Site notification tokens](#site-notification-tokens)
+- [Layouts](#layouts)
+- [Automations](#automations)
 - [Shell autocompletion](#shell-autocompletion)
 
 Create a [free Foxglove account](https://app.foxglove.dev/signup) to start importing and interacting with data.
@@ -48,7 +56,7 @@ $ foxglove devices list --format json
 ```
 
 When more results may exist, a hint on stderr says how to get the next page.
-Datasets, dataset episodes, dataset versions, episodes, and
+Datasets, dataset episodes, dataset versions, episodes, episode versions, and
 `datasets versions compare` page with cursors: their JSON output includes
 `nextCursor`, which you pass to `--cursor`. The other commands that accept
 `--limit` page with `--offset`.
@@ -74,6 +82,74 @@ $ foxglove devices list
     | dev_lwjzOMxryMmP3yXg | nuScenes-v1.0-mini | 2021-12-09T21:45:51Z | 2021-12-09T21:45:51Z |
 ```
 
+Filter devices by custom property, and sort them with `--sort-by` and `--sort-order`:
+
+```
+$ foxglove devices list --query 'properties.location:sf' --sort-by name --sort-order asc
+```
+
+Change a device's settings. Boolean flags take an optional `=true` or `=false`:
+
+```
+$ foxglove devices edit dev_drpLqjBZYUzus3gv --enabled=false --retain-recordings-seconds 604800 --auto-delete-after-import
+    Device updated: RobotA
+$ foxglove devices edit dev_drpLqjBZYUzus3gv --property location:sf --remove-property owner
+    Device updated: RobotA
+```
+
+Get one device by name or ID:
+
+```
+$ foxglove devices get RobotA --format json
+```
+
+Delete a device. The API refuses while the device still has associated data, so delete that data first:
+
+```
+$ foxglove devices delete RobotA
+    Device deleted: RobotA
+```
+
+List the values a device's custom properties held over time, by device name or ID:
+
+```
+$ foxglove devices property-intervals list RobotA --query 'location:*' --start 2026-01-01
+```
+
+Record the value a property held over a past time range, or that it had none. Overlapping
+intervals are split, trimmed, or removed; repeat `--value` for each value of a multi-enum
+property:
+
+```
+$ foxglove devices property-intervals update RobotA --key location --value sf --start 2026-01-01 --end 2026-02-01
+    Property time interval updated: location from 2026-01-01T00:00:00Z to 2026-02-01T00:00:00Z
+$ foxglove devices property-intervals update RobotA --key location --unset --start 2026-02-01 --end 2026-03-01
+```
+
+## Device tokens
+
+Device tokens authenticate a device to Foxglove. Create a token for a device; the token
+itself is printed once, so store it when you create it:
+
+```
+$ foxglove device-tokens add --device-id dev_drpLqjBZYUzus3gv --format json
+    Device token created: dt_2Zg4kXJmTvSE1F5a
+    Store the token now; it is not shown again.
+{"id":"dt_2Zg4kXJmTvSE1F5a","deviceId":"dev_drpLqjBZYUzus3gv","projectId":"prj_3x9Zm2Hq","enabled":true,"preapproved":true,"createdAt":"2024-05-01T12:00:00.000Z","token":"..."}
+```
+
+Without `--device-id`, the token can be used to create a new device in the project. List,
+inspect, disable, and delete tokens:
+
+```
+$ foxglove device-tokens list --device-id dev_drpLqjBZYUzus3gv
+$ foxglove device-tokens get dt_2Zg4kXJmTvSE1F5a
+$ foxglove device-tokens edit dt_2Zg4kXJmTvSE1F5a --enabled=false
+    Device token disabled: dt_2Zg4kXJmTvSE1F5a
+$ foxglove device-tokens delete dt_2Zg4kXJmTvSE1F5a
+    Device token deleted: dt_2Zg4kXJmTvSE1F5a
+```
+
 ## Projects
 
 Projects provide data isolation and access control to resources. See if your organization's
@@ -83,10 +159,82 @@ List all projects:
 
 ```
 $ foxglove projects list
-    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT |
-    |----------------------|--------------------|--------------|----------------------------|
-    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       |
-    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       |
+    |          ID          |        NAME        | MEMBER COUNT | LAST RECORDING UPLOADED AT | INVITE ONLY |
+    |----------------------|--------------------|--------------|----------------------------|-------------|
+    | prj_mHH1Cp4gPybCPR8y |                    | 7            | 2021-10-28T17:20:55Z       | false       |
+    | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
+```
+
+## Organization members
+
+List your organization's members. This requires an API key with the `orgMembers.list`
+capability that is not limited to specific projects. The list covers the whole organization;
+the default project does not apply, so pass `--project-id` to list only one project's members.
+
+```
+$ foxglove org-members list
+$ foxglove org-members list --project-id prj_123
+$ foxglove org-members list --search ada --role admin --status active --sort-by lastSeenAt --sort-order desc
+```
+
+## Sites
+
+List your organization's sites, and create, edit, or delete them:
+
+```
+$ foxglove sites list
+$ foxglove sites add --name Garage --type edge --retain-recordings-seconds 604800
+    Site created: site_drpLqjBZYUzus3gv
+$ foxglove sites edit site_drpLqjBZYUzus3gv --name "Garage 2"
+```
+
+Save a Bring Your Own Storage site's ingest path policy, edit the copy, and save it back. `set`
+sends the saved revision's `policy` and refuses to overwrite a newer save, because the file
+records the revision it was edited from. A file holding only `schemaVersion` and `rules` works
+too; pass `--previous-revision` with it to get the same check:
+
+```
+$ foxglove sites ingest-path-policy get site_drpLqjBZYUzus3gv > policy.json
+$ foxglove sites ingest-path-policy set site_drpLqjBZYUzus3gv policy.json
+    Ingest path policy for site site_drpLqjBZYUzus3gv is at revision 5
+```
+
+Tell a Primary Site that an object in its bucket was created or removed. Most users should have
+their storage provider send these notifications automatically instead. This request authenticates
+with a Site Bucket Notification Token, passed with `--token` or `FOXGLOVE_SITE_NOTIFICATION_TOKEN`,
+and the CLI never saves it:
+
+```
+$ FOXGLOVE_SITE_NOTIFICATION_TOKEN=fox_snt_... foxglove sites notify-bucket \
+    --message-id msg-1 --file-name robot/run.mcap --bucket-name inbox --storage-provider aws
+    Bucket notification sent: robot/run.mcap
+```
+
+## Custom properties
+
+Custom properties define typed fields for devices, events, sessions, and
+episodes; the `add` and `edit` commands for each set them with `--property`, and
+the `edit` commands remove them with `--remove-property`. Create
+one, giving the allowed values for an enum or multi-enum property:
+
+```
+$ foxglove custom-properties add --key weather --label Weather \
+    --resource-type device --value-type enum --enum-value rain --enum-value sun
+    Custom property created: cp_Nfx3KbCvT0pWdy9Z
+```
+
+List them, optionally for one resource type:
+
+```
+$ foxglove custom-properties list --resource-type device
+```
+
+Change a property's label, or reorder or add to its enum values by passing the
+complete list:
+
+```
+$ foxglove custom-properties edit cp_Nfx3KbCvT0pWdy9Z --enum-value sun --enum-value rain --enum-value snow
+    Custom property updated: cp_Nfx3KbCvT0pWdy9Z
 ```
 
 ## Uploads and recordings
@@ -103,10 +251,49 @@ List recordings:
 $ foxglove recordings list
 ```
 
+List only recordings that contain a topic:
+
+```
+$ foxglove recordings list --topic /camera/image
+```
+
+List recordings whose metadata matches a query:
+
+```
+$ foxglove recordings list --metadata-query robot:alpha
+```
+
+Get a single recording by ID or key:
+
+```
+$ foxglove recordings get rec_123 --format json
+```
+
+List sessions whose recordings overlap a time range, with each session's recording count and data range:
+
+```
+$ foxglove sessions list --key-matches drive --start 2026-04-19 --end 2026-04-20 --sort-by updatedAt
+```
+
+Create a session for a device, or from recordings that all belong to one device,
+and change its key or custom properties later:
+
+```
+$ foxglove sessions add --recording-id rec_123 --recording-id rec_456 --key drive-41 --property vehicle:car
+$ foxglove sessions edit drive-41 --property vehicle:truck --remove-property driver
+```
+
 Request transfer of an existing edge recording to its configured Primary Site:
 
 ```sh
 foxglove recordings transfer rec_123
+```
+
+List the per-topic MCAP files that imports wrote to a self-managed Primary Site's lake bucket. Query by recording, by device and session, or by device with a time range of at most 24 hours:
+
+```
+$ foxglove lake-files list --site-id site_123 --recording-id rec_123
+$ foxglove lake-files list --site-id site_123 --device-name RobotA --start 2026-04-19 --end 2026-04-20 --topic /gps
 ```
 
 ## Exports
@@ -130,6 +317,9 @@ $ foxglove export --device-name RobotA --start 2001-01-01T00:00:00Z --end 2022-0
 
 # Export an episode to an MCAP file
 $ foxglove export --episode-id <episode-id> --output-file episode.mcap
+
+# Export version 2 of an episode to an MCAP file
+$ foxglove export --episode-id <episode-id> --episode-version 2 --output-file episode.mcap
 ```
 
 If you've output a file, inspect its contents:
@@ -178,6 +368,14 @@ $ foxglove events add --device-id dev_mHH1Cp4gPybCPR8y \
     --metadata requires-labeling:true
 ```
 
+Name the device with `--device-name` instead of `--device-id`, and set event
+custom properties with `--property`:
+
+```
+$ foxglove events add --device-name RobotA \
+    --start 2023-04-19T13:26:37Z --end 2023-04-19T13:27:00Z --property speed:3.5
+```
+
 List all events:
 
 ```
@@ -188,16 +386,48 @@ $ foxglove events list
 | evt_idMGJImlICYP4dcy | dev_mHH1Cp4gPybCPR8y | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.030302Z | 2023-04-19T13:26:37.080Z | 2023-04-19T13:26:37.080Z | {"requires-labeling":"true"} |
 ```
 
+Narrow the list to one event with `--event-id`, or to events created or updated
+since a given time with `--created-after` and `--updated-after`:
+
+```
+$ foxglove events list --updated-after 2023-04-19T13:25:00Z
+```
+
+Show one event, change it, or delete it. `--metadata` replaces all of the
+event's metadata; `--clear-metadata`, `--remove-event-type`, and
+`--remove-property` remove those values:
+
+```
+$ foxglove events get evt_idMGJImlICYP4dcy
+$ foxglove events edit evt_idMGJImlICYP4dcy --end 2023-04-19T13:27:00Z \
+    --metadata requires-labeling:false
+$ foxglove events delete evt_idMGJImlICYP4dcy
+```
+
+Event types define the custom properties an event carries. Create one with its
+custom properties in display order, marking those every event must set with
+`:required`:
+
+```
+$ foxglove event-types add --name Stop --color red \
+    --custom-property cprop_reason:required --custom-property cprop_operator
+Event type created: evtt_5Ch2ztVt8M9w9fsu
+```
+
+`event-types edit` changes the name or color; `--custom-property` replaces the
+whole list, and `--clear-custom-properties` removes it. Use `event-types get` to
+show one event type, and `event-types delete` to remove one that no events use.
+
 ## Datasets and episodes
 
 An episode is a time window over one or more recordings; a dataset is a named,
 versioned collection of episodes. Both require a plan that supports
 [datasets](https://docs.foxglove.dev/docs/datasets).
 
-List datasets:
+List datasets. `--name` keeps only those whose name contains a value, ignoring case:
 
 ```
-$ foxglove datasets list
+$ foxglove datasets list --name highway
 ID | Name | Project ID | Description | Episode Count | Created At | Updated At
 --- | --- | --- | --- | --- | --- | ---
 ds_mHH1Cp4gPybCPR8y | Highway merges | prj_WEJUVEOVApoIpe1M | Curated merge maneuvers | 128 | 2026-04-19T13:22:44Z | 2026-05-02T09:11:03Z
@@ -211,9 +441,23 @@ $ foxglove episodes list --start 2026-04-19 --end 2026-04-20 --include-recording
 $ foxglove episodes list --recording-id rec_lwjzOMxryMmP3yXg --has-missing-recordings
 ```
 
+Match an exact set of recording display IDs, with none missing or extra
+(maximum 50 IDs). The flag accepts comma-separated values and may be repeated:
+
+```
+$ foxglove episodes list --exact-recording-ids rec_lwjzOMxryMmP3yXg,rec_4lVQ9mTp7vRqJY2s
+```
+
+Inspect an episode's version history, newest first. Use `--cursor` with the
+returned `nextCursor` to request the next page:
+
+```
+$ foxglove episodes versions list ep_BCUw2zxpBnToJbOS --limit 20 --format json
+```
+
 Create an episode from one or more recordings. The window defaults to the span
-of its recordings, and an existing episode with the same window and recordings
-is reused:
+of its recordings, and an existing episode whose latest version has the same
+window, recordings, and custom properties is reused:
 
 ```
 $ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg \
@@ -226,7 +470,7 @@ and the completed recordings from its device that overlap it; later edits to the
 event or new imports do not change it:
 
 ```
-$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p --metadata '{"label":"merge"}'
+$ foxglove episodes add --event-id evt_Tn4kWq8sLx2BvR6p
 Episode created: ep_Rz6pXk3mWq9TfLbN
 ```
 
@@ -237,7 +481,71 @@ on when each episode joined the dataset:
 $ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --sort-by addedAt --sort-order desc
 ```
 
-Member recordings are omitted unless you pass `--include-recordings`.
+Member recordings are omitted unless you pass `--include-recordings`. List
+commands and `datasets versions compare` also accept `--include-creation-context`
+to add the selection or search that produced each episode to JSON output;
+`episodes get` always returns it.
+
+Episode custom properties are also omitted by default. Organizations with API
+access to episode properties can set them during creation, request them on reads,
+and filter by them:
+
+```
+$ foxglove episodes add --recording-id rec_lwjzOMxryMmP3yXg --property weather:rain
+Episode created: ep_BCUw2zxpBnToJbOS
+$ foxglove episodes list --properties-query 'weather:rain note:"night run"' --include-properties
+$ foxglove episodes get ep_BCUw2zxpBnToJbOS --version 2 --include-properties --format json
+$ foxglove datasets episodes list ds_mHH1Cp4gPybCPR8y --version 4 --properties-query 'weather:rain' --include-properties
+```
+
+`--property` (or `-p`) uses the same typed `key:value` syntax as device properties.
+The CLI reads the organization's episode property definitions to convert strings,
+numbers, booleans, enums, and multi-enums. Repeat a multi-enum key to set its full
+list of values; it cannot set an empty list. Separate filter terms with spaces and
+quote values that contain spaces. Filtering alone does not include properties in
+the output; add `--include-properties` to see them.
+
+Edit one episode's properties, time bounds, or recordings:
+
+```
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --property weather:sun --remove-property reviewer --applies-to-version 2
+Episode updated: ep_BCUw2zxpBnToJbOS (version 3)
+$ foxglove episodes edit ep_BCUw2zxpBnToJbOS --end 2026-04-19T13:24:00Z --add-recording-id rec_lwjzOMxryMmP3yXg
+```
+
+Edits require `episodes.update`. Omitted fields keep their values, and
+`--remove-property` removes a property. An edit that changes something creates a
+new episode version; one that changes nothing keeps the current version. With
+`--applies-to-version`, the edit fails instead of overwriting changes made since
+that version. Existing datasets keep their pinned episode versions. `episodes get --version` reads an episode's
+historical version; dataset membership reads return the version pinned by the
+selected dataset version.
+
+Apply edits to many episodes atomically from a JSON file: the API applies all of
+them or none. Each entry requires `id` and can contain `appliesToVersion`,
+`startTime`, `endTime`, `recordings` with `add`/`remove` arrays, and `properties`.
+Property values merge by key; `null` removes a property. An ID-only entry changes
+nothing and returns the current version. Timestamps are sent unchanged and must
+use RFC 3339, up to nanosecond precision (for example `2026-04-19T13:22:44.123456789Z`).
+A version conflict names each conflicting episode's current version.
+
+```
+$ cat edits.json
+{"episodes":[{"id":"ep_BCUw2zxpBnToJbOS","appliesToVersion":3,"recordings":{"add":["rec_lwjzOMxryMmP3yXg"]}}]}
+$ foxglove episodes edit-bulk edits.json --format json
+```
+
+Episode JSON includes `version` and `latestVersion`. Episode and dataset membership
+table/CSV output append Version, Latest Version, Custom Properties, and Missing
+Recordings columns. Missing Recordings is `true` when a member recording no longer
+has data; for `episodes list` and `episodes get` it is filled only with
+`--include-recordings`. Comparison output has no Missing Recordings column and
+appends Previous Version and Previous Custom Properties;
+JSON preserves the previous episode snapshot, and summaries report changed
+members alongside additions and removals.
+
+Property options and `episodes edit` return an error if your organization does
+not have access to episode properties.
 
 Create a dataset and change its episodes. Changes stay pending in the dataset's
 draft until you commit them as a new version, or discard them with
@@ -252,8 +560,31 @@ Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new ve
 $ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_Vt3oQm8LkDs2PaXn ep_Hq7sWd1ZrNc4YbEe
 $ foxglove datasets episodes remove ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS
 $ foxglove datasets episodes list ds_Qp4sT7vKx2NbLm9W --version draft
-$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W
-Committed version 1 with 2 episodes (2 added, 0 removed)
+$ foxglove datasets commit ds_Qp4sT7vKx2NbLm9W --description "Merges after the lane change"
+Committed version 1 with 2 episodes (2 added, 0 removed, 0 changed); version 2 is now the draft
+```
+
+Without `--description`, the new version keeps the draft's description; pass an
+empty `--description` to commit it without one. Edit a version's description
+later with `datasets versions edit`; pass an empty `--description` to clear it:
+
+```
+$ foxglove datasets versions edit ds_Qp4sT7vKx2NbLm9W 1 --description "Merges at night"
+Version 1 of dataset ds_Qp4sT7vKx2NbLm9W updated
+```
+
+Version output includes the description and who committed the version: an org
+member ID, or an API key ID when an API key committed it.
+
+Select an episode version when adding an episode or updating one in the draft.
+Omit `--episode-version` to select the latest version. An already selected version
+is reported as unchanged; the API rejects update IDs outside the draft.
+
+```
+$ foxglove datasets episodes add ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 2
+$ foxglove datasets episodes update ds_Qp4sT7vKx2NbLm9W ep_BCUw2zxpBnToJbOS --episode-version 3
+Updated 1 episode
+Run foxglove datasets commit ds_Qp4sT7vKx2NbLm9W to commit the draft as a new version.
 ```
 
 List a dataset's versions, see which episodes changed between two of them, or
@@ -266,15 +597,52 @@ $ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 5
 $ foxglove datasets versions restore ds_mHH1Cp4gPybCPR8y 3
 ```
 
+Restoring a dataset version also restores the selected version of each episode.
+In the restore summary, `changed` counts episodes that stay in the dataset
+but now use a different episode version. With `--force`, the discard summary includes
+pending episode version updates.
+
+Clone a committed version into a new dataset in the same project. The new
+dataset has a single committed version; pass `--include-history` to copy every
+version up to and including the cloned one:
+
+```
+$ foxglove datasets versions clone ds_mHH1Cp4gPybCPR8y 3 --name "Night merges v3"
+Dataset created: ds_Wn5rKc8TzQ2xHb7M
+Cloned from version 3 of dataset ds_mHH1Cp4gPybCPR8y
+```
+
 Download a committed version of a dataset. The CLI writes one MCAP file per
-episode plus a `manifest.json`:
+episode, at the episode version selected by the dataset version, plus a
+`manifest.json` that records each episode's version:
 
 ```
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
 Episode 1 of 128: 41231 bytes
 ...
-Downloaded 127 of 128 episodes to Highway-merges-v4 (0 failed, 1 skipped)
+Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 ```
+
+If an earlier manifest does not record the same episode version, the CLI
+downloads that episode again.
+
+A version with recordings that are no longer available can't be downloaded.
+Select another version, or remove the affected episodes from the dataset and
+commit a new version. List them with
+`foxglove datasets episodes list DATASET_ID --version N --has-missing-recordings`.
+
+Use `--include-properties` to add episode custom properties to each manifest
+entry, including empty `{}` values. This also works when resuming a download:
+
+```
+$ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4 --include-properties
+$ foxglove datasets versions compare ds_mHH1Cp4gPybCPR8y 3 4 --include-properties --format json
+```
+
+Changing `--include-properties` on a later run updates the manifest without
+downloading completed MCAP files again. If your organization does not have
+access to episode properties, the command fails and leaves earlier downloads
+as they were.
 
 ## Extensions
 
@@ -312,11 +680,127 @@ $ foxglove extensions list
     ]
 ```
 
+Show one extension, including a signed link to download its `.foxe` file:
+
+```
+$ foxglove extensions get ext_BsGXKGsZ9c4WQF1 --format json
+```
+
 Unpublish an extension by its ID to **delete** its files and uninstall it for
 all Foxglove organization members:
 
 ```
 $ foxglove extensions unpublish ext_BsGXKGsZ9c4WQF1
+```
+
+## Site tokens
+
+Site tokens authenticate site controllers for a Primary or Edge Site. Create a
+token for a site; the token value is printed only once, so save it right away:
+
+```
+$ foxglove site-tokens add --site-id site_example
+```
+
+List tokens, optionally for one site, and delete a token by its ID:
+
+```
+$ foxglove site-tokens list --site-id site_example
+$ foxglove site-tokens delete stkn_example
+```
+
+## Site notification tokens
+
+Site notification tokens authenticate bucket notifications for a self-managed or
+Bring Your Own Storage Primary Site. Create one for a site; the token value is
+printed only once:
+
+```
+$ foxglove site-notification-tokens add --site-id site_example
+```
+
+List tokens, optionally for one site, and delete a token by its ID:
+
+```
+$ foxglove site-notification-tokens list --site-id site_example
+$ foxglove site-notification-tokens delete sint_example
+```
+
+## Layouts
+
+List the layouts shared with your organization, plus your personal layouts when
+signed in with `foxglove auth login`:
+
+```
+$ foxglove layouts list
+```
+
+Save a layout's data to a file, then create a copy from it. The layout data
+format is not stable; treat it as opaque and send back what the API returned.
+
+```
+$ foxglove layouts get lay_123 --include-data --format json | jq .data > layout.json
+$ foxglove layouts add --name "Overview (copy)" --permission ORG_WRITE --data layout.json
+```
+
+Rename a layout, move it out of its folder, or replace its data:
+
+```
+$ foxglove layouts edit lay_123 --name "Overview" --folder-name ""
+$ foxglove layouts edit lay_123 --data layout.json
+```
+
+Delete a layout, and restore it if needed:
+
+```
+$ foxglove layouts delete lay_123
+$ foxglove layouts restore lay_123
+```
+
+API keys can only create and change layouts shared with the organization
+(`ORG_READ` or `ORG_WRITE`).
+
+## Automations
+
+[Automations](https://docs.foxglove.dev/docs/automations) run an AI agent on
+your data on a schedule, when an event occurs, or on demand. Automations are in
+beta. Each automation acts as its owner, with the owner's access to data in its
+project. Signed-in members and personal access tokens can create automations.
+Who can edit, delete, or run an automation depends on its permissions, which
+`automations get` shows: the owner and organization admins can delete it.
+Organization API keys can list automations and their runs, and start runs, but
+can't edit or delete automations.
+
+Create an automation, then list or get it:
+
+```
+$ foxglove automations add --project-id prj_123 --name "Recording triage" --action-prompt "Summarize each new recording"
+    Automation created: auto_123
+$ foxglove automations list --project-id prj_123
+$ foxglove automations get auto_123 --format json
+$ foxglove automations edit auto_123 --name "Nightly triage"
+```
+
+Set the trigger that starts runs. A `clock.updated` trigger runs on a UTC
+schedule. Other event types, such as `recording.imported`, start a run each time
+a matching recording, session, or event is created or updated:
+
+```
+$ foxglove automations trigger set auto_123 --event-type clock.updated --schedule-cadence daily --schedule-anchor 2026-01-05T09:00:00Z
+$ foxglove automations trigger set auto_123 --event-type event.created --event-type-id evt_type_123 --enabled=false
+$ foxglove automations trigger get auto_123
+$ foxglove automations trigger delete auto_123
+```
+
+Start a run on demand and follow it. Members and personal access tokens give
+`--run-prompt`; organization API keys omit it, and the run uses only the
+automation's saved instructions:
+
+```
+$ foxglove automations runs add auto_123 --run-prompt "Look at rec_123"
+    Automation run created: run_123
+$ foxglove automations runs list --project-id prj_123 --automation-id auto_123 --status running,failed
+$ foxglove automations runs get run_123 --format json
 ```
 
 ## Shell autocompletion
