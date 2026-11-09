@@ -27,6 +27,8 @@ jobs:
         run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets --all-features -- -D warnings
       - name: Build documentation with warnings denied
         run: make rust-doc
+      - name: Check generated command reference
+        run: make docs-check
       - name: Install dependency auditor
         run: cargo install cargo-audit --locked --version 0.22.2
       - name: Audit locked Rust dependencies
