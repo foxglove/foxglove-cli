@@ -23,7 +23,7 @@ Options:
           Config file
 
       --created-after <CREATED_AFTER>
-          Only events created after this time
+          Only events created after this time (ISO 8601)
 
       --debug[=<DEBUG>]
           Print debug diagnostics, including HTTP requests, to stderr
@@ -37,7 +37,7 @@ Options:
           Device name
 
       --end <END>
-          Exclude events after this time
+          Exclude events after this time (ISO 8601)
 
       --event-id <EVENT_ID>
           Only the event with this ID
@@ -67,10 +67,10 @@ Options:
           Sort order for the --sort-by field: asc or desc
 
       --start <START>
-          Exclude events before this time
+          Exclude events before this time (ISO 8601)
 
       --updated-after <UPDATED_AFTER>
-          Only events updated after this time
+          Only events updated after this time (ISO 8601)
 
   -h, --help
           Print help

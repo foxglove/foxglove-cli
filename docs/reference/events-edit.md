@@ -18,13 +18,13 @@ Options:
           Foxglove client ID
 
       --start <START>
-          New start of the event (inclusive), RFC 3339
+          New start of the event (inclusive, ISO 8601)
 
       --config <CONFIG>
           Config file
 
       --end <END>
-          New end of the event (inclusive), RFC 3339
+          New end of the event (inclusive, ISO 8601)
 
       --debug[=<DEBUG>]
           Print debug diagnostics, including HTTP requests, to stderr
