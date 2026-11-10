@@ -39,6 +39,18 @@ struct Dataset {
     description: String,
     #[serde(rename = "episodeCount", default, deserialize_with = "null_to_default")]
     episode_count: i64,
+    #[serde(
+        rename = "creatorOrgMemberId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    creator_org_member_id: Option<String>,
+    #[serde(
+        rename = "creatorApiKeyId",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    creator_api_key_id: Option<String>,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "updatedAt")]
@@ -100,10 +112,23 @@ impl Record for DatasetEpisode {
             "Version",
             "Latest Version",
             "Custom Properties",
+            "Missing Recordings",
         ]
     }
 
     fn fields(&self) -> Vec<String> {
+        let mut fields = self.membership_fields();
+        fields.push(
+            self.has_missing_recordings
+                .map_or_else(String::new, |missing| missing.to_string()),
+        );
+        fields
+    }
+}
+
+impl DatasetEpisode {
+    /// Columns shared with version comparisons, which do not report missing recordings.
+    fn membership_fields(&self) -> Vec<String> {
         vec![
             self.episode.id.clone(),
             self.episode.project_id.clone(),
@@ -569,10 +594,26 @@ mod tests {
     }
 
     #[test]
+    fn the_creator_is_kept_in_json_output_when_present() {
+        let record: Dataset = serde_json::from_value(serde_json::json!({"id":"ds_fixture","projectId":"prj_default","name":"Fixture","creatorOrgMemberId":"mem_one","creatorApiKeyId":null,"createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}))
+            .unwrap();
+        let output = serde_json::to_value(&record).unwrap();
+        assert_eq!(output["creatorOrgMemberId"], "mem_one");
+        assert!(output.get("creatorApiKeyId").is_none());
+
+        let record: Dataset = serde_json::from_value(serde_json::json!({"id":"ds_fixture","projectId":"prj_default","name":"Fixture","creatorApiKeyId":"key_one","createdAt":"2024-01-02T03:04:05Z","updatedAt":"2024-01-02T03:04:06Z"}))
+            .unwrap();
+        let output = serde_json::to_value(&record).unwrap();
+        assert_eq!(output["creatorApiKeyId"], "key_one");
+        assert!(output.get("creatorOrgMemberId").is_none());
+    }
+
+    #[test]
     fn membership_fields_render_around_the_nested_episode() {
         let record: DatasetEpisode = serde_json::from_value(serde_json::json!({
             "addedAt": "2024-01-02T03:04:08Z",
             "addedInVersion": 3,
+            "hasMissingRecordings": true,
             "episode": {
                 "id": "ep_fixture",
                 "version": 1,
@@ -588,5 +629,7 @@ mod tests {
         assert_eq!(fields[0], "ep_fixture");
         assert_eq!(fields[5], "2024-01-02T03:04:08Z");
         assert_eq!(fields[6], "3");
+        assert_eq!(fields.len(), DatasetEpisode::headers().len());
+        assert_eq!(fields.last().unwrap(), "true");
     }
 }
