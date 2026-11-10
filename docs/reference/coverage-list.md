@@ -60,7 +60,7 @@ Options:
           Start of coverage time range (ISO 8601)
 
       --tolerance <TOLERANCE>
-          Coverage separation tolerance in seconds
+          Minimum gap in seconds between separate coverage ranges; may be fractional
 
   -h, --help
           Print help
