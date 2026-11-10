@@ -119,6 +119,7 @@ impl Record for Episode {
             "Version",
             "Latest Version",
             "Custom Properties",
+            "Missing Recordings",
         ]
     }
 
@@ -133,6 +134,8 @@ impl Record for Episode {
             self.version.to_string(),
             self.latest_version.to_string(),
             self.property_cell(),
+            self.has_missing_recordings
+                .map_or_else(String::new, |missing| missing.to_string()),
         ]
     }
 }
@@ -505,7 +508,10 @@ mod tests {
         let output = serde_json::to_value(&record).unwrap();
         assert!(output.get("recordings").is_none());
         assert!(output.get("creationContext").is_none());
+        assert!(output.get("hasMissingRecordings").is_none());
         assert_eq!(record.recording_ids(), "");
+        assert_eq!(record.fields().len(), Episode::headers().len());
+        assert_eq!(record.fields().last().unwrap(), "");
     }
 
     #[test]
@@ -540,9 +546,11 @@ mod tests {
                 {"id": "rec_one", "path": "one.mcap", "start": "", "end": "", "available": true},
                 {"id": "rec_two", "path": "two.mcap", "start": "", "end": "", "available": false},
             ],
+            "hasMissingRecordings": true,
         }))
         .unwrap();
         assert_eq!(record.recording_ids(), "rec_one,rec_two");
+        assert_eq!(record.fields().last().unwrap(), "true");
     }
 
     #[test]

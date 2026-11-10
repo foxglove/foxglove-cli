@@ -38,6 +38,13 @@ use std::io::{BufRead, Write};
 
 pub use cli::Outcome;
 
+/// Command metadata for development tools such as the reference generator.
+#[doc(hidden)]
+#[must_use]
+pub fn command_definition() -> clap::Command {
+    cli::command_definition()
+}
+
 /// Parse and execute one CLI invocation without terminating the process.
 ///
 /// # Panics
