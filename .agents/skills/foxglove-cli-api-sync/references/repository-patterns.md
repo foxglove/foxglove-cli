@@ -7,6 +7,7 @@ These pointers were checked against CLI commit `57f6eae`. Read the current files
 | Concern | Starting point |
 | --- | --- |
 | Clap command hierarchy, argument structs, dispatch, help, completion | `rust/src/cli.rs` |
+| Generated command reference and generator | `docs/reference/`, `rust/examples/generate_docs.rs` |
 | Async HTTP client, typed errors, path encoding, transfers | `rust/src/api.rs` |
 | Shared config/client and default project | `rust/src/runtime.rs`, `rust/src/config.rs` |
 | List records, time parsing, project fallback, truncation warnings | `rust/src/records.rs` |
@@ -45,6 +46,7 @@ Read current CI and Make targets; run commands from the repository root. At the 
 make rust-lint
 make rust-test-ignored
 make rust-doc
+make docs-check
 make rust-audit
 make build
 ./rust/target/release/foxglove-rust --help
