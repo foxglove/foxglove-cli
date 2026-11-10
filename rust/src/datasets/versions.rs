@@ -185,7 +185,7 @@ impl Record for DatasetEpisodeChange {
 
     fn fields(&self) -> Vec<String> {
         let mut fields = vec![self.change.clone()];
-        fields.extend(self.entry.fields());
+        fields.extend(self.entry.membership_fields());
         fields.push(
             self.previous_version
                 .map_or_else(String::new, |version| version.to_string()),
@@ -765,10 +765,14 @@ mod tests {
 
     #[test]
     fn a_change_leads_with_its_side_and_keeps_the_membership_columns() {
+        // Comparisons omit whether recordings are missing, so the change keeps every
+        // membership column except the trailing Missing Recordings column.
+        let membership = DatasetEpisode::headers().split_last().unwrap().1;
         assert_eq!(
-            DatasetEpisodeChange::headers()[1..=DatasetEpisode::headers().len()],
-            *DatasetEpisode::headers()
+            DatasetEpisodeChange::headers()[1..=membership.len()],
+            *membership
         );
+        assert!(!DatasetEpisodeChange::headers().contains(&"Missing Recordings"));
         let change: DatasetEpisodeChange = serde_json::from_value(serde_json::json!({
             "change": "removed",
             "addedAt": "2024-01-02T03:04:08Z",
@@ -785,6 +789,7 @@ mod tests {
         }))
         .unwrap();
         let fields = change.fields();
+        assert_eq!(fields.len(), DatasetEpisodeChange::headers().len());
         assert_eq!(fields[..2], ["removed", "ep_fixture"]);
         let output = serde_json::to_value(&change).unwrap();
         assert_eq!(output["change"], "removed");
