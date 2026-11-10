@@ -2,6 +2,14 @@
 
 RUST_MANIFEST := rust/Cargo.toml
 
+.PHONY: docs docs-check
+
+docs:
+	cargo run --manifest-path $(RUST_MANIFEST) --locked --example generate_docs
+
+docs-check:
+	cargo run --manifest-path $(RUST_MANIFEST) --locked --example generate_docs -- --check
+
 lint:
 	$(MAKE) rust-lint
 

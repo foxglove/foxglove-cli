@@ -138,6 +138,11 @@ struct Cli {
     command: Option<CliCommand>,
 }
 
+/// Build command metadata without loading configuration or executing commands.
+pub(crate) fn command_definition() -> Command {
+    Cli::command()
+}
+
 #[derive(Debug, Subcommand)]
 enum CliCommand {
     #[command(about = "Query and modify data attachments", subcommand)]
