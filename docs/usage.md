@@ -767,8 +767,8 @@ your data on a schedule, when an event occurs, or on demand. Automations are in
 beta. Each automation acts as its owner, with the owner's access to data in its
 project. Signed-in members and personal access tokens can create automations.
 Who can edit, delete, or run an automation depends on its permissions, which
-`automations get` shows: the owner and organization admins can delete it.
-Organization API keys can list automations and their runs, and start runs, but
+`automations get` shows: the owner and organization admins can delete it and
+enable or disable its trigger. Organization API keys can list automations and their runs, and start runs, but
 can't edit or delete automations.
 
 Create an automation, then list or get it:
@@ -779,6 +779,16 @@ $ foxglove automations add --project-id prj_123 --name "Recording triage" --acti
 $ foxglove automations list --project-id prj_123
 $ foxglove automations get auto_123 --format json
 $ foxglove automations edit auto_123 --name "Nightly triage"
+```
+
+Runs use the organization's default model unless the automation saves a model
+family with `--model-selection auto`, `sonnet`, or `opus`. `auto` picks the
+recommended model; `sonnet` and `opus` pick the current version of that family.
+Clear the saved choice to return to the default:
+
+```
+$ foxglove automations edit auto_123 --model-selection opus
+$ foxglove automations edit auto_123 --clear-model-selection
 ```
 
 Set the trigger that starts runs. A `clock.updated` trigger runs on a UTC

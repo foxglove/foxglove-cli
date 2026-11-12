@@ -7,7 +7,7 @@
 ```text
 Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.
 
-Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
+Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it and enable or disable its trigger. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
 
 Automations are in beta.
 
@@ -15,8 +15,8 @@ Usage: foxglove automations [OPTIONS] <COMMAND>
 
 Commands:
   add      Create an automation
-  delete   Delete an automation and its trigger
-  edit     Edit an automation's name or instructions
+  delete   Delete an automation, its trigger, and its runs
+  edit     Edit an automation's name, instructions, or model
   get      Get an automation
   list     List a project's automations, newest first, with their run counts
   runs     Start, list, and get automation runs
