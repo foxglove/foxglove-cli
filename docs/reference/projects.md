@@ -10,8 +10,9 @@ List and manage projects
 Usage: foxglove projects [OPTIONS] <COMMAND>
 
 Commands:
-  list  List projects
-  help  Print this message or the help of the given subcommand(s)
+  list     List projects
+  members  Add or remove project members
+  help     Print this message or the help of the given subcommand(s)
 
 Options:
       --client-id <CLIENT_ID>
@@ -32,3 +33,4 @@ Options:
 ## Subcommands
 
 - [`foxglove projects list`](projects-list.md)
+- [`foxglove projects members`](projects-members.md)

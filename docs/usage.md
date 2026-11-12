@@ -165,6 +165,19 @@ $ foxglove projects list
     | prj_WEJUVEOVApoIpe1M | My First Project   | 11           | 2021-11-01T17:38:55Z       | true        |
 ```
 
+Members with the user role need to be added to an invite-only project to use it; organization
+admins can access every project. Organization admins, or API keys with the
+`projectMembers.update` capability, can add or remove up to 50 organization members at a time.
+If any ID to add is not an organization member, no members are added. Members already in the
+requested state are left unchanged:
+
+```
+$ foxglove projects members add prj_123 mem_1 mem_2
+    Added 1 member to project prj_123: mem_1 (1 unchanged)
+$ foxglove projects members remove prj_123 mem_1
+    Removed 1 member from project prj_123: mem_1
+```
+
 ## Organization members
 
 List your organization's members. This requires an API key with the `orgMembers.list`
