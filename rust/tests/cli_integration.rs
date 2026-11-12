@@ -7011,3 +7011,82 @@ fn resuming_a_dataset_redownloads_unverified_episode_versions() {
         assert_eq!(download_manifest(&workspace)["episodes"][0]["version"], 1);
     }
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn project_members_are_added_and_removed() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "PATCH",
+            "/v1/projects/prj%2F1/members",
+            r#"{"affectedMemberIds":["mem_1"]}"#,
+        ),
+        Reply::json(
+            "PATCH",
+            "/v1/projects/prj_1/members",
+            r#"{"affectedMemberIds":[]}"#,
+        ),
+        Reply {
+            status: 404,
+            ..Reply::json(
+                "PATCH",
+                "/v1/projects/prj_1/members",
+                r#"{"error":"Member not found"}"#,
+            )
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["projects", "members", "add", "prj/1", "mem_1", "mem_2"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Added 1 member to project prj/1: mem_1 (1 unchanged)\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["projects", "members", "remove", "prj_1", "mem_3"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Removed 0 members from project prj_1 (1 unchanged)\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["projects", "members", "add", "prj_1", "mem_unknown"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Failed to add project members: Member not found\n"
+    );
+    let requests = server.finish();
+    assert_eq!(
+        json_body(&requests[0]),
+        serde_json::json!({"action": "add", "memberIds": ["mem_1", "mem_2"]})
+    );
+    assert_eq!(
+        json_body(&requests[1]),
+        serde_json::json!({"action": "remove", "memberIds": ["mem_3"]})
+    );
+
+    let too_many: Vec<String> = (0..51).map(|index| format!("mem_{index}")).collect();
+    let output = Process::spawn(
+        workspace
+            .command("http://127.0.0.1:1")
+            .args(["projects", "members", "remove", "prj_1"])
+            .args(&too_many),
+    )
+    .finish();
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "At most 50 member IDs can be changed at once (got 51). Split the IDs into more than one command.\n"
+    );
+}

@@ -2665,6 +2665,35 @@ pub(crate) struct OrgMemberListArgs {
 enum ProjectsCommand {
     #[command(about = "List projects")]
     List(FormatArgs),
+    #[command(about = "Add or remove project members", subcommand)]
+    Members(ProjectMembersCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum ProjectMembersCommand {
+    #[command(
+        about = "Give organization members access to a project",
+        long_about = "Give organization members access to a project. Members with the user role need this access to use an invite-only project. Organization admins can access every project, and members can access a project that is not invite-only without being added.\n\nEvery ID must belong to a member of the organization; if one is unknown, no members are added. Members who already have access are left unchanged. Requires an organization admin, or an API key with the projectMembers.update capability for the project."
+    )]
+    Add(ProjectMemberMutationArgs),
+    #[command(
+        about = "Remove organization members' access to a project",
+        long_about = "Remove organization members' access to a project. Unknown IDs and members without access are left unchanged. Requires an organization admin, or an API key with the projectMembers.update capability for the project."
+    )]
+    Remove(ProjectMemberMutationArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ProjectMemberMutationArgs {
+    #[arg(value_name = "PROJECT_ID", value_parser = parse_id)]
+    pub(crate) project_id: String,
+    #[arg(
+        value_name = "MEMBER_ID",
+        help = "Organization member IDs (at most 50)",
+        required = true,
+        value_parser = parse_id
+    )]
+    pub(crate) member_ids: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -3419,6 +3448,12 @@ async fn dispatch_api_command(
         }
         CliCommand::Projects(ProjectsCommand::List(args)) => {
             projects::list_projects(&runtime, args.format).await
+        }
+        CliCommand::Projects(ProjectsCommand::Members(ProjectMembersCommand::Add(args))) => {
+            projects::change_project_members(&runtime, &args, projects::MemberChange::Add).await
+        }
+        CliCommand::Projects(ProjectsCommand::Members(ProjectMembersCommand::Remove(args))) => {
+            projects::change_project_members(&runtime, &args, projects::MemberChange::Remove).await
         }
         CliCommand::Recordings(command) => dispatch_recording_command(&runtime, command).await,
         CliCommand::Sessions(command) => dispatch_session_command(&runtime, command).await,
