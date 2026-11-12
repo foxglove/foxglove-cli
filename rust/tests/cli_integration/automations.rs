@@ -289,3 +289,45 @@ fn runs_are_started_and_listed_with_their_filters() {
         ])
     );
 }
+
+#[test]
+#[ignore = "requires loopback sockets"]
+fn runs_are_deleted_by_id() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![
+        Reply::json(
+            "DELETE",
+            "/v1/automations/runs/run%2F1",
+            r#"{"success":true}"#,
+        ),
+        Reply {
+            status: 404,
+            ..Reply::json(
+                "DELETE",
+                "/v1/automations/runs/run_2",
+                r#"{"error":"Not found"}"#,
+            )
+        },
+    ]);
+    let output = run(
+        &workspace,
+        &server,
+        &["automations", "runs", "delete", "run/1"],
+    );
+    assert_success(&output);
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Automation run deleted: run/1\n"
+    );
+    let output = run(
+        &workspace,
+        &server,
+        &["automations", "runs", "delete", "run_2"],
+    );
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr),
+        "Automation run not found: run_2\n"
+    );
+    server.finish();
+}

@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use super::trigger::{AutomationSchedule, AutomationTrigger};
 use super::{automation_not_found, is_not_found, required_project_id, Created};
 use crate::api::encode_path_segment;
-use crate::cli::{AutomationRunAddArgs, AutomationRunGetArgs, AutomationRunListArgs};
+use crate::cli::{
+    AutomationRunAddArgs, AutomationRunGetArgs, AutomationRunIdArgs, AutomationRunListArgs,
+};
 use crate::output::Format;
 use crate::records::{
     format_output, format_record, is_zero, parse_timestamp, warn_if_truncated, Record,
@@ -28,6 +30,23 @@ struct AutomationRun {
     started_at: Option<String>,
     completed_at: Option<String>,
     error_message: Option<String>,
+    #[serde(flatten)]
+    outcome: RunOutcome,
+}
+
+/// How far Foxglove ran a run and what the agent reported. Servers that predate
+/// these fields omit them; enum values are kept as strings so new ones decode.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RunOutcome {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution: Option<String>,
+    #[serde(default)]
+    result: Option<String>,
+    #[serde(default)]
+    result_summary: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
 }
 
 /// The recording, event, session, or device whose event started a run.
@@ -95,22 +114,27 @@ struct AutomationRunSummary {
     started_at: Option<String>,
     completed_at: Option<String>,
     error_message: Option<String>,
+    #[serde(flatten)]
+    outcome: RunOutcome,
     trigger_event_type: Option<String>,
     trigger_source: Option<TriggerSource>,
     trigger_schedule: Option<AutomationSchedule>,
     token_usage: Option<TokenUsage>,
 }
 
-const RUN_HEADERS: [&str; 11] = [
+const RUN_HEADERS: [&str; 14] = [
     "ID",
     "Automation ID",
     "Automation Name",
     "Status",
+    "Execution",
+    "Result",
     "Trigger Event Type",
     "Trigger Source",
     "Created At",
     "Started At",
     "Completed At",
+    "Model",
     "Total Tokens",
     "Error Message",
 ];
@@ -126,11 +150,14 @@ impl Record for AutomationRunSummary {
             self.automation_id.clone(),
             self.automation_name.clone(),
             self.status.clone(),
+            self.outcome.execution.clone().unwrap_or_default(),
+            self.outcome.result.clone().unwrap_or_default(),
             self.trigger_event_type.clone().unwrap_or_default(),
             source_cell(self.trigger_source.as_ref()),
             self.created_at.clone(),
             self.started_at.clone().unwrap_or_default(),
             self.completed_at.clone().unwrap_or_default(),
+            self.outcome.model.clone().unwrap_or_default(),
             total_tokens(self.token_usage.as_ref()),
             self.error_message.clone().unwrap_or_default(),
         ]
@@ -152,7 +179,7 @@ struct AutomationRunDetail {
 
 impl Record for AutomationRunDetail {
     fn headers() -> &'static [&'static str] {
-        const HEADERS: [&str; 13] = [
+        const HEADERS: [&str; 17] = [
             RUN_HEADERS[0],
             RUN_HEADERS[1],
             RUN_HEADERS[2],
@@ -164,6 +191,10 @@ impl Record for AutomationRunDetail {
             RUN_HEADERS[8],
             RUN_HEADERS[9],
             RUN_HEADERS[10],
+            RUN_HEADERS[11],
+            RUN_HEADERS[12],
+            RUN_HEADERS[13],
+            "Result Summary",
             "Run Prompt",
             "Final Answer",
         ];
@@ -177,6 +208,8 @@ impl Record for AutomationRunDetail {
             run.automation_id.clone(),
             self.automation_name.clone(),
             run.status.clone(),
+            run.outcome.execution.clone().unwrap_or_default(),
+            run.outcome.result.clone().unwrap_or_default(),
             self.trigger
                 .as_ref()
                 .map(|trigger| trigger.event_type.clone())
@@ -185,8 +218,10 @@ impl Record for AutomationRunDetail {
             run.created_at.clone(),
             run.started_at.clone().unwrap_or_default(),
             run.completed_at.clone().unwrap_or_default(),
+            run.outcome.model.clone().unwrap_or_default(),
             total_tokens(self.token_usage.as_ref()),
             run.error_message.clone().unwrap_or_default(),
+            run.outcome.result_summary.clone().unwrap_or_default(),
             run.run_prompt.clone(),
             self.final_answer.clone().unwrap_or_default(),
         ]
@@ -196,6 +231,10 @@ impl Record for AutomationRunDetail {
 #[derive(Deserialize)]
 struct AutomationRunListResponse {
     runs: Vec<AutomationRunSummary>,
+}
+
+fn run_not_found(id: &str) -> Outcome {
+    Outcome::failure(format!("Automation run not found: {id}\n"))
 }
 
 fn run_endpoint(id: &str) -> String {
@@ -240,10 +279,16 @@ pub(crate) async fn get_run(
         .await
     {
         Ok(run) => format_record(&run, format),
-        Err(error) if is_not_found(&error) => {
-            Outcome::failure(format!("Automation run not found: {}\n", args.run_id))
-        }
+        Err(error) if is_not_found(&error) => run_not_found(&args.run_id),
         Err(error) => Outcome::failure(format!("Failed to get automation run: {error}\n")),
+    }
+}
+
+pub(crate) async fn delete_run(runtime: &Runtime, args: &AutomationRunIdArgs) -> Outcome {
+    match runtime.client.delete(&run_endpoint(&args.run_id)).await {
+        Ok(()) => Outcome::notice(format!("Automation run deleted: {}\n", args.run_id)),
+        Err(error) if is_not_found(&error) => run_not_found(&args.run_id),
+        Err(error) => Outcome::failure(format!("Failed to delete automation run: {error}\n")),
     }
 }
 
@@ -340,6 +385,10 @@ mod tests {
             "startedAt": null,
             "completedAt": null,
             "errorMessage": null,
+            "execution": "pending",
+            "result": null,
+            "resultSummary": null,
+            "model": null,
             "triggerEventType": null,
             "triggerSource": null,
             "triggerSchedule": null,
@@ -349,11 +398,27 @@ mod tests {
         assert_eq!(serde_json::to_value(&run).unwrap(), manual);
         assert_eq!(
             run.fields()[3..],
-            ["pending", "", "", "2026-01-02T00:00:00Z", "", "", "", ""]
+            [
+                "pending",
+                "pending",
+                "",
+                "",
+                "",
+                "2026-01-02T00:00:00Z",
+                "",
+                "",
+                "",
+                "",
+                ""
+            ]
         );
 
         let mut triggered = manual;
         triggered["status"] = json!("timed_out");
+        triggered["execution"] = json!("blocked");
+        triggered["result"] = json!("needs_review");
+        triggered["resultSummary"] = json!("One recording was cut short.");
+        triggered["model"] = json!("model-1");
         triggered["triggerEventType"] = json!("recording.imported");
         triggered["triggerSource"] = json!(
             {"kind": "recording", "id": "rec_1", "projectId": "prj_1", "available": false}
@@ -365,14 +430,40 @@ mod tests {
         assert_eq!(serde_json::to_value(&run).unwrap(), triggered);
         let fields = run.fields();
         assert_eq!(
-            fields[3..6],
+            fields[3..8],
             [
                 "timed_out",
+                "blocked",
+                "needs_review",
                 "recording.imported",
                 "recording rec_1 (unavailable)"
             ]
         );
-        assert_eq!(fields[9], "116");
+        assert_eq!(fields[11..13], ["model-1", "116"]);
+    }
+
+    #[test]
+    fn listed_runs_from_older_servers_still_decode() {
+        let older = json!({
+            "id": "run_1",
+            "automationId": "auto_1",
+            "automationName": "Triage",
+            "status": "succeeded",
+            "createdAt": "2026-01-02T00:00:00Z",
+            "updatedAt": "2026-01-02T00:00:00Z",
+            "startedAt": null,
+            "completedAt": null,
+            "errorMessage": null,
+            "triggerEventType": null,
+            "triggerSource": null,
+            "triggerSchedule": null,
+            "tokenUsage": null,
+        });
+        let run: AutomationRunSummary = serde_json::from_value(older).unwrap();
+        let output = serde_json::to_value(&run).unwrap();
+        assert!(output.get("execution").is_none());
+        assert_eq!(output["result"], json!(null));
+        assert_eq!(run.fields()[3..6], ["succeeded", "", ""]);
     }
 
     #[test]
@@ -388,6 +479,10 @@ mod tests {
             "startedAt": "2026-01-02T00:00:01Z",
             "completedAt": "2026-01-02T00:05:00Z",
             "errorMessage": null,
+            "execution": "finished",
+            "result": "succeeded",
+            "resultSummary": "No anomalies found.",
+            "model": "model-1",
             "automationName": "Triage",
             "finalAnswer": "All good",
             "trigger": {
@@ -407,8 +502,13 @@ mod tests {
         let run: AutomationRunDetail = serde_json::from_value(detail.clone()).unwrap();
         assert_eq!(serde_json::to_value(&run).unwrap(), detail);
         assert_eq!(AutomationRunDetail::headers().len(), run.fields().len());
-        assert_eq!(run.fields()[4], "clock.updated");
-        assert_eq!(run.fields()[11..], ["Look at rec_1", "All good"]);
+        let fields = run.fields();
+        assert_eq!(fields[4..7], ["finished", "succeeded", "clock.updated"]);
+        assert_eq!(fields[11], "model-1");
+        assert_eq!(
+            fields[14..],
+            ["No anomalies found.", "Look at rec_1", "All good"]
+        );
     }
 
     #[test]
