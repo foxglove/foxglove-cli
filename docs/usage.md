@@ -626,7 +626,10 @@ Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 
 To download the uncommitted draft, pass its version number or `--version draft`.
 A draft's episodes can change until it is committed, so its manifest records
-`"uncommitted": true` instead of `committedAt`.
+`"uncommitted": true` instead of `committedAt`. Only the files listed in
+`manifest.json` belong to the version: if the draft changed since an earlier
+download into the same directory, files for removed or reordered episodes stay
+there, so download into a new `--output` directory instead.
 
 If an earlier manifest does not record the same episode version, the CLI
 downloads that episode again.
