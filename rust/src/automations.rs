@@ -288,7 +288,9 @@ impl<'a> EditAutomationRequest<'a> {
         let model_selection = if args.clear_model_selection {
             Some(ModelSelectionChange::Clear)
         } else {
-            args.model_selection.as_deref().map(ModelSelectionChange::Set)
+            args.model_selection
+                .as_deref()
+                .map(ModelSelectionChange::Set)
         };
         let request = Self {
             name: args.name.as_deref(),
