@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::CoverageListArgs;
 use crate::output::Format;
 use crate::records::{
-    fetch_list, is_false, is_zero, null_to_default, parse_timestamp, ProjectFallback, Record,
+    fetch_list, is_false, null_to_default, parse_timestamp, ProjectFallback, Record,
 };
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -97,8 +97,9 @@ struct CoverageListQuery {
     session_key: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     start: String,
-    #[serde(skip_serializing_if = "is_zero")]
-    tolerance: i64,
+    /// The shortest decimal that reads back as the same number, so `14` stays `14`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tolerance: Option<String>,
 }
 
 pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: Format) -> Outcome {
@@ -115,7 +116,6 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
         Ok(value) => value,
         Err(error) => return Outcome::failure(format!("{error}\n")),
     };
-    let tolerance = args.tolerance.unwrap_or_default();
     let query = CoverageListQuery {
         device_id: args.device_id.clone().unwrap_or_default(),
         device_name: args.device_name.clone().unwrap_or_default(),
@@ -127,7 +127,7 @@ pub(crate) async fn list(runtime: &Runtime, args: &CoverageListArgs, format: For
         session_id: args.session_id.clone().unwrap_or_default(),
         session_key,
         start,
-        tolerance,
+        tolerance: args.tolerance.map(|seconds| seconds.to_string()),
     };
     fetch_list::<Coverage, _>(
         runtime,
