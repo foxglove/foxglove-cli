@@ -501,7 +501,7 @@ enum AutomationRunsCommand {
     #[command(about = "Get a run, including its prompts, result, and final answer")]
     Get(AutomationRunGetArgs),
     #[command(about = "List a project's automation runs, newest first by default")]
-    List(AutomationRunListArgs),
+    List(Box<AutomationRunListArgs>),
 }
 
 #[derive(Debug, Args)]
@@ -549,6 +549,8 @@ pub(crate) struct AutomationRunListArgs {
         allow_hyphen_values = true
     )]
     pub(crate) created_before: Option<String>,
+    #[arg(long, help = "Filter to runs with these executions: pending, running, finished, error, or blocked; comma-separated or repeated", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_non_blank, num_args = 1)]
+    pub(crate) execution: Vec<String>,
     #[arg(long, help = AUTOMATION_LIMIT_HELP, allow_hyphen_values = true, value_parser = parse_list_limit)]
     pub(crate) limit: Option<i64>,
     #[arg(long, help = AUTOMATION_OFFSET_HELP, allow_hyphen_values = true, value_parser = clap::value_parser!(i64).range(0..))]
@@ -562,6 +564,8 @@ pub(crate) struct AutomationRunListArgs {
     pub(crate) owner_member_id: Option<String>,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
     pub(crate) project_id: Option<String>,
+    #[arg(long, help = "Filter to runs whose agent reported these results: succeeded, needs_review, failed, or no_result; comma-separated or repeated", allow_hyphen_values = true, value_delimiter = ',', value_parser = parse_non_blank, num_args = 1)]
+    pub(crate) result: Vec<String>,
     #[arg(
         long,
         help = "Field to sort runs by: createdAt (default: createdAt)",
@@ -3307,12 +3311,11 @@ fn command_project_scope(
         CliCommand::Attachments(AttachmentsCommand::List(args)) => &args.project_id,
         CliCommand::Automations(
             AutomationsCommand::Add(AutomationAddArgs { project_id, .. })
-            | AutomationsCommand::List(AutomationListArgs { project_id, .. })
-            | AutomationsCommand::Runs(AutomationRunsCommand::List(AutomationRunListArgs {
-                project_id,
-                ..
-            })),
+            | AutomationsCommand::List(AutomationListArgs { project_id, .. }),
         ) => project_id,
+        CliCommand::Automations(AutomationsCommand::Runs(AutomationRunsCommand::List(args))) => {
+            &args.project_id
+        }
         CliCommand::Coverage(CoverageCommand::List(args)) => &args.project_id,
         CliCommand::Export(args) => &args.project_id,
         CliCommand::Upload(args) => &args.project_id,
