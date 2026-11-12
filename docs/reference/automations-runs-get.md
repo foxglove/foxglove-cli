@@ -5,7 +5,7 @@
 [Command reference](README.md) · [Parent command](automations-runs.md)
 
 ```text
-Get a run, including its prompts and final answer
+Get a run, including its prompts, result, and final answer
 
 Usage: foxglove automations runs get [OPTIONS] <RUN_ID>
 

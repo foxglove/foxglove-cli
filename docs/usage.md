@@ -815,6 +815,19 @@ $ foxglove automations runs list --project-id prj_123 --automation-id auto_123 -
 $ foxglove automations runs get run_123 --format json
 ```
 
+A run's `status` stays `pending`, `running`, `succeeded`, or `failed`. Run output
+also shows `execution`, whether Foxglove ran the automation to the end
+(`pending`, `running`, `finished`, `error`, or `blocked`), and `result`, what the
+agent reported (`succeeded`, `needs_review`, `failed`, or `no_result`), along
+with the agent's one-sentence result summary and the model the run used.
+
+Delete a run and its chat. A run that is still in progress stops:
+
+```
+$ foxglove automations runs delete run_123
+    Automation run deleted: run_123
+```
+
 ## Shell autocompletion
 
 Certain shells (bash, zsh, fish, and PowerShell) support generated

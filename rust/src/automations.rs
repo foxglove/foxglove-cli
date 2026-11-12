@@ -3,7 +3,7 @@
 mod runs;
 mod trigger;
 
-pub(crate) use runs::{add_run, get_run, list_runs};
+pub(crate) use runs::{add_run, delete_run, get_run, list_runs};
 pub(crate) use trigger::{delete_trigger, get_trigger, set_trigger};
 
 use serde::{Deserialize, Serialize};

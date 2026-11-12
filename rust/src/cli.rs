@@ -368,7 +368,7 @@ enum AutomationsCommand {
     Get(AutomationGetArgs),
     #[command(about = "List a project's automations, newest first, with their run counts")]
     List(AutomationListArgs),
-    #[command(about = "Start, list, and get automation runs", subcommand)]
+    #[command(about = "Start, list, get, and delete automation runs", subcommand)]
     Runs(AutomationRunsCommand),
     #[command(
         about = "Get, set, or delete the trigger that starts an automation",
@@ -493,7 +493,12 @@ enum AutomationRunsCommand {
         long_about = "Start a run of an automation. The run is created pending and executes as the automation's owner, with the owner's data access and AI usage; follow it with `automations runs get`.\n\nSigned-in members and personal access tokens must give --run-prompt. Organization API keys must omit it; their runs use only the automation's saved instructions."
     )]
     Add(AutomationRunAddArgs),
-    #[command(about = "Get a run, including its prompts and final answer")]
+    #[command(
+        about = "Delete a run and its chat",
+        long_about = "Delete one run and its chat. The run no longer appears in run lists. A run that is still in progress stops."
+    )]
+    Delete(AutomationRunIdArgs),
+    #[command(about = "Get a run, including its prompts, result, and final answer")]
     Get(AutomationRunGetArgs),
     #[command(about = "List a project's automation runs, newest first by default")]
     List(AutomationRunListArgs),
@@ -510,6 +515,12 @@ pub(crate) struct AutomationRunAddArgs {
         value_parser = parse_non_blank
     )]
     pub(crate) run_prompt: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct AutomationRunIdArgs {
+    #[arg(value_name = "RUN_ID", value_parser = parse_id)]
+    pub(crate) run_id: String,
 }
 
 #[derive(Debug, Args)]
@@ -3468,6 +3479,9 @@ async fn dispatch_automation_command(
         }
         AutomationsCommand::Runs(AutomationRunsCommand::Add(args)) => {
             automations::add_run(runtime, &args).await
+        }
+        AutomationsCommand::Runs(AutomationRunsCommand::Delete(args)) => {
+            automations::delete_run(runtime, &args).await
         }
         AutomationsCommand::Runs(AutomationRunsCommand::Get(args)) => {
             let format = args.format.format;

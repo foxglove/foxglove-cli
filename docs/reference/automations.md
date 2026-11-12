@@ -19,7 +19,7 @@ Commands:
   edit     Edit an automation's name, instructions, or model
   get      Get an automation
   list     List a project's automations, newest first, with their run counts
-  runs     Start, list, and get automation runs
+  runs     Start, list, get, and delete automation runs
   trigger  Get, set, or delete the trigger that starts an automation
   help     Print this message or the help of the given subcommand(s)
 
