@@ -16,6 +16,9 @@ const ENDPOINT: &str = "/v1/site-inbox-notification-tokens";
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct SiteNotificationToken {
     id: String,
+    // Optional so that a creation response lacking it still yields the token value.
+    #[serde(rename = "orgId", default, skip_serializing_if = "Option::is_none")]
+    org_id: Option<String>,
     #[serde(rename = "siteId")]
     site_id: String,
     #[serde(rename = "createdAt")]
@@ -139,5 +142,34 @@ pub(crate) async fn delete_site_notification_token(
         Err(error) => Outcome::failure(format!(
             "Failed to delete site notification token: {error}\n"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CreatedSiteNotificationToken, SiteNotificationToken};
+    use crate::records::Record;
+
+    #[test]
+    fn the_org_id_is_kept_in_json_output_but_not_in_the_table() {
+        let token: SiteNotificationToken = serde_json::from_value(serde_json::json!({"id":"sint_1","orgId":"org_1","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z"}))
+            .unwrap();
+        assert_eq!(serde_json::to_value(&token).unwrap()["orgId"], "org_1");
+        assert_eq!(token.fields(), ["sint_1", "site_1", "2026-01-02T03:04:05Z"]);
+
+        let created: CreatedSiteNotificationToken = serde_json::from_value(serde_json::json!({"id":"sint_2","orgId":"org_1","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z","token":"fox_snt_fake"}))
+            .unwrap();
+        let output = serde_json::to_value(&created).unwrap();
+        assert_eq!(output["orgId"], "org_1");
+        assert_eq!(output["token"], "fox_snt_fake");
+    }
+
+    #[test]
+    fn a_response_without_an_org_id_omits_it_from_json_output() {
+        let created: CreatedSiteNotificationToken = serde_json::from_value(serde_json::json!({"id":"sint_2","siteId":"site_1","createdAt":"2026-01-02T03:04:05Z","token":"fox_snt_fake"}))
+            .unwrap();
+        let output = serde_json::to_value(&created).unwrap();
+        assert!(output.get("orgId").is_none());
+        assert_eq!(output["token"], "fox_snt_fake");
     }
 }
