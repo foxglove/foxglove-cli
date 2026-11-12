@@ -342,24 +342,26 @@ pub(crate) struct LoginArgs {
 
 const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.
 
-Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
+Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it and enable or disable its trigger. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
 
 Automations are in beta.";
 const AUTOMATION_LIMIT_HELP: &str = "Maximum number of items to return (1-2000, default: 50)";
 const AUTOMATION_OFFSET_HELP: &str = "Number of items to skip before returning the results";
+const AUTOMATION_MODEL_SELECTION_HELP: &str = "Model family for the automation's runs: auto (the recommended model), sonnet, or opus (the current version of that family); default: the organization's default model";
+const AUTOMATION_NEW_MODEL_SELECTION_HELP: &str = "New model family for the automation's runs: auto (the recommended model), sonnet, or opus (the current version of that family)";
 
 #[derive(Debug, Subcommand)]
 enum AutomationsCommand {
     #[command(about = "Create an automation")]
     Add(AutomationAddArgs),
     #[command(
-        about = "Delete an automation and its trigger",
-        long_about = "Delete an automation and its trigger. Its runs are no longer listed. Runs in progress finish, and runs that have not started are rejected."
+        about = "Delete an automation, its trigger, and its runs",
+        long_about = "Delete an automation, its trigger, and its runs. Each run's chat is deleted with the run, including a run that is still in progress."
     )]
     Delete(AutomationIdArgs),
     #[command(
-        about = "Edit an automation's name or instructions",
-        long_about = "Edit an automation's name or saved instructions. Runs already created keep the instructions they started with."
+        about = "Edit an automation's name, instructions, or model",
+        long_about = "Edit an automation's name, saved instructions, or model family. Runs already created keep the instructions they started with."
     )]
     Edit(AutomationEditArgs),
     #[command(about = "Get an automation")]
@@ -393,6 +395,8 @@ pub(crate) struct AutomationGetArgs {
 pub(crate) struct AutomationAddArgs {
     #[arg(long, help = "Instructions the agent follows on every run", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) action_prompt: String,
+    #[arg(long, help = AUTOMATION_MODEL_SELECTION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) model_selection: Option<String>,
     #[arg(long, help = "Display name (at most 100 characters)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) name: String,
     #[arg(long, help = REQUIRED_PROJECT_ID_HELP, allow_hyphen_values = true, value_parser = parse_trimmed)]
@@ -405,6 +409,14 @@ pub(crate) struct AutomationEditArgs {
     pub(crate) automation_id: String,
     #[arg(long, help = "New instructions the agent follows on every run", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) action_prompt: Option<String>,
+    #[arg(
+        long,
+        help = "Clear the saved model family, so runs use the organization's default model",
+        conflicts_with = "model_selection"
+    )]
+    pub(crate) clear_model_selection: bool,
+    #[arg(long, help = AUTOMATION_NEW_MODEL_SELECTION_HELP, allow_hyphen_values = true, value_parser = parse_non_blank)]
+    pub(crate) model_selection: Option<String>,
     #[arg(long, help = "New display name (at most 100 characters)", allow_hyphen_values = true, value_parser = parse_non_blank)]
     pub(crate) name: Option<String>,
 }

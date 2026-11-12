@@ -5,7 +5,7 @@
 [Command reference](README.md) · [Parent command](automations.md)
 
 ```text
-Delete an automation and its trigger. Its runs are no longer listed. Runs in progress finish, and runs that have not started are rejected.
+Delete an automation, its trigger, and its runs. Each run's chat is deleted with the run, including a run that is still in progress.
 
 Usage: foxglove automations delete [OPTIONS] <AUTOMATION_ID>
 

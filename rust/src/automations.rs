@@ -22,10 +22,14 @@ use crate::Outcome;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_field_names)]
 struct AutomationPermissions {
     can_edit: bool,
     can_run: bool,
     can_delete: bool,
+    /// Missing from servers that predate the permission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    can_set_enabled: Option<bool>,
 }
 
 /// An automation's saved definition, as the get, create, and edit endpoints
@@ -37,6 +41,10 @@ struct Automation {
     project_id: String,
     name: String,
     action_prompt: String,
+    /// The saved model family, or null when runs use the organization's
+    /// default model. Kept as a string so new families still decode.
+    #[serde(default)]
+    model_selection: Option<String>,
     is_owner: bool,
     permissions: AutomationPermissions,
     created_at: String,
@@ -50,10 +58,12 @@ impl Record for Automation {
             "Name",
             "Project ID",
             "Action Prompt",
+            "Model Selection",
             "Is Owner",
             "Can Edit",
             "Can Run",
             "Can Delete",
+            "Can Set Enabled",
             "Created At",
             "Updated At",
         ]
@@ -65,10 +75,12 @@ impl Record for Automation {
             self.name.clone(),
             self.project_id.clone(),
             self.action_prompt.clone(),
+            self.model_selection.clone().unwrap_or_default(),
             self.is_owner.to_string(),
             self.permissions.can_edit.to_string(),
             self.permissions.can_run.to_string(),
             self.permissions.can_delete.to_string(),
+            optional_cell(self.permissions.can_set_enabled),
             self.created_at.clone(),
             self.updated_at.clone(),
         ]
@@ -94,6 +106,7 @@ impl Record for AutomationListItem {
             "ID",
             "Name",
             "Project ID",
+            "Model Selection",
             "Trigger Enabled",
             "Lifetime Run Count",
             "Last Run At",
@@ -108,6 +121,7 @@ impl Record for AutomationListItem {
             self.automation.id.clone(),
             self.automation.name.clone(),
             self.automation.project_id.clone(),
+            self.automation.model_selection.clone().unwrap_or_default(),
             optional_cell(self.trigger_enabled),
             self.lifetime_run_count.to_string(),
             self.last_run_at.clone().unwrap_or_default(),
@@ -223,6 +237,8 @@ struct CreateAutomationRequest<'a> {
     project_id: String,
     name: &'a str,
     action_prompt: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_selection: Option<&'a str>,
 }
 
 pub(crate) async fn add_automation(runtime: &Runtime, args: &AutomationAddArgs) -> Outcome {
@@ -235,6 +251,7 @@ pub(crate) async fn add_automation(runtime: &Runtime, args: &AutomationAddArgs) 
         project_id,
         name: &args.name,
         action_prompt: &args.action_prompt,
+        model_selection: args.model_selection.as_deref(),
     };
     match runtime
         .client
@@ -254,15 +271,36 @@ struct EditAutomationRequest<'a> {
     name: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     action_prompt: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_selection: Option<ModelSelectionChange<'a>>,
+}
+
+/// A new model family, or null to clear the saved one.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+enum ModelSelectionChange<'a> {
+    Set(&'a str),
+    Clear,
 }
 
 impl<'a> EditAutomationRequest<'a> {
     fn new(args: &'a AutomationEditArgs) -> Option<Self> {
+        let model_selection = if args.clear_model_selection {
+            Some(ModelSelectionChange::Clear)
+        } else {
+            args.model_selection
+                .as_deref()
+                .map(ModelSelectionChange::Set)
+        };
         let request = Self {
             name: args.name.as_deref(),
             action_prompt: args.action_prompt.as_deref(),
+            model_selection,
         };
-        (request.name.is_some() || request.action_prompt.is_some()).then_some(request)
+        (request.name.is_some()
+            || request.action_prompt.is_some()
+            || request.model_selection.is_some())
+        .then_some(request)
     }
 }
 
@@ -309,8 +347,9 @@ mod tests {
             "projectId": "prj_1",
             "name": "Triage",
             "actionPrompt": "Summarize new recordings",
+            "modelSelection": "opus",
             "isOwner": true,
-            "permissions": {"canEdit": true, "canRun": true, "canDelete": false},
+            "permissions": {"canEdit": true, "canRun": true, "canDelete": false, "canSetEnabled": true},
             "createdAt": "2026-01-02T03:04:05Z",
             "updatedAt": "2026-01-03T03:04:05Z",
         })
@@ -332,14 +371,38 @@ mod tests {
                 "Triage",
                 "prj_1",
                 "Summarize new recordings",
+                "opus",
                 "true",
                 "true",
                 "true",
                 "false",
+                "true",
                 "2026-01-02T03:04:05Z",
                 "2026-01-03T03:04:05Z",
             ]
         );
+    }
+
+    #[test]
+    fn automations_without_a_model_or_enable_permission_still_decode() {
+        let mut default_model = automation_json();
+        default_model["modelSelection"] = json!(null);
+        let automation: Automation = serde_json::from_value(default_model.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&automation).unwrap(), default_model);
+
+        // Older responses omit both fields.
+        let mut older = automation_json();
+        older.as_object_mut().unwrap().remove("modelSelection");
+        older["permissions"]
+            .as_object_mut()
+            .unwrap()
+            .remove("canSetEnabled");
+        let automation: Automation = serde_json::from_value(older).unwrap();
+        let output = serde_json::to_value(&automation).unwrap();
+        assert_eq!(output["modelSelection"], json!(null));
+        assert!(output["permissions"].get("canSetEnabled").is_none());
+        let fields = automation.fields();
+        assert_eq!((fields[4].as_str(), fields[9].as_str()), ("", ""));
     }
 
     #[test]
@@ -360,12 +423,12 @@ mod tests {
             response.automations.try_into().unwrap();
         assert_eq!(serde_json::to_value(&never_run_item).unwrap(), never_run);
         assert_eq!(
-            never_run_item.fields()[3..7],
-            ["", "0", "", ""].map(str::to_owned)
+            never_run_item.fields()[3..8],
+            ["opus", "", "0", "", ""].map(str::to_owned)
         );
         assert_eq!(
-            ran_item.fields()[3..7],
-            ["false", "3", "2026-01-04T00:00:00Z", "cancelled"].map(str::to_owned)
+            ran_item.fields()[3..8],
+            ["opus", "false", "3", "2026-01-04T00:00:00Z", "cancelled"].map(str::to_owned)
         );
     }
 
@@ -375,16 +438,27 @@ mod tests {
             project_id: "prj_1".to_owned(),
             name: "Triage",
             action_prompt: "Summarize",
+            model_selection: None,
         };
         assert_eq!(
             serde_json::to_value(&request).unwrap(),
             json!({"projectId": "prj_1", "name": "Triage", "actionPrompt": "Summarize"})
+        );
+        let request = CreateAutomationRequest {
+            model_selection: Some("sonnet"),
+            ..request
+        };
+        assert_eq!(
+            serde_json::to_value(&request).unwrap()["modelSelection"],
+            "sonnet"
         );
 
         let edit = |name: Option<&str>, action_prompt: Option<&str>| AutomationEditArgs {
             automation_id: "auto_1".to_owned(),
             name: name.map(str::to_owned),
             action_prompt: action_prompt.map(str::to_owned),
+            model_selection: None,
+            clear_model_selection: false,
         };
         assert_eq!(EditAutomationRequest::new(&edit(None, None)), None);
         for (args, expected) in [
@@ -392,6 +466,20 @@ mod tests {
             (
                 edit(None, Some("New prompt")),
                 json!({"actionPrompt": "New prompt"}),
+            ),
+            (
+                AutomationEditArgs {
+                    model_selection: Some("auto".to_owned()),
+                    ..edit(None, None)
+                },
+                json!({"modelSelection": "auto"}),
+            ),
+            (
+                AutomationEditArgs {
+                    clear_model_selection: true,
+                    ..edit(None, None)
+                },
+                json!({"modelSelection": null}),
             ),
         ] {
             let request = EditAutomationRequest::new(&args).unwrap();
