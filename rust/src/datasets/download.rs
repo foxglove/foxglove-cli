@@ -43,7 +43,11 @@ struct ManifestDataset {
 #[serde(rename_all = "camelCase")]
 struct ManifestVersion {
     version_number: i64,
-    committed_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    committed_at: Option<String>,
+    /// Marks a draft, whose episodes can change under the same version number.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    uncommitted: bool,
 }
 
 #[derive(Deserialize, Eq, PartialEq, Serialize)]
@@ -162,13 +166,16 @@ async fn fetch_dataset(runtime: &Runtime, id: &str) -> Result<Dataset, ApiError>
         .await
 }
 
+/// Resolves `--version`, defaulting to the newest committed version. A draft is
+/// downloaded only when requested, with a note that its episodes can change.
 async fn resolve_version(
     runtime: &Runtime,
     id: &str,
-    requested: Option<i64>,
-) -> Result<DatasetVersion, String> {
+    number: Option<i64>,
+) -> Result<DatasetVersion, Outcome> {
+    let fail = |message: String| Outcome::failure(format!("{message}\n"));
     let versions = format!("/v1/datasets/{}/versions", encode_path_segment(id));
-    if let Some(number) = requested {
+    if let Some(number) = number {
         let version: DatasetVersion = match runtime
             .client
             .get(&format!("{versions}/{number}"), &())
@@ -176,28 +183,32 @@ async fn resolve_version(
         {
             Ok(version) => version,
             Err(error) if error.is_not_found_for("version") => {
-                return Err(format!("Version {number} is not a version of this dataset"))
+                return Err(fail(format!(
+                    "Version {number} is not a version of this dataset"
+                )))
             }
-            Err(error) => return Err(format!("Failed to get dataset version: {error}")),
+            Err(error) => return Err(fail(format!("Failed to get dataset version: {error}"))),
         };
-        return if version.committed_at.is_some() {
-            Ok(version)
-        } else {
-            Err(format!(
-                "Version {number} is not a committed version of this dataset"
-            ))
-        };
+        if version.committed_at.is_none() {
+            let _ = writeln!(
+                std::io::stderr(),
+                "Version {number} is an uncommitted draft; its episodes can change until it is committed"
+            );
+        }
+        return Ok(version);
     }
     let response: DatasetVersionListResponse = runtime
         .client
         .get(&versions, &[("sortOrder", "desc")])
         .await
-        .map_err(|error| format!("Failed to list dataset versions: {error}"))?;
+        .map_err(|error| fail(format!("Failed to list dataset versions: {error}")))?;
     response
         .versions
         .into_iter()
         .find(|version| version.committed_at.is_some())
-        .ok_or_else(|| "This dataset has no committed version to download".to_owned())
+        .ok_or_else(|| {
+            fail("This dataset has no committed version to download; pass --version <draft number> to download its draft".to_owned())
+        })
 }
 
 async fn fetch_all_episodes(
@@ -558,7 +569,7 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
     };
     let version = match resolve_version(runtime, &args.dataset_id, args.version).await {
         Ok(version) => version,
-        Err(error) => return Outcome::failure(format!("{error}\n")),
+        Err(outcome) => return outcome,
     };
     let episodes = match fetch_all_episodes(
         runtime,
@@ -610,7 +621,8 @@ pub(crate) async fn download_dataset(runtime: &Runtime, args: &DatasetDownloadAr
         },
         version: ManifestVersion {
             version_number: version.version_number,
-            committed_at: version.committed_at.unwrap_or_default(),
+            uncommitted: version.committed_at.is_none(),
+            committed_at: version.committed_at,
         },
         selection: ManifestSelection {
             topics: topic_list(args.topics.as_deref()),
@@ -711,6 +723,30 @@ mod tests {
             topic_list(Some("/a, /b ,,/c")),
             Some(vec!["/a".to_owned(), "/b".to_owned(), "/c".to_owned()])
         );
+    }
+
+    #[test]
+    fn a_draft_manifest_is_marked_uncommitted_instead_of_recording_a_commit_time() {
+        use super::ManifestVersion;
+
+        for (encoded, committed_at, uncommitted) in [
+            (
+                r#"{"versionNumber":4,"committedAt":"2024-01-02T00:00:00Z"}"#,
+                Some("2024-01-02T00:00:00Z"),
+                false,
+            ),
+            (r#"{"versionNumber":4,"uncommitted":true}"#, None, true),
+        ] {
+            let version = ManifestVersion {
+                version_number: 4,
+                committed_at: committed_at.map(ToOwned::to_owned),
+                uncommitted,
+            };
+            assert_eq!(serde_json::to_string(&version).unwrap(), encoded);
+            let decoded: ManifestVersion = serde_json::from_str(encoded).unwrap();
+            assert_eq!(decoded.committed_at.as_deref(), committed_at);
+            assert_eq!(decoded.uncommitted, uncommitted);
+        }
     }
 
     #[test]

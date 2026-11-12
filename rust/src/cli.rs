@@ -968,7 +968,7 @@ enum DatasetsCommand {
     Delete(DatasetIdArgs),
     #[command(about = "Discard a dataset's pending changes")]
     Discard(DatasetIdArgs),
-    #[command(about = "Download a committed dataset version")]
+    #[command(about = "Download a dataset version")]
     Download(DatasetDownloadArgs),
     #[command(about = "Edit a dataset's name or description")]
     Edit(DatasetEditArgs),
@@ -1074,7 +1074,7 @@ pub(crate) struct DatasetDownloadArgs {
     pub(crate) topics: Option<String>,
     #[arg(
         long,
-        help = "Committed version to download (default: the newest committed version)",
+        help = "Version number to download, including uncommitted drafts whose episodes can change (default: the newest committed version)",
         allow_hyphen_values = true
     )]
     pub(crate) version: Option<i64>,
@@ -4532,6 +4532,22 @@ mod tests {
             }
         }
         assert_eq!(super::parse_id(" dev_1\r").unwrap(), "dev_1");
+    }
+
+    #[test]
+    fn dataset_download_rejects_the_named_draft_selector() {
+        use clap::Parser;
+
+        let error = super::Cli::try_parse_from([
+            "foxglove",
+            "datasets",
+            "download",
+            "ds_one",
+            "--version",
+            "draft",
+        ])
+        .unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
     }
 
     #[test]

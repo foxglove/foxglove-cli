@@ -5,7 +5,7 @@
 [Command reference](README.md) · [Parent command](datasets.md)
 
 ```text
-Download a committed dataset version
+Download a dataset version
 
 Usage: foxglove datasets download [OPTIONS] <DATASET_ID>
 
@@ -37,7 +37,7 @@ Options:
           Comma-separated topic list (default: all topics)
 
       --version <VERSION>
-          Committed version to download (default: the newest committed version)
+          Version number to download, including uncommitted drafts whose episodes can change (default: the newest committed version)
 
       --include-properties[=<INCLUDE_PROPERTIES>]
           Include episode custom properties (requires API access to episode properties)
