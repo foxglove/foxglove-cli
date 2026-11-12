@@ -37,7 +37,7 @@ Options:
           Comma-separated topic list (default: all topics)
 
       --version <VERSION>
-          Version number to download, or draft to download the uncommitted draft, whose episodes can change (default: the newest committed version)
+          Version number to download, including uncommitted drafts whose episodes can change (default: the newest committed version)
 
       --include-properties[=<INCLUDE_PROPERTIES>]
           Include episode custom properties (requires API access to episode properties)

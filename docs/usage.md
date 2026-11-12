@@ -624,7 +624,7 @@ Episode 1 of 128: 41231 bytes
 Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 ```
 
-To download the uncommitted draft, pass its version number or `--version draft`.
+To download the uncommitted draft, pass its version number with `--version <draft number>`.
 A draft's episodes can change until it is committed, so its manifest records
 `"uncommitted": true` instead of `committedAt`. Only the files listed in
 `manifest.json` belong to the version: if the draft changed since an earlier

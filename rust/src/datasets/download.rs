@@ -11,10 +11,10 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
 
-use super::versions::{selected_version, DatasetVersion, DatasetVersionListResponse};
+use super::versions::{DatasetVersion, DatasetVersionListResponse};
 use super::{Dataset, DatasetEpisode, DatasetEpisodeListResponse};
 use crate::api::{encode_path_segment, ApiError, PagedResponse, StreamRequest};
-use crate::cli::{DatasetDownloadArgs, DatasetVersionSelector};
+use crate::cli::DatasetDownloadArgs;
 use crate::export::{resumable_download, CompletionCheck, ExportProgress};
 use crate::runtime::Runtime;
 use crate::Outcome;
@@ -171,11 +171,11 @@ async fn fetch_dataset(runtime: &Runtime, id: &str) -> Result<Dataset, ApiError>
 async fn resolve_version(
     runtime: &Runtime,
     id: &str,
-    selector: Option<DatasetVersionSelector>,
+    number: Option<i64>,
 ) -> Result<DatasetVersion, Outcome> {
     let fail = |message: String| Outcome::failure(format!("{message}\n"));
     let versions = format!("/v1/datasets/{}/versions", encode_path_segment(id));
-    if let Some(number) = selected_version(runtime, id, selector).await? {
+    if let Some(number) = number {
         let version: DatasetVersion = match runtime
             .client
             .get(&format!("{versions}/{number}"), &())
@@ -207,7 +207,7 @@ async fn resolve_version(
         .into_iter()
         .find(|version| version.committed_at.is_some())
         .ok_or_else(|| {
-            fail("This dataset has no committed version to download; pass --version draft to download its draft".to_owned())
+            fail("This dataset has no committed version to download; pass --version <draft number> to download its draft".to_owned())
         })
 }
 

@@ -3438,55 +3438,45 @@ fn a_killed_run_has_recorded_the_episodes_it_finished() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
-fn the_draft_downloads_by_number_or_by_name() {
-    for selector in ["5", "draft"] {
-        let workspace = Workspace::new();
-        let mut replies = vec![Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET)];
-        if selector == "draft" {
-            replies.push(Reply::json(
-                "GET",
-                "/v1/datasets/ds_one/versions",
-                r#"{"versions":[{"versionNumber":5}]}"#,
-            ));
-        }
-        replies.extend([
-            Reply::json(
-                "GET",
-                "/v1/datasets/ds_one/versions/5",
-                r#"{"versionNumber":5}"#,
-            ),
-            Reply::json(
-                "GET",
-                "/v1/datasets/ds_one/versions/5/episodes",
-                &format!(r#"{{"episodes":[{}]}}"#, dataset_episode("ep_one", false)),
-            ),
-        ]);
-        replies.extend(export_replies(episode_mcap()));
-        let server = Server::new(replies);
-        let output = download_dataset(&workspace, &server, &["--version", selector]);
-        assert_success(&output);
-        server.finish();
+fn the_draft_downloads_by_number() {
+    let workspace = Workspace::new();
+    let mut replies = vec![Reply::json("GET", "/v1/datasets/ds_one", DOWNLOAD_DATASET)];
+    replies.extend([
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/5",
+            r#"{"versionNumber":5}"#,
+        ),
+        Reply::json(
+            "GET",
+            "/v1/datasets/ds_one/versions/5/episodes",
+            &format!(r#"{{"episodes":[{}]}}"#, dataset_episode("ep_one", false)),
+        ),
+    ]);
+    replies.extend(export_replies(episode_mcap()));
+    let server = Server::new(replies);
+    let output = download_dataset(&workspace, &server, &["--version", "5"]);
+    assert_success(&output);
+    server.finish();
 
-        let root = workspace.0.join("Highway-merges-v5");
-        assert_eq!(
-            fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
-            episode_mcap()
-        );
-        let manifest: serde_json::Value =
-            serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
-        assert_eq!(
-            manifest["version"],
-            serde_json::json!({"versionNumber": 5, "uncommitted": true}),
-            "{selector}"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.starts_with(
-                "Version 5 is an uncommitted draft; its episodes can change until it is committed\n"
-            ),
-            "{stderr}"
-        );
-    }
+    let root = workspace.0.join("Highway-merges-v5");
+    assert_eq!(
+        fs::read(root.join("episode_0000_ep_one.mcap")).unwrap(),
+        episode_mcap()
+    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(
+        manifest["version"],
+        serde_json::json!({"versionNumber": 5, "uncommitted": true})
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with(
+            "Version 5 is an uncommitted draft; its episodes can change until it is committed\n"
+        ),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -3506,7 +3496,7 @@ fn a_dataset_without_a_committed_version_points_to_the_draft() {
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
-        "This dataset has no committed version to download; pass --version draft to download its draft\n"
+        "This dataset has no committed version to download; pass --version <draft number> to download its draft\n"
     );
 }
 
