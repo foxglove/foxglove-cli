@@ -612,9 +612,10 @@ Dataset created: ds_Wn5rKc8TzQ2xHb7M
 Cloned from version 3 of dataset ds_mHH1Cp4gPybCPR8y
 ```
 
-Download a committed version of a dataset. The CLI writes one MCAP file per
-episode, at the episode version selected by the dataset version, plus a
-`manifest.json` that records each episode's version:
+Download a version of a dataset. The CLI writes one MCAP file per episode, at
+the episode version selected by the dataset version, plus a `manifest.json`
+that records each episode's version. Without `--version`, it downloads the
+newest committed version:
 
 ```
 $ foxglove datasets download ds_mHH1Cp4gPybCPR8y --version 4
@@ -622,6 +623,10 @@ Episode 1 of 128: 41231 bytes
 ...
 Downloaded 127 of 128 episodes to Highway-merges-v4 (1 failed)
 ```
+
+To download the uncommitted draft, pass its version number or `--version draft`.
+A draft's episodes can change until it is committed, so its manifest records
+`"uncommitted": true` instead of `committedAt`.
 
 If an earlier manifest does not record the same episode version, the CLI
 downloads that episode again.

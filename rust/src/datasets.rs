@@ -18,7 +18,7 @@ use serde_json::Value;
 use crate::api::encode_path_segment;
 use crate::cli::{
     DatasetAddArgs, DatasetEditArgs, DatasetEpisodeListArgs, DatasetEpisodeMutationArgs,
-    DatasetGetArgs, DatasetIdArgs, DatasetListArgs, DatasetVersionSelector,
+    DatasetGetArgs, DatasetIdArgs, DatasetListArgs,
 };
 use crate::episodes::{episode_include, parse_time_range, Episode};
 use crate::output::Format;
@@ -248,15 +248,9 @@ pub(crate) async fn list_dataset_episodes(
         sort_order: args.sort_order.clone().unwrap_or_default(),
         start,
     };
-    let version = match args.version {
-        None => None,
-        Some(DatasetVersionSelector::Number(version)) => Some(version),
-        Some(DatasetVersionSelector::Draft) => {
-            match versions::draft_version(runtime, &args.dataset_id).await {
-                Ok(version) => Some(version),
-                Err(outcome) => return outcome,
-            }
-        }
+    let version = match versions::selected_version(runtime, &args.dataset_id, args.version).await {
+        Ok(version) => version,
+        Err(outcome) => return outcome,
     };
     let endpoint = match version {
         Some(version) => format!(

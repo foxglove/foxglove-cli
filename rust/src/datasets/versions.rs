@@ -13,7 +13,7 @@ use crate::api::ApiError;
 use crate::cli::{
     DatasetCommitArgs, DatasetIdArgs, DatasetVersionCloneArgs, DatasetVersionCompareArgs,
     DatasetVersionEditArgs, DatasetVersionGetArgs, DatasetVersionListArgs,
-    DatasetVersionRestoreArgs,
+    DatasetVersionRestoreArgs, DatasetVersionSelector,
 };
 use crate::episodes::{episode_include, Episode};
 use crate::output::Format;
@@ -331,6 +331,19 @@ pub(crate) async fn list_versions(
         ),
         Err(error) if error.is_not_found_for("dataset") => dataset_not_found(&args.dataset_id),
         Err(error) => Outcome::failure(format!("Failed to list dataset versions: {error}\n")),
+    }
+}
+
+/// Resolves `--version` to a version number, looking up the draft's number for `draft`.
+pub(super) async fn selected_version(
+    runtime: &Runtime,
+    dataset_id: &str,
+    selector: Option<DatasetVersionSelector>,
+) -> Result<Option<i64>, Outcome> {
+    match selector {
+        None => Ok(None),
+        Some(DatasetVersionSelector::Number(number)) => Ok(Some(number)),
+        Some(DatasetVersionSelector::Draft) => draft_version(runtime, dataset_id).await.map(Some),
     }
 }
 

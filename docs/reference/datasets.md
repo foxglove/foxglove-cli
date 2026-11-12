@@ -14,7 +14,7 @@ Commands:
   commit    Commit a dataset's pending changes as a new version
   delete    Delete a dataset
   discard   Discard a dataset's pending changes
-  download  Download a committed dataset version
+  download  Download a dataset version
   edit      Edit a dataset's name or description
   episodes  List, add, or remove the episodes in a dataset
   get       Get a dataset

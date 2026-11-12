@@ -933,7 +933,7 @@ enum DatasetsCommand {
     Delete(DatasetIdArgs),
     #[command(about = "Discard a dataset's pending changes")]
     Discard(DatasetIdArgs),
-    #[command(about = "Download a committed dataset version")]
+    #[command(about = "Download a dataset version")]
     Download(DatasetDownloadArgs),
     #[command(about = "Edit a dataset's name or description")]
     Edit(DatasetEditArgs),
@@ -1039,10 +1039,11 @@ pub(crate) struct DatasetDownloadArgs {
     pub(crate) topics: Option<String>,
     #[arg(
         long,
-        help = "Committed version to download (default: the newest committed version)",
-        allow_hyphen_values = true
+        help = "Version number to download, or draft to download the uncommitted draft, whose episodes can change (default: the newest committed version)",
+        allow_hyphen_values = true,
+        value_parser = parse_dataset_version
     )]
-    pub(crate) version: Option<i64>,
+    pub(crate) version: Option<DatasetVersionSelector>,
     #[arg(
         long, help = INCLUDE_PROPERTIES_HELP,
         action = clap::ArgAction::Set,
