@@ -31,7 +31,7 @@ Options:
           Device name, looked up in the project (required unless --device-id is given)
 
       --end <END>
-          End of event (inclusive), RFC 3339 (required)
+          End of event (inclusive, ISO 8601) (required)
 
       --event-type-id <EVENT_TYPE_ID>
           Associated event type ID
@@ -43,7 +43,7 @@ Options:
           Custom property colon-separated key/value pair; repeat a multi-enum key to set its full list of values
 
       --start <START>
-          Start of event, RFC 3339 (required)
+          Start of event (ISO 8601) (required)
 
   -h, --help
           Print help
