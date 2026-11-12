@@ -812,6 +812,7 @@ automation's saved instructions:
 $ foxglove automations runs add auto_123 --run-prompt "Look at rec_123"
     Automation run created: run_123
 $ foxglove automations runs list --project-id prj_123 --automation-id auto_123 --status running,failed
+$ foxglove automations runs list --project-id prj_123 --execution blocked,error --result failed
 $ foxglove automations runs get run_123 --format json
 ```
 
@@ -819,7 +820,9 @@ A run's `status` stays `pending`, `running`, `succeeded`, or `failed`. Run outpu
 also shows `execution`, whether Foxglove ran the automation to the end
 (`pending`, `running`, `finished`, `error`, or `blocked`), and `result`, what the
 agent reported (`succeeded`, `needs_review`, `failed`, or `no_result`), along
-with the agent's one-sentence result summary and the model the run used.
+with the agent's one-sentence result summary and the model the run used. Filter
+runs list by these with `--execution` and `--result`. Runs without a result never
+match `--result`.
 
 Delete a run and its chat. A run that is still in progress stops:
 

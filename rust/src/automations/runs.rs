@@ -301,6 +301,10 @@ struct RunListQuery<'a> {
     #[serde(skip_serializing_if = "String::is_empty")]
     status: String,
     #[serde(skip_serializing_if = "String::is_empty")]
+    execution: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    result: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     created_after: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     created_before: String,
@@ -321,6 +325,8 @@ impl<'a> RunListQuery<'a> {
             project_id,
             automation_id: args.automation_id.join(","),
             status: args.status.join(","),
+            execution: args.execution.join(","),
+            result: args.result.join(","),
             created_after: parse_timestamp(
                 args.created_after.as_deref().unwrap_or_default(),
                 "created-after",
