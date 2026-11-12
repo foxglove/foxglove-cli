@@ -20,7 +20,7 @@ Options:
           Foxglove client ID
 
       --enabled[=<ENABLED>]
-          Enable or disable the trigger (default: true)
+          Enable or disable the trigger. When omitted, the trigger is enabled, even when it replaces a disabled trigger; pass --enabled=false to keep it disabled
 
       --config <CONFIG>
           Config file

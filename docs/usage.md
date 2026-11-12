@@ -783,7 +783,9 @@ $ foxglove automations edit auto_123 --name "Nightly triage"
 
 Set the trigger that starts runs. A `clock.updated` trigger runs on a UTC
 schedule. Other event types, such as `recording.imported`, start a run each time
-a matching recording, session, or event is created or updated:
+a matching recording, session, or event is created or updated. Setting a
+trigger replaces the current one, so the new trigger is enabled unless you pass
+`--enabled=false`, even if the trigger it replaces was disabled:
 
 ```
 $ foxglove automations trigger set auto_123 --event-type clock.updated --schedule-cadence daily --schedule-anchor 2026-01-05T09:00:00Z
