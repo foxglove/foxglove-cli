@@ -60,7 +60,7 @@ Options:
           Recording ID
 
       --replay-lookback-seconds <REPLAY_LOOKBACK_SECONDS>
-          Maximum replay lookback in seconds
+          Maximum replay lookback in whole seconds (nonnegative)
 
       --replay-policy <REPLAY_POLICY>
           Replay policy
