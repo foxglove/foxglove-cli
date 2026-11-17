@@ -284,8 +284,8 @@ impl StreamRequest {
                 self.replay_policy
             ));
         }
-        if self.replay_lookback_seconds < 0.0 {
-            return Err("replay-lookback-seconds must be >= 0".to_owned());
+        if !self.replay_lookback_seconds.is_finite() || self.replay_lookback_seconds < 0.0 {
+            return Err("replay-lookback-seconds must be finite and >= 0".to_owned());
         }
         Ok(())
     }
@@ -1832,6 +1832,34 @@ mod tests {
             .validate()
             .unwrap_err()
             .contains("either recording-id/key"));
+
+        for lookback in [0.0, 3.0, 0.06, 0.000_000_015] {
+            let request = StreamRequest {
+                recording_id: "rec_1".into(),
+                replay_lookback_seconds: lookback,
+                ..StreamRequest::default()
+            };
+            assert!(request.validate().is_ok());
+            assert_eq!(
+                serde_json::to_value(request)
+                    .unwrap()
+                    .get("replayLookbackSeconds")
+                    .cloned()
+                    .unwrap_or(serde_json::json!(0.0)),
+                serde_json::json!(lookback)
+            );
+        }
+        for lookback in [-1.0, f64::NAN, f64::INFINITY] {
+            let request = StreamRequest {
+                recording_id: "rec_1".into(),
+                replay_lookback_seconds: lookback,
+                ..StreamRequest::default()
+            };
+            assert_eq!(
+                request.validate().unwrap_err(),
+                "replay-lookback-seconds must be finite and >= 0"
+            );
+        }
     }
 
     #[test]

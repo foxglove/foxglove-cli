@@ -817,7 +817,7 @@ fn resumed_exports_do_not_request_the_replay_again() {
         "--replay-policy",
         "lastPerChannel",
         "--replay-lookback-seconds",
-        "5",
+        "5.06",
         "--output-file",
         "output.mcap",
     ]))
@@ -825,6 +825,7 @@ fn resumed_exports_do_not_request_the_replay_again() {
     assert_success(&output);
     let requests = server.finish();
     assert_eq!(requests.len(), 4);
+    assert_eq!(json_body(&requests[0])["replayLookbackSeconds"], 5.06);
     let resumed = json_body(&requests[2]);
     assert_eq!(resumed["start"], "2024-01-01T00:00:02Z");
     assert!(resumed.get("replayPolicy").is_none(), "{resumed}");
