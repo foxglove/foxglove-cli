@@ -850,6 +850,32 @@ fn resumed_exports_do_not_request_the_replay_again() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn fractional_replay_lookback_fails_before_export_side_effects() {
+    let workspace = Workspace::new();
+    let server = Server::new(vec![]);
+    let destination = workspace.0.join("output.mcap");
+    fs::write(&destination, b"existing file").unwrap();
+
+    let output = Process::spawn(workspace.command(&server.url).args([
+        "export",
+        "--recording-id",
+        "rec",
+        "--replay-lookback-seconds",
+        "0.06",
+        "--output-file",
+        "output.mcap",
+    ]))
+    .finish();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains("replay-lookback-seconds must be a nonnegative whole number of seconds"));
+    assert_eq!(fs::read(destination).unwrap(), b"existing file");
+    assert!(server.finish().is_empty());
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn stalled_resumes_fail_and_preserve_destination() {
     let truncated = |messages: &[Message]| {
         let mut partial = recording(messages);
