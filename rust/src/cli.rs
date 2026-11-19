@@ -804,7 +804,7 @@ pub(crate) struct ExportArgs {
     pub(crate) recording_id: Option<String>,
     #[arg(
         long,
-        help = "Maximum replay lookback in seconds",
+        help = "Maximum replay lookback in seconds (0 or greater; fractions allowed)",
         allow_hyphen_values = true
     )]
     pub(crate) replay_lookback_seconds: Option<f64>,
