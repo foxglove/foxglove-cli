@@ -14,7 +14,7 @@ Usage: foxglove [OPTIONS] [COMMAND]
 Commands:
   attachments               Query and modify data attachments
   auth                      Manage authentication
-  automations               List, manage, and run automations (beta)
+  automations               List, manage, and run automations
   completion                Generate a shell completion script
   config                    Manage CLI configuration values
   coverage                  Inspect data coverage

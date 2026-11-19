@@ -161,7 +161,7 @@ enum CliCommand {
     #[command(about = "Manage authentication", subcommand)]
     Auth(AuthCommand),
     #[command(
-        about = "List, manage, and run automations (beta)",
+        about = "List, manage, and run automations",
         long_about = AUTOMATIONS_HELP,
         subcommand
     )]
@@ -353,9 +353,7 @@ pub(crate) struct LoginArgs {
 
 const AUTOMATIONS_HELP: &str = "Automations run an AI agent on your data on a schedule, when an event occurs, or on demand. Each automation acts as its owner, with the owner's access to data in the automation's project.
 
-Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it and enable or disable its trigger. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.
-
-Automations are in beta.";
+Signed-in members and personal access tokens can create automations. Who can edit, delete, or run an automation depends on its permissions, which `automations get` shows: the owner and organization admins can delete it and enable or disable its trigger. Organization API keys can list automations and their runs, and start runs that use only the automation's saved instructions, but can't edit or delete automations.";
 const AUTOMATION_LIMIT_HELP: &str = "Maximum number of items to return (1-2000, default: 50)";
 const AUTOMATION_OFFSET_HELP: &str = "Number of items to skip before returning the results";
 const AUTOMATION_MODEL_SELECTION_HELP: &str = "Model family for the automation's runs: auto (the recommended model), sonnet, or opus (the current version of that family); default: the organization's default model";
