@@ -221,6 +221,29 @@ fn episode_properties_are_looked_up_and_sent_typed_on_creation() {
 
 #[test]
 #[ignore = "requires loopback sockets"]
+fn episode_creation_reports_credit_and_other_api_errors() {
+    for (status, body, expected) in [
+        (402, r#"{"error":"Payment is required to create more episodes, either by upgrading to a paid plan or purchasing additional credits","code":"CreditsExhausted"}"#, "Episode creation blocked: Payment is required to create more episodes, either by upgrading to a paid plan or purchasing additional credits\n"),
+        (402, r#"{"error":"another payment error","code":"Other"}"#, "Failed to create episode: another payment error\n"),
+        (429, r#"{"error":"Episode limit exceeded","code":"EpisodeCreationLimitExceeded"}"#, "Failed to create episode: Episode limit exceeded\n"),
+        (503, r#"{"error":"Unable to check episode creation credits. Please retry."}"#, "Episode creation unavailable (retryable): Unable to check episode creation credits. Please retry.\n"),
+        (503, r#"{"error":"Service unavailable"}"#, "Episode creation unavailable (retryable): Service unavailable\n"),
+    ] {
+        let workspace = Workspace::new();
+        let server = Server::new(vec![Reply {
+            status,
+            ..Reply::json("POST", "/v1/episodes", body)
+        }]);
+        let output = run(&workspace, &server, &["episodes", "add", "--project-id", "prj_default", "--recording-id", "rec_one"]);
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        assert_eq!(String::from_utf8_lossy(&output.stderr), expected);
+        assert_eq!(server.finish().len(), 1);
+    }
+}
+
+#[test]
+#[ignore = "requires loopback sockets"]
 fn invalid_property_values_never_reach_the_mutation() {
     let workspace = Workspace::new();
     let server = Server::new(vec![Reply::json(
