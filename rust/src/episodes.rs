@@ -377,6 +377,14 @@ pub(crate) async fn add_episode(runtime: &Runtime, args: &EpisodeAddArgs) -> Out
         Err(error) if error.is_not_found_for("project") => {
             Outcome::failure(format!("Project not found: {}\n", request.project_id))
         }
+        Err(error @ crate::api::ApiError::Response { status: 402, .. })
+            if error.code() == Some("CreditsExhausted") =>
+        {
+            Outcome::failure(format!("Episode creation blocked: {error}\n"))
+        }
+        Err(error @ crate::api::ApiError::Response { status: 503, .. }) => Outcome::failure(
+            format!("Episode creation unavailable (retryable): {error}\n"),
+        ),
         Err(error) => Outcome::failure(format!("Failed to create episode: {error}\n")),
     }
 }
