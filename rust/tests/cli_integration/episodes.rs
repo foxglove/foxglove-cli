@@ -226,7 +226,7 @@ fn episode_creation_reports_credit_and_other_api_errors() {
         (402, r#"{"error":"Payment is required to create more episodes, either by upgrading to a paid plan or purchasing additional credits","code":"CreditsExhausted"}"#, "Episode creation blocked: Payment is required to create more episodes, either by upgrading to a paid plan or purchasing additional credits\n"),
         (402, r#"{"error":"another payment error","code":"Other"}"#, "Failed to create episode: another payment error\n"),
         (429, r#"{"error":"Episode limit exceeded","code":"EpisodeCreationLimitExceeded"}"#, "Failed to create episode: Episode limit exceeded\n"),
-        (503, r#"{"error":"Unable to check episode creation credits. Please retry."}"#, "Episode creation unavailable (retryable): Unable to check episode creation credits. Please retry.\n"),
+        (503, r#"{"error":"Infrastructure credit availability could not be determined. Please retry."}"#, "Episode creation unavailable (retryable): Infrastructure credit availability could not be determined. Please retry.\n"),
         (503, r#"{"error":"Service unavailable"}"#, "Episode creation unavailable (retryable): Service unavailable\n"),
     ] {
         let workspace = Workspace::new();
