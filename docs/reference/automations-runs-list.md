@@ -36,6 +36,9 @@ Options:
       --created-before <CREATED_BEFORE>
           Only include runs created at or before this time (ISO 8601)
 
+      --execution <EXECUTION>
+          Filter to runs with these executions: pending, running, finished, error, or blocked; comma-separated or repeated
+
       --limit <LIMIT>
           Maximum number of items to return (1-2000, default: 50)
 
@@ -47,6 +50,9 @@ Options:
 
       --project-id <PROJECT_ID>
           Project ID (required; defaults to FOXGLOVE_DEFAULT_PROJECT_ID, then saved default_project_id; cannot be empty)
+
+      --result <RESULT>
+          Filter to runs whose agent reported these results: succeeded, needs_review, failed, or no_result; comma-separated or repeated
 
       --sort-by <SORT_BY>
           Field to sort runs by: createdAt (default: createdAt)
