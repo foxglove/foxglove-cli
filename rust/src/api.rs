@@ -63,7 +63,11 @@ pub enum ApiError {
         message: String,
     },
     /// The server returned a non-success response with its decoded message.
-    Response { status: u16, message: String },
+    Response {
+        status: u16,
+        code: Option<String>,
+        message: String,
+    },
     /// The request could not be sent or its response could not be read.
     Transport(reqwest::Error),
     /// A response was syntactically valid HTTP but not valid expected JSON.
@@ -116,9 +120,9 @@ impl ApiError {
     #[must_use]
     pub fn code(&self) -> Option<&str> {
         match self {
-            Self::NotFound { code, .. } | Self::ForbiddenWithMessage { code, .. } => {
-                code.as_deref()
-            }
+            Self::NotFound { code, .. }
+            | Self::ForbiddenWithMessage { code, .. }
+            | Self::Response { code, .. } => code.as_deref(),
             _ => None,
         }
     }
@@ -149,7 +153,9 @@ impl fmt::Display for ApiError {
             Self::NotFound { message, .. } if message.is_empty() => {
                 formatter.write_str("not found")
             }
-            Self::Response { status, message } if message.is_empty() => {
+            Self::Response {
+                status, message, ..
+            } if message.is_empty() => {
                 write!(formatter, "unexpected status {status}")
             }
             Self::ForbiddenWithMessage { message, .. }
@@ -1490,6 +1496,7 @@ fn api_error_from_response(status: StatusCode, body: &str) -> ApiError {
         },
         _ => ApiError::Response {
             status: status.as_u16(),
+            code: response_code(body),
             message: response_message(body),
         },
     }

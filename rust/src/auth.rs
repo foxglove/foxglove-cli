@@ -216,7 +216,7 @@ async fn complete_login(
                     // still pending. A 401 is an authentication error and must
                     // surface instead of retrying forever.
                     Err(api::ApiError::Forbidden) => last_error = None,
-                    Err(api::ApiError::Response { status, message })
+                    Err(api::ApiError::Response { status, message, .. })
                         if status == 429 || message == "slow_down" =>
                     {
                         interval += SLOW_DOWN_STEP;
